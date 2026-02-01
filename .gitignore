@@ -1,0 +1,17 @@
+.venv/
+.vscode/
+build/
+lib/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.env
+.env.*
+.vscode/tools/
+.DS_Store
+.idea/
+dist/
+eggs/
+*.egg-info/
+satellite/
