@@ -183,7 +183,7 @@ class JEBManager:
                     self.satellites[sid].update_heartbeat()
                 else:
                     if payload == "INDUSTRIAL":
-                        self.satellites[sid] = IndustrialSatellite(sid)
+                        self.satellites[sid] = IndustrialSatellite(sid, self.uart)
                     asyncio.create_task(self.display.update_status("NEW SAT",f"{sid} sent HELLO."))
             elif cmd == "NEW_SAT":
                 asyncio.create_task(self.display.update_status("SAT CONNECTED", f"TYPE {payload} FOUND"))

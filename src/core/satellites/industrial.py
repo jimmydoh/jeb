@@ -21,13 +21,14 @@ class IndustrialSatellite(Satellite):
         _last_enc_a (int): Last state of encoder A pin.
         _last_enc_b (int): Last state of encoder B pin.
     """
-    def __init__(self, sid):
+    def __init__(self, sid, uart):
         """Initialize an IndustrialSatellite object.
 
         Parameters:
             sid (str): Satellite ID.
+            uart: UART interface for communication.
         """
-        super().__init__(sid, "INDUSTRIAL")
+        super().__init__(sid, "INDUSTRIAL", uart)
 
         # Rotary Encoder Button
         self._btns = [0]

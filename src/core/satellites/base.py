@@ -1,5 +1,7 @@
 """"""
 
+from adafruit_ticks import ticks_ms
+
 class Satellite:
     """Base class for all satellite boxes.
     A class representing a satellite expansion box.
@@ -10,7 +12,7 @@ class Satellite:
         last_seen (int): Timestamp of last heartbeat.
         is_active (bool): Satellite box active status.
     """
-    def __init__(self, sid, stype):
+    def __init__(self, sid, stype, uart):
         """
         Initialize a Satellite object.
 
@@ -20,6 +22,7 @@ class Satellite:
         """
         self.id = sid
         self.type = stype
+        self.uart = uart
         self.last_seen = 0
         self.is_active = True
 
@@ -35,4 +38,4 @@ class Satellite:
             cmd (str): Command type - LED | DSP.
             val (str): Command value.
         """
-        uart.write(f"{self.id}|{cmd}|{val}\n".encode())
+        self.uart.write(f"{self.id}|{cmd}|{val}\n".encode())
