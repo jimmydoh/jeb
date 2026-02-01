@@ -15,7 +15,7 @@ class HIDManager:
     """
     def __init__(self, button_pins, estop_pin, encoder_pins):
         # Master Face Buttons (A, B, C, D) and Main Dial Button
-        self._btns = [digitalio.DigitalInOut(p) for p in [*button_pins]]
+        self._btns = [digitalio.DigitalInOut(p) for p in button_pins]
         for b in self._btns:
             b.pull = digitalio.Pull.UP
         self._btns_press_start = [0, 0, 0, 0, 0]  # Long-press detection
