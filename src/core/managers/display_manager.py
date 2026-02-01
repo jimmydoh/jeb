@@ -1,22 +1,10 @@
 """Manages displayio objects and hardware for the JEB Master OLED."""
 
-import asyncio
 import gc
-import time
 import displayio
 import terminalio
 import adafruit_displayio_ssd1306
 from adafruit_display_text import label
-
-# Color Constants
-OFF    = (0, 0, 0)
-RED    = (200, 0, 0)
-GREEN  = (0, 200, 0)
-BLUE   = (0, 0, 200)
-YELLOW = (200, 150, 0)
-WHITE  = (150, 150, 150)
-GOLD   = (255, 100, 0)
-#endregion
 
 class DisplayManager:
     """Manages displayio objects and hardware for the JEB Master OLED."""
