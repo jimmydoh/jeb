@@ -41,6 +41,12 @@ class HIDManager:
         """Sets the hardware encoder to a specific starting position."""
         self._hw_encoder.position = value
 
+    def key_flush(self):
+        """Flush any pending keypad events."""
+        event = keypad.Event()
+        while self._keys.events.get_into(event):
+            pass
+
     def _process_events(self):
         """Internal helper to process keypad events."""
         event = keypad.Event()
@@ -89,3 +95,8 @@ class HIDManager:
     def estop(self):
         """Returns True estop is pressed."""
         return not self._estop.value
+
+    def flush(self):
+        """Flush any pending HID events."""
+        self.key_flush()
+        self.reset_encoder()

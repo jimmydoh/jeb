@@ -118,7 +118,7 @@ class JEBManager:
         except asyncio.CancelledError:
             pass
 
-    async def run_mode_with_safety(self, mode_coroutine, target_sat=None):
+    async def run_mode_with_safety(self, mode_instance, target_sat=None):
         """Execute a task while monitoring for interrupts.
 
         Parameters:
@@ -126,7 +126,7 @@ class JEBManager:
             target_sat (Satellite, optional): Specific satellite to monitor.
         """
         # Create the game as a background task
-        sub_task = asyncio.create_task(mode_coroutine)
+        sub_task = asyncio.create_task(mode_instance.execute())
 
         while not sub_task.done():
             # E-Stop engaged
@@ -329,7 +329,7 @@ class JEBManager:
 
             # MAIN MENU
             # Display the main menu and get selected mode
-            self.mode = await self.run_mode_with_safety(MainMenu(self).run())
+            self.mode = await self.run_mode_with_safety(MainMenu(self))
 
             # Handle e-stops first
             if self.mode == "ESTOP_ABORT":
@@ -339,9 +339,9 @@ class JEBManager:
             # Otherwise run the selected mode
             # Core Box Games
             elif self.mode == "SIMON":
-                await self.run_mode_with_safety(Simon(self).run())
+                await self.run_mode_with_safety(Simon(self, 0.5, 3000))
             elif self.mode == "SAFE":
-                await self.run_mode_with_safety(SafeCracker(self).run())
+                await self.run_mode_with_safety(SafeCracker(self))
 
             # Industrial Satellite Games
             elif self.mode == "IND":
@@ -350,7 +350,7 @@ class JEBManager:
                     run_ind = True
                     self.current_mode_step = 0
                     while run_ind:
-                        result = await self.run_mode_with_safety(IndustrialStartup(self, sat).run(), target_sat=sat)
+                        result = await self.run_mode_with_safety(IndustrialStartup(self, sat), target_sat=sat)
                         if result == "LINK_LOST":
                             await self.display.update_status("LINK LOST", "RECONNECT IN 60s")
                             asyncio.create_task(self.audio.play_sfx("link_lost.wav", voice=1))

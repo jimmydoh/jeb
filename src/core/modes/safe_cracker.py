@@ -1,16 +1,15 @@
-"""
-Docstring for core.modes.safe_cracker
-"""
+#File: src/core/modes/safe_cracker.py
+"""Safe Cracker Game Mode."""
 
 import asyncio
 import random
 
-class SafeCracker:
+from .game_mode import GameMode
+
+class SafeCracker(GameMode):
     """Safe Cracker Game Mode."""
     def __init__(self, jeb):
-        self.name = "SAFE CRACKER"
-        self.description = "Crack the safe by turning the dial"
-        self.jeb = jeb
+        super().__init__(jeb, "SAFE CRACKER", "Crack the safe by turning the dial")
 
     async def run(self):
         """Play the Safe Cracker game."""

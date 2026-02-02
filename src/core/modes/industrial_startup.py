@@ -1,16 +1,19 @@
-""""""
+#File: src/core/modes/industrial_startup.py
+"""Industrial Satellite Startup Sequence Mode."""
 
 import asyncio
 import random
 from adafruit_ticks import ticks_ms, ticks_diff
 
-class IndustrialStartup:
+from .game_mode import GameMode
+
+class IndustrialStartup(GameMode):
     """Industrial Satellite Startup Sequence Mode.
     A multi-phase startup sequence requiring various inputs
     from both the Core and Industrial Satellite box.
     """
     def __init__(self, jeb, sat):
-        self.jeb = jeb
+        super().__init__(jeb, "INDUSTRIAL STARTUP", "Industrial Satellite Startup Sequence")
         self.sat = sat
 
     async def run(self):
