@@ -15,15 +15,23 @@ class GameMode(BaseMode):
 
     async def game_over(self):
         """Standard Fail State."""
-        self.jeb.matrix.show_icon("FAIL", anim="PULSE")
-        await self.jeb.audio.play_sfx("fail.wav")
+        self.jeb.matrix.show_icon("FAILURE", anim_mode="PULSE", speed=2.0)
+        await self.jeb.audio.stop_all()
+        await self.jeb.audio.play("audio/general/fail.wav",
+                                    self.jeb.audio.CH_SFX,
+                                    level=1.0,
+                                    Interrupt=True)
         await self.jeb.display.update_status("GAME OVER", f"SCORE: {self.score}")
         await asyncio.sleep(2)
         return "GAME_OVER"
 
     async def victory(self):
         """Standard Win State."""
-        self.jeb.matrix.show_icon("SUCCESS", anim="PULSE")
-        await self.jeb.audio.play_sfx("win.wav")
+        self.jeb.matrix.show_icon("SUCCESS", anim_mode="PULSE", speed=2.0)
+        await self.jeb.audio.stop_all()
+        await self.jeb.audio.play("audio/general/win.wav",
+                                    self.jeb.audio.CH_SFX,
+                                    level=1.0,
+                                    Interrupt=True)
         await asyncio.sleep(2)
         return "VICTORY"

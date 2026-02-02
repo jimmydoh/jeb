@@ -20,7 +20,7 @@ class IndustrialStartup(GameMode):
 
     async def game_over(self):
         """Industrial Startup Fail Sequence."""
-        self.jeb.matrix.show_icon("FAIL", anim="PULSE")
+        self.jeb.matrix.show_icon("FAILURE", anim_mode="PULSE", speed=2.0)
         self.jeb.audio.play("audio/ind/atmo/hum_alarm.wav",
                             self.jeb.audio.CH_ATMO,
                             level=1.0,
@@ -36,7 +36,7 @@ class IndustrialStartup(GameMode):
 
     async def victory(self):
         """Industrial Startup Victory Sequence."""
-        self.jeb.matrix.show_icon("SUCCESS", anim="PULSE")
+        self.jeb.matrix.show_icon("SUCCESS", anim_mode="PULSE", speed=2.0)
         self.jeb.audio.play("audio/ind/atmo/hum_final.wav",
                             self.jeb.audio.CH_ATMO,
                             level=1.0,
@@ -319,7 +319,7 @@ class IndustrialStartup(GameMode):
                     # Logic Checks
                     # Collision (Critical Failure)
                     if left_pos >= right_pos:
-                        self.jeb.matrix.fill(Palette.RED)
+                        self.jeb.matrix.fill(Palette.RED, show=True, anim_mode="BLINK", speed=2.0)
                         await self.jeb.display.update_status("CRITICAL ERROR", "BRACKET COLLISION")
                         self.jeb.audio.play("audio/ind/sfx/crash.wav",
                                             self.jeb.audio.CH_SFX,
@@ -336,7 +336,7 @@ class IndustrialStartup(GameMode):
                     # Draw Target
                     if is_aligned:
                         for y in range(2, 6):
-                            self.jeb.matrix.draw_pixel(target_pos, y, Palette.GREEN, show=False)
+                            self.jeb.matrix.draw_pixel(target_pos, y, Palette.GREEN, show=False, anim_mode="PULSE", speed=3.0)
                     else:
                         for y in range(2, 6):
                             self.jeb.matrix.draw_pixel(target_pos, y, Palette.YELLOW, show=False)
@@ -344,7 +344,7 @@ class IndustrialStartup(GameMode):
                     # Draw Left Bracket
                     if is_aligned:
                         for y in range(1, 7):
-                            self.jeb.matrix.draw_pixel(left_pos, y, Palette.GREEN, show=False)
+                            self.jeb.matrix.draw_pixel(left_pos, y, Palette.GREEN, show=False, anim_mode="PULSE", speed=3.0)
                     else:
                         for y in range(1, 7):
                             self.jeb.matrix.draw_pixel(left_pos, y, Palette.CYAN, show=False)
@@ -352,7 +352,7 @@ class IndustrialStartup(GameMode):
                     # Draw Right Bracket
                     if is_aligned:
                         for y in range(1, 7):
-                            self.jeb.matrix.draw_pixel(right_pos, y, Palette.GREEN, show=False)
+                            self.jeb.matrix.draw_pixel(right_pos, y, Palette.GREEN, show=False, anim_mode="PULSE", speed=3.0)
                     else:
                         for y in range(1, 7):
                             self.jeb.matrix.draw_pixel(right_pos, y, Palette.MAGENTA, show=False)

@@ -22,6 +22,7 @@ class Palette:
     MAGENTA= (200, 0, 200)
     GOLD   = (255, 100, 0)
     SILVER = (192, 192, 192)
+    AMBER  = (255, 191, 0)
 
     def __init__(self):
         pass

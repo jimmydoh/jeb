@@ -41,7 +41,7 @@ class SafeCracker(GameMode):
 
         # 3. Draw Pointer
         pointer_color = (Palette.WHITE) if highlight else (Palette.CYAN) # White if aligned, Cyan otherwise
-        self.jeb.matrix.draw_pixel(px, py, pointer_color)
+        self.jeb.matrix.draw_pixel(px, py, pointer_color, show=False, anim_mode="BLINK" if highlight else None, speed=2.0)
 
         # Push to display
         self.jeb.matrix.pixels.show()
@@ -81,7 +81,7 @@ class SafeCracker(GameMode):
                                         self.jeb.audio.CH_SFX,
                                         level=1.0,
                                         interrupt=True)
-                    self.jeb.matrix.fill((255, 0, 0)) # Red Flash
+                    self.jeb.matrix.fill((255, 0, 0), show=True, anim_mode="BLINK", speed=2.0) # Red Flash
                     await self.jeb.display.update_status("RESET", "WRONG DIRECTION")
 
                     self.step = 0
@@ -106,7 +106,7 @@ class SafeCracker(GameMode):
                                         self.jeb.audio.CH_SFX,
                                         level=1.0,
                                         interrupt=True)
-                    self.jeb.matrix.fill((Palette.ORANGE)) # Orange Flash
+                    self.jeb.matrix.fill((Palette.ORANGE), show=True, anim_mode="BLINK", speed=2.0) # Orange Flash
                     await self.jeb.display.update_status("OVERSHOOT!", "TRY AGAIN")
                     self.step = 0
                     await asyncio.sleep(0.5)
@@ -141,7 +141,7 @@ class SafeCracker(GameMode):
             is_on_target = dist == 0
 
             if is_on_target:
-                self.jeb.matrix.draw_pixel(3, 3, (255, 255, 255), show=True)
+                self.jeb.matrix.draw_pixel(3, 3, (255, 255, 255), show=True, anim_mode="BLINK", speed=3.0)
                 self.jeb.audio.play("audio/safe/sfx/thump.wav",
                                     self.jeb.audio.CH_SFX,
                                     level=1.0,

@@ -198,7 +198,6 @@ class JEBManager:
         except Exception as e:
             print(f"Error handling packet: {e}")
 
-#region --- ASYNC MONITORS ---
     async def monitor_sats(self):
         """Background task to monitor inbound messages from satellite boxes."""
         while True:
@@ -307,7 +306,6 @@ class JEBManager:
                 await self.audio.play_sfx("link_lost.wav", voice=1)
 
             await asyncio.sleep(0.5) # Poll twice per second to save CPU
-#endregion
 
     async def start(self):
         """Main async loop for the Master Controller."""
@@ -316,6 +314,7 @@ class JEBManager:
         asyncio.create_task(self.monitor_estop()) # Emergency Stop
         asyncio.create_task(self.monitor_power()) # Analog Power Monitoring
         asyncio.create_task(self.monitor_connection()) # RJ45 Link Detection
+        asyncio.create_task(self.matrix.animate_loop()) # LED Matrix Animations
 
         # Fancy bootup sequence
         #TODO Add boot animation

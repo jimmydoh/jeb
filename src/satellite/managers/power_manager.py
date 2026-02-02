@@ -47,8 +47,10 @@ class PowerManager:
 
         # Update max/min records for diagnostics
         for rail in [self.v_input, self.v_satbus, self.v_logicbus]:
-            if rail[0] > rail[1]: rail[1] = rail[0]
-            if rail[0] < rail[2] or rail[2] == 0.0: rail[2] = rail[0]
+            if rail[0] > rail[1]:
+                rail[1] = rail[0]
+            if rail[0] < rail[2] or rail[2] == 0.0:
+                rail[2] = rail[0]
 
         return {
             "in": self.v_input[0],

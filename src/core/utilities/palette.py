@@ -3,7 +3,7 @@
 
 
 class Palette:
-    """A simple color palette for us in visualizations."""
+    """A simple color palette for use in visualizations."""
     # Binary Colors
     OFF    = (0, 0, 0)
     WHITE  = (150, 150, 150)
@@ -22,9 +22,24 @@ class Palette:
     MAGENTA= (200, 0, 200)
     GOLD   = (255, 100, 0)
     SILVER = (192, 192, 192)
+    AMBER  = (255, 191, 0)
 
-    def __init__(self):
-        pass
+    PALETTE_LIBRARY = {
+        "OFF": OFF,
+        "RED": RED,
+        "BLUE": BLUE,
+        "YELLOW": YELLOW,
+        "GREEN": GREEN,
+        "WHITE": WHITE,
+        "GOLD": GOLD,
+        "SILVER": SILVER,
+        "PURPLE": PURPLE,
+        "ORANGE": ORANGE,
+        "PINK": PINK,
+        "CYAN": CYAN,
+        "MAGENTA": MAGENTA,
+        "AMBER": AMBER
+    }
 
     @staticmethod
     def hsv_to_rgb(h, s, v):

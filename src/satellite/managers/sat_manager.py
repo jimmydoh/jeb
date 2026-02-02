@@ -73,12 +73,24 @@ class SatManager:
 
         # Init other managers
         self.led = LEDManager(led_pin, num_pixels=6)
-        self.hid = HIDManager(button_pins, toggle_pins, momentary_toggle_pins, keypad_rows, keypad_cols, encoder_pins)
+        self.hid = HIDManager(button_pins,
+                              toggle_pins,
+                              momentary_toggle_pins,
+                              keypad_rows,
+                              keypad_cols,
+                              encoder_pins)
         self.segment = SegmentManager(self.i2c)
 
         # UART for satellite communication
-        self.uart_up = busio.UART(uart_up_tx, uart_up_rx, baudrate=115200, receiver_buffer_size=512, timeout=0.01)
-        self.uart_down = busio.UART(uart_down_tx, uart_down_rx, baudrate=115200, timeout=0.01)
+        self.uart_up = busio.UART(uart_up_tx,
+                                  uart_up_rx,
+                                  baudrate=115200,
+                                  receiver_buffer_size=512,
+                                  timeout=0.01)
+        self.uart_down = busio.UART(uart_down_tx,
+                                   uart_down_rx,
+                                   baudrate=115200,
+                                   timeout=0.01)
 
         # State Variables
         self.sat_type = sat_type
@@ -319,17 +331,23 @@ class SatManager:
         asyncio.create_task(self.relay_downstream_to_upstream())
 
         while True:
+
             # TX TO UPSTREAM
             if not self.id: # Initial Discovery Phase
                 if time.monotonic() - self.last_tx > 3.0:
                     self.uart_up.write(f"NEW_SAT|{self.sat_type}\n".encode())
                     self.last_tx = time.monotonic()
-                    # TODO Better Amber LED Animation
-                    self.led.pixels.fill((128, 64, 0))
+                    self.led.flash_led(-1,
+                                       Palette.AMBER,
+                                       brightness=0.5,
+                                       duration=1.0,
+                                       priority=1)
             else: # Normal Operation
                 if time.monotonic() - self.last_tx > 0.1:
-                    self.uart_up.write(f"{self.id}|STATUS|{self.hid.get_status_string()}\n".encode())
+                    self.uart_up.write(
+                        f"{self.id}|STATUS|{self.hid.get_status_string()}\n".encode())
                     self.last_tx = time.monotonic()
+
             # RX FROM UPSTREAM -> CMD PROCESSING & TX TO DOWNSTREAM
             if self.uart_up.in_waiting:
                 line = self.uart_up.readline().decode().strip()
