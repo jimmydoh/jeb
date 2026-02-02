@@ -6,8 +6,8 @@ Docstring for core.jeb_state
 import asyncio
 import board
 import busio
-
 from adafruit_ticks import ticks_ms, ticks_diff
+
 from satellites import IndustrialSatellite
 from modes import IndustrialStartup, MainMenu, SafeCracker, Simon
 
@@ -73,6 +73,12 @@ class JEBManager:
         self.display = DisplayManager(self.i2c)
         self.hid = HIDManager(button_pins, estop_pin, encoder_pins)
         self.matrix = MatrixManager(matrix_pin)
+
+        # Preload Common UI Sounds
+        self.audio.preload([
+            "audio/menu_tick.wav",
+            "audio/menu_select.wav",
+        ])
 
         # UART for satellite communication
         self.uart = busio.UART(uart_tx, uart_rx, baudrate=115200, receiver_buffer_size=512, timeout=0.01)
@@ -193,7 +199,6 @@ class JEBManager:
         except Exception as e:
             print(f"Error handling packet: {e}")
 
-
 #region --- ASYNC MONITORS ---
     async def monitor_sats(self):
         """Background task to monitor inbound messages from satellite boxes."""
@@ -201,9 +206,14 @@ class JEBManager:
             # UART Packet Handling
             if self.power.satbus_powered and self.uart.in_waiting > 0:
                 while self.uart.in_waiting > 0:
-                    line = self.uart.readline().decode().strip()
-                    if line:
-                        self.handle_packet(line)
+                    raw_line = self.uart.readline()
+                    if raw_line is not None:
+                        try:
+                            line = raw_line.decode().strip()
+                            if line:
+                                self.handle_packet(line)
+                        except UnicodeError:
+                            print("UART Malformed Packet Received")
 
             # Link Watchdog
             now = ticks_ms()

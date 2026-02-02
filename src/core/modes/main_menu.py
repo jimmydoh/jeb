@@ -65,7 +65,7 @@ class MainMenu:
                     continue
 
                 # Handle Selection (Button Press)
-                if self.jeb.hid.is_pressed(4,long=True,duration=500):
+                if self.jeb.hid.is_pressed(4, long=False, action="tap"):
                     self.jeb.audio.play_sfx("menu_power.wav")
                     # TODO Play Selection animation
                     return modes[curr_pos][1]

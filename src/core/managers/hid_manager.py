@@ -1,6 +1,7 @@
 """Class to manage Master Box hardware inputs."""
 
 import digitalio
+import keypad
 import rotaryio
 
 from adafruit_ticks import ticks_ms, ticks_diff
@@ -15,10 +16,9 @@ class HIDManager:
     """
     def __init__(self, button_pins, estop_pin, encoder_pins):
         # Master Face Buttons (A, B, C, D) and Main Dial Button
-        self._btns = [digitalio.DigitalInOut(p) for p in button_pins]
-        for b in self._btns:
-            b.pull = digitalio.Pull.UP
-        self._btns_press_start = [0, 0, 0, 0, 0]  # Long-press detection
+        self._keys = keypad.Keys(button_pins, value_when_pressed=False, pull=True)
+        self._key_states = [0] * len(button_pins)
+        self._key_tapped = [False] * len(button_pins)
 
         self._estop = digitalio.DigitalInOut(estop_pin)
         self._estop.pull = digitalio.Pull.UP
@@ -30,7 +30,7 @@ class HIDManager:
         """Returns the raw hardware position."""
         return self._hw_encoder.position
 
-    def get_scaled_pos(self, multiplier=1.0, wrap=None):
+    def get_scaled_encoder_pos(self, multiplier=1.0, wrap=None):
         """Consistent scaling method shared with Satellite classes."""
         scaled = int(self._hw_encoder.position * multiplier)
         if wrap:
@@ -41,24 +41,49 @@ class HIDManager:
         """Sets the hardware encoder to a specific starting position."""
         self._hw_encoder.position = value
 
-    def is_pressed(self, index, long=False, duration=2000):
+    def _process_events(self):
+        """Internal helper to process keypad events."""
+        event = keypad.Event()
+        while self._keys.events.get_into(event):
+            key_idx = event.key_number
+            now = ticks_ms()
+
+            if event.pressed:
+                self._key_states[key_idx] = now
+
+            elif event.released:
+                start_time = self._key_states[key_idx]
+                if start_time > 0:
+                    elapsed = ticks_diff(now, start_time)
+                    if elapsed < 500:
+                        self._key_tapped[key_idx] = True
+
+                self._key_states[key_idx] = 0
+
+    def is_pressed(self, index, long=False, duration=2000, action=None): # action: "hold" | "tap"
         """Check if a face button is pressed (indices 0-4)."""
-        if long:
-            if not self._btns[index].value:
-                if self._btns_press_start[index] == 0:
-                    self._btns_press_start[index] = ticks_ms()
-                if ticks_diff(ticks_ms(), self._btns_press_start[index]) >= duration:
-                    self._btns_press_start[index] = 0
-                    return True
-            else:
-                self._btns_press_start[index] = 0
+        self._process_events()
+        press_start_time = self._key_states[index]
+
+        if press_start_time == 0:
             return False
-        return not self._btns[index].value
+
+        if long or action == "hold":
+            elapsed = ticks_diff(ticks_ms(), press_start_time)
+            return elapsed >= duration
+
+        if action == "tap":
+            tapped = self._key_tapped[index]
+            if tapped:
+                self._key_tapped[index] = False
+            return tapped
+
+        return True
 
     @property
-    def dial_pressed(self):
+    def dial_pressed(self, long=False, duration=2000):
         """Returns True if the rotary encoder button is pressed."""
-        return not self._btns[4].value
+        return self.is_pressed(4, long=long, duration=duration)
 
     @property
     def estop(self):

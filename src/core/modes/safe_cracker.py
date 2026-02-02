@@ -18,11 +18,11 @@ class SafeCracker:
         directions = ["RIGHT", "LEFT", "RIGHT"]
         step = 0
         dial_pos = 0
-        last_p = self.jeb.hid.encoder.position
+        last_p = self.jeb.hid.encoder_pos
         self.jeb.audio.play_sfx("voice/safe_mode.wav", voice=2)
 
         while step < 3:
-            curr_p = self.jeb.hid.encoder.position
+            curr_p = self.jeb.hid.encoder_pos
             if curr_p != last_p:
                 diff = curr_p - last_p
                 move = "RIGHT" if diff > 0 else "LEFT"
@@ -41,7 +41,7 @@ class SafeCracker:
 
             self.jeb.display.update_status(f"DIAL: {dial_pos:02d}", f"TARGET: {combo[step]:02d}")
 
-            if not self.jeb.hid.encoder_button.value:
+            if not self.jeb.hid.dial_pressed:
                 if dial_pos == combo[step]:
                     step += 1
                     self.jeb.audio.play_sfx("sounds/power.wav")

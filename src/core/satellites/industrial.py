@@ -9,17 +9,6 @@ class IndustrialSatellite(Satellite):
     Specific physical satellite style that includes
     toggles, keypad, rotary encoder, momentary toggles
     and 14-segment displays.
-
-    Attributes:
-        _btns (list): List of buttons, in this case a single rotary encoder 'Push'.
-        _toggles (list): List of toggle switch states.
-        _toggles_on_start (list): List of timers for long press detection.
-        _mtoggles (list): List of momentary toggle switch states.
-        _mtoggles_on_start (list): List of timers for long press detection of momentary toggle states.
-        _keypad (str): Current keypad input.
-        _encoder_pos (int): Rotary encoder position.
-        _last_enc_a (int): Last state of encoder A pin.
-        _last_enc_b (int): Last state of encoder B pin.
     """
     def __init__(self, sid, uart):
         """Initialize an IndustrialSatellite object.
@@ -51,8 +40,6 @@ class IndustrialSatellite(Satellite):
 
         # Rotary Encoder
         self._encoder_pos = 0
-        self._last_enc_a = 1
-        self._last_enc_b = 1
 
     def update_from_packet(self, data_str):
         """Updates the attribute states based on the received data string.
@@ -61,8 +48,8 @@ class IndustrialSatellite(Satellite):
             data_str (str): Comma-separated status string from satellite.
 
         Example:
-            0,0000,CC,N,0,0
-            1,1111,UU,*,1,1
+            0,0000,CC,N,0
+            1,1111,UU,*,1
         """
         try:
             self.update_heartbeat()
@@ -73,25 +60,11 @@ class IndustrialSatellite(Satellite):
             self._last_latch = self._toggles[:]
             self._last_moment = self._mtoggles[:]
             new_key = data[3]
-            new_enc_a = int(data[4])
-            new_enc_b = int(data[5])
+            self._encoder_pos = int(data[4])
 
             # Keypad logic: Only update if a new key is pressed
             if new_key != "N":
                 self._keypad = new_key
-
-            # --- UPDATED: QUADRATURE ENCODER LOGIC ---
-            # We look for a state change on Pin A
-            if new_enc_a != self._last_enc_a:
-                # If A matches B, it's rotating one way; otherwise, it's the other
-                if new_enc_a == new_enc_b:
-                    self._encoder_pos -= 1
-                else:
-                    self._encoder_pos += 1
-
-            # Update last states
-            self._last_enc_a = new_enc_a
-            self._last_enc_b = new_enc_b
 
         except (IndexError, ValueError):
             print(f"Malformed packet from Sat {self.id}")
@@ -124,24 +97,17 @@ class IndustrialSatellite(Satellite):
         """Returns the raw hardware position."""
         return self._encoder_pos
 
-    def get_scaled_encoder_pos(self, multiplier, wrap=None):
-        """Get the encoder position scaled by a multiplier.
-
-        Parameters:
-            multiplier (int): Scaling factor.
-            wrap (int, optional): If provided, wraps the value within this range.
-
-        Returns:
-            int: Scaled (and possibly wrapped) encoder position.
-        """
-        val = self._encoder_pos * multiplier
+    def get_scaled_encoder_pos(self, multiplier=1.0, wrap=None):
+        """Get the encoder position scaled by a multiplier."""
+        val = int(self._encoder_pos * multiplier)
         if wrap:
             val = val % wrap
         return val
 
-    def rest_encoder(self, value=0):
-        """Resets the software-tracked encoder position."""
+    def reset_encoder(self, value=0):
+        """Resets the software-tracked encoder position and sends command to satellite."""
         self._encoder_pos = value
+        self.send_cmd("ENC_SET", str(value))
 
     def is_latching_toggled(self, index, long=False, duration=2000):
         """Check if a latching toggle is toggled 'on'.

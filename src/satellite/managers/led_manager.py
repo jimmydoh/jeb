@@ -2,6 +2,7 @@
 
 import asyncio
 import math
+import random
 import time
 
 import neopixel
@@ -13,6 +14,7 @@ class LEDManager:
     def __init__(self, pin, num_pixels=6):
         self.pixels = neopixel.NeoPixel(pin, num_pixels, brightness=0.2, auto_write=True)
         self._tasks = [None] * num_pixels        # Individual LED tasks (e.g., breathing)
+        self._priorities = [0] * num_pixels  # 0: Idle, 1: Animation, 2: Targeted, 3: Critical
         self._global_task = None # Global tasks (e.g., Cylon, Strobe)
 
     async def _cancel(self, index):
@@ -20,6 +22,7 @@ class LEDManager:
         if self._tasks[index]:
             self._tasks[index].cancel()
             self._tasks[index] = None
+            self._priorities[index] = 0
 
     async def _cancel_all(self):
         """Internal helper to clear all running animations."""
@@ -42,26 +45,32 @@ class LEDManager:
         self.pixels.fill(pixel_color)
 
     # --- BASIC TRIGGERS ---
-    async def solid_led(self, index, color, brightness=0.2, duration=None):
+    async def solid_led(self, index, color, brightness=0.2, duration=None, priority=2):
         """Sets a static color to a specific LED as a task."""
         targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
         for i in targets:
-            await self._cancel(i)
-            self._tasks[i] = asyncio.create_task(self._solid_led_logic(i, color, brightness, duration))
+            if (self._priorities[i] <= priority):
+                await self._cancel(i)
+                self._tasks[i] = asyncio.create_task(self._solid_led_logic(i, color, brightness, duration))
+                self._priorities[i] = priority
 
-    async def flash_led(self, index, color, brightness=0.2, duration=None):
+    async def flash_led(self, index, color, brightness=0.2, duration=None, priority=2):
         """Flashes a specific LED for a duration as a task."""
         targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
         for i in targets:
-            await self._cancel(i)
-            self._tasks[i] = asyncio.create_task(self._flash_led_logic(i, color, brightness, duration))
+            if (self._priorities[i] <= priority):
+                await self._cancel(i)
+                self._tasks[i] = asyncio.create_task(self._flash_led_logic(i, color, brightness, duration))
+                self._priorities[i] = priority
 
-    async def breathe_led(self, index, color, brightness=1.0, duration=None):
+    async def breathe_led(self, index, color, brightness=1.0, duration=None, priority=2):
         """Commences a breathing animation on a specific LED or all LEDs."""
         targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
         for i in targets:
-            await self._cancel(i)
-            self._tasks[i] = asyncio.create_task(self._breath_led_logic(i, color, brightness, duration))
+            if (self._priorities[i] <= priority):
+                await self._cancel(i)
+                self._tasks[i] = asyncio.create_task(self._breath_led_logic(i, color, brightness, duration))
+                self._priorities[i] = priority
 
     # --- BASIC ASYNC LOGIC ---
     async def _solid_led_logic(self, index, color, brightness=0.2, duration=None):
@@ -110,37 +119,82 @@ class LEDManager:
             await asyncio.sleep(0.02)
 
     # --- GLOBAL ANIMATION TRIGGERS ---
-    def start_cylon(self, color, duration=3.0):
-        self._cancel_all()
-        self._global_task = asyncio.create_task(self._cylon_logic(color, duration))
+    async def start_cylon(self, color, duration=None, speed=0.08):
+        """Starts a Cylon animation across all LEDs."""
+        if self._global_task:
+            self._global_task.cancel()
+        self._global_task = asyncio.create_task(self._cylon_logic(color, duration, speed))
 
-    def start_strobe(self, color, duration=2.0):
-        self._cancel_all()
-        self._global_task = asyncio.create_task(self._strobe_logic(color, duration))
+    async def start_centrifuge(self, color, duration=None, speed=0.1):
+        """A looping 'spinning' effect with motion blur."""
+        if self._global_task:
+            self._global_task.cancel()
+        self._global_task = asyncio.create_task(self._centrifuge_logic(color, duration, speed))
+
+    async def start_rainbow(self, duration=None, speed=0.01):
+        """Smoothly cycles colors across the whole strip."""
+        if self._global_task:
+            self._global_task.cancel()
+        self._global_task = asyncio.create_task(self._rainbow_logic(duration,speed))
+
+    async def start_glitch(self, colors, duration=None, speed=0.05):
+        """Randomly 'pops' pixels from a list of colors to simulate instability."""
+        if self._global_task:
+            self._global_task.cancel()
+        self._global_task = asyncio.create_task(self._glitch_logic(colors, duration, speed))
 
     # --- GLOBAL ANIMATION ASYNC LOGIC ---
-    async def _cylon_logic(self, color, duration):
+    async def _cylon_logic(self, color, duration, speed=0.08):
         start_time = time.monotonic()
         pos, direction = 0, 1
         r, g, b = color
         while time.monotonic() - start_time < duration:
-            self.pixels.fill((0, 0, 0))
-            self.pixels[pos] = (int(r*0.2), int(g*0.2), int(b*0.2))
-            pos += direction
-            if pos == 5 or pos == 0: direction *= -1
-            await asyncio.sleep(0.08)
-        self.pixels.fill((0, 0, 0))
+            if self._priorities[pos] < 2:
+                await self._set_pixel(pos, (r, g, b), brightness=0.2)
+                await asyncio.sleep(speed)
+                if self._priorities[pos] < 2:
+                    await self._set_pixel(pos, (0, 0, 0), 0)
+            else:
+                await asyncio.sleep(speed)
 
-    async def _strobe_logic(self, color, duration):
-        end_time = time.monotonic() + duration
-        r, g, b = [int(c * 0.2) for c in color]
-        while time.monotonic() < end_time:
-            # Group 1: Toggle LEDs (0-3)
-            for i in range(4): self.pixels[i] = (r, g, b)
-            for i in range(4, 6): self.pixels[i] = (0, 0, 0)
-            await asyncio.sleep(0.1)
-            # Group 2: Momentary LEDs (4-5)
-            for i in range(4): self.pixels[i] = (0, 0, 0)
-            for i in range(4, 6): self.pixels[i] = (r, g, b)
-            await asyncio.sleep(0.1)
-        self.pixels.fill((0, 0, 0))
+            pos += direction
+            if pos == (len(self.pixels) - 1) or pos == 0:
+                direction *= -1
+
+    async def _centrifuge_logic(self, color, duration, speed=0.1):
+        start_time = time.monotonic()
+        num_pixels = len(self.pixels)
+        r, g, b = color
+        while time.monotonic() - start_time < duration:
+            for i in range(num_pixels):
+                if self._priorities[i] < 2:
+                    brightness = max(0.1, 1.0 - (abs((i - (time.monotonic() * 10) % num_pixels)) / num_pixels))
+                    await self._set_pixel(i, (r, g, b), brightness=brightness * 0.2)
+            await asyncio.sleep(speed)
+            for i in range(num_pixels):
+                if self._priorities[i] < 2:
+                    await self._set_pixel(i, (0, 0, 0), 0)
+
+    async def _rainbow_logic(self, duration, speed=0.01):
+        start_time = time.monotonic()
+        num_pixels = len(self.pixels)
+        while time.monotonic() - start_time < duration:
+            for i in range(num_pixels):
+                if self._priorities[i] < 2:
+                    hue = (i * 360 / num_pixels + (time.monotonic() * 100) % 360) % 360
+                    color = Palette.hsv_to_rgb(hue, 1.0, 1.0)
+                    await self._set_pixel(i, color, brightness=0.2)
+            await asyncio.sleep(speed)
+
+    async def _glitch_logic(self, colors, duration, speed=0.05):
+        start_time = time.monotonic()
+        num_pixels = len(self.pixels)
+        while time.monotonic() - start_time < duration:
+            for i in range(num_pixels):
+                if self._priorities[i] < 2:
+                    color = random.choice(colors)
+                    await self._set_pixel(i, color, brightness=0.2)
+            await asyncio.sleep(speed)
+            for i in range(num_pixels):
+                if self._priorities[i] < 2:
+                    await self._set_pixel(i, (0, 0, 0), 0)

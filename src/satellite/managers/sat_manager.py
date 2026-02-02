@@ -87,30 +87,6 @@ class SatManager:
         self.global_led_task = None
         self.current_display_task = None
 
-    def get_status_packet(self):
-        """Read all inputs and format status packet."""
-        # READ INPUTS
-        # Expects Index 0 to be Buttons
-        btn_val = "0" if not self.hid.enc_btn.value else "1"
-
-        # Latching Toggles, 4-bit String
-        toggle_bits = "".join(["1" if not t.value else "0" for t in self.hid.toggles])
-
-        # Momentary Toggles "U", "D" or "C"
-        momentary_1_val = "U" if not self.hid.momentary_1_up.value else ("D" if not self.hid.momentary_1_down.value else "C")
-        momentary_vals = momentary_1_val + "C" # Placeholder for L2
-
-        # Keypad
-        k_event = self.hid.k_pad.events.get()
-        k_val = str(k_event.key_number) if k_event and k_event.pressed else "N"
-
-        # Raw Encoder Pins for Master-side Quadrature Logic
-        enc_a_val = "1" if self.hid.enc_a.value else "0"
-        enc_b_val = "1" if self.hid.enc_b.value else "0"
-
-        # FORMAT: STATUS|Button,Toggles,Momentary,Key,EncA,EncB
-        return f"STATUS|{btn_val},{toggle_bits},{momentary_vals},{k_val},{enc_a_val},{enc_b_val}\n"
-
     async def process_local_cmd(self, cmd, val):
         """Process commands addressed to this satellite.
 
@@ -132,6 +108,10 @@ class SatManager:
             else:
                 # Not our type? Pass it along unchanged
                 self.uart_down.write(f"ALL|ID_ASSIGN|{val}\n".encode())
+        elif cmd == "SETENC":
+            # Set the encoder position to a specific value
+            if len(val) > 0:
+                self.hid.set_encoder_position(int(val))
         elif cmd == "LED" or cmd == "LEDBREATH":
             p = val.split(",")
             idx_raw = p[0]
@@ -291,7 +271,7 @@ class SatManager:
                     self.led.pixels.fill((128, 64, 0))
             else: # Normal Operation
                 if time.monotonic() - self.last_tx > 0.1:
-                    self.uart_up.write(f"{self.id}|{self.get_status_packet()}\n".encode())
+                    self.uart_up.write(f"{self.id}|STATUS|{self.hid.get_status_string()}\n".encode())
                     self.last_tx = time.monotonic()
             # RX FROM UPSTREAM -> CMD PROCESSING & TX TO DOWNSTREAM
             if self.uart_up.in_waiting:

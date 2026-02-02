@@ -193,8 +193,8 @@ class IndustrialStartup:
 
                 # Get positions from both hardware sources
                 # Left Bracket (Sat) and Right Bracket (Core)
-                left_pos = active_sat.get_scaled_pos(multiplier=1.0, wrap=8)
-                right_pos = self.jeb.hid.get_scaled_pos(multiplier=1.0, wrap=8)
+                left_pos = active_sat.get_scaled_encoder_pos(multiplier=1.0, wrap=8)
+                right_pos = self.jeb.hid.get_scaled_encoder_pos(multiplier=1.0, wrap=8)
 
                 # Update neobar visuals
                 # TODO Replace neobar with matrix

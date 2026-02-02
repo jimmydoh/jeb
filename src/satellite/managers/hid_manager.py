@@ -19,25 +19,51 @@ class HIDManager:
             m.pull = digitalio.Pull.UP
 
         # Keypad
+        self.k_map = ['1','2','3','4','5','6','7','8','9','*','0','#']
         self.k_pad = keypad.Keypad(row_pins=keypad_rows,
                                   col_pins=keypad_cols)
 
         # Encoder Pins & Button
-        self.enc_a = digitalio.DigitalInOut(encoder_pins[0])
-        self.enc_b = digitalio.DigitalInOut(encoder_pins[1])
+        self.encoder = rotaryio.IncrementalEncoder(encoder_pins[0], encoder_pins[1])
         self.enc_btn = digitalio.DigitalInOut(button_pins[0])
-        for e in [self.enc_a, self.enc_b, self.enc_btn]:
-            e.pull = digitalio.Pull.UP
+        self.enc_btn.pull = digitalio.Pull.UP
+
+    @property
+    def encoder_position(self):
+        """Returns the local hardware encoder position."""
+        return self.encoder.position
+
+    def flush_keypad(self):
+        """Clears any pending key events in the buffer."""
+        while self.k_pad.events.get():
+            pass
+
+    def set_encoder_position(self, value):
+        """Sets the encoder position to a specific value."""
+        self.encoder.position = value
 
     def get_status_string(self):
-        """Reads all hardware and returns the formatted status string for heartbeat."""
-        btn = "0" if not self.enc_btn.value else "1"
-        toggles = "".join(["1" if not t.value else "0" for t in self.toggles])
-        l1 = "U" if not self.momentary_1_up.value else ("D" if not self.momentary_1_down.value else "C")
+        """Read all inputs and format status packet."""
+        # READ INPUTS
+        # Expects Index 0 to be Buttons
+        btn_val = "0" if not self.enc_btn.value else "1"
 
-        # Matrix Keypad event handling
+        # Latching Toggles, 4-bit String
+        toggle_bits = "".join(["1" if not t.value else "0" for t in self.toggles])
+
+        # Momentary Toggles "U", "D" or "C"
+        momentary_1_val = "U" if not self.momentary_1_up.value else ("D" if not self.momentary_1_down.value else "C")
+        momentary_vals = momentary_1_val + "C" # Placeholder for L2
+
+        # Keypad
         k_event = self.k_pad.events.get()
-        key = str(k_event.key_number) if k_event and k_event.pressed else "N"
+        if k_event and k_event.pressed:
+            k_val = self.k_map[k_event.key_number]
+        else:
+            k_val = "N"  # 'N' for No Key
 
-        # Return Raw Encoder Pins for Master-side quadrature logic
-        return f"{btn},{toggles},{l1}C,{key},{1 if self.enc_a.value else 0},{1 if self.enc_b.value else 0}"
+        # Raw Encoder Pins for Master-side Quadrature Logic
+        enc_pos = self.encoder_position
+
+        # FORMAT: Buttons,Toggles,MomentaryToggles,Keypad,Encoder
+        return f"{btn_val},{toggle_bits},{momentary_vals},{k_val},{enc_pos}\n"
