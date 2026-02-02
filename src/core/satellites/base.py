@@ -8,20 +8,20 @@ class Satellite:
 
     Attributes:
         id (str): Satellite ID.
-        type (str): Satellite type.
+        sat_type (str): Satellite type.
         last_seen (int): Timestamp of last heartbeat.
         is_active (bool): Satellite box active status.
     """
-    def __init__(self, sid, stype, uart):
+    def __init__(self, sid, sat_type, uart):
         """
         Initialize a Satellite object.
 
         Parameters:
             sid (str): Satellite ID.
-            stype (str): Satellite type.
+            sat_type (str): Satellite type.
         """
         self.id = sid
-        self.type = stype
+        self.sat_type = sat_type
         self.uart = uart
         self.last_seen = 0
         self.is_active = True

@@ -59,6 +59,8 @@ class DisplayManager:
 
         # Storage for Viewport Layouts
         self.views = {
+            "dashboard": self.dash_group,
+            "menu": self.dash_group,
             "dash_menu": self.dash_group,
             "admin_menu": self.admin_group,
             "debug_menu": self.debug_group

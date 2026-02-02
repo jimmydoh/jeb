@@ -117,7 +117,7 @@ class Simon(GameMode):
             await asyncio.sleep(1)
 
             self.score += round_score
-            await self.jeb.display.update_status(f"ROUND: {round_score}", "TOTAL: {self.score}")
+            await self.jeb.display.update_status(f"ROUND: {round_score}", f"TOTAL: {self.score}")
             await asyncio.sleep(1)
 
             # Increase speed for next round (cap at 0.15s)

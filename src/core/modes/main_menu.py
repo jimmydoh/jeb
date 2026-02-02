@@ -75,13 +75,13 @@ class MainMenu(UtilityMode):
 
                 # Dynamically add modes based on what is actually plugged in
                 for sid, sat in self.jeb.satellites.items():
-                    if sat.type == "INDUSTRIAL":
+                    if sat.sat_type == "INDUSTRIAL":
                         if not any(m[1] == "IND" for m in modes):
                             modes.append(["INDUSTRIAL STARTUP", "IND"])
 
                 # Navigation
                 if curr_pos != last_pos:
-                    menu_idx = self.jeb.hid.get_scaled_pos(multiplier=1.0, wrap=len(modes))
+                    menu_idx = self.jeb.hid.get_scaled_encoder_pos(multiplier=1.0, wrap=len(modes))
 
                     self.jeb.display.update_status(f"{modes[menu_idx][0]}","PRESS TO SELECT")
                     await self.jeb.matrix.show_icon(modes[menu_idx][1], anim="SLIDE_LEFT", speed=2.0)

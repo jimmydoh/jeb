@@ -8,6 +8,8 @@ import time
 import board
 import busio
 
+from utilities import Palette
+
 from .hid_manager import HIDManager
 from .led_manager import LEDManager
 from .power_manager import PowerManager
@@ -15,7 +17,7 @@ from .segment_manager import SegmentManager
 
 class SatManager:
     """Satellite-side Manager to handle various subsystems."""
-    def __init__(self, type):
+    def __init__(self, sat_type):
         # Init Pins
         # UART Pins
         uart_up_tx = getattr(board, "GP1")
@@ -79,13 +81,9 @@ class SatManager:
         self.uart_down = busio.UART(uart_down_tx, uart_down_rx, baudrate=115200, timeout=0.01)
 
         # State Variables
-        self.type = type
+        self.sat_type = sat_type
         self.id = None
         self.last_tx = 0
-        self.led_loops = [False] * 6
-        self.led_tasks = [None] * 6
-        self.global_led_task = None
-        self.current_display_task = None
 
     async def process_local_cmd(self, cmd, val):
         """Process commands addressed to this satellite.
@@ -95,102 +93,161 @@ class SatManager:
         if cmd == "ID_ASSIGN":
             type_prefix = val[:2]
             current_index = int(val[2:])
-            if type_prefix == self.type:
+            if type_prefix == self.sat_type:
                 # We are the correct type, increment the index
                 new_index = current_index + 1
                 self.id = f"{type_prefix}{new_index:02d}" # e.g. "0101"
 
                 # Visual confirmation on 14-segments
-                asyncio.create_task(self.segment.segment_message(f"ID {self.id}", loop=False))
+                self.segment.start_message(f"ID {self.id}", loop=False)
 
                 # Pass the NEW index downstream for the next box
                 self.uart_down.write(f"ALL|ID_ASSIGN|{self.id}\n".encode())
             else:
                 # Not our type? Pass it along unchanged
                 self.uart_down.write(f"ALL|ID_ASSIGN|{val}\n".encode())
+
         elif cmd == "SETENC":
             # Set the encoder position to a specific value
             if len(val) > 0:
                 self.hid.set_encoder_position(int(val))
-        elif cmd == "LED" or cmd == "LEDBREATH":
+
+        elif cmd == "LED" or cmd == "LEDFLASH" or cmd == "LEDBREATH":
             p = val.split(",")
             idx_raw = p[0]
             target_indices = range(6) if idx_raw == "ALL" else [int(idx_raw)]
-            # Interrupt any global animation
-            if self.global_led_task:
-                    self.global_led_task.cancel()
-            for i in target_indices:
-                # Interrupt any existing animation for this specific LED
-                self.led_loops[i] = False
-                if self.led_tasks[i]:
-                    self.led_tasks[i].cancel()
 
-                # Apply New State
+            for i in target_indices:
+
+                # E.g. LED|r,g,b,duration,brightness,priority
+                # LED|0,100,100,100,2.0,0.2,2
+                # Set LED 0 to RGB(100,100,100) for 2.0 seconds at 20% brightness, priority 2
                 if cmd == "LED":
                     # Static Color
-                    r, g, b = [int(int(c) * 0.2) for c in p[1:4]]
-                    self.led.pixels[i] = (r, g, b)
-
-                elif cmd == "LEDBREATH":
-                    # Start individual pulse task
                     r, g, b = int(p[1]), int(p[2]), int(p[3])
-                    dur = float(p[4]) if len(p) > 4 else 2.0
-                    self.led_tasks[i] = asyncio.create_task(self.led.breathe_led(i, (r, g, b), brightness=1.0, duration=dur))
+                    duration = float(p[4]) if len(p) > 4 and float(p[4]) > 0 else None
+                    brightness = float(p[5]) if len(p) > 5 else 1.0
+                    priority = int(p[6]) if len(p) > 6 else 2
+                    self.led.solid_led(i,
+                                       (r, g, b),
+                                       brightness=brightness,
+                                       duration=duration,
+                                       priority=priority)
+
+                # E.g. LEDFLASH|r,g,b,duration,brightness,priority,speed,off_speed
+                # LEDFLASH|0,255,0,2.0,0.5,2,0.5,0.1
+                # LED 0 flashes green for 2s at 50% brightness, speed 0.5s on, 0.1s off, priority 2
+                elif cmd == "LEDFLASH":
+                    # Flashing Animation
+                    r, g, b = int(p[1]), int(p[2]), int(p[3])
+                    duration = float(p[4]) if len(p) > 4 and float(p[4]) > 0 else None
+                    brightness = float(p[5]) if len(p) > 5 else 1.0
+                    priority = int(p[6]) if len(p) > 6 else 2
+                    speed = float(p[7]) if len(p) > 7 else 0.1
+                    off_speed = float(p[8]) if len(p) > 8 else None
+                    self.led.flash_led(i,
+                                       (r, g, b),
+                                       brightness=brightness,
+                                       duration=duration,
+                                       priority=priority,
+                                       speed=speed,
+                                       off_speed=off_speed)
+
+                # E.g. LEDBREATH|r,g,b,duration,brightness,priority,speed
+                # LEDBREATH|0,0,0,255,2.0,0.2,3,2.0
+                # LED 0 breathes blue over 2s at 20% brightness, speed 2.0, priority 3
+                elif cmd == "LEDBREATH":
+                    # Breathing Animation
+                    r, g, b = int(p[1]), int(p[2]), int(p[3])
+                    duration = float(p[4]) if len(p) > 4 and float(p[4]) > 0 else None
+                    brightness = float(p[5]) if len(p) > 5 else 1.0
+                    priority = int(p[6]) if len(p) > 6 else 2
+                    speed = float(p[7]) if len(p) > 7 else 2.0
+                    self.led.breathe_led(i,
+                                         (r, g, b),
+                                         brightness=brightness,
+                                         duration=duration,
+                                         priority=priority,
+                                         speed=speed)
+
         elif cmd == "LEDCYLON":
-            # Split parameters: r, g, b, duration (optional)
+            # E.g. LEDCYLON|r,g,b,duration,speed
+            # LEDCYLON|255,0,0,2.0,0.08
+            # Red Cylon for 2 seconds at 0.08 speed
             p = val.split(",")
             r, g, b = int(p[0]), int(p[1]), int(p[2])
-            dur = float(p[3]) if len(p) > 3 else 2.0
+            duration = float(p[3]) if len(p) > 3 and float(p[3]) > 0 else 2.0
+            speed = float(p[4]) if len(p) > 4 else 0.08
+            self.led.start_cylon((r, g, b),
+                                 duration=duration,
+                                 speed=speed)
 
-            # Cancel any existing LED task and start new one
-            for i in range(6):
-                self.led_loops[i] = False
-                if self.led_tasks[i]:
-                    self.led_tasks[i].cancel()
-                self.led_loops[i] = True
-            self.global_led_task = asyncio.create_task(self.led.start_cylon((r, g, b), duration=dur))
-        elif cmd == "LEDSTROBE":
-            # Split parameters: r, g, b, duration (optional)
+        elif cmd == "LEDCENTRI":
+            # E.g. LEDCENTRI|r,g,b,duration,speed
+            # LEDCENTRI|255,0,0,2.0,0.08
+            # Red Centrifuge for 2 seconds at 0.08 speed
             p = val.split(",")
             r, g, b = int(p[0]), int(p[1]), int(p[2])
-            dur = float(p[3]) if len(p) > 3 else 2.0
+            duration = float(p[3]) if len(p) > 3 and float(p[3]) > 0 else 2.0
+            speed = float(p[4]) if len(p) > 4 else 0.08
+            self.led.start_centrifuge((r, g, b),
+                                      duration=duration,
+                                      speed=speed)
 
-            # Cancel any existing LED task and start new one
-            for i in range(6):
-                self.led_loops[i] = False
-                if self.led_tasks[i]:
-                    self.led_tasks[i].cancel()
-                self.led_loops[i] = True
-            self.global_led_task = asyncio.create_task(self.led.start_strobe((r, g, b), duration=dur))
+        elif cmd == "LEDRAINBOW":
+            # E.g. LEDRAINBOW|duration,speed
+            # LEDRAINBOW|2.0,0.08
+            # Rainbow for 2 seconds at 0.08 speed
+            p = val.split(",")
+            duration = float(p[0]) if len(p) > 0 and float(p[0]) > 0 else 2.0
+            speed = float(p[1]) if len(p) > 1 else 0.08
+            self.led.start_rainbow(duration=duration,
+                                   speed=speed)
+
+        elif cmd == "LEDGLITCH":
+            # E.g. LEDGLITCH|duration,speed
+            # LEDGLITCH|2.0,0.08
+            # Glitch for 2 seconds at 0.08 speed
+            p = val.split(",")
+            duration = float(p[0]) if len(p) > 0 and float(p[0]) > 0 else 2.0
+            speed = float(p[1]) if len(p) > 1 else 0.08
+            # TODO Find a way to pass multiple colors
+            colors = [
+                Palette.YELLOW,
+                Palette.CYAN,
+                Palette.WHITE,
+                Palette.MAGENTA,
+            ]
+            self.led.start_glitch(colors,
+                                   duration=duration,
+                                   speed=speed)
+
         elif cmd == "DSP":
-            # Split parameters: message, loop (0/1), speed (float), direction (L/R)
+            # E.g. DSP|message,loop,speed,direction
+            # DSP|HELLO,1,0.2,L
+            # Display "HELLO" looping at 0.2s speed, left direction
             p = val.split(",")
-            msg_text = p[0]
-            do_loop = True if (len(p) > 1 and p[1] == "1") else False
-            spd = float(p[2]) if len(p) > 2 else 0.3
-            dir = p[3] if len(p) > 3 else "L"
+            message = p[0]
+            loop = True if (len(p) > 1 and p[1] == "1") else False
+            speed = float(p[2]) if len(p) > 2 else 0.3
+            direction = p[3] if len(p) > 3 else "L"
 
             # Cancel any existing display task and start new one
-            self.display_loop = False
-            if self.current_display_task:
-                self.current_display_task.cancel()
-            await asyncio.sleep(0.01)
-            asyncio.create_task(self.segment.segment_message(msg_text, do_loop, spd, dir))
-        elif cmd == "DSPANIMCORRUPT":
-            self.display_loop = False
-            if self.current_display_task:
-                self.current_display_task.cancel()
-            # Duration can be passed in 'val' or defaulted
-            dur = float(val) if val else 2.0
-            self.current_display_task = asyncio.create_task(self.segment.display_corruption_anim(dur))
-        elif cmd == "DSPANIMMATRIX":
-            self.display_loop = False
-            if self.current_display_task:
-                self.current_display_task.cancel()
-            # Duration can be passed in 'val' or defaulted
-            dur = float(val) if val else 2.0
-            self.current_display_task = asyncio.create_task(self.segment.display_matrix_rain(dur))
+            self.segment.start_message(message, loop, speed, direction)
 
+        elif cmd == "DSPCORRUPT":
+            # E.g. DSPCORRUPT|duration
+            # DSPCORRUPT|2.0
+            # Start corruption animation for 2 seconds
+            duration = float(val) if val and float(val) > 0 else 2.0
+            self.segment.start_corruption(duration)
+
+        elif cmd == "DSPMATRIX":
+            # E.g. DSPMATRIX|duration
+            # DSPMATRIX|2.0
+            # Start matrix rain animation for 2 seconds
+            duration = float(val) if val and float(val) > 0 else 2.0
+            self.segment.start_matrix(duration)
 
     async def relay_downstream_to_upstream(self):
         """Ultra-fast, non-blocking relay of downstream data to the Master."""
@@ -265,7 +322,7 @@ class SatManager:
             # TX TO UPSTREAM
             if not self.id: # Initial Discovery Phase
                 if time.monotonic() - self.last_tx > 3.0:
-                    self.uart_up.write(f"NEW_SAT|{self.type}\n".encode())
+                    self.uart_up.write(f"NEW_SAT|{self.sat_type}\n".encode())
                     self.last_tx = time.monotonic()
                     # TODO Better Amber LED Animation
                     self.led.pixels.fill((128, 64, 0))

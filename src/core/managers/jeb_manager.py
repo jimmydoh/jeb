@@ -90,7 +90,6 @@ class JEBManager:
         self.meltdown = False
         self.sat_active = False
         self.last_raw_uart = ""
-        self.current_mode_step = 0
 
     async def discover_satellites(self):
         """Triggers the ID assignment chain."""
@@ -167,7 +166,7 @@ class JEBManager:
                     if not self.satellites[sid].is_active:
                         self.satellites[sid].is_active = True
                         asyncio.create_task(self.display.update_status("SAT RECONNECTED", f"ID: {sid}"))
-                        if self.satellites[sid].type == "INDUSTRIAL":
+                        if self.satellites[sid].sat_type == "INDUSTRIAL":
                             self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
                             asyncio.create_task(self.audio.play_sfx("link_restored.wav", voice=1))
                     self.satellites[sid].update_heartbeat()
@@ -345,12 +344,12 @@ class JEBManager:
 
             # Industrial Satellite Games
             elif self.mode == "IND":
-                sat = next((s for s in self.satellites.values() if s.type == "INDUSTRIAL"), None)
+                sat = next((s for s in self.satellites.values() if s.sat_type == "INDUSTRIAL"), None)
                 if sat:
+                    mode_instance = IndustrialStartup(self, sat)
                     run_ind = True
-                    self.current_mode_step = 0
                     while run_ind:
-                        result = await self.run_mode_with_safety(IndustrialStartup(self, sat), target_sat=sat)
+                        result = await self.run_mode_with_safety(mode_instance, target_sat=sat)
                         if result == "LINK_LOST":
                             await self.display.update_status("LINK LOST", "RECONNECT IN 60s")
                             asyncio.create_task(self.audio.play_sfx("link_lost.wav", voice=1))
@@ -371,7 +370,6 @@ class JEBManager:
                                 await asyncio.sleep(1)
                         else:
                             run_ind = False
-                            self.current_mode_step = 0
             # Returns from sub-menus
             elif self.mode == "SETTINGS":
                 continue

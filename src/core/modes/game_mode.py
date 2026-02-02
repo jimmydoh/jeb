@@ -6,10 +6,12 @@ from .base import BaseMode
 
 class GameMode(BaseMode):
     """Base class for all game modes."""
-    def __init__(self, jeb, name, description):
+    def __init__(self, jeb, name, description, total_steps=1):
         super().__init__(jeb, name, description)
         self.score = 0
         self.level = 0
+        self.step = 0
+        self.total_steps = total_steps
 
     async def game_over(self):
         """Standard Fail State."""

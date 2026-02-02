@@ -54,22 +54,22 @@ class LEDManager:
                 self._tasks[i] = asyncio.create_task(self._solid_led_logic(i, color, brightness, duration))
                 self._priorities[i] = priority
 
-    async def flash_led(self, index, color, brightness=0.2, duration=None, priority=2):
+    async def flash_led(self, index, color, brightness=0.2, duration=None, priority=2, speed=0.1, off_speed=None):
         """Flashes a specific LED for a duration as a task."""
         targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
         for i in targets:
             if (self._priorities[i] <= priority):
                 await self._cancel(i)
-                self._tasks[i] = asyncio.create_task(self._flash_led_logic(i, color, brightness, duration))
+                self._tasks[i] = asyncio.create_task(self._flash_led_logic(i, color, brightness, duration, speed, off_speed))
                 self._priorities[i] = priority
 
-    async def breathe_led(self, index, color, brightness=1.0, duration=None, priority=2):
+    async def breathe_led(self, index, color, brightness=1.0, duration=None, priority=2, speed=2.0):
         """Commences a breathing animation on a specific LED or all LEDs."""
         targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
         for i in targets:
             if (self._priorities[i] <= priority):
                 await self._cancel(i)
-                self._tasks[i] = asyncio.create_task(self._breath_led_logic(i, color, brightness, duration))
+                self._tasks[i] = asyncio.create_task(self._breath_led_logic(i, color, brightness, duration, speed))
                 self._priorities[i] = priority
 
     # --- BASIC ASYNC LOGIC ---

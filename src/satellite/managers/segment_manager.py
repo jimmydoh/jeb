@@ -1,6 +1,5 @@
-"""
-Docstring for satellite.managers.segment_manager
-"""
+#File: src/satellite/managers/segment_manager.py
+"""Manages dual 14-segment displays."""
 
 import asyncio
 import random
@@ -9,85 +8,41 @@ import time
 from adafruit_ht16k33.segments import Seg14x4
 
 class SegmentManager:
-    """
-    Docstring for SegmentManager
-    """
+    """Manages dual 14-segment displays."""
     def __init__(self, i2c):
-        self.display_right = Seg14x4(i2c, address=0x70)
-        self.display_right.brightness = 0.5
-        self.display_left = Seg14x4(i2c, address=0x71)
-        self.display_left.brightness = 0.5
+        self._display_right = Seg14x4(i2c, address=0x70)
+        self._display_right.brightness = 0.5
+        self._display_left = Seg14x4(i2c, address=0x71)
+        self._display_left.brightness = 0.5
 
-        self.display_loop = False
+        self._display_task = None
 
-    async def display_corruption_anim(self,duration=2.0):
-        """Flickers random segments to simulate data corruption."""
-        self.display_loop = True
-        end_time = time.monotonic() + duration
+    # --- BASIC TRIGGERS ---
+    async def start_message(self, text, loop=False, speed=0.3, direction="L"):
+        """Starts a marquee message as a task."""
+        if self._display_task and not self._display_task.done():
+            self._display_task.cancel()
+            await asyncio.sleep(0.1)
+        self._display_task = asyncio.create_task(self._message_logic(text, loop, speed, direction))
 
-        while time.monotonic() < end_time and self.display_loop:
-            # Generate 4 random 16-bit integers for each display
-            # This lights up random physical segments
-            for i in range(4):
-                self.display_left.set_digit_raw(i, random.getrandbits(16))
-                self.display_right.set_digit_raw(i, random.getrandbits(16))
-
-            self.display_left.show()
-            self.display_right.show()
-            # Fast, erratic flickering
-            await asyncio.sleep(random.uniform(0.05, 0.15))
-
-        # Clear when done
-        self.display_left.fill(0)
-        self.display_right.fill(0)
-        self.display_left.show()
-        self.display_right.show()
-        self.display_loop = False
-
-    async def display_matrix_rain(self,duration=3.0):
-        """Creates a 'falling' segment effect across all 8 digits."""
-        self.display_loop = True
-        end_time = time.monotonic() + duration
-
-        # Masks for Top, Middle, and Bottom horizontal bars
-        # (Based on standard HT16K33 14-segment mapping)
-        frames = [0x0001, 0x0040, 0x0008] # Top -> Middle -> Bottom
-
-        while time.monotonic() < end_time and self.display_loop:
-            for frame in frames:
-                if not self.display_loop:
-                    break
-                for i in range(4):
-                    self.display_left.set_digit_raw(i, frame)
-                    self.display_right.set_digit_raw(i, frame)
-                self.display_left.show()
-                self.display_right.show()
-                await asyncio.sleep(0.1)
-
-        self.display_left.fill(0)
-        self.display_right.fill(0)
-        self.display_left.show()
-        self.display_right.show()
-        self.display_loop = False
-
-    async def segment_message(self, text, loop=False, speed=0.3, direction="L"):
+    # --- BASIC LOGIC ---
+    async def _message_logic(self, text, loop=False, speed=0.3, direction="L"):
         """Advanced Marquee for dual 14-segment displays."""
-        self.display_loop = loop
         text = text.upper()
 
         # 1. Handle Static Right-Justified (Short & No Loop)
         if len(text) <= 8 and not loop:
-            self.display_left.fill(0)
-            self.display_right.fill(0)
+            self._display_left.fill(0)
+            self._display_right.fill(0)
             # Pad left with spaces to right-justify
             padded = text.rjust(8)
-            self.display_left.print(padded[:4])
-            self.display_right.print(padded[4:])
+            self._display_left.print(padded[:4])
+            self._display_right.print(padded[4:])
             return
 
         # 2. Handle Marquee (Looping or Long Strings)
-        # Pad with 4 spaces on either side to allow "scrolling in/out"
-        display_text = "    " + text + "    "
+        # Pad with 8 spaces on either side to allow "scrolling in/out"
+        display_text = "        " + text + "        "
 
         while True:
             # Range calculation for direction
@@ -96,14 +51,76 @@ class SegmentManager:
                 indices = reversed(indices)
 
             for i in indices:
-                # Check if a new message has overridden this loop
-                if not self.display_loop and loop:
-                    return
-
                 chunk = display_text[i:i+8]
-                self.display_left.print(chunk[:4])
-                self.display_right.print(chunk[4:])
+                self._display_left.print(chunk[:4])
+                self._display_right.print(chunk[4:])
                 await asyncio.sleep(speed)
 
             if not loop:
                 break # Exit after one pass if loop is false
+
+    # --- ANIMATION TRIGGERS ---
+    async def start_corruption(self, duration=None):
+        """Starts the display corruption animation as a task."""
+        if self._display_task and not self._display_task.done():
+            self._display_task.cancel()
+            await asyncio.sleep(0.1)
+        self._display_task = asyncio.create_task(self._corruption_logic(duration))
+
+    async def start_matrix(self, duration=None):
+        """Starts the matrix rain animation as a task."""
+        if self._display_task and not self._display_task.done():
+            self._display_task.cancel()
+            await asyncio.sleep(0.1)
+        self._display_task = asyncio.create_task(self._matrix_logic(duration))
+
+    # --- ANIMATION LOGIC ---
+    async def _corruption_logic(self, duration=None):
+        """Flickers random segments to simulate data corruption."""
+        if duration:
+            end_time = time.monotonic() + duration
+        else:
+            end_time = float('inf')
+
+        while time.monotonic() < end_time:
+            # Generate 4 random 16-bit integers for each display
+            # This lights up random physical segments
+            for i in range(4):
+                self._display_left.set_digit_raw(i, random.getrandbits(16))
+                self._display_right.set_digit_raw(i, random.getrandbits(16))
+
+            self._display_left.show()
+            self._display_right.show()
+            # Fast, erratic flickering
+            await asyncio.sleep(random.uniform(0.05, 0.15))
+
+        # Clear when done
+        self._display_left.fill(0)
+        self._display_right.fill(0)
+        self._display_left.show()
+        self._display_right.show()
+
+    async def _matrix_logic(self, duration=None):
+        """Creates a 'falling' segment effect across all 8 digits."""
+        if duration:
+            end_time = time.monotonic() + duration
+        else:
+            end_time = float('inf')
+
+        # Masks for Top, Middle, and Bottom horizontal bars
+        # (Based on standard HT16K33 14-segment mapping)
+        frames = [0x0001, 0x0040, 0x0008] # Top -> Middle -> Bottom
+
+        while time.monotonic() < end_time:
+            for frame in frames:
+                for i in range(4):
+                    self._display_left.set_digit_raw(i, frame)
+                    self._display_right.set_digit_raw(i, frame)
+                self._display_left.show()
+                self._display_right.show()
+                await asyncio.sleep(0.1)
+
+        self._display_left.fill(0)
+        self._display_right.fill(0)
+        self._display_left.show()
+        self._display_right.show()

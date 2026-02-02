@@ -5,11 +5,13 @@ import math
 import asyncio
 import neopixel
 
+from utilities import Palette
+
 class MatrixManager:
     """Class to manage the GlowBit 64 Matrix HUD."""
     def __init__(self, pin, num_pixels=64, brightness=0.2):
         self.pixels = neopixel.NeoPixel(pin, num_pixels, brightness=brightness, auto_write=False)
-        self.palette = [OFF, RED, BLUE, YELLOW, GREEN, WHITE, GOLD]
+        self.palette = [Palette.OFF, Palette.RED, Palette.BLUE, Palette.YELLOW, Palette.GREEN, Palette.WHITE, Palette.GOLD]
         # 5x5 Bitmasks for Numbers 0-9
         # TODO Fix up - this is an 8x8 matrix
         self.font = {
