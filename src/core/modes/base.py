@@ -30,7 +30,7 @@ class BaseMode:
 
     async def run(self):
         """Override this method in subclasses."""
-        pass
+        raise NotImplementedError("Subclasses must implement the run() method.")
 
     async def execute(self):
         """The wrapper called by JEBManager."""
