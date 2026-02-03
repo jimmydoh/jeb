@@ -2,6 +2,7 @@
 """Top-level package for manager classes."""
 
 from .audio_manager import AudioManager
+from .base_pixel_manager import BasePixelManager
 from .display_manager import DisplayManager
 from .hid_manager import HIDManager
 from .jeb_manager import JEBManager
@@ -11,6 +12,7 @@ from .power_manager import PowerManager
 
 __all__ = [
     "AudioManager",
+    "BasePixelManager",
     "DisplayManager",
     "HIDManager",
     "JEBManager",

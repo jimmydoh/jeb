@@ -10,17 +10,12 @@ import neopixel
 
 from utilities import Palette, Icons
 
-class MatrixManager:
+from .base_pixel_manager import BasePixelManager
+
+class MatrixManager(BasePixelManager):
     """Class to manage the GlowBit 64 Matrix HUD."""
     def __init__(self, jeb_pixel):
-        self.pixels = jeb_pixel
-
-        # Format: pixel_index: {
-        #               "type": "BLINK",
-        #               "color": (r,g,b),
-        #               "speed": 1.0,
-        #               "start": time.monotonic() }
-        self.active_animations = {}
+        super().__init__(jeb_pixel)
 
         self.palette = Palette.PALETTE_LIBRARY
         self.icons = Icons.ICON_LIBRARY
@@ -30,24 +25,13 @@ class MatrixManager:
         if y % 2 == 0: return (y * 8) + x
         return (y * 8) + (7 - x)
 
-    def clear(self):
-        """Clears the matrix display."""
-        self.active_animations.clear()
-        self.pixels.fill((0, 0, 0))
-        self.pixels.show()
-
     def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0):
         """Sets a specific pixel on the matrix."""
         if 0 <= x < 8 and 0 <= y < 8:
             idx = self._get_idx(x, y)
 
             if anim_mode:
-                self.active_animations[idx] = {
-                    "type": anim_mode,
-                    "color": color,
-                    "speed": speed,
-                    "start": time.monotonic()
-                }
+                self.set_animation(idx, anim_mode, color, speed)
             else:
                 if idx in self.active_animations:
                     del self.active_animations[idx]
@@ -59,16 +43,9 @@ class MatrixManager:
     def fill(self, color, show=True, anim_mode=None, speed=1.0):
         """Fills the entire matrix with a single color or simple animation."""
         if anim_mode:
-            start_time = time.monotonic()
-            for idx in range(64):
-                self.active_animations[idx] = {
-                    "type": anim_mode,
-                    "color": color,
-                    "speed": speed,
-                    "start": start_time
-                }
+            self.fill_animation(anim_mode, color, speed)
         else:
-            self.active_animations.clear()
+            self.clear()
             self.pixels.fill(color)
         if show:
             self.pixels.show()
@@ -82,15 +59,14 @@ class MatrixManager:
         anim_mode: "SLIDE_LEFT" is blocking (transition).
         """
         if clear:
-            self.active_animations.clear()
-            self.pixels.fill((0,0,0))
+            self.clear()
 
         icon_data = self.icons.get(icon_name, self.icons["DEFAULT"])
 
         # Handle Blocking Animations First
         if anim_mode == "SLIDE_LEFT":
             for offset in range(8, -1, -1):  # Slide from right to left
-                self.pixels.fill((0,0,0))
+                self.fill(Palette.OFF, show=False)
                 for y in range(8):
                     for x in range(8):
                         target_x = x - offset
@@ -104,9 +80,6 @@ class MatrixManager:
                 await asyncio.sleep(0.05)
             return
 
-        # Non-blocking Animations
-        start_time = time.monotonic()
-
         for y in range(8):
             for x in range(8):
                 idx = self._get_idx(x, y)
@@ -117,27 +90,23 @@ class MatrixManager:
                     px_color = tuple(int(c * brightness) for c in base)
 
                     if anim_mode:
-                        self.active_animations[idx] = {
-                            "type": anim_mode,
-                            "color": px_color,
-                            "speed": speed,
-                            "start": start_time
-                        }
+                        self.set_animation(idx, anim_mode, px_color, speed)
                     else:
-                        self.pixels[idx] = px_color
+                        self.draw_pixel(x, y, px_color)
 
         self.pixels.show()
 
+    # TODO Refactor progress grid to use animations
     async def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):
         """Fills the matrix like a rising 'tank' of fluid."""
-        self.pixels.fill(0)
+        self.fill(Palette.OFF, show=False)
         # Map {total} iterations to 64 pixels (approx 6 pixels per step)
         fill_limit = int((iterations / total) * 64)
         for i in range(fill_limit):
-            self.pixels[i] = color
+            self.draw_pixel(i % 8, 7 - (i // 8), color, show=False)
         self.pixels.show()
 
-    async def draw_quadrant(self, quad_idx, color):
+    async def draw_quadrant(self, quad_idx, color, anim_mode=None, speed=1.0):
         """Fills one of four 4x4 quadrants: 0=TopLeft, 1=TopRight, 2=BottomLeft, 3=BottomRight."""
         # Define start X, Y for each quadrant
         offsets = [(0,0), (4,0), (0,4), (4,4)]
@@ -145,106 +114,5 @@ class MatrixManager:
 
         for y in range(4):
             for x in range(4):
-                self.draw_pixel(ox + x, oy + y, color)
+                self.draw_pixel(ox + x, oy + y, color, show=False, anim_mode=anim_mode, speed=speed)
         self.pixels.show()
-
-    async def animate_loop(self):
-        """Background task to handle pixel animations."""
-        while True:
-            # If nothing is animating, sleep and check back later
-            if not self.active_animations:
-                await asyncio.sleep(0.1)
-                continue
-
-            now = time.monotonic()
-            dirty = False
-
-            to_remove = []
-
-            # Iterate over a copy of items so we can modify if needed (though we aren't deleting here)
-            for idx, anim in self.active_animations.items():
-
-                # --- BLINK LOGIC ---
-                if anim["type"] == "BLINK":
-                    # Cycle duration = 1.0 / speed
-                    # 50% Duty Cycle
-                    period = 1.0 / anim["speed"]
-                    phase = (now - anim["start"]) % period
-
-                    if phase < (period / 2):
-                        self.pixels[idx] = anim["color"]
-                    else:
-                        self.pixels[idx] = (0, 0, 0) # Off
-                    dirty = True
-
-                # --- PULSE / BREATHING LOGIC ---
-                elif anim["type"] == "PULSE" or anim["type"] == "BREATH":
-                    # Sine wave brightness 0.1 to 1.0
-                    t = (now - anim["start"]) * anim["speed"]
-                    # Shift sine to 0.0-1.0 range
-                    factor = 0.5 + 0.5 * math.sin(t * 2 * math.pi)
-                    # Clamp lower bound so it doesn't go fully black
-                    factor = max(0.1, factor)
-
-                    base = anim["color"]
-                    self.pixels[idx] = (
-                        int(base[0] * factor),
-                        int(base[1] * factor),
-                        int(base[2] * factor)
-                    )
-                    dirty = True
-
-                # --- RAINBOW CYCLE LOGIC ---
-                elif anim["type"] == "RAINBOW":
-                    # Speed = cycles per second
-                    # Hue = (Time * Speed) + (Index Offset for wave effect)
-                    # Result is Modulo 1.0 to stay within 0.0-1.0 range
-                    hue = ((now - anim["start"]) * anim["speed"] + (idx * 0.05)) % 1.0
-
-                    # Call the Palette helper
-                    self.pixels[idx] = Palette.hsv_to_rgb(hue, 1.0, 1.0)
-                    dirty = True
-
-                # --- GLITCH LOGIC ---
-                elif anim["type"] == "GLITCH":
-                     # 90% chance to show base color, 10% chance to glitch
-                    if random.random() > 0.9:
-                        # 50/50 chance of White Spark or Blackout
-                        if random.random() > 0.5:
-                             self.pixels[idx] = (255, 255, 255)
-                        else:
-                             self.pixels[idx] = (0, 0, 0)
-                    else:
-                        self.pixels[idx] = anim["color"]
-                    dirty = True
-
-                # --- DECAY LOGIC ---
-                elif anim["type"] == "DECAY":
-                    elapsed = now - anim["start"]
-                    duration = 1.0 / anim["speed"]
-
-                    if elapsed >= duration:
-                        # Animation Complete
-                        self.pixels[idx] = (0, 0, 0)
-                        to_remove.append(idx)
-                    else:
-                        # Linear Fade out
-                        factor = 1.0 - (elapsed / duration)
-                        base = anim["color"]
-                        self.pixels[idx] = (
-                            int(base[0] * factor),
-                            int(base[1] * factor),
-                            int(base[2] * factor)
-                        )
-                    dirty = True
-
-            # Clean up finished DECAY animations
-            for idx in to_remove:
-                if idx in self.active_animations:
-                    del self.active_animations[idx]
-
-            if dirty:
-                self.pixels.show()
-
-            # Run at ~20 FPS
-            await asyncio.sleep(0.05)
