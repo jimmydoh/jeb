@@ -5,6 +5,7 @@ from .audio_manager import AudioManager
 from .display_manager import DisplayManager
 from .hid_manager import HIDManager
 from .jeb_manager import JEBManager
+from .led_manager import LEDManager
 from .matrix_manager import MatrixManager
 from .power_manager import PowerManager
 
@@ -13,6 +14,7 @@ __all__ = [
     "DisplayManager",
     "HIDManager",
     "JEBManager",
+    "LEDManager",
     "MatrixManager",
     "PowerManager",
 ]

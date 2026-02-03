@@ -1,17 +1,19 @@
 # File: src/core/managers/matrix_manager.py
 """Manages the GlowBit 64 Matrix HUD display."""
 
-import time
-import math
 import asyncio
+import math
+import random
+import time
+
 import neopixel
 
 from utilities import Palette, Icons
 
 class MatrixManager:
     """Class to manage the GlowBit 64 Matrix HUD."""
-    def __init__(self, pin, num_pixels=64, brightness=0.2):
-        self.pixels = neopixel.NeoPixel(pin, num_pixels, brightness=brightness, auto_write=False)
+    def __init__(self, jeb_pixel):
+        self.pixels = jeb_pixel
 
         # Format: pixel_index: {
         #               "type": "BLINK",
@@ -157,6 +159,8 @@ class MatrixManager:
             now = time.monotonic()
             dirty = False
 
+            to_remove = []
+
             # Iterate over a copy of items so we can modify if needed (though we aren't deleting here)
             for idx, anim in self.active_animations.items():
 
@@ -173,8 +177,8 @@ class MatrixManager:
                         self.pixels[idx] = (0, 0, 0) # Off
                     dirty = True
 
-                # --- PULSE LOGIC ---
-                elif anim["type"] == "PULSE":
+                # --- PULSE / BREATHING LOGIC ---
+                elif anim["type"] == "PULSE" or anim["type"] == "BREATH":
                     # Sine wave brightness 0.1 to 1.0
                     t = (now - anim["start"]) * anim["speed"]
                     # Shift sine to 0.0-1.0 range
@@ -189,6 +193,55 @@ class MatrixManager:
                         int(base[2] * factor)
                     )
                     dirty = True
+
+                # --- RAINBOW CYCLE LOGIC ---
+                elif anim["type"] == "RAINBOW":
+                    # Speed = cycles per second
+                    # Hue = (Time * Speed) + (Index Offset for wave effect)
+                    # Result is Modulo 1.0 to stay within 0.0-1.0 range
+                    hue = ((now - anim["start"]) * anim["speed"] + (idx * 0.05)) % 1.0
+
+                    # Call the Palette helper
+                    self.pixels[idx] = Palette.hsv_to_rgb(hue, 1.0, 1.0)
+                    dirty = True
+
+                # --- GLITCH LOGIC ---
+                elif anim["type"] == "GLITCH":
+                     # 90% chance to show base color, 10% chance to glitch
+                    if random.random() > 0.9:
+                        # 50/50 chance of White Spark or Blackout
+                        if random.random() > 0.5:
+                             self.pixels[idx] = (255, 255, 255)
+                        else:
+                             self.pixels[idx] = (0, 0, 0)
+                    else:
+                        self.pixels[idx] = anim["color"]
+                    dirty = True
+
+                # --- DECAY LOGIC ---
+                elif anim["type"] == "DECAY":
+                    elapsed = now - anim["start"]
+                    duration = 1.0 / anim["speed"]
+
+                    if elapsed >= duration:
+                        # Animation Complete
+                        self.pixels[idx] = (0, 0, 0)
+                        to_remove.append(idx)
+                    else:
+                        # Linear Fade out
+                        factor = 1.0 - (elapsed / duration)
+                        base = anim["color"]
+                        self.pixels[idx] = (
+                            int(base[0] * factor),
+                            int(base[1] * factor),
+                            int(base[2] * factor)
+                        )
+                    dirty = True
+
+            # Clean up finished DECAY animations
+            for idx in to_remove:
+                if idx in self.active_animations:
+                    del self.active_animations[idx]
 
             if dirty:
                 self.pixels.show()

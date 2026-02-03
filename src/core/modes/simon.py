@@ -25,6 +25,11 @@ class Simon(GameMode):
 
         await self.jeb.display.update_status("SIMON", "FOLLOW THE LIGHTS")
         await self.jeb.matrix.show_icon("SIMON", anim="PULSE", speed=2.0)
+
+        # Setup button LEDs
+        for i in range(4):
+            await self.jeb.leds.solid_led(i, self.colors[i], brightness=0.5, priority=1)
+
         await asyncio.sleep(1.5)
         self.jeb.matrix.clear()
 
@@ -33,10 +38,15 @@ class Simon(GameMode):
             self.level += 1
             sequence.append(random.randint(0, 3))
 
+            # Reset the button LEDs to off state
+            for i in range(4):
+                await self.jeb.leds.off_led(i)
+
             # 2. Show the sequence to the user
             for val in sequence:
-                # Visual: Light up specific quadrant
+                # Visual: Light up specific quadrant and button LED
                 self.jeb.matrix.draw_quadrant(val, self.colors[val])
+                await self.jeb.leds.flash_led(val, self.colors[val], brightness=0.8, priority=3, speed=0.1)
 
                 # Audio: Play tone (non-blocking for better timing)
                 await self.jeb.audio.play(f"audio/simon/v_{val}.wav", self.jeb.audio.CH_SFX, level=0.7)
@@ -46,12 +56,17 @@ class Simon(GameMode):
 
                 # Visual: Turn off
                 self.jeb.matrix.draw_quadrant(val, Palette.OFF)
+                await self.jeb.leds.off_led(val)
 
                 # Short gap between notes
                 await asyncio.sleep(0.15)
 
             # 3. User Input Phase
             await self.jeb.display.update_status(f"LEVEL {self.level}", "YOUR TURN")
+
+            # Setup button LEDs
+            for i in range(4):
+                await self.jeb.leds.breathe_led(i, self.colors[i], brightness=0.5, priority=1, speed=2.0)
 
             # Start the timer for scoring
             input_phase_start = ticks_ms()
@@ -76,11 +91,12 @@ class Simon(GameMode):
                     for i in range(4):
                         if self.jeb.hid.is_pressed(i):
                             user_input = i
-
                             last_interaction_time = ticks_ms()
 
                             # Immediate Feedback
-                            self.jeb.matrix.draw_quadrant(i, self.colors[i])
+                            # TODO Implement fading quadrant highlight
+                            await self.jeb.matrix.draw_quadrant(i, self.colors[i])
+                            await self.jeb.leds.solid_led(i, self.colors[i], brightness=0.8, priority=3)
                             await self.jeb.audio.play(f"audio/simon/v_{i}.wav", self.jeb.audio.CH_SFX, level=0.7)
 
                             # Wait for release (Debounce & Hold Visual)
@@ -88,8 +104,9 @@ class Simon(GameMode):
                                 await asyncio.sleep(0.01)
 
                             await asyncio.sleep(0.1)
-                            # Turn off visual on release
-                            self.jeb.matrix.draw_quadrant(i, Palette.OFF)
+                            # Turn off the matrix quadrant and restore breathing LED
+                            await self.jeb.matrix.draw_quadrant(i, Palette.OFF)
+                            await self.jeb.leds.breathe_led(i, self.colors[i], brightness=0.5, priority=1, speed=2.0)
                             break
 
                     # Yield to system loop to prevent blocking
@@ -100,6 +117,7 @@ class Simon(GameMode):
                     return await self.game_over()
 
             # 4. Success for this round, calculate score
+            await self.jeb.leds.start_rainbow(speed=0.1)
             await self.jeb.audio.play("audio/simon/round_win.wav", self.jeb.audio.CH_SFX, level=0.6)
             round_duration = ticks_diff(ticks_ms(), input_phase_start)
             round_score = 10 * self.level
@@ -124,4 +142,5 @@ class Simon(GameMode):
             self.speed_factor = max(0.15, self.speed_factor * 0.9)
 
             await asyncio.sleep(0.5)
-            self.jeb.matrix.clear()
+            await self.jeb.leds.off_led(-1) # Turn off all button LEDs
+            await self.jeb.matrix.clear()   # Clear matrix before next round

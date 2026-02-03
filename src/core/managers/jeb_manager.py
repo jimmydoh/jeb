@@ -6,14 +6,17 @@ Docstring for core.jeb_state
 import asyncio
 import board
 import busio
+import neopixel
 from adafruit_ticks import ticks_ms, ticks_diff
 
-from satellites import IndustrialSatellite
 from modes import IndustrialStartup, MainMenu, SafeCracker, Simon
+from satellites import IndustrialSatellite
+from utilities import JEBPixel
 
 from .audio_manager import AudioManager
 from .display_manager import DisplayManager
 from .hid_manager import HIDManager
+from .led_manager import LEDManager
 from .matrix_manager import MatrixManager
 from .power_manager import PowerManager
 
@@ -72,7 +75,13 @@ class JEBManager:
         self.audio = AudioManager(sck,ws,sd)
         self.display = DisplayManager(self.i2c)
         self.hid = HIDManager(button_pins, estop_pin, encoder_pins)
-        self.matrix = MatrixManager(matrix_pin)
+
+        # Init LEDs
+        self.root_pixels = neopixel.NeoPixel(matrix_pin, 68, brightness=0.2, auto_write=False)
+        self.matrix_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=64)
+        self.matrix = MatrixManager(self.matrix_jeb_pixel)
+        self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=64, num_pixels=4)
+        self.leds = LEDManager(self.led_jeb_pixel)
 
         # Preload Common UI Sounds
         self.audio.preload([
