@@ -37,21 +37,26 @@ class HIDManager:
                  ):
         """Initialize HID Manager with specified inputs."""
 
-        if not monitor_only:
+        self.monitor_only = monitor_only
+
+        # --- Initialize State Storage ---
+        self.latching_values = [False] * (len(latching_toggles) or 0)
+        self.latching_timestamps = [0] * (len(latching_toggles) or 0)
+        self.latching_tapped = [False] * (len(latching_toggles) or 0)
+
+        if not self.monitor_only:
             # Buttons
             button_pins = buttons if buttons else []
             self._keys = keypad.Keys(button_pins, value_when_pressed=False, pull=True)
             self._key_states = [0] * len(button_pins)
             self._key_tapped = [False] * len(button_pins)
 
-            # Latching Toggles
-            self.latching_toggles = []
+            # Latching Toggles Hardware
+            self._latching_toggles = []
             for l in latching_toggles:
                 t = digitalio.DigitalInOut(l)
                 t.pull = digitalio.Pull.UP
-                self.latching_toggles.append(t)
-            self.latching_toggles_states= [0] * len(latching_toggles)
-            self.latching_toggles_tapped= [False] * len(latching_toggles)
+                self._latching_toggles.append(t)
 
             # Momentary Toggles
             self.momentary_toggles = []
@@ -90,34 +95,6 @@ class HIDManager:
             if estop_pin is not None:
                 self.estop = digitalio.DigitalInOut(estop_pin)
                 self.estop.pull = digitalio.Pull.UP
-        else:
-            # Monitor only mode: Initialize identical structures without hardware access
-            # Buttons
-            self._keys = [0] * len(buttons)
-            self._key_states = [0] * len(buttons)
-            self._key_tapped = [False] * len(buttons)
-
-            # Latching Toggles
-            self.latching_toggles = [0] * len(latching_toggles)
-            self.latching_toggles_states= [0] * len(latching_toggles)
-            self.latching_toggles_tapped= [False] * len(latching_toggles)
-
-            # Momentary Toggles
-            self.momentary_toggles = [(0,0)] * len(momentary_toggles)
-            self.momentary_toggles_states = [ {"U":0,"D":0,"C":0} for _ in momentary_toggles ]
-            self.momentary_toggles_tapped = [ {"U":False,"D":False,"C":False} for _ in momentary_toggles ]
-
-            # Encoders
-            self.encoders = [0] * len(encoders)
-            self.encoders_button = [0] * len(encoders)
-            self.encoder_button_states = [0] * len(self.encoders_button)
-            self.encoder_button_tapped = [False] * len(self.encoders_button)
-
-            # Matrix Keypads
-            self.matrix_keypads = ["N"] * len(matrix_keypads)
-
-            # E-Stop
-            self.estop.value = 0
 
     # --- Button Handling ---
     def is_pressed(self, index, long=False, duration=2000, action=None): # action: "hold" | "tap"
@@ -173,50 +150,59 @@ class HIDManager:
             result += "1" if state > 0 else "0"
         return result
 
-    # --- Latching Toggles Handling ---
+    #region  --- Latching Toggles Handling ---
     def latching_toggle(self, index=0):
         """Returns the state of a latching toggle."""
-        return not self.latching_toggles[index].value
+        if not self.monitor_only:
+            self._hw_poll_latching_toggles()
+        return self.latching_values[index]
 
     def is_latching_toggled(self, index, long=False, duration=2000, action=None):
         """Check if a latching toggle is held in the toggled state for a specific duration."""
-        self._process_latching_toggle_events()
-        toggle_state_time = self.latching_toggles_states[index]
-        if toggle_state_time == 0:
-            return False
-        if long or action == "hold":
-            elapsed = ticks_diff(ticks_ms(), toggle_state_time)
-            return elapsed >= duration
         if action == "tap":
-            tapped = self.latching_toggles_tapped[index]
+            tapped = self.latching_tapped[index]
             if tapped:
-                self.latching_toggles_tapped[index] = False
+                self.latching_tapped[index] = False
             return tapped
+
+        if not self.latching_values[index]:
+            return False
+
+        if long or action == "hold":
+            elapsed = ticks_diff(ticks_ms(), self.latching_timestamps[index])
+            return elapsed >= duration
+
         return True
 
-    def _process_latching_toggle_events(self):
-        """Internal helper to process latching toggle events."""
-        for i, toggle in enumerate(self.latching_toggles):
-            toggled = not toggle.value
-            prev_state = self.latching_toggles_states[i] > 0
+    def _sw_set_latching_toggle(self, latching_toggles):
+        """Set the state of a latching toggle without hardware polling."""
+        if not self.monitor_only:
+            return
+        now = ticks_ms()
+        for i, val in enumerate(latching_toggles):
+            if val != self.latching_values[i]:
+                self.latching_values[i] = val
+                self.latching_timestamps[i] = now
+                if val and ticks_diff(now, self.latching_timestamps[i]) < 500:
+                    self.latching_tapped[i] = True
 
-            if toggled and not prev_state:
-                # Just toggled on
-                self.latching_toggles_states[i] = ticks_ms()
-
-            elif not toggled and prev_state:
-                # Just toggled off
-                start_time = self.latching_toggles_states[i]
-                if start_time > 0:
-                    elapsed = ticks_diff(ticks_ms(), start_time)
-                    if elapsed < 500:
-                        self.latching_toggles_tapped[i] = True
-
-                self.latching_toggles_states[i] = 0
+    def _hw_poll_latching_toggles(self):
+        """Poll hardware latching toggles and update states."""
+        if self.monitor_only:
+            return
+        now = ticks_ms()
+        for i, toggle in enumerate(self._latching_toggles):
+            val = not toggle.value
+            if val != self.latching_values[i]:
+                self.latching_values[i] = val
+                self.latching_timestamps[i] = now
+                if val and ticks_diff(now, self.latching_timestamps[i]) < 500:
+                    self.latching_tapped[i] = True
 
     def _latching_toggles_string(self):
         """Returns a string representation of all latching toggles."""
         return "".join(["1" if not t.value else "0" for t in self.latching_toggles])
+    #endregion
 
     # --- Momentary Toggles Handling ---
     def momentary_toggle(self, index=0):
@@ -418,6 +404,10 @@ class HIDManager:
             self.matrix_keypad_flush(i)
         for i in range(len(self.encoders)):
             self.reset_encoder(i)
+
+    def set_remote_state(self, latching_toggles):
+        """Set remote HID states (for monitor-only mode)."""
+        self._sw_set_latching_toggle(latching_toggles)
 
     def get_status_string(self, order=None):
         """
