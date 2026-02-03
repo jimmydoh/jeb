@@ -27,13 +27,24 @@ class CoreManager:
         # UART Pins
         uart_tx = getattr(board, "GP0")
         uart_rx = getattr(board, "GP1")
+        # SPARE GP2
+        # SPARE GP3
+        # I2C Pins
+        scl = getattr(board, "GP5")
+        sda = getattr(board, "GP4")
         # GlowBit Matrix
-        matrix_pin = getattr(board, "GP4")
+        matrix_pin = getattr(board, "GP6")
         # E-Stop Pin
         estop_pin = getattr(board, "GP7")
-        # I2C Pins
-        scl = getattr(board, "GP9")
-        sda = getattr(board, "GP8")
+        #SPARE GP8 (secondary UART TX)
+        #SPARE GP9 (secondary UART RX)
+        # Button Pins
+        button_pins = [
+            getattr(board, "GP10"), # Button A
+            getattr(board, "GP11"), # Button B
+            getattr(board, "GP12"), # Button C
+            getattr(board, "GP13"), # Button D
+        ]        
         # Mosfet Control Pin
         mosfet_pin = getattr(board, "GP14")
         # Connection Sense Pin
@@ -42,32 +53,26 @@ class CoreManager:
         sck = getattr(board, "GP17")
         ws  = getattr(board, "GP16")
         sd  = getattr(board, "GP18")
-        # Button Pins
-        button_pins = [
-            getattr(board, "GP19"), # Button A
-            getattr(board, "GP20"), # Button B
-            getattr(board, "GP21"), # Button C
-            getattr(board, "GP22"), # Button D
-            getattr(board, "GP25"), # Rotary Encoder Push
-        ]
+        # SPARE GP19
         # Rotary Encoder Pins
         encoder_pins = [
-            getattr(board, "GP23"), # Encoder A
-            getattr(board, "GP24"), # Encoder B
+            getattr(board, "GP20"), # Encoder A
+            getattr(board, "GP21"), # Encoder B
+            getattr(board, "GP22"), # Rotary Encoder Push
         ]
         # ADC Pins for Power Monitoring
         sense_pins = [
             getattr(board, "GP26"), # Pre-MOSFET 20V Input
             getattr(board, "GP27"), # Post-MOSFET 20V Bus
             getattr(board, "GP28"), # 5V Logic Rail
-            getattr(board, "GP29"), # 5V LED Rail
+            #getattr(board, "GP29"), # 5V LED Rail
         ]
 
         sense_names = [
             "input",
             "satbus",
             "logic",
-            "led",
+            #"led",
         ]
 
         # Init power manager first for voltage readings
@@ -323,6 +328,12 @@ class CoreManager:
 
             await asyncio.sleep(0.5) # Poll twice per second to save CPU
 
+    async def monitor_hw_hid(self):
+        """Background task to poll hardware inputs."""
+        while True:
+            self.hid.hw_update()
+            await asyncio.sleep(0.01)
+
     async def start(self):
         """Main async loop for the Master Controller."""
         # Start background infrastructure tasks
@@ -330,6 +341,7 @@ class CoreManager:
         asyncio.create_task(self.monitor_estop())       # Emergency Stop
         asyncio.create_task(self.monitor_power())       # Analog Power Monitoring
         asyncio.create_task(self.monitor_connection())  # RJ45 Link Detection
+        asyncio.create_task(self.monitor_hw_hid())      # Local Hardware Input Polling
         asyncio.create_task(self.leds.animate_loop())   # Button LED Animations
         asyncio.create_task(self.matrix.animate_loop()) # Matrix LED Animations
 

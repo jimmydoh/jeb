@@ -18,13 +18,13 @@ class PowerManager:
 
         if sense_names is not None:
             self.sense_names = sense_names
-            for i in sense_pins:
-                setattr(self, f"sense_{sense_names[i]}", analogio.AnalogIn(i))
+            for i, p in enumerate(sense_pins):
+                setattr(self, f"sense_{sense_names[i]}", analogio.AnalogIn(p))
                 setattr(self, f"v_{sense_names[i]}", [0.0, 0.0, 99.0]) # Last, Max, Min
         else:
             self.sense_names = []
-            for i in sense_pins:
-                setattr(self, f"sense_{i}", analogio.AnalogIn(i))
+            for i, p in enumerate(sense_pins):
+                setattr(self, f"sense_{i}", analogio.AnalogIn(p))
                 setattr(self, f"v_{i}", [0.0, 0.0, 99.0]) # Last, Max, Min
                 self.sense_names.append(i)
 
