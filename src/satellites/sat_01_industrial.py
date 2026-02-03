@@ -138,7 +138,7 @@ class IndustrialSatellite(Satellite):
             self.segment = SegmentManager(self.i2c)
 
             # Init LEDs
-            self.root_pixels = neopixel.NeoPixel(led_pin, 6, brightness=0.2, auto_write=False)
+            self.root_pixels = neopixel.NeoPixel(led_pin, 6, brightness=0.3, auto_write=False)
             self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=6)
             self.leds = LEDManager(self.led_jeb_pixel)
 

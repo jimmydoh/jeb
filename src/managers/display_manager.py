@@ -114,7 +114,7 @@ class DisplayManager:
     def update_debug_stats(self, loop_time, sat_count):
         """Updates the debug labels with fresh data."""
         # Force a garbage collection to get an accurate 'Free' reading
-        gc.collect()
+        #gc.collect()
         if hasattr(gc, "mem_free"):
             free_ram = gc.mem_free() / 1024
         else:

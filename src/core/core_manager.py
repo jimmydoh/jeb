@@ -89,7 +89,7 @@ class CoreManager:
         self.hid = HIDManager(button_pins, estop_pin, encoder_pins)
 
         # Init LEDs
-        self.root_pixels = neopixel.NeoPixel(matrix_pin, 68, brightness=0.2, auto_write=False)
+        self.root_pixels = neopixel.NeoPixel(matrix_pin, 68, brightness=0.3, auto_write=False)
         self.matrix_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=64)
         self.matrix = MatrixManager(self.matrix_jeb_pixel)
         self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=64, num_pixels=4)
@@ -175,7 +175,7 @@ class CoreManager:
         """Parses incoming UART packets and updates satellite states."""
         self.last_raw_uart = line
         try:
-            parts = line.split("|")
+            parts = line.split("|", 2)
             if len(parts) < 3:
                 return  # Malformed packet
 

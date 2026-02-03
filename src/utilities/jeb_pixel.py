@@ -30,14 +30,3 @@ class JEBPixel:
         """Pushes data for this segment only."""
         # Pushes data for the ENTIRE strip (Matrix + Buttons)
         self.parent.show()
-
-    @property
-    def brightness(self):
-        """Gets the brightness from the parent strip."""
-        return self.parent.brightness
-
-    @brightness.setter
-    def brightness(self, value):
-        """Sets the brightness on the parent strip."""
-        # WARNING: This changes the brightness for the Matrix too!
-        self.parent.brightness = value
