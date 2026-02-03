@@ -20,7 +20,7 @@ class HIDManager:
     Encoders [[pin_a, pin_b, push_btn], ...]
         - Managed via rotaryio.IncrementalEncoder.
         - Optional push button pin for each encoder.
-    Matrix Keypads [[[key_map_0, key_map_1, ...],[row_pin_a, row_pin_b, ...],[col_pin_a, col_pin_b, ...]], ...]
+    Matrix Keypads [[[key_map_0, ...],[row_pin_a, ...],[col_pin_a, ...]], ...]
         - Managed via keypad.Keypad for matrix scanning.
 
     """
@@ -73,8 +73,8 @@ class HIDManager:
         if not self.monitor_only:
             # Buttons Hardware
             self._buttons = keypad.Keys(
-                buttons, 
-                value_when_pressed=False, 
+                buttons,
+                value_when_pressed=False,
                 pull=True
             ) if buttons else None
 
@@ -101,10 +101,9 @@ class HIDManager:
             encoder_button_pins = []
             for e in encoders:
                 encoder = rotaryio.IncrementalEncoder(e[0], e[1])
-                btn = None
                 if len(e) > 2 and e[2] is not None:
                     encoder_button_pins.append(e[2])
-                self.encoders.append(encoder)
+                self._encoders.append(encoder)
             self._encoder_buttons = keypad.Keys(
                 encoder_button_pins,
                 value_when_pressed=False,
@@ -115,7 +114,10 @@ class HIDManager:
             self._matrix_keypads = []
             for mk in matrix_keypads:
                 _, row_pins, col_pins = mk
-                self._matrix_keypads.append(keypad.Keypad(row_pins, col_pins))
+                self._matrix_keypads.append(keypad.Keypad(
+                    row_pins,
+                    col_pins
+                    ))
 
             # E-Stop
             self._estop = None
@@ -124,17 +126,17 @@ class HIDManager:
                 self._estop.pull = digitalio.Pull.UP
 
     #region --- Button Handling ---
-    def is_button_pressed(self, index, long=False, duration=2000, action=None): # action: "hold" | "tap"
+    def is_button_pressed(self, index, long=False, duration=2000, action=None):
         """Check if a button is pressed, tapped or held."""
         if action == "tap":
             tapped = self.buttons_tapped[index]
             if tapped:
                 self.buttons_tapped[index] = False
             return tapped
-        
+
         if not self.buttons_values[index]:
             return False
-        
+
         if long or action == "hold":
             elapsed = ticks_diff(ticks_ms(), self.buttons_timestamps[index])
             return elapsed >= duration
@@ -173,10 +175,9 @@ class HIDManager:
 
     def _buttons_string(self):
         """Returns a string representation of all buttons."""
-        self._process_button_events()
         result = ""
-        for state in self._key_states:
-            result += "1" if state > 0 else "0"
+        for state in self.buttons_values:
+            result += "1" if state else "0"
         return result
     #endregion
 
@@ -217,7 +218,7 @@ class HIDManager:
             return
         event = keypad.Event()
         while self._latching_toggles.events.get_into(event):
-            key_idx = event.key_number           
+            key_idx = event.key_number
             now = ticks_ms()
             if event.pressed: # Toggle turned on
                 self.latching_values[key_idx] = True
@@ -226,7 +227,7 @@ class HIDManager:
                 self.latching_values[key_idx] = False
                 start_time = self.latching_timestamps[key_idx]
                 if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
-                    self.latching_tapped[key_idx] = True                
+                    self.latching_tapped[key_idx] = True
                 self.latching_timestamps[key_idx] = 0
 
     def _latching_toggles_string(self):
@@ -240,30 +241,29 @@ class HIDManager:
     #region --- Momentary Toggles Handling ---
     def is_momentary_toggled(self, index, direction="U", long=False, duration=2000, action=None):
         """Check if a momentary toggle is held in a specific direction."""
-        self._process_momentary_toggle_events()
-        state_time = self.momentary_toggles_states[index][direction]
+        dir_idx = 0 if direction == "U" else 1
+        if action == "tap":
+            tapped = self.momentary_tapped[index][dir_idx]
+            if tapped:
+                self.momentary_tapped[index][dir_idx] = False
+            return tapped
 
-        if state_time == 0:
+        if not self.momentary_values[index][dir_idx]:
             return False
 
         if long or action == "hold":
-            elapsed = ticks_diff(ticks_ms(), state_time)
+            elapsed = ticks_diff(ticks_ms(), self.momentary_timestamps[index][dir_idx])
             return elapsed >= duration
-
-        if action == "tap":
-            tapped = self.momentary_toggles_tapped[index][direction]
-            if tapped:
-                self.momentary_toggles_tapped[index][direction] = False
-            return tapped
 
         return True
 
     def _sw_set_momentary_toggles(self, momentary_toggles):
         """
         Set the state of momentary toggles without hardware polling.
-        
-        :param momentary_toggles: A string where each character represents the state of a momentary on-off-on toggle:
-                                  'U' for up, 'D' for down, 'C' for center.
+
+        :param momentary_toggles:
+            A string where each character represents the state of
+            a momentary on-off-on toggle - 'U' for up, 'D' for down, 'C' for center.
 
         :example: "UD" means first toggle up, second toggle down.
         """
@@ -274,17 +274,17 @@ class HIDManager:
             up_val = char == "U"
             down_val = char == "D"
             # Up Direction
-            if up_val != self.momentary_toggles_values[i]["U"]:
-                self.momentary_toggles_values[i]["U"] = up_val
-                self.momentary_toggles_timestamps[i]["U"] = now
-                if up_val and ticks_diff(now, self.momentary_toggles_timestamps[i]["U"]) < 500:
-                    self.momentary_toggles_tapped[i]["U"] = True
+            if up_val != self.momentary_values[i][0]:
+                self.momentary_values[i][0] = up_val
+                self.momentary_timestamps[i][0] = now
+                if up_val and ticks_diff(now, self.momentary_timestamps[i][0]) < 500:
+                    self.momentary_tapped[i][0] = True
             # Down Direction
-            if down_val != self.momentary_toggles_values[i]["D"]:
-                self.momentary_toggles_values[i]["D"] = down_val
-                self.momentary_toggles_timestamps[i]["D"] = now
-                if down_val and ticks_diff(now, self.momentary_toggles_timestamps[i]["D"]) < 500:
-                    self.momentary_toggles_tapped[i]["D"] = True
+            if down_val != self.momentary_values[i][1]:
+                self.momentary_values[i][1] = down_val
+                self.momentary_timestamps[i][1] = now
+                if down_val and ticks_diff(now, self.momentary_timestamps[i][1]) < 500:
+                    self.momentary_tapped[i][1] = True
 
     def _hw_poll_momentary_toggles(self):
         """Poll hardware momentary toggles and update states."""
@@ -296,25 +296,25 @@ class HIDManager:
             direction = "U" if event.key_number % 2 == 0 else "D"
             now = ticks_ms()
             if event.pressed: # Button pressed
-                self.momentary_toggles_values[key_idx][direction] = True
-                self.momentary_toggles_timestamps[key_idx][direction] = now
+                self.momentary_values[key_idx][direction] = True
+                self.momentary_timestamps[key_idx][direction] = now
             elif event.released: # Button released
-                start_time = self.momentary_toggles_timestamps[key_idx][direction]
+                start_time = self.momentary_timestamps[key_idx][direction]
                 if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
-                    self.momentary_toggles_tapped[key_idx][direction] = True
-                self.momentary_toggles_values[key_idx][direction] = False
-    
+                    self.momentary_tapped[key_idx][direction] = True
+                self.momentary_values[key_idx][direction] = False
+
     def _momentary_toggles_string(self):
         """Returns a string representation of all momentary toggles, either U, D, or C."""
         result = ""
-        for toggle in self.momentary_toggles:
-            if toggle[0].value == False:
+        for toggle in self.momentary_values:
+            if toggle[0]:
                 result += "U"
-            elif toggle[1].value == False:
+            elif toggle[1]:
                 result += "D"
             else:
                 result += "C"
-        return result        
+        return result
     #endregion
 
     #region --- Encoder Handling ---
@@ -334,7 +334,7 @@ class HIDManager:
         """Sets the hardware encoder to a specific starting position."""
         if 0 <= index < len(self.encoder_positions):
             self.encoder_positions[index] = value
-        
+
         if not self.monitor_only and 0 <= index < len(self._encoders):
             self._encoders[index].position = value
 
@@ -349,7 +349,7 @@ class HIDManager:
         """Poll hardware encoders and update states."""
         if self.monitor_only:
             return
-        for i, enc in enumerate(self.encoders):
+        for i, enc in enumerate(self._encoders):
             self.encoder_positions[i] = enc.position
 
     def _encoders_string(self):
@@ -361,16 +361,16 @@ class HIDManager:
     def is_encoder_button_pressed(self, long=False, duration=2000, action=None, index=0):
         """Check if an encoder button is pressed."""
         if action == "tap":
-            tapped = self.encoder_button_tapped[index]
+            tapped = self.encoder_buttons_tapped[index]
             if tapped:
-                self.encoder_button_tapped[index] = False
+                self.encoder_buttons_tapped[index] = False
             return tapped
-        
-        if not self.encoder_button_states[index]:
+
+        if not self.encoder_buttons_values[index]:
             return False
-        
+
         if long or action == "hold":
-            elapsed = ticks_diff(ticks_ms(), self.encoder_button_states[index])
+            elapsed = ticks_diff(ticks_ms(), self.encoder_buttons_timestamps[index])
             return elapsed >= duration
 
         return True
@@ -385,7 +385,7 @@ class HIDManager:
                 self.encoder_buttons_values[i] = val
                 self.encoder_buttons_timestamps[i] = now
                 if val and ticks_diff(now, self.encoder_buttons_timestamps[i]) < 500:
-                    self.encoder_button_tapped[i] = True
+                    self.encoder_buttons_tapped[i] = True
 
     def _hw_poll_encoder_buttons(self):
         """Poll hardware encoder buttons and update states."""
@@ -401,7 +401,7 @@ class HIDManager:
             elif event.released: # Button released
                 start_time = self.encoder_buttons_timestamps[key_idx]
                 if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
-                    self.encoder_button_tapped[key_idx] = True
+                    self.encoder_buttons_tapped[key_idx] = True
                 self.encoder_buttons_values[key_idx] = False
 
     def _encoder_buttons_string(self):
@@ -418,7 +418,7 @@ class HIDManager:
         if len(self.matrix_keypads_queues[index]) > 0:
             return self.matrix_keypads_queues[index].pop(0)
         return None
-    
+
     def _sw_set_matrix_keypads(self, char_sequences):
         """Set the state of matrix keypads without hardware polling."""
         if not self.monitor_only:
@@ -440,21 +440,21 @@ class HIDManager:
                     # Safe check for key map existence
                     if i < len(self.matrix_keypads_maps):
                         key_map = self.matrix_keypads_maps[i]
-                        if 0 < raw_idx < len(key_map):                            
+                        if 0 < raw_idx < len(key_map):
                             self.matrix_keypads_queues[i].append(key_map[raw_idx])
 
     def _matrix_keypads_string(self, index=0):
         """Returns a string representation of all matrix keypads."""
         result = ""
-        
+
         queue = self.matrix_keypads_queues[index]
 
         if not queue:
             return "N"
-        
+
         while queue:
             result += str(queue.pop(0))
-        
+
         return result
     #endregion
 
@@ -463,13 +463,13 @@ class HIDManager:
     def estop(self):
         """Returns True estop is pressed."""
         return self.estop_value
-    
+
     def _sw_set_estop(self, value):
         """Set the state of e-stop without hardware polling."""
         if not self.monitor_only:
             return
         self.estop_value = value
-    
+
     def _hw_poll_estop(self):
         """Poll hardware e-stop and update state."""
         if self.monitor_only or self._estop is None:
@@ -494,13 +494,13 @@ class HIDManager:
         self._hw_poll_matrix_keypads()
         self._hw_poll_estop()
 
-    def set_remote_state(self, 
+    def set_remote_state(self,
                          buttons,           # [bool, bool, ...]
-                         latching_toggles,  # [bool, bool, ...] 
+                         latching_toggles,  # [bool, bool, ...]
                          momentary_toggles, # [[bool_up, bool_down], ...]
-                         encoders,          # [int_position, int_position, ...] 
-                         encoder_buttons,   # [bool, bool, ...] 
-                         matrix_keypads,    # [[char, char, ...], ...] 
+                         encoders,          # [int_position, int_position, ...]
+                         encoder_buttons,   # [bool, bool, ...]
+                         matrix_keypads,    # [[char, char, ...], ...]
                          estop              # bool
                         ):
         """Set remote HID states (for monitor-only mode)."""
@@ -509,11 +509,11 @@ class HIDManager:
         if buttons:
             self._sw_set_buttons(buttons)
         if latching_toggles:
-            self._sw_set_latching_toggle(latching_toggles)
+            self._sw_set_latching_toggles(latching_toggles)
         if momentary_toggles:
-            self._sw_set_momentary_toggle(momentary_toggles)
+            self._sw_set_momentary_toggles(momentary_toggles)
         if encoders:
-            self._sw_set_encoder(encoders)
+            self._sw_set_encoders(encoders)
         if encoder_buttons:
             self._sw_set_encoder_buttons(encoder_buttons)
         if matrix_keypads:
