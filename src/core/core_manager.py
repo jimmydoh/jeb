@@ -190,7 +190,6 @@ class CoreManager:
                         if self.satellites[sid].sat_type == "INDUSTRIAL":
                             self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
                             asyncio.create_task(self.audio.play_sfx("link_restored.wav", voice=1))
-                    self.satellites[sid].update_heartbeat()
                     self.satellites[sid].update_from_packet(payload)
                 else:
                     asyncio.create_task(self.display.update_status("UNKNOWN SAT",f"{sid} sent STATUS."))

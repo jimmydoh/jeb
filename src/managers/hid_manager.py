@@ -20,9 +20,7 @@ class HIDManager:
     Encoders [[pin_a, pin_b, push_btn], ...]
         - Managed via rotaryio.IncrementalEncoder.
         - Optional push button pin for each encoder.
-    Matrix Keypads [[[key_map_0, key_map_1, ...],
-                     [row_pin_a, row_pin_b, ...],
-                     [col_pin_a, col_pin_b, ...]], ...]
+    Matrix Keypads [[[key_map_0, key_map_1, ...],[row_pin_a, row_pin_b, ...],[col_pin_a, col_pin_b, ...]], ...]
         - Managed via keypad.Keypad for matrix scanning.
 
     """
@@ -59,9 +57,17 @@ class HIDManager:
         self.encoder_buttons_timestamps = [0] * (len(encoders) or 0)
         self.encoder_buttons_tapped = [False] * (len(encoders) or 0)
         # Matrix Keypads States
-        self.matrix_keypads_values = ["N"] * (len(matrix_keypads) or 0)
+        self.matrix_keypads_queues = [mk[0] for mk in (matrix_keypads or [])]
+        self.matrix_keypads_maps = [mk[0] for mk in matrix_keypads] if matrix_keypads else []
         # E-Stop State
         self.estop_value = False
+
+        # --- Initialize Always Available Properties ---
+        # Matrix Keypad Keymaps
+        if matrix_keypads:
+            for mk in matrix_keypads:
+                key_map, _, _ = mk
+                self.matrix_keypads_maps.append(key_map)
 
         # --- Initialize Hardware Interfaces ---
         if not self.monitor_only:
@@ -108,9 +114,8 @@ class HIDManager:
             # Matrix Keypads
             self._matrix_keypads = []
             for mk in matrix_keypads:
-                key_map, row_pins, col_pins = mk
-                k_pad = keypad.Keypad(row_pins=row_pins, col_pins=col_pins)
-                self._matrix_keypads.append((k_pad, key_map))
+                _, row_pins, col_pins = mk
+                self._matrix_keypads.append(keypad.Keypad(row_pins, col_pins))
 
             # E-Stop
             self._estop = None
@@ -141,7 +146,8 @@ class HIDManager:
         if not self.monitor_only:
             return
         now = ticks_ms()
-        for i, val in enumerate(buttons):
+        for i, char in enumerate(buttons):
+            val = char == "1"
             if val != self.buttons_values[i]:
                 self.buttons_values[i] = val
                 self.buttons_timestamps[i] = now
@@ -192,12 +198,13 @@ class HIDManager:
 
         return True
 
-    def _sw_set_latching_toggle(self, latching_toggles):
+    def _sw_set_latching_toggles(self, latching_toggles):
         """Set the state of a latching toggle without hardware polling."""
         if not self.monitor_only:
             return
         now = ticks_ms()
-        for i, val in enumerate(latching_toggles):
+        for i, char in enumerate(latching_toggles):
+            val = char == "1"
             if val != self.latching_values[i]:
                 self.latching_values[i] = val
                 self.latching_timestamps[i] = now
@@ -224,7 +231,10 @@ class HIDManager:
 
     def _latching_toggles_string(self):
         """Returns a string representation of all latching toggles."""
-        return "".join(["1" if not t.value else "0" for t in self.latching_toggles])
+        result = ""
+        for state in self.latching_values:
+            result += "1" if state else "0"
+        return result
     #endregion
 
     #region --- Momentary Toggles Handling ---
@@ -248,12 +258,21 @@ class HIDManager:
 
         return True
 
-    def _sw_set_momentary_toggle(self, momentary_toggles):
-        """Set the state of momentary toggles without hardware polling."""
+    def _sw_set_momentary_toggles(self, momentary_toggles):
+        """
+        Set the state of momentary toggles without hardware polling.
+        
+        :param momentary_toggles: A string where each character represents the state of a momentary on-off-on toggle:
+                                  'U' for up, 'D' for down, 'C' for center.
+
+        :example: "UD" means first toggle up, second toggle down.
+        """
         if not self.monitor_only:
             return
         now = ticks_ms()
-        for i, (up_val, down_val) in enumerate(momentary_toggles):
+        for i, char in enumerate(momentary_toggles):
+            up_val = char == "U"
+            down_val = char == "D"
             # Up Direction
             if up_val != self.momentary_toggles_values[i]["U"]:
                 self.momentary_toggles_values[i]["U"] = up_val
@@ -298,124 +317,169 @@ class HIDManager:
         return result        
     #endregion
 
-    # --- Encoder Handling ---
+    #region --- Encoder Handling ---
     @property
     def encoder_position(self, index=0):
-        """Returns the raw hardware position."""
-        return self.encoders[index].position
+        """Returns the encoder position state."""
+        return self.encoder_positions[index]
 
     def encoder_position_scaled(self, multiplier=1.0, wrap=None, index=0):
         """Consistent scaling method for encoder position logic."""
-        scaled = int(self.encoders[index].position * multiplier)
+        scaled = int(self.encoder_positions[index] * multiplier)
         if wrap:
             return scaled % wrap
         return scaled
 
     def reset_encoder(self, value=0, index=0):
         """Sets the hardware encoder to a specific starting position."""
-        self.encoders[index].position = value
+        if 0 <= index < len(self.encoder_positions):
+            self.encoder_positions[index] = value
+        
+        if not self.monitor_only and 0 <= index < len(self._encoders):
+            self._encoders[index].position = value
+
+    def _sw_set_encoders(self, positions):
+        """Set the state of encoders without hardware polling."""
+        if not self.monitor_only:
+            return
+        for i, pos in enumerate(positions):
+            self.encoder_positions[i] = pos
+
+    def _hw_poll_encoders(self):
+        """Poll hardware encoders and update states."""
+        if self.monitor_only:
+            return
+        for i, enc in enumerate(self.encoders):
+            self.encoder_positions[i] = enc.position
 
     def _encoders_string(self):
         """Returns a string representation of all encoder positions."""
-        return ",".join([str(enc.position) for enc in self.encoders])
+        return ",".join([str(pos) for pos in self.encoder_positions])
+    #endregion
 
-    @property
-    def encoder_pressed(self, long=False, duration=2000, index=0):
-        """Returns True if the rotary encoder button is pressed."""
-        if self.encoders_button[index] is None:
-            return False
-        return self.is_pressed(self.encoders_button[index], long=long, duration=duration)
-
-    def is_encorder_button_pressed(self, long=False, duration=2000, action=None, index=0):
+    #region --- Encoder Button Handling ---
+    def is_encoder_button_pressed(self, long=False, duration=2000, action=None, index=0):
         """Check if an encoder button is pressed."""
-        self._process_encoder_button_events()
-        press_start_time = self.encoder_button_states[index]
-
-        if press_start_time == 0:
-            return False
-
-        if long or action == "hold":
-            elapsed = ticks_diff(ticks_ms(), press_start_time)
-            return elapsed >= duration
-
         if action == "tap":
             tapped = self.encoder_button_tapped[index]
             if tapped:
                 self.encoder_button_tapped[index] = False
             return tapped
+        
+        if not self.encoder_button_states[index]:
+            return False
+        
+        if long or action == "hold":
+            elapsed = ticks_diff(ticks_ms(), self.encoder_button_states[index])
+            return elapsed >= duration
 
         return True
 
-    def _process_encoder_button_events(self):
-        """Internal helper to process encoder button events."""
-        for i, btn in enumerate(self.encoders_button):
-            if btn is None:
-                continue
-            pressed = not btn.value
-            prev_state = self.encoder_button_states[i] > 0
+    def _sw_set_encoder_buttons(self, encoder_buttons):
+        """Set the state of encoder buttons without hardware polling."""
+        if not self.monitor_only:
+            return
+        now = ticks_ms()
+        for i, val in enumerate(encoder_buttons):
+            if val != self.encoder_buttons_values[i]:
+                self.encoder_buttons_values[i] = val
+                self.encoder_buttons_timestamps[i] = now
+                if val and ticks_diff(now, self.encoder_buttons_timestamps[i]) < 500:
+                    self.encoder_button_tapped[i] = True
 
-            if pressed and not prev_state:
-                # Just pressed
-                self.encoder_button_states[i] = ticks_ms()
-
-            elif not pressed and prev_state:
-                # Just released
-                start_time = self.encoder_button_states[i]
-                if start_time > 0:
-                    elapsed = ticks_diff(ticks_ms(), start_time)
-                    if elapsed < 500:
-                        self.encoder_button_tapped[i] = True
-
-                self.encoder_button_states[i] = 0
+    def _hw_poll_encoder_buttons(self):
+        """Poll hardware encoder buttons and update states."""
+        if self.monitor_only:
+            return
+        event = keypad.Event()
+        while self._encoder_buttons.events.get_into(event):
+            key_idx = event.key_number
+            now = ticks_ms()
+            if event.pressed: # Button pressed
+                self.encoder_buttons_values[key_idx] = True
+                self.encoder_buttons_timestamps[key_idx] = now
+            elif event.released: # Button released
+                start_time = self.encoder_buttons_timestamps[key_idx]
+                if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
+                    self.encoder_button_tapped[key_idx] = True
+                self.encoder_buttons_values[key_idx] = False
 
     def _encoder_buttons_string(self):
         """Returns a string representation of all encoder buttons."""
         result = ""
-        for btn in self.encoders_button:
-            if btn is None:
-                result += "0"
-            else:
-                result += "1" if not btn.value else "0"
+        for state in self.encoder_buttons_values:
+            result += "1" if state else "0"
         return result
+    #endregion
 
-    # --- Matrix Keypad Handling ---
-
-    def matrix_keypad_flush(self, index=0):
-        """Flush any pending keypad events."""
-        event = keypad.Event()
-        while self.matrix_keypads[index].events.get_into(event):
-            pass
-
-    def matrix_keypad_get_key(self, index=0):
+    #region --- Matrix Keypad Handling ---
+    def get_keypad_next_key(self, index=0):
         """Get the latest key event from the matrix keypad."""
-        k_pad, k_map = self.matrix_keypads[index]
-        event = k_pad.events.get()
-        if event and event.pressed:
-            return k_map[event.key_number]
+        if len(self.matrix_keypads_queues[index]) > 0:
+            return self.matrix_keypads_queues[index].pop(0)
         return None
+    
+    def _sw_set_matrix_keypads(self, char_sequences):
+        """Set the state of matrix keypads without hardware polling."""
+        if not self.monitor_only:
+            return
+        for i, chars in enumerate(char_sequences):
+            for char in chars:
+                self.matrix_keypads_queues[i].append(char)
 
-    def _matrix_keypads_string(self):
+    def _hw_poll_matrix_keypads(self):
+        """Poll hardware matrix keypads and update states."""
+        if self.monitor_only:
+            return
+        for i, k_pad in enumerate(self._matrix_keypads):
+            event = k_pad.events.get()
+            while k_pad.events.get_into(event):
+                if event.pressed:
+                    raw_idx = event.key_number
+
+                    # Safe check for key map existence
+                    if i < len(self.matrix_keypads_maps):
+                        key_map = self.matrix_keypads_maps[i]
+                        if 0 < raw_idx < len(key_map):                            
+                            self.matrix_keypads_queues[i].append(key_map[raw_idx])
+
+    def _matrix_keypads_string(self, index=0):
         """Returns a string representation of all matrix keypads."""
         result = ""
-        for k_pad, k_map in self.matrix_keypads:
-            event = k_pad.events.get()
-            if event and event.pressed:
-                result += k_map[event.key_number]
-            else:
-                result += "N"  # 'N' for No Key
-        return result
+        
+        queue = self.matrix_keypads_queues[index]
 
-    # TODO: Improve matrix keypad handling, as per button process events.
+        if not queue:
+            return "N"
+        
+        while queue:
+            result += str(queue.pop(0))
+        
+        return result
+    #endregion
 
     # --- E-Stop Handling ---
     @property
     def estop(self):
         """Returns True estop is pressed."""
-        return not self.estop.value
+        return self.estop_value
+    
+    def _sw_set_estop(self, value):
+        """Set the state of e-stop without hardware polling."""
+        if not self.monitor_only:
+            return
+        self.estop_value = value
+    
+    def _hw_poll_estop(self):
+        """Poll hardware e-stop and update state."""
+        if self.monitor_only or self._estop is None:
+            return
+        self.estop_value = not self._estop.value  # Active low
 
     def _estop_string(self):
         """Returns '1' if estop is pressed, else '0'."""
-        return "1" if not self.estop.value else "0"
+        return "1" if self.estop_value else "0"
+    #endregion
 
     # --- Global Functions ---
     def hw_update(self):
@@ -424,10 +488,38 @@ class HIDManager:
             return
         self._hw_poll_buttons()
         self._hw_poll_latching_toggles()
+        self._hw_poll_momentary_toggles()
+        self._hw_poll_encoders()
+        self._hw_poll_encoder_buttons()
+        self._hw_poll_matrix_keypads()
+        self._hw_poll_estop()
 
-    def set_remote_state(self, latching_toggles):
+    def set_remote_state(self, 
+                         buttons,           # [bool, bool, ...]
+                         latching_toggles,  # [bool, bool, ...] 
+                         momentary_toggles, # [[bool_up, bool_down], ...]
+                         encoders,          # [int_position, int_position, ...] 
+                         encoder_buttons,   # [bool, bool, ...] 
+                         matrix_keypads,    # [[char, char, ...], ...] 
+                         estop              # bool
+                        ):
         """Set remote HID states (for monitor-only mode)."""
-        self._sw_set_latching_toggle(latching_toggles)
+        if not self.monitor_only:
+            return
+        if buttons:
+            self._sw_set_buttons(buttons)
+        if latching_toggles:
+            self._sw_set_latching_toggle(latching_toggles)
+        if momentary_toggles:
+            self._sw_set_momentary_toggle(momentary_toggles)
+        if encoders:
+            self._sw_set_encoder(encoders)
+        if encoder_buttons:
+            self._sw_set_encoder_buttons(encoder_buttons)
+        if matrix_keypads:
+            self._sw_set_matrix_keypads(matrix_keypads)
+        if estop:
+            self._sw_set_estop(estop)
 
     def get_status_string(self, order=None):
         """
@@ -461,10 +553,7 @@ class HIDManager:
             if key in sources:
                 # Execute the method
                 val = sources[key]()
-
-                # Only append if val is not None and not an empty string
-                if val:
-                    result_parts.append(str(val))
+                result_parts.append(str(val) if val is not None else "")
 
         # 4. Join with commas (handles spacing automatically) and add newline
         return ",".join(result_parts) + "\n"

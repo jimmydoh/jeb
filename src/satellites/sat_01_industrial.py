@@ -31,25 +31,47 @@ class IndustrialSatellite(Satellite):
         """Initialize the Industrial Satellite Manager."""
         super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, uart=uart)
 
-        if active: # If this is running on an active satellite box
-            # Init Pins
+        # State Variables
+        self.last_tx = 0
+
+        # Common Definitions
+        KEYPAD_MAP_3x4 = [
+            "1", "2", "3",
+            "4", "5", "6",
+            "7", "8", "9",
+            "*", "0", "#"
+        ]
+
+        if active:
+            # --- ACTIVE MODE (Running on Satellite Hardware) ---
+            # Define REAL Pins for the Industrial Satellite
+            
             # UART Pins
             uart_up_tx = getattr(board, "GP1")
             uart_up_rx = getattr(board, "GP0")
             uart_down_tx = getattr(board, "GP4")
             uart_down_rx = getattr(board, "GP5")
+            
             # LEDs
             led_pin = getattr(board, "GP6")
+            
             # I2C Pins
             scl = getattr(board, "GP2")
             sda = getattr(board, "GP3")
-            # Keypad Pins
-            keypad_rows = [getattr(board, f"GP{n}") for n in (7,8,9,10)]
-            keypad_cols = [getattr(board, f"GP{n}") for n in (11,12,13)]
+            
+            # Matrix Keypads
+            matrix_keypads = [(
+                KEYPAD_MAP_3x4,
+                [getattr(board, f"GP{n}") for n in (7,8,9,10)], # Rows
+                [getattr(board, f"GP{n}") for n in (11,12,13)]  # Columns
+            )]
+            
             # Mosfet Control Pin
             mosfet_pin = getattr(board, "GP14")
+            
             # Connection Sense Pin
             detect_pin = getattr(board, "GP15")
+            
             # Encoder Pins
             encoder_pins = [
                 [
@@ -58,6 +80,7 @@ class IndustrialSatellite(Satellite):
                     getattr(board, "GP19"), # Encoder Button
                 ],
             ]
+            
             # Toggle Pins
             toggle_pins = [
                 getattr(board, "GP20"), # Toggle 1
@@ -65,6 +88,7 @@ class IndustrialSatellite(Satellite):
                 getattr(board, "GP22"), # Toggle 3
                 getattr(board, "GP23"), # Toggle 4
             ]
+
             # Momentary Toggle Pins
             momentary_toggle_pins = [
                 [
@@ -72,6 +96,7 @@ class IndustrialSatellite(Satellite):
                     getattr(board, "GP25")
                 ],
             ]
+            
             # ADC Pins for Power Monitoring
             sense_pins = [
                 getattr(board, "GP26"), # Pre-MOSFET 20V Input
@@ -101,21 +126,11 @@ class IndustrialSatellite(Satellite):
             self.i2c = busio.I2C(scl, sda)
 
             # Init HID
-            self.hid = HIDManager(buttons=None,
+            self.hid = HIDManager(
                                 latching_toggles=toggle_pins,
                                 momentary_toggles=momentary_toggle_pins,
                                 encoders=encoder_pins,
-                                matrix_keypads=[ (  # Single 3x3 Keypad
-                                    [
-                                        "1","2","3",
-                                        "4","5","6",
-                                        "7","8","9",
-                                        "*","0","#"
-                                    ],
-                                    keypad_rows,
-                                    keypad_cols
-                                ) ],
-                                estop_pin=None,
+                                matrix_keypads=matrix_keypads,
                                 monitor_only=False
                                 )
 
@@ -127,40 +142,33 @@ class IndustrialSatellite(Satellite):
             self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=6)
             self.leds = LEDManager(self.led_jeb_pixel)
 
-        else: # If this is running on the Master Controller
-            # Init placeholder PINs for HIDManager
+        else:
+            # --- MONITOR MODE (Running on Core / Virtual) ---
+            # Define PLACEHOLDERS for State Sizing
 
-            # Keypad Pins
-            keypad_rows = [0,0,0,0]
-            keypad_cols = [0,0,0]
-            # Encoders
-            encoder_pins = [[0, 0, 0],]
             # Toggle Pins
             toggle_pins = [0,0,0,0]
-            # Momentary Toggles
-            momentary_toggle_pins = [[0,0],]
 
-            # Init placeholder HID for state tracking
-            self.hid = HIDManager(buttons=None,
+            # Momentary Toggle Pins
+            momentary_toggle_pins = [0]
+
+            # Encoders
+            encoder_pins = [0]
+
+            # Matrix Keypads
+            matrix_keypads = [(
+                KEYPAD_MAP_3x4,
+                [],
+                []
+            )]
+
+            self.hid = HIDManager(
                                 latching_toggles=toggle_pins,
                                 momentary_toggles=momentary_toggle_pins,
                                 encoders=encoder_pins,
-                                matrix_keypads=[ (  # Single 3x3 Keypad
-                                    [
-                                        "1","2","3",
-                                        "4","5","6",
-                                        "7","8","9",
-                                        "*","0","#"
-                                    ],
-                                    keypad_rows,
-                                    keypad_cols
-                                ) ],
-                                estop_pin=None,
+                                matrix_keypads=matrix_keypads,
                                 monitor_only=True
                                 )
-
-        # State Variables
-        self.last_tx = 0
 
 #region # --- Satellite Monitoring Processes ---
     # ONLY USED WHEN THIS CODE IS RUNNING ON THE MASTER CONTROLLER
@@ -169,32 +177,21 @@ class IndustrialSatellite(Satellite):
 
         Example:
             0000,C,N,0,0
-            1111,U,*,1,1
+            1111,U,4014*,1,1
         """
         try:
             self.update_heartbeat()
             data = data_str.split(",")
 
-            # Latching Toggles
-            self.hid.latching_toggles = [int(x) for x in data[0]]
-
-            # Momentary Toggles
-            momentary_states = data[1]
-            if momentary_states[0] == "U":
-                self.hid.momentary_toggles[0] = (1,0)
-            elif momentary_states[0] == "D":
-                self.hid.momentary_toggles[0] = (0,1)
-            else:
-                self.hid.momentary_toggles[0] = (0,0)
-
-            # Keypad
-            new_key = data[2]
-            if new_key != "N":
-                self.hid.matrix_keypads = [new_key]
-
-            # Encoders
-            self.hid.encoders = [int(data[3])]
-            self.hid.encoder_buttons = [int(data[4])]
+            self.hid.set_remote_state(
+                buttons=None,
+                latching_toggles=data[0],   # e.g. "0001",
+                momentary_toggles=data[1],  # e.g. "U" or "D"
+                encoders=data[3],           # e.g. "0", "22", "97"
+                encoder_buttons=data[4],    # e.g. "0" or "1
+                matrix_keypads=data[2],     # e.g. "N" or "4014*"
+                estop=None
+            )
 
         except (IndexError, ValueError):
             print(f"Malformed packet from Sat {self.id}")
