@@ -1,7 +1,5 @@
-#filepath: src/core/managers/jeb_manager.py
-"""
-Docstring for core.jeb_state
-"""
+# File: src/core/core_manager.py
+"""Core Manager for JEB Master Controller."""
 
 import asyncio
 import board
@@ -10,17 +8,19 @@ import neopixel
 from adafruit_ticks import ticks_ms, ticks_diff
 
 from modes import IndustrialStartup, MainMenu, SafeCracker, Simon
+
 from satellites import IndustrialSatellite
+
 from utilities import JEBPixel
 
-from .audio_manager import AudioManager
-from .display_manager import DisplayManager
-from .hid_manager import HIDManager
-from .led_manager import LEDManager
-from .matrix_manager import MatrixManager
-from .power_manager import PowerManager
+from managers import AudioManager
+from managers import DisplayManager
+from managers import HIDManager
+from managers import LEDManager
+from managers import MatrixManager
+from managers import PowerManager
 
-class JEBManager:
+class CoreManager:
     """Class to hold global state for the master controller."""
     def __init__(self):
         # Init Pins
@@ -59,12 +59,19 @@ class JEBManager:
         sense_pins = [
             getattr(board, "GP26"), # Pre-MOSFET 20V Input
             getattr(board, "GP27"), # Post-MOSFET 20V Bus
-            getattr(board, "GP29"), # 5V LED Rail
             getattr(board, "GP28"), # 5V Logic Rail
+            getattr(board, "GP29"), # 5V LED Rail
+        ]
+
+        sense_names = [
+            "input",
+            "satbus",
+            "logic",
+            "led",
         ]
 
         # Init power manager first for voltage readings
-        self.power = PowerManager(sense_pins, mosfet_pin, detect_pin)
+        self.power = PowerManager(sense_pins, sense_names, mosfet_pin, detect_pin)
 
         # TODO Check power state
 
@@ -319,11 +326,12 @@ class JEBManager:
     async def start(self):
         """Main async loop for the Master Controller."""
         # Start background infrastructure tasks
-        asyncio.create_task(self.monitor_sats()) # UART Comms
-        asyncio.create_task(self.monitor_estop()) # Emergency Stop
-        asyncio.create_task(self.monitor_power()) # Analog Power Monitoring
-        asyncio.create_task(self.monitor_connection()) # RJ45 Link Detection
-        asyncio.create_task(self.matrix.animate_loop()) # LED Matrix Animations
+        asyncio.create_task(self.monitor_sats())        # UART Comms
+        asyncio.create_task(self.monitor_estop())       # Emergency Stop
+        asyncio.create_task(self.monitor_power())       # Analog Power Monitoring
+        asyncio.create_task(self.monitor_connection())  # RJ45 Link Detection
+        asyncio.create_task(self.leds.animate_loop())   # Button LED Animations
+        asyncio.create_task(self.matrix.animate_loop()) # Matrix LED Animations
 
         # Fancy bootup sequence
         #TODO Add boot animation

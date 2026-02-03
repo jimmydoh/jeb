@@ -12,7 +12,7 @@ class Satellite:
         last_seen (int): Timestamp of last heartbeat.
         is_active (bool): Satellite box active status.
     """
-    def __init__(self, sid, sat_type, uart):
+    def __init__(self, sid, sat_type_id, sat_type_name, uart):
         """
         Initialize a Satellite object.
 
@@ -21,7 +21,8 @@ class Satellite:
             sat_type (str): Satellite type.
         """
         self.id = sid
-        self.sat_type = sat_type
+        self.sat_type_id = sat_type_id
+        self.sat_type_name = sat_type_name
         self.uart = uart
         self.last_seen = 0
         self.is_active = True

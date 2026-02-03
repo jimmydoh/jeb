@@ -5,18 +5,18 @@ from .audio_manager import AudioManager
 from .base_pixel_manager import BasePixelManager
 from .display_manager import DisplayManager
 from .hid_manager import HIDManager
-from .jeb_manager import JEBManager
 from .led_manager import LEDManager
 from .matrix_manager import MatrixManager
 from .power_manager import PowerManager
+from .segment_manager import SegmentManager
 
 __all__ = [
     "AudioManager",
     "BasePixelManager",
     "DisplayManager",
     "HIDManager",
-    "JEBManager",
     "LEDManager",
     "MatrixManager",
     "PowerManager",
+    "SegmentManager",
 ]

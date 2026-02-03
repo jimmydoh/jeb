@@ -1,5 +1,8 @@
 """
-Docstring for satellite.managers.sat_manager
+Industrial Satellite Manager
+
+A manager for both active industrial satellite boxes and the master controller
+to handle communication, HID inputs, LED control, segment display, and power management.
 """
 
 import asyncio
@@ -7,96 +10,198 @@ import time
 
 import board
 import busio
+import neopixel
 
 from utilities import Palette
+from utilities import JEBPixel
 
-from .hid_manager import HIDManager
-from .led_manager import LEDManager
-from .power_manager import PowerManager
-from .segment_manager import SegmentManager
+from managers import HIDManager
+from managers import LEDManager
+from managers import PowerManager
+from managers import SegmentManager
 
-class SatManager:
+from .base import Satellite
+
+TYPE_ID = "01"
+TYPE_NAME = "INDUSTRIAL"
+
+class IndustrialSatellite(Satellite):
     """Satellite-side Manager to handle various subsystems."""
-    def __init__(self, sat_type):
-        # Init Pins
-        # UART Pins
-        uart_up_tx = getattr(board, "GP1")
-        uart_up_rx = getattr(board, "GP0")
-        uart_down_tx = getattr(board, "GP4")
-        uart_down_rx = getattr(board, "GP5")
-        # LEDs
-        led_pin = getattr(board, "GP6")
-        # I2C Pins
-        scl = getattr(board, "GP2")
-        sda = getattr(board, "GP3")
-        # Keypad Pins
-        keypad_rows = [getattr(board, f"GP{n}") for n in (7,8,9,10)]
-        keypad_cols = [getattr(board, f"GP{n}") for n in (11,12,13)]
-        # Mosfet Control Pin
-        mosfet_pin = getattr(board, "GP14")
-        # Connection Sense Pin
-        detect_pin = getattr(board, "GP15")
-        # Encoder Pins
-        encoder_pins = [
-            getattr(board, "GP17"), # Encoder A
-            getattr(board, "GP18"), # Encoder B
-        ]
-        button_pins = [
-            getattr(board, "GP19"), # Encoder Button
-        ]
-        # Toggle Pins
-        toggle_pins = [
-            getattr(board, "GP20"), # Toggle 1
-            getattr(board, "GP21"), # Toggle 2
-            getattr(board, "GP22"), # Toggle 3
-            getattr(board, "GP23"), # Toggle 4
-        ]
-        # Momentary Toggle Pins
-        momentary_toggle_pins = [
-            getattr(board, "GP24"), # Momentary Toggle 1 Up
-            getattr(board, "GP25"), # Momentary Toggle 1 Down
-        ]
-        # ADC Pins for Power Monitoring
-        sense_pins = [
-            getattr(board, "GP26"), # Pre-MOSFET 20V Input
-            getattr(board, "GP27"), # Post-MOSFET 20V Bus
-            getattr(board, "GP28"), # 5V Logic Rail
-        ]
+    def __init__(self, active=True, uart=None):
+        """Initialize the Industrial Satellite Manager."""
+        super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, uart=uart)
 
-        # Init power manager first for voltage readings
-        self.power = PowerManager(sense_pins, mosfet_pin, detect_pin)
+        if active: # If this is running on an active satellite box
+            # Init Pins
+            # UART Pins
+            uart_up_tx = getattr(board, "GP1")
+            uart_up_rx = getattr(board, "GP0")
+            uart_down_tx = getattr(board, "GP4")
+            uart_down_rx = getattr(board, "GP5")
+            # LEDs
+            led_pin = getattr(board, "GP6")
+            # I2C Pins
+            scl = getattr(board, "GP2")
+            sda = getattr(board, "GP3")
+            # Keypad Pins
+            keypad_rows = [getattr(board, f"GP{n}") for n in (7,8,9,10)]
+            keypad_cols = [getattr(board, f"GP{n}") for n in (11,12,13)]
+            # Mosfet Control Pin
+            mosfet_pin = getattr(board, "GP14")
+            # Connection Sense Pin
+            detect_pin = getattr(board, "GP15")
+            # Encoder Pins
+            encoder_pins = [
+                [
+                    getattr(board, "GP17"), # Encoder A
+                    getattr(board, "GP18"), # Encoder B
+                    getattr(board, "GP19"), # Encoder Button
+                ],
+            ]
+            # Toggle Pins
+            toggle_pins = [
+                getattr(board, "GP20"), # Toggle 1
+                getattr(board, "GP21"), # Toggle 2
+                getattr(board, "GP22"), # Toggle 3
+                getattr(board, "GP23"), # Toggle 4
+            ]
+            # Momentary Toggle Pins
+            momentary_toggle_pins = [
+                [
+                    getattr(board, "GP24"),
+                    getattr(board, "GP25")
+                ],
+            ]
+            # ADC Pins for Power Monitoring
+            sense_pins = [
+                getattr(board, "GP26"), # Pre-MOSFET 20V Input
+                getattr(board, "GP27"), # Post-MOSFET 20V Bus
+                getattr(board, "GP28"), # 5V Logic Rail
+            ]
 
-        # TODO Check power state
+            sense_names = ["input", "satbus", "logic"]
 
-        # Init I2C bus
-        self.i2c = busio.I2C(scl, sda)
+            # Init power manager first for voltage readings
+            self.power = PowerManager(sense_pins, sense_names, mosfet_pin, detect_pin)
 
-        # Init other managers
-        self.led = LEDManager(led_pin, num_pixels=6)
-        self.hid = HIDManager(button_pins,
-                              toggle_pins,
-                              momentary_toggle_pins,
-                              keypad_rows,
-                              keypad_cols,
-                              encoder_pins)
-        self.segment = SegmentManager(self.i2c)
+            # TODO Check power state
 
-        # UART for satellite communication
-        self.uart_up = busio.UART(uart_up_tx,
-                                  uart_up_rx,
-                                  baudrate=115200,
-                                  receiver_buffer_size=512,
-                                  timeout=0.01)
-        self.uart_down = busio.UART(uart_down_tx,
-                                   uart_down_rx,
-                                   baudrate=115200,
-                                   timeout=0.01)
+            # UART for satellite communication
+            self.uart_up = busio.UART(uart_up_tx,
+                                    uart_up_rx,
+                                    baudrate=115200,
+                                    receiver_buffer_size=512,
+                                    timeout=0.01)
+            self.uart_down = busio.UART(uart_down_tx,
+                                    uart_down_rx,
+                                    baudrate=115200,
+                                    timeout=0.01)
+
+            # Init I2C bus
+            self.i2c = busio.I2C(scl, sda)
+
+            # Init HID
+            self.hid = HIDManager(buttons=None,
+                                latching_toggles=toggle_pins,
+                                momentary_toggles=momentary_toggle_pins,
+                                encoders=encoder_pins,
+                                matrix_keypads=[ (  # Single 3x3 Keypad
+                                    [
+                                        "1","2","3",
+                                        "4","5","6",
+                                        "7","8","9",
+                                        "*","0","#"
+                                    ],
+                                    keypad_rows,
+                                    keypad_cols
+                                ) ],
+                                estop_pin=None,
+                                monitor_only=False
+                                )
+
+            # Init Segment Display
+            self.segment = SegmentManager(self.i2c)
+
+            # Init LEDs
+            self.root_pixels = neopixel.NeoPixel(led_pin, 6, brightness=0.2, auto_write=False)
+            self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=6)
+            self.leds = LEDManager(self.led_jeb_pixel)
+
+        else: # If this is running on the Master Controller
+            # Init placeholder PINs for HIDManager
+
+            # Keypad Pins
+            keypad_rows = [0,0,0,0]
+            keypad_cols = [0,0,0]
+            # Encoders
+            encoder_pins = [[0, 0, 0],]
+            # Toggle Pins
+            toggle_pins = [0,0,0,0]
+            # Momentary Toggles
+            momentary_toggle_pins = [[0,0],]
+
+            # Init placeholder HID for state tracking
+            self.hid = HIDManager(buttons=None,
+                                latching_toggles=toggle_pins,
+                                momentary_toggles=momentary_toggle_pins,
+                                encoders=encoder_pins,
+                                matrix_keypads=[ (  # Single 3x3 Keypad
+                                    [
+                                        "1","2","3",
+                                        "4","5","6",
+                                        "7","8","9",
+                                        "*","0","#"
+                                    ],
+                                    keypad_rows,
+                                    keypad_cols
+                                ) ],
+                                estop_pin=None,
+                                monitor_only=True
+                                )
 
         # State Variables
-        self.sat_type = sat_type
-        self.id = None
         self.last_tx = 0
 
+#region # --- Satellite Monitoring Processes ---
+    # ONLY USED WHEN THIS CODE IS RUNNING ON THE MASTER CONTROLLER
+    def update_from_packet(self, data_str):
+        """Updates the attribute states in the HIDManager based on the received data string.
+
+        Example:
+            0000,C,N,0,0
+            1111,U,*,1,1
+        """
+        try:
+            self.update_heartbeat()
+            data = data_str.split(",")
+
+            # Latching Toggles
+            self.hid.latching_toggles = [int(x) for x in data[0]]
+
+            # Momentary Toggles
+            momentary_states = data[1]
+            if momentary_states[0] == "U":
+                self.hid.momentary_toggles[0] = (1,0)
+            elif momentary_states[0] == "D":
+                self.hid.momentary_toggles[0] = (0,1)
+            else:
+                self.hid.momentary_toggles[0] = (0,0)
+
+            # Keypad
+            new_key = data[2]
+            if new_key != "N":
+                self.hid.matrix_keypads = [new_key]
+
+            # Encoders
+            self.hid.encoders = [int(data[3])]
+            self.hid.encoder_buttons = [int(data[4])]
+
+        except (IndexError, ValueError):
+            print(f"Malformed packet from Sat {self.id}")
+#endregion
+
+#region --- Active Satellite Processes ---
+    # ONLY USED WHEN THIS CODE IS RUNNING ON A SATELLITE
     async def process_local_cmd(self, cmd, val):
         """Process commands addressed to this satellite.
 
@@ -105,7 +210,7 @@ class SatManager:
         if cmd == "ID_ASSIGN":
             type_prefix = val[:2]
             current_index = int(val[2:])
-            if type_prefix == self.sat_type:
+            if type_prefix == self.sat_type_id:
                 # We are the correct type, increment the index
                 new_index = current_index + 1
                 self.id = f"{type_prefix}{new_index:02d}" # e.g. "0101"
@@ -122,7 +227,7 @@ class SatManager:
         elif cmd == "SETENC":
             # Set the encoder position to a specific value
             if len(val) > 0:
-                self.hid.set_encoder_position(int(val))
+                self.hid.reset_encoder(int(val))
 
         elif cmd == "LED" or cmd == "LEDFLASH" or cmd == "LEDBREATH":
             p = val.split(",")
@@ -140,7 +245,7 @@ class SatManager:
                     duration = float(p[4]) if len(p) > 4 and float(p[4]) > 0 else None
                     brightness = float(p[5]) if len(p) > 5 else 1.0
                     priority = int(p[6]) if len(p) > 6 else 2
-                    self.led.solid_led(i,
+                    self.leds.solid_led(i,
                                        (r, g, b),
                                        brightness=brightness,
                                        duration=duration,
@@ -157,7 +262,7 @@ class SatManager:
                     priority = int(p[6]) if len(p) > 6 else 2
                     speed = float(p[7]) if len(p) > 7 else 0.1
                     off_speed = float(p[8]) if len(p) > 8 else None
-                    self.led.flash_led(i,
+                    self.leds.flash_led(i,
                                        (r, g, b),
                                        brightness=brightness,
                                        duration=duration,
@@ -175,7 +280,7 @@ class SatManager:
                     brightness = float(p[5]) if len(p) > 5 else 1.0
                     priority = int(p[6]) if len(p) > 6 else 2
                     speed = float(p[7]) if len(p) > 7 else 2.0
-                    self.led.breathe_led(i,
+                    self.leds.breathe_led(i,
                                          (r, g, b),
                                          brightness=brightness,
                                          duration=duration,
@@ -190,7 +295,7 @@ class SatManager:
             r, g, b = int(p[0]), int(p[1]), int(p[2])
             duration = float(p[3]) if len(p) > 3 and float(p[3]) > 0 else 2.0
             speed = float(p[4]) if len(p) > 4 else 0.08
-            self.led.start_cylon((r, g, b),
+            self.leds.start_cylon((r, g, b),
                                  duration=duration,
                                  speed=speed)
 
@@ -202,7 +307,7 @@ class SatManager:
             r, g, b = int(p[0]), int(p[1]), int(p[2])
             duration = float(p[3]) if len(p) > 3 and float(p[3]) > 0 else 2.0
             speed = float(p[4]) if len(p) > 4 else 0.08
-            self.led.start_centrifuge((r, g, b),
+            self.leds.start_centrifuge((r, g, b),
                                       duration=duration,
                                       speed=speed)
 
@@ -213,7 +318,7 @@ class SatManager:
             p = val.split(",")
             duration = float(p[0]) if len(p) > 0 and float(p[0]) > 0 else 2.0
             speed = float(p[1]) if len(p) > 1 else 0.08
-            self.led.start_rainbow(duration=duration,
+            self.leds.start_rainbow(duration=duration,
                                    speed=speed)
 
         elif cmd == "LEDGLITCH":
@@ -230,7 +335,7 @@ class SatManager:
                 Palette.WHITE,
                 Palette.MAGENTA,
             ]
-            self.led.start_glitch(colors,
+            self.leds.start_glitch(colors,
                                    duration=duration,
                                    speed=speed)
 
@@ -288,7 +393,7 @@ class SatManager:
             # Safety Check: Logic rail sagging (Potential Buck Converter or Audio overload)
             if v["log"] < 4.7:
                 # Local warning: Dim LEDs to reduce current draw
-                self.led.pixels.brightness = 0.05
+                self.leds.pixels.brightness = 0.05
                 self.uart_up.write(f"{self.id}|ERROR|LOGIC_BROWNOUT:{v['log']}V\n".encode())
 
             # Safety Check: Downstream Bus Failure
@@ -305,18 +410,18 @@ class SatManager:
             if self.power.satbus_connected and not self.power.sat_pwr.value:
                 self.uart_up.write(f"{self.id}|LOG|LINK_DETECTED:INIT_PWR\n".encode())
                 # Perform soft-start to protect the bus
-                success, error = await self.power.soft_start_downstream()
+                success, error = await self.power.soft_start_satellites()
                 if success:
                     self.uart_up.write(f"{self.id}|LOG|LINK_ACTIVE\n".encode())
                 else:
                     self.uart_up.write(f"{self.id}|ERROR|PWR_FAILED:{error}\n".encode())
-                    self.led.pixels.fill((255, 0, 0))
+                    self.leds.pixels.fill((255, 0, 0))
 
             # Scenario: Physical link lost while power is ON
             elif not self.power.satbus_connected and self.power.sat_pwr.value:
                 self.power.emergency_kill() # Immediate hardware cut-off
                 self.uart_up.write(f"{self.id}|ERROR|LINK_LOST\n".encode())
-                self.led.pixels.fill((0, 0, 0))
+                self.leds.pixels.fill((0, 0, 0))
 
             await asyncio.sleep(0.5)
 
@@ -335,9 +440,9 @@ class SatManager:
             # TX TO UPSTREAM
             if not self.id: # Initial Discovery Phase
                 if time.monotonic() - self.last_tx > 3.0:
-                    self.uart_up.write(f"NEW_SAT|{self.sat_type}\n".encode())
+                    self.uart_up.write(f"NEW_SAT|{self.sat_type_id}\n".encode())
                     self.last_tx = time.monotonic()
-                    self.led.flash_led(-1,
+                    self.leds.flash_led(-1,
                                        Palette.AMBER,
                                        brightness=0.5,
                                        duration=1.0,
@@ -345,6 +450,7 @@ class SatManager:
             else: # Normal Operation
                 if time.monotonic() - self.last_tx > 0.1:
                     self.uart_up.write(
+                        # 0101|STATUS
                         f"{self.id}|STATUS|{self.hid.get_status_string()}\n".encode())
                     self.last_tx = time.monotonic()
 
@@ -358,3 +464,4 @@ class SatManager:
                     self.uart_down.write((line + "\n").encode())
 
             await asyncio.sleep(0.01)
+#endregion
