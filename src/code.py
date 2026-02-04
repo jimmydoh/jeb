@@ -28,57 +28,124 @@ import os
 import time
 
 import board
+import busio
 import digitalio
+import sdcardio
+import storage
 import supervisor
 
-# --- CONFIGURATION ---
-TEST_TRIGGER_FILE = "jeb_test.txt"
+ROOT_DATA_DIR = "/"
 
 def file_exists(filename):
+    """Check if a file exists on the filesystem."""
     try:
         os.stat(filename)
         return True
     except OSError:
         return False
 
-# --- ENTRY POINT ---
-print(f"Checking for {TEST_TRIGGER_FILE}...")
+def load_config():
+    """Load configuration from config.json if it exists, otherwise return defaults."""
+    default_config = {
+        "role": "CORE",  # Default role
+        "type_id": "00",  # Satellite ID (00 for core)
+        "uart_baudrate": 115200,  # Default UART baudrate
+        "mount_sd_card": False,  # Whether to initialize SD card
+        "debug_mode": False,  # Debug mode off by default
+        "test_mode": True  # Test mode on by default (real hardware should set to False)
+    }
+    try:
+        if file_exists("config.json"):
+            with open("config.json", "r", encoding="utf-8") as f:
+                config_data = json.load(f)
+                print("Configuration loaded from config.json")
+                return {**default_config, **config_data}  # Merge with defaults
+        else:
+            print("No config.json found. Using default configuration.")
+            return default_config
+    except Exception as e:
+        print(f"Error loading config.json: {e}")
+        print("Using default configuration.")
+        return default_config
 
-if file_exists(TEST_TRIGGER_FILE):
+def initialize_sd_card():
+    """Initialize the SD card and mount it."""
+    # SD Card Setup
+    # SPI Pin Setup for Pico 2
+    # SCK=GP18, MOSI=GP19, MISO=GP16, CS=GP17
+    try:
+        print("Initializing SPI interface", end="")
+        spi_clock = getattr(board, "GP18")
+        spi_mosi = getattr(board, "GP19")
+        spi_miso = getattr(board, "GP16")
+        sdcard_cs = getattr(board, "GP17")
+        spi = busio.SPI(clock=spi_clock, MOSI=spi_mosi, MISO=spi_miso)
+        print(" - ✅")
+    except Exception as e:
+        print(" - ❌")
+        print(f"SPI initialization failed: {e}")
+        return False
+
+    try:
+        print("Initializing SD card", end="")
+        sdcard = sdcardio.SDCard(spi, digitalio.DigitalInOut(sdcard_cs))
+        print(" - ✅")
+    except Exception as e:
+        print(" - ❌")
+        print(f"SD Card initialization failed: {e}")
+        return False
+
+    try:
+        print("Mounting SD card", end="")
+        vfs = storage.VfsFat(sdcard)
+        storage.mount(vfs, "/sd")
+        print(" - ✅")
+    except Exception as e:
+        print(" - ❌")
+        print(f"SD Card mounting failed: {e}")
+        return False
+
+    return True
+
+# --- ENTRY POINT ---
+
+print("*** BOOTING JEB SYSTEM ***")
+config = load_config()
+
+if config.get("mount_sd_card"):
+    if initialize_sd_card():
+        ROOT_DATA_DIR = "/sd"
+    else:
+        ROOT_DATA_DIR = "/"
+
+if config.get("test_mode"):
     print("⚠️ TEST MODE TRIGGERED ⚠️")
-    print("Loading Test Runner...")
-    print("Connect to Serial Console NOW.")
-    
-    # Import and run the test harness
+    print("Loading Test Runner")
+
     import test_runner
     asyncio.run(test_runner.run())
-
 else:
     app = None
 
-    # 1. Load Configuration
-    try:
-        with open("/config.json", "r", encoding="utf-8") as f:
-            config = json.load(f)
-    except OSError:
-        print("CRITICAL ERROR: config.json missing!")
-        # Fallback or halt
-        config = {"role": "UNKNOWN"}
+    role = config.get("role", "CORE")
+    type_id = config.get("type_id", "00")
+    debug_mode = config.get("debug_mode", False)
 
-    print(f"BOOTING JEB SYSTEM... ROLE: {config.get('role')}")
+    # 1. Load Configuration
+    print(f"LOADING ROLE: {config.get('role')}")
 
     # 2. Conditional Loading
-    if config["role"] == "CORE":
+    if config["role"] == "CORE" and type_id == "00":
         from core.core_manager import CoreManager
         app = CoreManager()
 
-    elif config["role"] == "SAT":
+    elif config["role"] == "SAT" and type_id == "01":
         from satellites import IndustrialSatellite
-        # Pass the specific ID or Type if needed
         app = IndustrialSatellite(active=True, uart=None)
 
     else:
-        print("UNKNOWN ROLE. HALTING.")
+        print("❗Unknown role/type_id combination. No application loaded.❗")
+        print(f"Role: {role}, Type ID: {type_id}")
         while True:
             time.sleep(1)
 
@@ -86,11 +153,11 @@ else:
     if __name__ == "__main__":
         try:
             if app is None:
-                print("No application configured; aborting.")
+                print("‼️No application loaded.‼️")
             else:
                 asyncio.run(app.start())
         except Exception as e:
-            print(f"CRITICAL CRASH: {e}")
+            print(f"🚨⛔ CRITICAL CRASH: {e}")
             import traceback
             traceback.print_exception(e)
             time.sleep(5)

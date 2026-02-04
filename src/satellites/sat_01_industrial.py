@@ -12,13 +12,9 @@ import board
 import busio
 import neopixel
 
-from utilities import Palette
-from utilities import JEBPixel
+from utilities import JEBPixel, Palette, Pins
 
-from managers import HIDManager
-from managers import LEDManager
-from managers import PowerManager
-from managers import SegmentManager
+from managers import HIDManager, LEDManager, PowerManager, SegmentManager
 
 from .base import Satellite
 
@@ -34,112 +30,62 @@ class IndustrialSatellite(Satellite):
         # State Variables
         self.last_tx = 0
 
-        # Common Definitions
-        KEYPAD_MAP_3x4 = [
-            "1", "2", "3",
-            "4", "5", "6",
-            "7", "8", "9",
-            "*", "0", "#"
-        ]
-
         if active:
             # --- ACTIVE MODE (Running on Satellite Hardware) ---
             # Define REAL Pins for the Industrial Satellite
-            
-            # UART Pins
-            uart_up_tx = getattr(board, "GP1")
-            uart_up_rx = getattr(board, "GP0")
-            uart_down_tx = getattr(board, "GP4")
-            uart_down_rx = getattr(board, "GP5")
-            
-            # LEDs
-            led_pin = getattr(board, "GP6")
-            
-            # I2C Pins
-            scl = getattr(board, "GP2")
-            sda = getattr(board, "GP3")
-            
-            # Matrix Keypads
-            matrix_keypads = [(
-                KEYPAD_MAP_3x4,
-                [getattr(board, f"GP{n}") for n in (7,8,9,10)], # Rows
-                [getattr(board, f"GP{n}") for n in (11,12,13)]  # Columns
-            )]
-            
-            # Mosfet Control Pin
-            mosfet_pin = getattr(board, "GP14")
-            
-            # Connection Sense Pin
-            detect_pin = getattr(board, "GP15")
-            
-            # Encoder Pins
-            encoder_pins = [
-                [
-                    getattr(board, "GP17"), # Encoder A
-                    getattr(board, "GP18"), # Encoder B
-                    getattr(board, "GP19"), # Encoder Button
-                ],
-            ]
-            
-            # Toggle Pins
-            toggle_pins = [
-                getattr(board, "GP20"), # Toggle 1
-                getattr(board, "GP21"), # Toggle 2
-                getattr(board, "GP22"), # Toggle 3
-                getattr(board, "GP23"), # Toggle 4
-            ]
 
-            # Momentary Toggle Pins
-            momentary_toggle_pins = [
-                [
-                    getattr(board, "GP24"),
-                    getattr(board, "GP25")
-                ],
-            ]
-            
-            # ADC Pins for Power Monitoring
-            sense_pins = [
-                getattr(board, "GP26"), # Pre-MOSFET 20V Input
-                getattr(board, "GP27"), # Post-MOSFET 20V Bus
-                getattr(board, "GP28"), # 5V Logic Rail
-            ]
-
-            sense_names = ["input", "satbus", "logic"]
+            Pins.initialize(profile="SAT", type_id=TYPE_ID)
 
             # Init power manager first for voltage readings
-            self.power = PowerManager(sense_pins, sense_names, mosfet_pin, detect_pin)
+            self.power = PowerManager(
+                Pins.SENSE_PINS,
+                ["input", "satbus", "main"],
+                Pins.MOSFET_CONTROL,
+                Pins.SATBUS_DETECT
+            )
 
             # TODO Check power state
 
             # UART for satellite communication
-            self.uart_up = busio.UART(uart_up_tx,
-                                    uart_up_rx,
-                                    baudrate=115200,
-                                    receiver_buffer_size=512,
-                                    timeout=0.01)
-            self.uart_down = busio.UART(uart_down_tx,
-                                    uart_down_rx,
-                                    baudrate=115200,
-                                    timeout=0.01)
+            self.uart_up = busio.UART(
+                Pins.UART_TX,
+                Pins.UART_RX,
+                baudrate=115200,
+                receiver_buffer_size=512,
+                timeout=0.01
+            )
+            self.uart_down = busio.UART(
+                Pins.UART_DOWN_TX,
+                Pins.UART_DOWN_RX,
+                baudrate=115200,
+                timeout=0.01
+            )
 
             # Init I2C bus
-            self.i2c = busio.I2C(scl, sda)
+            self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
 
             # Init HID
             self.hid = HIDManager(
-                                latching_toggles=toggle_pins,
-                                momentary_toggles=momentary_toggle_pins,
-                                encoders=encoder_pins,
-                                matrix_keypads=matrix_keypads,
-                                monitor_only=False
-                                )
+                latching_toggles=Pins.EXPANDER_LATCHING,
+                momentary_toggles=Pins.EXPANDER_MOMENTARY,
+                encoders=Pins.ENCODERS,
+                matrix_keypads=Pins.MATRIX_KEYPADS,
+                monitor_only=False
+            )
 
             # Init Segment Display
             self.segment = SegmentManager(self.i2c)
 
-            # Init LEDs
-            self.root_pixels = neopixel.NeoPixel(led_pin, 6, brightness=0.3, auto_write=False)
-            self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=6)
+            # Init LED Hardware
+            self.root_pixels = neopixel.NeoPixel(
+                Pins.LED_CONTROL,
+                5,
+                brightness=0.3,
+                auto_write=False
+            )
+
+            # Init LEDManager with JEBPixel wrapper for the 5 onboard LEDs
+            self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=5)
             self.leds = LEDManager(self.led_jeb_pixel)
 
         else:
@@ -147,25 +93,25 @@ class IndustrialSatellite(Satellite):
             # Define PLACEHOLDERS for State Sizing
 
             # Toggle Pins
-            toggle_pins = [0,0,0,0]
+            latching_toggles = [0,0,0,0]
 
             # Momentary Toggle Pins
-            momentary_toggle_pins = [0]
+            momentary_toggles = [0]
 
             # Encoders
-            encoder_pins = [0]
+            encoders = [0]
 
             # Matrix Keypads
             matrix_keypads = [(
-                KEYPAD_MAP_3x4,
+                Pins.KEYPAD_MAP_3x3,
                 [],
                 []
             )]
 
             self.hid = HIDManager(
-                                latching_toggles=toggle_pins,
-                                momentary_toggles=momentary_toggle_pins,
-                                encoders=encoder_pins,
+                                latching_toggles=latching_toggles,
+                                momentary_toggles=momentary_toggles,
+                                encoders=encoders,
                                 matrix_keypads=matrix_keypads,
                                 monitor_only=True
                                 )

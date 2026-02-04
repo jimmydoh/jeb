@@ -67,8 +67,10 @@ class PowerManager:
             v_list[0] = self.get_v(sensor, ratio)
 
             # Update max/min records
-            if v_list[0] > v_list[1]: v_list[1] = v_list[0]
-            if v_list[0] < v_list[2] or v_list[2] == 0.0: v_list[2] = v_list[0]
+            if v_list[0] > v_list[1]:
+                v_list[1] = v_list[0]
+            if v_list[0] < v_list[2] or v_list[2] == 0.0:
+                v_list[2] = v_list[0]
         return {name: getattr(self, f"v_{name}")[0] for name in self.sense_names}
 
     @property
@@ -117,6 +119,7 @@ class PowerManager:
         v = self.status
         if v["input" if "input" in self.sense_names else "0"] < 15.0:
             return False
-        if v["input" if "input" in self.sense_names else "0"] > 18.0 and v["satbus" if "satbus" in self.sense_names else "1"] < 1.0:
+        if v["input" if "input" in self.sense_names else "0"] > 18.0 \
+            and v["satbus" if "satbus" in self.sense_names else "1"] < 1.0:
             return False
         return True

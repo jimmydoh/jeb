@@ -8,7 +8,8 @@ import audiomixer
 
 class AudioManager:
     """Manages audio playback and mixing."""
-    def __init__(self, sck, ws, sd, voice_count=3):
+    def __init__(self, sck, ws, sd, voice_count=3, root_data_dir="/"):
+        self.root_data_dir = root_data_dir
         self.audio = audiobusio.I2SOut(sck, ws, sd)
         self.mixer = audiomixer.Mixer(
             voice_count=voice_count,
@@ -36,7 +37,7 @@ class AudioManager:
         for filename in files:
             try:
                 # We intentionally keep the file handle open for cached sounds
-                f = open(filename, "rb")
+                f = open(self.root_data_dir + filename, "rb")
                 wav = audiocore.WaveFile(f, bytearray(256))
                 self._cache[filename] = wav
             except OSError:
@@ -67,6 +68,8 @@ class AudioManager:
         voice.level = level
 
         # 2. Source Selection (Cache vs Stream)
+        file = self.root_data_dir + file
+
         if file in self._cache:
             # Use pre-loaded object (Fast, no allocation)
             voice.play(self._cache[file], loop=loop)
@@ -91,12 +94,3 @@ class AudioManager:
     def set_level(self, channel, level):
         """Set volume level for a specific channel."""
         self.mixer.voice[channel].level = level
-
-    # --- COMPATIBILITY WRAPPERS ---
-    async def play_sfx(self, file, voice=1, loop=False, vol=1.0, wait=False, skip=False):
-        """Compatibility wrapper for older play_sfx method."""
-        await self.play(file, channel=voice, loop=loop, level=vol, wait=wait, interrupt=not skip)
-
-    async def set_volume(self, voice, level):
-        """Compatibility wrapper for older set_volume method."""
-        self.set_level(voice, level)
