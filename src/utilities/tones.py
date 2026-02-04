@@ -57,8 +57,8 @@ UI_CONFIRM = {
 # --- SOUND FX LIBRARY ---
 # Mario Coin (Fast B5 -> E6)
 COIN = {
-    'bpm': 120, # Base speed
-    'sequence': [('B5', S), ('E6', H)]
+    'bpm': 200, # Base speed
+    'sequence': [(1000, S), (1333, Q * 1.5)]
 }
 
 # Jump (Rising Sweep - Unrolled to data)
@@ -114,19 +114,64 @@ GAME_OVER = {
 MARIO_THEME = {
     'bpm': 180,
     'sequence': [
-        # Intro
-        ('E5', E), ('E5', E), ('-', E), ('E5', E),
-        ('-', E), ('C5', E), ('E5', Q),
-        ('G5', Q), ('-', Q), ('G4', Q),
+        # --- INTRO ---
+        ('E6', E), ('E6', E), ('-', E), ('E6', E), 
+        ('-', E), ('C6', E), ('E6', Q), 
+        ('G6', Q), ('-', Q), ('G5', Q),
         ('-', Q),
-        # Theme A
-        ('C5', Q * 1.5), ('G4', E), ('-', Q), ('E4', Q),
-        ('-', E), ('A4', Q), ('B4', Q), ('A#4', E), ('A4', Q),
-        ('G4', T*2), ('E5', T*2), ('G5', T*2),
-        ('A5', Q), ('F5', E), ('G5', E),
-        ('-', E), ('E5', Q), ('C5', E), ('D5', E), ('B4', Q * 1.5)
+
+        # --- THEME A ---
+        ('C6', Q * 1.5), ('G5', E), ('-', Q), ('E5', Q),
+        ('-', E), ('A5', Q), ('B5', Q), ('A#5', E), ('A5', Q),
+        ('G5', T*2), ('E6', T*2), ('G6', T*2), 
+        ('A6', Q), ('F6', E), ('G6', E),
+        ('-', E), ('E6', Q), ('C6', E), ('D6', E), ('B5', Q * 1.5),
+        
+        # --- THEME A Repeated ---
+        ('C6', Q * 1.5), ('G5', E), ('-', Q), ('E5', Q),
+        ('-', E), ('A5', Q), ('B5', Q), ('A#5', E), ('A5', Q),
+        ('G5', T*2), ('E6', T*2), ('G6', T*2), 
+        ('A6', Q), ('F6', E), ('G6', E),
+        ('-', E), ('E6', Q), ('C6', E), ('D6', E), ('B5', Q * 1.5),
+
+        # --- THEME B ---
+        # The Descent (G6 -> F#6 -> F6 -> D#6 -> E6)
+        ('-', Q), 
+        ('G6', E), ('F#6', E), ('F6', E), ('D#6', Q), ('E6', E),
+        # The Climb (G#5 -> A5 -> C6 -> A5 -> C6 -> D6)
+        ('-', E), ('G#5', E), ('A5', E), ('C6', E), 
+        ('-', E), ('A5', E), ('C6', E), ('D6', E),
+        # The Descent Again
+        ('-', Q), 
+        ('G6', E), ('F#6', E), ('F6', E), ('D#6', Q), ('E6', E),
+        # High C hits
+        ('-', E), ('C7', Q), ('C7', E), ('C7', Q), 
+        # The Descent Once More
+        ('-', Q), 
+        ('G6', E), ('F#6', E), ('F6', E), ('D#6', Q), ('E6', E),
+        # The Climb Once More
+        ('-', E), ('G#5', E), ('A5', E), ('C6', E), 
+        ('-', E), ('A5', E), ('C6', E), ('D6', E),
+        # Finale
+        ('-', Q), ('D#6', Q), ('-', E), ('D6', Q), ('-', E), ('C6', Q)
     ]
 }
+
+MARIO_THEME_ALT = {
+    'bpm': 180,
+    'sequence': [
+        # Intro
+        ('E6', E), ('E6', E), ('-', E), ('E6', E), ('-', E), ('C6', E), ('E6', Q),
+        ('G6', Q), ('-', Q), ('G5', Q), ('-', Q),
+        # Theme A
+        ('C6', Q * 1.5), ('G5', E), ('-', Q), ('E5', Q),
+        ('-', E), ('A5', Q), ('B5', Q), ('A#5', E), ('A5', Q),
+        ('G5', T*2), ('E6', T*2), ('G6', T*2),
+        ('A6', Q), ('F6', E), ('G6', E),
+        ('-', E), ('E6', Q), ('C6', E), ('D6', E), ('B5', Q * 1.5),
+    ]
+}
+
 
 MARIO_UNDERGROUND = {
     'bpm': 100,
@@ -150,7 +195,6 @@ TETRIS_THEME = {
 }
 
 # --- TONE CALCULATOR ---
-@staticmethod
 def note(note_name):
     """Converts a note name (e.g., 'A4', 'C#5') to its frequency in Hz."""
 

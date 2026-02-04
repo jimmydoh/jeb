@@ -11,14 +11,18 @@ class BuzzerManager:
     """Manages a passive piezo buzzer using PWM and asyncio."""
 
     # Note Frequencies (Hz)
-    def __init__(self, pin):
+    def __init__(self, pin, volume=0.5, testing=False):
         # Initialize PWM with 0 duty cycle (silence)
         # Variable frequency is required for changing tones
+        self.testing = testing
         self.buzzer = pwmio.PWMOut(pin, duty_cycle=0, frequency=440, variable_frequency=True)
         self._current_task = None
 
         # Standard Duty Cycle (50% is max volume for a piezo)
-        self.VOLUME_ON = 2**15
+        if volume < 0.0 or volume > 1.0:
+            raise ValueError("Volume must be between 0.0 and 1.0")
+        
+        self.VOLUME_ON = int(volume * 2**16) - 1
         self.VOLUME_OFF = 0
 
     def stop(self):
@@ -46,17 +50,22 @@ class BuzzerManager:
         """
         try:
             for freq, dur in sequence:
+                freq_rounded = int(round(freq))
+                if self.testing:
+                    print(f"Playing freq: {freq_rounded} Hz for {dur} sec")
                 if freq == 0:
                     self.buzzer.duty_cycle = self.VOLUME_OFF
                 else:
-                    self.buzzer.frequency = freq
+                    self.buzzer.frequency = freq_rounded
                     self.buzzer.duty_cycle = self.VOLUME_ON
 
                 await asyncio.sleep(dur * tempo)
 
                 # Tiny gap between notes for articulation
                 self.buzzer.duty_cycle = self.VOLUME_OFF
-                await asyncio.sleep(0.02)
+                await asyncio.sleep(0.01)
+            
+            self.buzzer.duty_cycle = self.VOLUME_OFF
 
         except asyncio.CancelledError:
             self.buzzer.duty_cycle = self.VOLUME_OFF
@@ -83,6 +92,8 @@ class BuzzerManager:
         """Plays a predefined song from tones library."""
         bpm = song_data.get('bpm',120)
         sequence = song_data.get('sequence', [])
+
+        print(f"Playing song at {bpm} BPM with {len(sequence)} notes.")
 
         # Calculate beat duration in seconds
         beat_duration = 60.0 / bpm
