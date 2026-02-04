@@ -1,7 +1,7 @@
 # PROJECT: JEB - JADNET Electronics Box - CORE COMMAND UNIT (MASTER)
 **VERSION:** 2.2 - 2026-02-01
 **MCU:** Raspberry Pi Pico 2 (RP2350)
-**OS:** CircuitPython 9.x+
+**OS:** CircuitPython 10.x+
 **Architecture:** Asynchronous Global State with Mode Inheritance
 
 ---
@@ -54,29 +54,45 @@
 * **OLED:** 128x64 I2C SSD1306. **Requires 4.7kΩ external pull-ups** on SDA/SCL.
 * **MATRIX:** GlowBit 64 (8x8 NeoPixel Matrix).
 * **AUDIO 1:** I2S 3W Class D Amp -> 4-ohm Transducer/Exciter.
-* **AUDIO 2:** Passive Piezo Buzzer (GP2 via 100Ω) for hardware alerts/diagnostics.
+* **PLANNED AUDIO 2:** Passive Piezo Buzzer (GP TBD via 100Ω) for hardware alerts/diagnostics.
 * **ENCODER:** Absolute Position tracking (handled by Satellite-side interrupts).
 
 ---
 
-## *** GPIO MAPPING (FINALIZED) ***
+## *** GPIO MAPPING ***
 
 | Pin | Function | Logic |
 | :--- | :--- | :--- |
 | **GP0** | UART TX | 115200 Baud (via 1kΩ) |
 | **GP1** | UART RX | 115200 Baud (via 1kΩ) |
-| **GP2** | Piezo Buzzer | PWM Out (via 100Ω) |
-| **GP4** | NeoPixel Out | GlowBit 64 Data |
+| **GP2** | Rotary Encoder A | |
+| **GP3** | Rotary Encoder B | |
+| **GP4** | I2C SDA | Requires 4.7kΩ Pull-ups |
+| **GP5** | I2C SCL | Requires 4.7kΩ Pull-ups |
+| **GP6** | GlowBit Matrix Control | |
 | **GP7** | E-Stop Input | Active Low (Normally Closed to GND) |
-| **GP8/9**| I2C SDA/SCL | OLED (Requires 4.7kΩ Pull-ups) |
-| **GP14** | MOSFET Enable | High = ON (NPN Base) |
-| **GP15** | Sat Detect | Active Low (Link Sense) |
-| **GP16-18**| I2S Audio | BCLK, LRCLK, DATA |
-| **GP19-22**| Buttons A-D | Face Buttons (Active Low) |
-| **GP26** | ADC0 | Sense - 20V Raw Input (47k/6.8k) |
-| **GP27** | ADC1 | Sense - 20V Bus Output (47k/6.8k) |
-| **GP28** | ADC2 | Sense - 5V Logic Rail (10k/10k) |
-| **GP29** | ADC3 | Sense - 5V LED Rail (10k/10k) |
+| **GP8** | SPARE | |
+| **GP9** | SPARE | |
+| **GP10**| Button A | Face Buttons (Active Low) |
+| **GP11**| Button B | Face Buttons (Active Low) |
+| **GP12**| Button C | Face Buttons (Active Low) |
+| **GP13**| Button D | Face Buttons (Active Low) |
+| **GP14**| MOSFET Enable | High = ON (NPN Base) |
+| **GP15**| Sat Detect | Active Low (Link Sense) |
+| **GP16**| SPI MISO | Planned |
+| **GP17**| SPI CS | Planned |
+| **GP18**| SPI SCK | Planned |
+| **GP19**| SPI MOSI | Planned |
+| **GP20**| I2S Audio SCK | |
+| **GP21**| I2S Audio WS | |
+| **GP22**| I2S Audio SD | |
+| **GP23**| Internal Pico | Power |
+| **GP24**| Internal Pico | VBUS Sense |
+| **GP25**| Encoder Push Button | |
+| **GP26**| ADC0 | Sense - 20V Raw Input (47k/6.8k) |
+| **GP27**| ADC1 | Sense - 20V Bus Output (47k/6.8k) |
+| **GP28**| ADC2 | Sense - 5V Logic Rail (10k/10k) |
+| **GP29**| ADC3 | Sense - 5V LED Rail (10k/10k) |
 
 ---
 

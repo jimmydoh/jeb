@@ -27,8 +27,12 @@ class CoreManager:
         # UART Pins
         uart_tx = getattr(board, "GP0")
         uart_rx = getattr(board, "GP1")
-        # SPARE GP2
-        # SPARE GP3
+        # Rotary Encoder Pins
+        encoder_pins = [
+            getattr(board, "GP02"), # Encoder A
+            getattr(board, "GP03"), # Encoder B
+            getattr(board, "GP25"), # Rotary Encoder Push
+        ]
         # I2C Pins
         scl = getattr(board, "GP5")
         sda = getattr(board, "GP4")
@@ -49,23 +53,24 @@ class CoreManager:
         mosfet_pin = getattr(board, "GP14")
         # Connection Sense Pin
         detect_pin = getattr(board, "GP15")
+        # SPI0
+        # MISO GP16
+        # CS GP17
+        # SCK GP18
+        # MOSI GP19
         # I2S Audio Pins
-        sck = getattr(board, "GP17")
-        ws  = getattr(board, "GP16")
-        sd  = getattr(board, "GP18")
-        # SPARE GP19
-        # Rotary Encoder Pins
-        encoder_pins = [
-            getattr(board, "GP20"), # Encoder A
-            getattr(board, "GP21"), # Encoder B
-            getattr(board, "GP22"), # Rotary Encoder Push
-        ]
+        sck = getattr(board, "GP20")
+        ws  = getattr(board, "GP21")
+        sd  = getattr(board, "GP22")
+        # GP23 - Internal Pico - Power Circuitry
+        # GP24 - Internal Pico - VBUS Sense
+        # GP25 Encoder push button above
         # ADC Pins for Power Monitoring
         sense_pins = [
             getattr(board, "GP26"), # Pre-MOSFET 20V Input
             getattr(board, "GP27"), # Post-MOSFET 20V Bus
             getattr(board, "GP28"), # 5V Logic Rail
-            #getattr(board, "GP29"), # 5V LED Rail
+            getattr(board, "GP29"), # 5V LED Rail
         ]
 
         sense_names = [

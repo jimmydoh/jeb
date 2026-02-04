@@ -57,7 +57,7 @@ The Satellite acts as a repeater. It processes messages addressed to its ID and 
 
 ---
 
-## *** GPIO MAPPING ***
+## *** GPIO MAPPING (WORK IN PROGRESS) ***
 
 | Pin | Function | Description |
 | :--- | :--- | :--- |
