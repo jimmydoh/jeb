@@ -4,12 +4,20 @@ import digitalio
 import keypad
 import rotaryio
 
+try:
+    from adafruit_mcp230xx.mcp23017 import MCP23017
+except ImportError:
+    MCP23017 = None
+
 from adafruit_ticks import ticks_ms, ticks_diff
+
+from utilities import MCPKeys
 
 class HIDManager:
     """
     Unified Input Manager.
-    Handles: Buttons, Latching Toggles, Momentary Toggles, Encoders, Matrix Keypads.
+    Handles: Buttons, Latching Toggles, Momentary Toggles,
+        Encoders, Matrix Keypads, E-Stop, Expanded Inputs via MCP23017.
 
     Buttons [board.GPx, board.GPy, ...]
         - Managed via keypad.Keys for debouncing and event handling.
@@ -22,7 +30,10 @@ class HIDManager:
         - Optional push button pin for each encoder.
     Matrix Keypads [[[key_map_0, ...],[row_pin_a, ...],[col_pin_a, ...]], ...]
         - Managed via keypad.Keypad for matrix scanning.
-
+    E-Stop [board.GPx]
+        - Single digital input with pull-up.
+    Expanded Inputs via MCP23017 (if provided)
+        - Buttons, Latching Toggles, Momentary Toggles.
     """
     def __init__(self,
                  buttons=None,
@@ -31,45 +42,69 @@ class HIDManager:
                  encoders=None,
                  matrix_keypads=None,
                  estop_pin=None,
+                 mcp_i2c=None,
+                 mcp_int_pin=None,
+                 expanded_buttons=None,
+                 expanded_latching_toggles=None,
+                 expanded_momentary_toggles=None,
                  monitor_only=False
                  ):
         """Initialize HID Manager with specified inputs."""
 
-        self.monitor_only = monitor_only
-
-        # --- Initialize State Storage ---
+        #region --- Initialize State Storage ---
         # Buttons States
-        self.buttons_values = [False] * (len(buttons) or 0)
-        self.buttons_timestamps = [0] * (len(buttons) or 0)
-        self.buttons_tapped = [False] * (len(buttons) or 0)
+        num_local_btns = len(buttons or [])
+        num_exp_btns   = len(expanded_buttons or [])
+        total_btns     = num_local_btns + num_exp_btns
+        self.buttons_values = [False] * total_btns
+        self.buttons_timestamps = [0] * total_btns
+        self.buttons_tapped = [False] * total_btns
+        self._local_button_count = num_local_btns
+
         # Latching Toggles States
-        self.latching_values = [False] * (len(latching_toggles) or 0)
-        self.latching_timestamps = [0] * (len(latching_toggles) or 0)
-        self.latching_tapped = [False] * (len(latching_toggles) or 0)
+        num_local_latch = len(latching_toggles or [])
+        num_exp_latch   = len(expanded_latching_toggles or [])
+        total_latch     = num_local_latch + num_exp_latch
+        self.latching_values = [False] * total_latch
+        self.latching_timestamps = [0] * total_latch
+        self.latching_tapped = [False] * total_latch
+        self._local_latching_count = num_local_latch
+
         # Momentary Toggles States
-        self.momentary_values = [[False, False] for _ in range(len(momentary_toggles) or 0)]
-        self.momentary_timestamps = [[0, 0] for _ in range(len(momentary_toggles) or 0)]
-        self.momentary_tapped = [[False, False] for _ in range(len(momentary_toggles) or 0)]
+        num_local_mom = len(momentary_toggles or [])
+        num_exp_mom   = len(expanded_momentary_toggles or [])
+        total_mom     = num_local_mom + num_exp_mom
+        self.momentary_values = [[False, False] for _ in range(total_mom)]
+        self.momentary_timestamps = [[0, 0] for _ in range(total_mom)]
+        self.momentary_tapped = [[False, False] for _ in range(total_mom)]
+        self._local_momentary_count = num_local_mom
+
         # Encoder States
         self.encoder_positions = [0] * (len(encoders) or 0)
         self.encoder_timestamps = [0] * (len(encoders) or 0)
         self.encoder_buttons_values = [False] * (len(encoders) or 0)
         self.encoder_buttons_timestamps = [0] * (len(encoders) or 0)
         self.encoder_buttons_tapped = [False] * (len(encoders) or 0)
+
         # Matrix Keypads States
         self.matrix_keypads_queues = [[] for _ in (matrix_keypads or [])]
         self.matrix_keypads_maps = [mk[0] for mk in matrix_keypads] if matrix_keypads else []
+
         # E-Stop State
         self.estop_value = False
+        #endregion
 
-        # --- Initialize Always Available Properties ---
+        #region --- Initialize Always Available Properties ---
+        self.monitor_only = monitor_only
+
         # Matrix Keypad Keymaps
         if matrix_keypads:
             for mk in matrix_keypads:
                 key_map, _, _ = mk
                 self.matrix_keypads_maps.append(key_map)
+        #endregion
 
-        # --- Initialize Hardware Interfaces ---
+        #region --- Initialize Hardware Interfaces ---
         if not self.monitor_only:
             # Buttons Hardware
             self._buttons = keypad.Keys(
@@ -125,6 +160,42 @@ class HIDManager:
                 self._estop = digitalio.DigitalInOut(estop_pin)
                 self._estop.pull = digitalio.Pull.UP
 
+            # MCP23017 Expanded Inputs
+            self._mcp = None
+            self._mcp_int = None
+            if MCP23017 and mcp_i2c:
+                self._mcp = MCP23017(mcp_i2c, address=0x20)
+                if mcp_int_pin:
+                    self._mcp_int = mcp_int_pin
+
+            if self._mcp and expanded_buttons:
+                self._expanded_buttons_keys = MCPKeys(
+                    self._mcp,
+                    expanded_buttons,
+                    value_when_pressed=False,
+                    pull=True
+                )
+
+            if self._mcp and expanded_latching_toggles:
+                self._expanded_latching_keys = MCPKeys(
+                    self._mcp,
+                    expanded_latching_toggles,
+                    value_when_pressed=False,
+                    pull=True
+                )
+
+            if self._mcp and expanded_momentary_toggles:
+                flat_expanded_momentary_pins = []
+                for pair in expanded_momentary_toggles:
+                    flat_expanded_momentary_pins.extend(pair)
+                self._expanded_momentary_keys = MCPKeys(
+                    self._mcp,
+                    flat_expanded_momentary_pins,
+                    value_when_pressed=False,
+                    pull=True
+                )
+        #endregion
+
     #region --- Button Handling ---
     def is_button_pressed(self, index, long=False, duration=2000, action=None):
         """Check if a button is pressed, tapped or held."""
@@ -158,7 +229,7 @@ class HIDManager:
 
     def _hw_poll_buttons(self):
         """Poll hardware buttons and update states."""
-        if self.monitor_only:
+        if self.monitor_only or not self._buttons:
             return
         event = keypad.Event()
         while self._buttons.events.get_into(event):
@@ -214,7 +285,7 @@ class HIDManager:
 
     def _hw_poll_latching_toggles(self):
         """Poll hardware latching toggles and update states."""
-        if self.monitor_only:
+        if self.monitor_only or not self._latching_toggles:
             return
         event = keypad.Event()
         while self._latching_toggles.events.get_into(event):
@@ -288,7 +359,7 @@ class HIDManager:
 
     def _hw_poll_momentary_toggles(self):
         """Poll hardware momentary toggles and update states."""
-        if self.monitor_only:
+        if self.monitor_only or not self._momentary_toggles:
             return
         event = keypad.Event()
         while self._momentary_toggles.events.get_into(event):
@@ -356,7 +427,7 @@ class HIDManager:
 
     def _hw_poll_encoders(self):
         """Poll hardware encoders and update states."""
-        if self.monitor_only:
+        if self.monitor_only or not self._encoders:
             return
         for i, enc in enumerate(self._encoders):
             self.encoder_positions[i] = enc.position
@@ -398,7 +469,7 @@ class HIDManager:
 
     def _hw_poll_encoder_buttons(self):
         """Poll hardware encoder buttons and update states."""
-        if self.monitor_only:
+        if self.monitor_only or not self._encoder_buttons:
             return
         event = keypad.Event()
         while self._encoder_buttons.events.get_into(event):
@@ -445,7 +516,7 @@ class HIDManager:
 
     def _hw_poll_matrix_keypads(self):
         """Poll hardware matrix keypads and update states."""
-        if self.monitor_only:
+        if self.monitor_only or not self._matrix_keypads:
             return
         for i, k_pad in enumerate(self._matrix_keypads):
             event = k_pad.events.get()
@@ -473,7 +544,7 @@ class HIDManager:
         return ":".join(queue_values)
     #endregion
 
-    # --- E-Stop Handling ---
+    #region --- E-Stop Handling ---
     @property
     def estop(self):
         """Returns True estop is pressed."""
@@ -487,7 +558,7 @@ class HIDManager:
 
     def _hw_poll_estop(self):
         """Poll hardware e-stop and update state."""
-        if self.monitor_only or self._estop is None:
+        if self.monitor_only or not self._estop:
             return
         self.estop_value = not self._estop.value  # Active low
 
@@ -496,7 +567,62 @@ class HIDManager:
         return "1" if self.estop_value else "0"
     #endregion
 
-    # --- Global Functions ---
+    #region --- Expander MCP23017 Handling ---
+    def _hw_expander_buttons(self):
+        """Polls MCP23017 and processes events into the global state arrays."""
+        if self.monitor_only or not self._expanded_buttons_keys:
+            return
+        event = keypad.Event()
+        while self._expanded_buttons_keys.events.get_into(event):
+            key_idx = self._local_button_count + event.key_number
+            now = ticks_ms()
+            if event.pressed: # Button pressed
+                self.buttons_values[key_idx] = True
+                self.buttons_timestamps[key_idx] = now
+            elif event.released: # Button released
+                start_time = self.buttons_timestamps[key_idx]
+                if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
+                    self.buttons_tapped[key_idx] = True
+                self.buttons_values[key_idx] = False
+
+    def _hw_expander_latching_toggles(self):
+        """Polls MCP23017 and processes events into the global state arrays."""
+        if self.monitor_only or not self._expanded_latching_keys:
+            return
+        event = keypad.Event()
+        while self._expanded_latching_keys.events.get_into(event):
+            key_idx = self._local_latching_count + event.key_number
+            now = ticks_ms()
+            if event.pressed: # Toggle turned on
+                self.latching_values[key_idx] = True
+                self.latching_timestamps[key_idx] = now
+            elif event.released: # Toggle turned off
+                self.latching_values[key_idx] = False
+                start_time = self.latching_timestamps[key_idx]
+                if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
+                    self.latching_tapped[key_idx] = True
+                self.latching_timestamps[key_idx] = 0
+
+    def _hw_expander_momentary_toggles(self):
+        """Polls MCP23017 and processes events into the global state arrays."""
+        if self.monitor_only or not self._expanded_momentary_keys:
+            return
+        event = keypad.Event()
+        while self._expanded_momentary_keys.events.get_into(event):
+            key_idx = self._local_momentary_count + (event.key_number // 2)
+            direction = 0 if event.key_number % 2 == 0 else 1
+            now = ticks_ms()
+            if event.pressed: # Button pressed
+                self.momentary_values[key_idx][direction] = True
+                self.momentary_timestamps[key_idx][direction] = now
+            elif event.released: # Button released
+                start_time = self.momentary_timestamps[key_idx][direction]
+                if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
+                    self.momentary_tapped[key_idx][direction] = True
+                self.momentary_values[key_idx][direction] = False
+    #endregion
+
+    #region --- Global Functions ---
     def hw_update(self):
         """Poll hardware inputs to update states."""
         if self.monitor_only:
@@ -508,6 +634,15 @@ class HIDManager:
         self._hw_poll_encoder_buttons()
         self._hw_poll_matrix_keypads()
         self._hw_poll_estop()
+        if self._mcp: # Poll expander if available
+            if (self._mcp_int and not self._mcp_int.value) or not self._mcp_int:
+                # Interrupt Active LOW or no INT pin
+                self._expanded_buttons_keys.update()
+                self._expanded_latching_keys.update()
+                self._expanded_momentary_keys.update()
+                self._hw_expander_buttons()
+                self._hw_expander_latching_toggles()
+                self._hw_expander_momentary_toggles()
 
     def set_remote_state(self,
                          buttons,           # [bool, bool, ...]
@@ -572,3 +707,4 @@ class HIDManager:
 
         # 4. Join with commas (handles spacing automatically) and add newline
         return ",".join(result_parts) + "\n"
+    #endregion

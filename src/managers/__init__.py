@@ -3,6 +3,7 @@
 
 from .audio_manager import AudioManager
 from .base_pixel_manager import BasePixelManager
+from .buzzer_manager import BuzzerManager
 from .display_manager import DisplayManager
 from .hid_manager import HIDManager
 from .led_manager import LEDManager
@@ -13,6 +14,7 @@ from .segment_manager import SegmentManager
 __all__ = [
     "AudioManager",
     "BasePixelManager",
+    "BuzzerManager",
     "DisplayManager",
     "HIDManager",
     "LEDManager",
