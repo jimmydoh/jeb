@@ -57,30 +57,53 @@ The Satellite acts as a repeater. It processes messages addressed to its ID and 
 
 ---
 
-## *** GPIO MAPPING (WORK IN PROGRESS) ***
+## *** GPIO MAPPING ***
 
 | Pin | Function | Description |
 | :--- | :--- | :--- |
-| **GP0** | UART_UP TX | Transmit to Upstream (115200 Baud) |
-| **GP1** | UART_UP RX | Receive from Upstream (115200 Baud) |
-| **GP2** | I2C SCL | Clock for HT16K33 Displays |
-| **GP3** | I2C SDA | Data for HT16K33 Displays |
-| **GP4** | UART_DOWN TX | Transmit to Downstream (115200 Baud) |
-| **GP5** | UART_DOWN RX | Receive from Downstream (115200 Baud) |
-| **GP6** | NeoPixel | Data line for 6x RGB LEDs |
-| **GP7-10** | Keypad Rows | Rows 1-4 (Matrix) |
-| **GP11-13** | Keypad Cols | Cols 1-3 (Matrix) |
-| **GP14** | Sat Power Enable | Logic High -> 2N3904 -> MOSFET ON |
-| **GP15** | Sat Detect | Active Low (Link Sense for Downstream) |
-| **GP17** | Encoder A | Rotary DT |
-| **GP18** | Encoder B | Rotary CLK |
-| **GP19** | Encoder Btn | Rotary Switch (Active Low) |
-| **GP20-23** | Toggles 1-4 | Latching Switches (Active Low) |
-| **GP24** | Momentary Up | Toggle 5 Direction Up (Active Low) |
-| **GP25** | Momentary Dn | Toggle 5 Direction Down (Active Low) |
+| **GP0** | UART_UP RX | Receive from Upstream |
+| **GP1** | UART_UP TX | Transmit to Upstream |
+| **GP2** | Encoder A | Rotary Encoder Phase A |
+| **GP3** | Encoder B | Rotary Encoder Phase B |
+| **GP4** | I2C SDA | Main Bus (Displays, Expander) |
+| **GP5** | I2C SCL | Main Bus (Displays, Expander) |
+| **GP6** | LED Data | NeoPixel Control Line |
+| **GP7** | SPARE | |
+| **GP8** | UART_DOWN TX | Transmit to Downstream |
+| **GP9** | UART_DOWN RX | Receive from Downstream |
+| **GP10**| Buzzer | PWM Audio (Piezo) |
+| **GP11**| Expander INT | MCP23008 Interrupt (Active Low) |
+| **GP12**| SPARE | |
+| **GP13**| SPARE | |
+| **GP14**| MOSFET Control | High = Downstream Power ON |
+| **GP15**| Sat Detect | Active Low (Downstream Sense) |
+| **GP16**| Keypad Row 1 | Matrix Row |
+| **GP17**| Keypad Row 2 | Matrix Row |
+| **GP18**| Keypad Row 3 | Matrix Row |
+| **GP19**| Keypad Col 1 | Matrix Col |
+| **GP20**| Keypad Col 2 | Matrix Col |
+| **GP21**| Keypad Col 3 | Matrix Col |
+| **GP22**| SPARE | |
+| **GP23**| Internal | Power Supply Mode (Pico Std) |
+| **GP24**| Internal | VBUS Sense (Pico Std) |
+| **GP25**| Encoder Push | Rotary Encoder Button |
 | **GP26** | ADC0 | Sense - 20V Input (Pre-MOSFET) [47k/6.8k] |
 | **GP27** | ADC1 | Sense - 20V Bus (Post-MOSFET) [47k/6.8k] |
 | **GP28** | ADC2 | Sense - 5V Logic Rail [10k/10k] |
+| **GP29**| SPARE | |
+
+### **EXPANDER MAPPING (MCP23008 at 0x20)**
+
+| Pin | Function | Description |
+| :--- | :--- | :--- |
+| **GP0** | Latching 1 | Toggle Switch (Active Low) |
+| **GP1** | Latching 2 | Toggle Switch (Active Low) |
+| **GP2** | Latching 3 | Toggle Switch (Active Low) |
+| **GP3** | Latching 4 | Toggle Switch (Active Low) |
+| **GP4** | Momentary Up | Toggle 5 Direction Up |
+| **GP5** | Momentary Dn | Toggle 5 Direction Down |
+| **GP6** | SPARE | |
+| **GP7** | SPARE | |
 
 ---
 

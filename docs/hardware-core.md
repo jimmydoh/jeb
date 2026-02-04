@@ -63,36 +63,49 @@
 
 | Pin | Function | Logic |
 | :--- | :--- | :--- |
-| **GP0** | UART TX | 115200 Baud (via 1kΩ) |
-| **GP1** | UART RX | 115200 Baud (via 1kΩ) |
-| **GP2** | Rotary Encoder A | |
-| **GP3** | Rotary Encoder B | |
-| **GP4** | I2C SDA | Requires 4.7kΩ Pull-ups |
-| **GP5** | I2C SCL | Requires 4.7kΩ Pull-ups |
-| **GP6** | GlowBit Matrix Control | |
-| **GP7** | E-Stop Input | Active Low (Normally Closed to GND) |
+| **GP0** | UART TX | Transmit to Satellite Bus |
+| **GP1** | UART RX | Receive from Satellite Bus |
+| **GP2** | Encoder A | Rotary Encoder Phase A |
+| **GP3** | Encoder B | Rotary Encoder Phase B |
+| **GP4** | I2C SDA | Main Bus (OLED, Expander) |
+| **GP5** | I2C SCL | Main Bus (OLED, Expander) |
+| **GP6** | LED Data | NeoPixel Control Line |
+| **GP7** | E-Stop Detect | Active Low (Safety Cut-off) |
 | **GP8** | SPARE | |
 | **GP9** | SPARE | |
-| **GP10**| Button A | Face Buttons (Active Low) |
-| **GP11**| Button B | Face Buttons (Active Low) |
-| **GP12**| Button C | Face Buttons (Active Low) |
-| **GP13**| Button D | Face Buttons (Active Low) |
-| **GP14**| MOSFET Enable | High = ON (NPN Base) |
+| **GP10**| Buzzer | PWM Audio (Piezo) |
+| **GP11**| Expander INT | MCP23008 Interrupt (Active Low) |
+| **GP12**| SPARE | |
+| **GP13**| SPARE | |
+| **GP14**| MOSFET Control | High = Power ON |
 | **GP15**| Sat Detect | Active Low (Link Sense) |
-| **GP16**| SPI MISO | Planned |
-| **GP17**| SPI CS | Planned |
-| **GP18**| SPI SCK | Planned |
-| **GP19**| SPI MOSI | Planned |
-| **GP20**| I2S Audio SCK | |
-| **GP21**| I2S Audio WS | |
-| **GP22**| I2S Audio SD | |
-| **GP23**| Internal Pico | Power |
-| **GP24**| Internal Pico | VBUS Sense |
-| **GP25**| Encoder Push Button | |
+| **GP16**| SPI MISO | SD Card |
+| **GP17**| SPI CS | SD Card |
+| **GP18**| SPI SCK | SD Card |
+| **GP19**| SPI MOSI | SD Card |
+| **GP20**| I2S SCK | Audio Amp Bit Clock |
+| **GP21**| I2S WS | Audio Amp Word Select |
+| **GP22**| I2S SD | Audio Amp Data |
+| **GP23**| Internal | Power Supply Mode (Pico Std) |
+| **GP24**| Internal | VBUS Sense (Pico Std) |
+| **GP25**| Encoder Push | Rotary Encoder Button |
 | **GP26**| ADC0 | Sense - 20V Raw Input (47k/6.8k) |
 | **GP27**| ADC1 | Sense - 20V Bus Output (47k/6.8k) |
 | **GP28**| ADC2 | Sense - 5V Logic Rail (10k/10k) |
 | **GP29**| ADC3 | Sense - 5V LED Rail (10k/10k) |
+
+### **EXPANDER MAPPING (MCP23008 at 0x20)**
+
+| Pin | Function | Logic |
+| :--- | :--- | :--- |
+| **GP0** | Button A | Face Button (Active Low) |
+| **GP1** | Button B | Face Button (Active Low) |
+| **GP2** | Button C | Face Button (Active Low) |
+| **GP3** | Button D | Face Button (Active Low) |
+| **GP4** | SPARE | |
+| **GP5** | SPARE | |
+| **GP6** | SPARE | |
+| **GP7** | SPARE | |
 
 ---
 

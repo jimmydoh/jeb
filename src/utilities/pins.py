@@ -1,3 +1,5 @@
+# File: src/utilities/pins.py
+"""Centralized Pin Map for JEB Project"""
 import board
 
 class Pins:
