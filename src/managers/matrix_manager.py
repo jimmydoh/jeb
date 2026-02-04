@@ -2,11 +2,6 @@
 """Manages the GlowBit 64 Matrix HUD display."""
 
 import asyncio
-import math
-import random
-import time
-
-import neopixel
 
 from utilities import Palette, Icons
 
@@ -22,7 +17,8 @@ class MatrixManager(BasePixelManager):
 
     def _get_idx(self, x, y):
         """Maps 2D (0-7) to Serpentine 1D index."""
-        if y % 2 == 0: return (y * 8) + x
+        if y % 2 == 0:
+            return (y * 8) + x
         return (y * 8) + (7 - x)
 
     def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0):
@@ -52,7 +48,15 @@ class MatrixManager(BasePixelManager):
 
     # TODO draw_line, draw_rect, draw_circle, draw_text, etc.
 
-    async def show_icon(self, icon_name, clear=True, anim_mode=None, speed=1.0, color=None, brightness=1.0):
+    async def show_icon(
+            self,
+            icon_name,
+            clear=True,
+            anim_mode=None,
+            speed=1.0,
+            color=None,
+            brightness=1.0
+        ):
         """
         Displays a predefined icon on the matrix with optional animation.
         anim_mode: None, "PULSE", "BLINK" are non-blocking via the animate_loop.

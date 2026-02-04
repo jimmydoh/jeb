@@ -6,8 +6,8 @@ from .base import BaseMode
 
 class UtilityMode(BaseMode):
     """Base class for utility modes with timeout handling."""
-    def __init__(self, jeb, name, description="", timeout=10):
-        super().__init__(jeb, name, description=description)
+    def __init__(self, core, name, description="", timeout=10):
+        super().__init__(core, name, description=description)
         self.timeout_ms = timeout * 1000 if timeout else None
         self.last_interaction = ticks_ms()
 
@@ -28,3 +28,7 @@ class UtilityMode(BaseMode):
 
         elapsed = ticks_diff(ticks_ms(), self.last_interaction)
         return elapsed > self.timeout_ms
+
+    async def run(self):
+        """Override this method in subclasses."""
+        raise NotImplementedError("Subclasses must implement the run() method.")

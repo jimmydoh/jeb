@@ -47,9 +47,9 @@ class HIDManager:
         self.latching_timestamps = [0] * (len(latching_toggles) or 0)
         self.latching_tapped = [False] * (len(latching_toggles) or 0)
         # Momentary Toggles States
-        self.momentary_values = [False][False] * (len(momentary_toggles) or 0)
-        self.momentary_timestamps = [0][0] * (len(momentary_toggles) or 0)
-        self.momentary_tapped = [False][False] * (len(momentary_toggles) or 0)
+        self.momentary_values = [[False, False] for _ in range(len(momentary_toggles) or 0)]
+        self.momentary_timestamps = [[0, 0] for _ in range(len(momentary_toggles) or 0)]
+        self.momentary_tapped = [[False, False] for _ in range(len(momentary_toggles) or 0)]
         # Encoder States
         self.encoder_positions = [0] * (len(encoders) or 0)
         self.encoder_timestamps = [0] * (len(encoders) or 0)
@@ -57,7 +57,7 @@ class HIDManager:
         self.encoder_buttons_timestamps = [0] * (len(encoders) or 0)
         self.encoder_buttons_tapped = [False] * (len(encoders) or 0)
         # Matrix Keypads States
-        self.matrix_keypads_queues = [mk[0] for mk in (matrix_keypads or [])]
+        self.matrix_keypads_queues = [[] for _ in (matrix_keypads or [])]
         self.matrix_keypads_maps = [mk[0] for mk in matrix_keypads] if matrix_keypads else []
         # E-Stop State
         self.estop_value = False
@@ -293,7 +293,7 @@ class HIDManager:
         event = keypad.Event()
         while self._momentary_toggles.events.get_into(event):
             key_idx = event.key_number // 2
-            direction = "U" if event.key_number % 2 == 0 else "D"
+            direction = 0 if event.key_number % 2 == 0 else 1
             now = ticks_ms()
             if event.pressed: # Button pressed
                 self.momentary_values[key_idx][direction] = True
@@ -339,11 +339,20 @@ class HIDManager:
             self._encoders[index].position = value
 
     def _sw_set_encoders(self, positions):
-        """Set the state of encoders without hardware polling."""
+        """
+        Set the state of encoders without hardware polling.
+        :param positions: A string representing the positions of each encoder.
+        :example: "0:25:123" sets encoder 0 to 0, encoder 1 to 25, encoder 2 to 123.
+        """
         if not self.monitor_only:
             return
-        for i, pos in enumerate(positions):
-            self.encoder_positions[i] = pos
+        parts = positions.split(":")
+        for i, pos in enumerate(parts):
+            if i < len(self.encoder_positions):
+                try:
+                    self.encoder_positions[i] = int(pos)
+                except (ValueError, IndexError):
+                    continue
 
     def _hw_poll_encoders(self):
         """Poll hardware encoders and update states."""
@@ -354,7 +363,7 @@ class HIDManager:
 
     def _encoders_string(self):
         """Returns a string representation of all encoder positions."""
-        return ",".join([str(pos) for pos in self.encoder_positions])
+        return ":".join([str(pos) for pos in self.encoder_positions])
     #endregion
 
     #region --- Encoder Button Handling ---
@@ -420,12 +429,19 @@ class HIDManager:
         return None
 
     def _sw_set_matrix_keypads(self, char_sequences):
-        """Set the state of matrix keypads without hardware polling."""
+        """
+        Set the state of matrix keypads without hardware polling.
+        :param char_sequences: A series of strings separated by ':', each representing
+                              the sequence of characters pressed on each keypad.
+        :example: "123A:456B" sets first keypad to "123A" and second to "456B".
+        """
         if not self.monitor_only:
             return
-        for i, chars in enumerate(char_sequences):
-            for char in chars:
-                self.matrix_keypads_queues[i].append(char)
+        parts = char_sequences.split(":")
+        for i, chars in enumerate(parts):
+            if i < len(self.matrix_keypads_queues):
+                for char in chars:
+                    self.matrix_keypads_queues[i].append(char)
 
     def _hw_poll_matrix_keypads(self):
         """Poll hardware matrix keypads and update states."""
@@ -443,19 +459,18 @@ class HIDManager:
                         if 0 < raw_idx < len(key_map):
                             self.matrix_keypads_queues[i].append(key_map[raw_idx])
 
-    def _matrix_keypads_string(self, index=0):
-        """Returns a string representation of all matrix keypads."""
-        result = ""
+    def _matrix_keypads_string(self):
+        """
+        Returns a string representation of all matrix keypads.
+        Each keypad's queued characters are joined together,
+        and different keypads are separated by ':'.
 
-        queue = self.matrix_keypads_queues[index]
-
-        if not queue:
-            return "N"
-
-        while queue:
-            result += str(queue.pop(0))
-
-        return result
+        :example: "123A:456B" for two keypads.
+        """
+        queue_values = []
+        for queues in self.matrix_keypads_queues:
+            queue_values.append("".join(queues))
+        return ":".join(queue_values)
     #endregion
 
     # --- E-Stop Handling ---

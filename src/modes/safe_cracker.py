@@ -11,20 +11,20 @@ from .game_mode import GameMode
 
 class SafeCracker(GameMode):
     """Safe Cracker Game Mode."""
-    def __init__(self, jeb):
-        super().__init__(jeb, "SAFE CRACKER", "Crack the safe by turning the dial")
+    def __init__(self, core):
+        super().__init__(core, "SAFE CRACKER", "Crack the safe by turning the dial")
 
     def _draw_safe_dial(self, value, highlight):
         """Draws a rotary dial position on the 8x8 Matrix."""
         # Clear buffer
-        self.jeb.matrix.pixels.fill((0, 0, 0))
+        self.core.matrix.pixels.fill((0, 0, 0))
 
         # 1. Draw Hub (Dim Center)
         # Center indices are (3,3), (3,4), (4,3), (4,4)
         hub_color = (20, 20, 20)
         for x in [3, 4]:
             for y in [3, 4]:
-                self.jeb.matrix.draw_pixel(x, y, hub_color)
+                self.core.matrix.draw_pixel(x, y, hub_color)
 
         # 2. Calculate Pointer Position
         # Map 0-100 to 0-2PI (Radians)
@@ -40,11 +40,18 @@ class SafeCracker(GameMode):
         py = max(0, min(7, py))
 
         # 3. Draw Pointer
-        pointer_color = (Palette.WHITE) if highlight else (Palette.CYAN) # White if aligned, Cyan otherwise
-        self.jeb.matrix.draw_pixel(px, py, pointer_color, show=False, anim_mode="BLINK" if highlight else None, speed=2.0)
+        pointer_color = (Palette.WHITE) if highlight else (Palette.CYAN)
+        self.core.matrix.draw_pixel(
+            px,
+            py,
+            pointer_color,
+            show=False,
+            anim_mode="BLINK" if highlight else None,
+            speed=2.0
+        )
 
         # Push to display
-        self.jeb.matrix.pixels.show()
+        self.core.matrix.pixels.show()
 
     async def run(self):
         """Play the Safe Cracker game."""
@@ -54,18 +61,18 @@ class SafeCracker(GameMode):
         self.step = 0
         dial_pos = 0
 
-        self.jeb.hid.reset_encoder(0)
+        self.core.hid.reset_encoder(0)
         last_p = 0
 
-        await self.jeb.display.update_status("SAFE MODE", "LISTEN CLOSELY")
-        self.jeb.audio.play("audio/safe/voice/welcome.wav",
-                            self.jeb.audio.CH_VOICE,
+        await self.core.display.update_status("SAFE MODE", "LISTEN CLOSELY")
+        self.core.audio.play("audio/safe/voice/welcome.wav",
+                            self.core.audio.CH_VOICE,
                             vol=1.0,
                             wait=True)
         await asyncio.sleep(0.5)
 
         while self.step < 3:
-            curr_p = self.jeb.hid.encoder_pos
+            curr_p = self.core.hid.encoder_pos
             target = combo[self.step]
 
             # Handle dial movement
@@ -77,12 +84,17 @@ class SafeCracker(GameMode):
 
                 # Check if the move is correct for the current step
                 if move != directions[self.step]:
-                    self.jeb.audio.play("audio/safe/sfx/crash.wav",
-                                        self.jeb.audio.CH_SFX,
+                    self.core.audio.play("audio/safe/sfx/crash.wav",
+                                        self.core.audio.CH_SFX,
                                         level=1.0,
                                         interrupt=True)
-                    self.jeb.matrix.fill((255, 0, 0), show=True, anim_mode="BLINK", speed=2.0) # Red Flash
-                    await self.jeb.display.update_status("RESET", "WRONG DIRECTION")
+                    self.core.matrix.fill( # RED FLASH
+                        (255, 0, 0),
+                        show=True,
+                        anim_mode="BLINK",
+                        speed=2.0
+                    )
+                    await self.core.display.update_status("RESET", "WRONG DIRECTION")
 
                     self.step = 0
                     await asyncio.sleep(0.5)
@@ -102,12 +114,17 @@ class SafeCracker(GameMode):
 
                 # If the movement overshoots the target, we passed it, reset
                 if abs(diff) > dist_to_target:
-                    self.jeb.audio.play("audio/safe/sfx/crash.wav",
-                                        self.jeb.audio.CH_SFX,
+                    self.core.audio.play("audio/safe/sfx/crash.wav",
+                                        self.core.audio.CH_SFX,
                                         level=1.0,
                                         interrupt=True)
-                    self.jeb.matrix.fill((Palette.ORANGE), show=True, anim_mode="BLINK", speed=2.0) # Orange Flash
-                    await self.jeb.display.update_status("OVERSHOOT!", "TRY AGAIN")
+                    self.core.matrix.fill( # ORANGE FLASH
+                        (Palette.ORANGE),
+                        show=True,
+                        anim_mode="BLINK",
+                        speed=2.0
+                    )
+                    await self.core.display.update_status("OVERSHOOT!", "TRY AGAIN")
                     self.step = 0
                     await asyncio.sleep(0.5)
                     last_p = curr_p
@@ -126,30 +143,37 @@ class SafeCracker(GameMode):
                 if circ_dist < 15:
                     vol += 0.8 * (15 - circ_dist) / 15
 
-                self.jeb.audio.play("audio/safe/sfx/tick.wav",
-                                    self.jeb.audio.CH_SFX,
+                self.core.audio.play("audio/safe/sfx/tick.wav",
+                                    self.core.audio.CH_SFX,
                                     level=vol,
                                     interrupt=True)
 
             # Render matrix and display without target highlight
             self._draw_safe_dial(dial_pos, False)
-            status_text = f"TARGET: {target:02d}" if self.jeb.is_debugging else "TARGET: ??"
-            self.jeb.display.update_status(f"DIAL POS: {dial_pos:02d}", status_text)
+            status_text = f"TARGET: {target:02d}" if self.core.is_debugging else "TARGET: ??"
+            self.core.display.update_status(f"DIAL POS: {dial_pos:02d}", status_text)
 
             # Check Target
             dist = abs(dial_pos - target)
             is_on_target = dist == 0
 
             if is_on_target:
-                self.jeb.matrix.draw_pixel(3, 3, (255, 255, 255), show=True, anim_mode="BLINK", speed=3.0)
-                self.jeb.audio.play("audio/safe/sfx/thump.wav",
-                                    self.jeb.audio.CH_SFX,
+                self.core.matrix.draw_pixel(
+                    3,
+                    3,
+                    (255, 255, 255),
+                    show=True,
+                    anim_mode="BLINK",
+                    speed=3.0
+                )
+                self.core.audio.play("audio/safe/sfx/thump.wav",
+                                    self.core.audio.CH_SFX,
                                     level=1.0,
                                     interrupt=True)
 
                 # Wait for them to hold steady
                 await asyncio.sleep(0.5)
-                if (self.jeb.hid.encoder_pos == curr_p): # Still there
+                if self.core.hid.encoder_pos == curr_p: # Still there
                     self._draw_safe_dial(dial_pos, True)
                     self.step += 1
                     await asyncio.sleep(0.1)

@@ -14,36 +14,41 @@ class IndustrialStartup(GameMode):
     A multi-phase startup sequence requiring various inputs
     from both the Core and Industrial Satellite box.
     """
-    def __init__(self, jeb, sat):
-        super().__init__(jeb, "INDUSTRIAL STARTUP", "Industrial Satellite Startup Sequence", total_steps=5)
+    def __init__(self, core, sat):
+        super().__init__(
+            core,
+            "INDUSTRIAL STARTUP",
+            "Industrial Satellite Startup Sequence",
+            total_steps=5
+        )
         self.sat = sat
 
     async def game_over(self):
         """Industrial Startup Fail Sequence."""
-        self.jeb.matrix.show_icon("FAILURE", anim_mode="PULSE", speed=2.0)
-        self.jeb.audio.play("audio/ind/atmo/hum_alarm.wav",
-                            self.jeb.audio.CH_ATMO,
+        self.core.matrix.show_icon("FAILURE", anim_mode="PULSE", speed=2.0)
+        self.core.audio.play("audio/ind/atmo/hum_alarm.wav",
+                            self.core.audio.CH_ATMO,
                             level=1.0,
                             loop=True,
                             Interrupt=True)
-        self.jeb.audio.play("audio/ind/voice/narration_fail.wav",
-                            self.jeb.audio.CH_VOICE,
+        self.core.audio.play("audio/ind/voice/narration_fail.wav",
+                            self.core.audio.CH_VOICE,
                             level=0.8,
                             Wait=True)
-        await self.jeb.display.update_status("SYSTEM FAILURE", "SHUTTING DOWN...")
+        await self.core.display.update_status("SYSTEM FAILURE", "SHUTTING DOWN...")
         await asyncio.sleep(2)
         return "GAME_OVER"
 
     async def victory(self):
         """Industrial Startup Victory Sequence."""
-        self.jeb.matrix.show_icon("SUCCESS", anim_mode="PULSE", speed=2.0)
-        self.jeb.audio.play("audio/ind/atmo/hum_final.wav",
-                            self.jeb.audio.CH_ATMO,
+        self.core.matrix.show_icon("SUCCESS", anim_mode="PULSE", speed=2.0)
+        self.core.audio.play("audio/ind/atmo/hum_final.wav",
+                            self.core.audio.CH_ATMO,
                             level=1.0,
                             loop=True,
                             Interrupt=True)
-        self.jeb.audio.play("audio/ind/voice/narration_success.wav",
-                            self.jeb.audio.CH_VOICE,
+        self.core.audio.play("audio/ind/voice/narration_success.wav",
+                            self.core.audio.CH_VOICE,
                             level=0.8,
                             Wait=True)
         return "VICTORY"
@@ -53,7 +58,7 @@ class IndustrialStartup(GameMode):
 
         # Initial check to confirm Satellite is connected
         if not self.sat or not self.sat.is_connected:
-            await self.jeb.display.update_status("ERROR", "SATELLITE OFFLINE")
+            await self.core.display.update_status("ERROR", "SATELLITE OFFLINE")
             await asyncio.sleep(2)
             return "FAILURE"
 
@@ -64,53 +69,56 @@ class IndustrialStartup(GameMode):
 
             # --- STEP 0: INITIALIZATION ---
             if self.step == 0:
-                await self.jeb.display.update_status("LINK ESTABLISHED", "INITIALIZING...")
-                self.jeb.audio.play("audio/ind/atmo/hum_1.wav",
-                                    self.jeb.audio.CH_ATMO,
+                await self.core.display.update_status("LINK ESTABLISHED", "INITIALIZING...")
+                self.core.audio.play("audio/ind/atmo/hum_1.wav",
+                                    self.core.audio.CH_ATMO,
                                     level=0.2,
                                     loop=True,
                                     interrupt=True)
-                self.jeb.audio.play("audio/ind/voice/narration_0.wav",
-                                    self.jeb.audio.CH_VOICE,
+                self.core.audio.play("audio/ind/voice/narration_0.wav",
+                                    self.core.audio.CH_VOICE,
                                     level=narration_vol,
                                     wait=True)
                 self.step += 1
 
             # --- STEP 1: DUAL INPUT ---
             elif self.step == 1:
-                await self.jeb.display.update_status("INDUSTRIAL CONTROL ONLINE", "HOLD [A] + Prime Switch DOWN")
-                self.jeb.audio.play("audio/ind/atmo/hum_1.wav",
-                                    self.jeb.audio.CH_ATMO,
+                await self.core.display.update_status(
+                    "INDUSTRIAL CONTROL ONLINE",
+                    "HOLD [A] + Prime Switch DOWN"
+                    )
+                self.core.audio.play("audio/ind/atmo/hum_1.wav",
+                                    self.core.audio.CH_ATMO,
                                     level=0.2,
                                     loop=True,
                                     interrupt=True)
-                self.jeb.audio.play("audio/ind/voice/narration_1.wav",
-                                    self.jeb.audio.CH_VOICE,
+                self.core.audio.play("audio/ind/voice/narration_1.wav",
+                                    self.core.audio.CH_VOICE,
                                     level=narration_vol,
                                     wait=True)
                 # Await both inputs
                 while True:
-                    core_press = self.jeb.hid.is_pressed(0, Long=True, Duration=2000)
+                    core_press = self.core.hid.is_pressed(0, Long=True, Duration=2000)
                     sat_press = self.sat.is_momentary_toggled(0, "D", Long=True, Duration=2000)
                     if core_press and sat_press:
                         break
                     await asyncio.sleep(0.1)
 
-                await self.jeb.display.update_status("SUCCESSFULLY PRIMED", "POWERING UP...")
-                self.jeb.audio.play("audio/ind/sfx/power_up.wav",
-                                    self.jeb.audio.CH_SFX)
+                await self.core.display.update_status("SUCCESSFULLY PRIMED", "POWERING UP...")
+                self.core.audio.play("audio/ind/sfx/power_up.wav",
+                                    self.core.audio.CH_SFX)
                 self.step += 1
 
             # --- STEP 2: TOGGLE SEQUENCE ---
             elif self.step == 2:
-                await self.jeb.display.update_status("INIT SPLINE MODS", "CONFIRM STATES")
-                self.jeb.audio.play("audio/ind/atmo/hum_2.wav",
-                                    self.jeb.audio.CH_ATMO,
+                await self.core.display.update_status("INIT SPLINE MODS", "CONFIRM STATES")
+                self.core.audio.play("audio/ind/atmo/hum_2.wav",
+                                    self.core.audio.CH_ATMO,
                                     level=0.4,
                                     loop=True,
                                     interrupt=True)
-                self.jeb.audio.play("audio/ind/voice/narration_2.wav",
-                                    self.jeb.audio.CH_VOICE,
+                self.core.audio.play("audio/ind/voice/narration_2.wav",
+                                    self.core.audio.CH_VOICE,
                                     level=narration_vol,
                                     wait=True)
 
@@ -148,28 +156,41 @@ class IndustrialStartup(GameMode):
                     self.sat.snapshot_state()
 
                     # Reaction Loop
-                    await self.jeb.display.update_status(f"PHASE: {iteration+1}/10", "AWAITING SIGNAL...")
+                    await self.core.display.update_status(
+                        f"PHASE: {iteration+1}/10",
+                        "AWAITING SIGNAL..."
+                    )
                     success = False
                     wrong_input = False
 
                     while not success and not wrong_input:
                         # Pulse the target LED Amber
-                        self.sat.send_cmd("LEDFLASH", f"{target_idx},255,165,0,0.0,0.5,3,{blink_speed},{blink_speed}")
+                        self.sat.send_cmd(
+                            "LEDFLASH",
+                            f"{target_idx},255,165,0,0.0,0.5,3,{blink_speed},{blink_speed}"
+                        )
                         # --- CHECK FOR SUCCESS ---
                         if mode == "LATCH":
-                            self.jeb.audio.play(f"audio/ind/voice/latch_{target_idx}.wav",
-                                                self.jeb.audio.CH_VOICE,
+                            self.core.audio.play(f"audio/ind/voice/latch_{target_idx}.wav",
+                                                self.core.audio.CH_VOICE,
                                                 level=narration_vol,
                                                 wait=True)
                             if self.sat.is_latching_toggled(target_idx) == required_state:
                                 success = True
                         else: # MOMENTARY
                             # Require a 2s hold to ensure it's intentional
-                            self.jeb.audio.play(f"audio/ind/voice/momentary_{target_idx}_{required_direction}.wav",
-                                                self.jeb.audio.CH_VOICE,
-                                                level=narration_vol,
-                                                wait=True)
-                            if self.sat.is_momentary_toggled(m_idx, required_direction, long=True, duration=2000):
+                            self.core.audio.play(
+                                f"audio/ind/voice/momentary_{target_idx}_{required_direction}.wav",
+                                self.core.audio.CH_VOICE,
+                                level=narration_vol,
+                                wait=True
+                            )
+                            if self.sat.is_momentary_toggled(
+                                m_idx,
+                                required_direction,
+                                long=True,
+                                duration=2000
+                            ):
                                 success = True
 
                         # --- CHECK FOR WRONG INPUT ---
@@ -180,8 +201,8 @@ class IndustrialStartup(GameMode):
                     # Handle Result
                     if success:
                         iteration += 1
-                        self.jeb.audio.play("audio/ind/sfx/toggle_confirm.wav",
-                                            self.jeb.audio.CH_SFX,
+                        self.core.audio.play("audio/ind/sfx/toggle_confirm.wav",
+                                            self.core.audio.CH_SFX,
                                             level=0.8,
                                             Interrupt=True)
                         self.sat.send_cmd("LED", f"{target_idx},0,255,0,0.0,0.5,2")
@@ -190,8 +211,8 @@ class IndustrialStartup(GameMode):
                         self.sat.send_cmd("LED", f"{target_idx},100,100,255,0.0,0.5,2")
 
                     elif wrong_input:
-                        self.jeb.audio.play("audio/ind/sfx/toggle_error.wav",
-                                            self.jeb.audio.CH_SFX,
+                        self.core.audio.play("audio/ind/sfx/toggle_error.wav",
+                                            self.core.audio.CH_SFX,
                                             level=0.8,
                                             Interrupt=True)
                         # Flash ALL toggle LEDs Red
@@ -201,9 +222,9 @@ class IndustrialStartup(GameMode):
                         # Loop continues, iterations do NOT increase
 
                 # Completed all iterations
-                await self.jeb.display.update_status("PHASE COMPLETE", "CORE STABILIZED")
-                self.jeb.audio.play("audio/ind/voice/toggle_done.wav",
-                                    self.jeb.audio.CH_VOICE,
+                await self.core.display.update_status("PHASE COMPLETE", "CORE STABILIZED")
+                self.core.audio.play("audio/ind/voice/toggle_done.wav",
+                                    self.core.audio.CH_VOICE,
                                     level=narration_vol,
                                     wait=True)
                 # TODO Play Victory Animation
@@ -212,14 +233,14 @@ class IndustrialStartup(GameMode):
 
             # --- STEP 3: AUTH CODE ENTRY ---
             elif self.step == 3:
-                await self.jeb.display.update_status("AWAIT AUTH CODE", "ADMIN ACCESS")
-                self.jeb.audio.play("audio/ind/atmo/hum_2.wav",
-                                    self.jeb.audio.CH_ATMO,
+                await self.core.display.update_status("AWAIT AUTH CODE", "ADMIN ACCESS")
+                self.core.audio.play("audio/ind/atmo/hum_2.wav",
+                                    self.core.audio.CH_ATMO,
                                     level=0.6,
                                     loop=True,
                                     Interrupt=False)
-                self.jeb.audio.play("audio/ind/voice/narration_3.wav",
-                                    self.jeb.audio.CH_VOICE,
+                self.core.audio.play("audio/ind/voice/narration_3.wav",
+                                    self.core.audio.CH_VOICE,
                                     level=narration_vol,
                                     wait=True)
 
@@ -231,15 +252,15 @@ class IndustrialStartup(GameMode):
 
                     # Display the code one by one
                     for digit in target_sequence:
-                        await self.jeb.display.update_status("ENTRY CODE:", digit)
+                        await self.core.display.update_status("ENTRY CODE:", digit)
                         # TODO Display on matrix as well
-                        self.jeb.audio.play(f"audio/ind/voice/v_{digit}.wav",
-                                            self.jeb.audio.CH_VOICE,
+                        self.core.audio.play(f"audio/ind/voice/v_{digit}.wav",
+                                            self.core.audio.CH_VOICE,
                                             level=narration_vol,
                                             Wait=True)
                         await asyncio.sleep(0.9)
-                    self.jeb.audio.play("audio/ind/voice/keypad_go.wav",
-                                        self.jeb.audio.CH_VOICE,
+                    self.core.audio.play("audio/ind/voice/keypad_go.wav",
+                                        self.core.audio.CH_VOICE,
                                         level=narration_vol,
                                         Wait=True)
 
@@ -249,21 +270,21 @@ class IndustrialStartup(GameMode):
                         if self.sat.keypad != "N":
                             user_entry += self.sat.keypad
                             self.sat.send_cmd("DSP",user_entry)
-                            self.jeb.audio.play("audio/ind/sfx/keypad_click.wav",
-                                                self.jeb.audio.CH_SFX,
+                            self.core.audio.play("audio/ind/sfx/keypad_click.wav",
+                                                self.core.audio.CH_SFX,
                                                 level=0.8)
                             self.sat.clear_key()
                         await asyncio.sleep(0.01)
 
                     # If it does not match, prompt retry
                     if user_entry != target_sequence:
-                        await self.jeb.display.update_status("AUTH FAILED", "RE-TRANSMITTING")
-                        self.jeb.audio.play("audio/ind/sfx/fail.wav",
-                                            self.jeb.audio.CH_SFX,
+                        await self.core.display.update_status("AUTH FAILED", "RE-TRANSMITTING")
+                        self.core.audio.play("audio/ind/sfx/fail.wav",
+                                            self.core.audio.CH_SFX,
                                             level=0.6,
                                             Interrupt=True)
-                        self.jeb.audio.play("audio/ind/voice/keypad_retry.wav",
-                                            self.jeb.audio.CH_VOICE,
+                        self.core.audio.play("audio/ind/voice/keypad_retry.wav",
+                                            self.core.audio.CH_VOICE,
                                             level=narration_vol,
                                             Wait=True)
                         user_entry = ""
@@ -271,28 +292,28 @@ class IndustrialStartup(GameMode):
                         await asyncio.sleep(2)
 
                 # Success
-                await self.jeb.display.update_status("AUTH CODE ACCEPTED", "ACCESS GRANTED")
-                self.jeb.audio.play("audio/ind/sfx/success.wav",
-                                    self.jeb.audio.CH_SFX,
+                await self.core.display.update_status("AUTH CODE ACCEPTED", "ACCESS GRANTED")
+                self.core.audio.play("audio/ind/sfx/success.wav",
+                                    self.core.audio.CH_SFX,
                                     level=0.8,
                                     Interrupt=True)
-                self.jeb.current_mode_step += 1
+                self.core.current_mode_step += 1
 
             # --- STEP 4: ALIGN BRACKETS ---
             elif self.step == 4:
-                await self.jeb.display.update_status("ALIGN BRACKETS", "DUAL ENCODER SYNC")
-                self.jeb.audio.play("audio/ind/atmo/hum_3.wav",
-                                    self.jeb.audio.CH_ATMO,
+                await self.core.display.update_status("ALIGN BRACKETS", "DUAL ENCODER SYNC")
+                self.core.audio.play("audio/ind/atmo/hum_3.wav",
+                                    self.core.audio.CH_ATMO,
                                     level=0.8,
                                     loop=True,
                                     Interrupt=True)
-                self.jeb.audio.play("audio/ind/voice/narration_4.wav",
-                                    self.jeb.audio.CH_VOICE,
+                self.core.audio.play("audio/ind/voice/narration_4.wav",
+                                    self.core.audio.CH_VOICE,
                                     level=narration_vol,
                                     Wait=True)
 
                 self.sat.reset_encoder(0)       # Left bracket starts at LED 0
-                self.jeb.hid.reset_encoder(7)   # Right bracket starts at LED 7
+                self.core.hid.reset_encoder(7)   # Right bracket starts at LED 7
 
                 target_pos = random.randint(2, 5)  # Target position between 2 and 5
                 last_target_move = ticks_ms()
@@ -307,22 +328,22 @@ class IndustrialStartup(GameMode):
                         new_target = max(1, min(6, target_pos + move))
                         if new_target != target_pos:
                             target_pos = new_target
-                            self.jeb.audio.play("audio/ind/sfx/target_shift.wav",
-                                                self.jeb.audio.CH_SFX,
+                            self.core.audio.play("audio/ind/sfx/target_shift.wav",
+                                                self.core.audio.CH_SFX,
                                                 level=0.5)
                         last_target_move = current_time
 
                     # Get Input Positions (0-7)
                     left_pos = self.sat.get_scaled_encoder_pos(multiplier=1.0, wrap=8)
-                    right_pos = self.jeb.hid.get_scaled_encoder_pos(multiplier=1.0, wrap=8)
+                    right_pos = self.core.hid.get_scaled_encoder_pos(multiplier=1.0, wrap=8)
 
                     # Logic Checks
                     # Collision (Critical Failure)
                     if left_pos >= right_pos:
-                        self.jeb.matrix.fill(Palette.RED, show=True, anim_mode="BLINK", speed=2.0)
-                        await self.jeb.display.update_status("CRITICAL ERROR", "BRACKET COLLISION")
-                        self.jeb.audio.play("audio/ind/sfx/crash.wav",
-                                            self.jeb.audio.CH_SFX,
+                        self.core.matrix.fill(Palette.RED, show=True, anim_mode="BLINK", speed=2.0)
+                        await self.core.display.update_status("CRITICAL ERROR", "BRACKET COLLISION")
+                        self.core.audio.play("audio/ind/sfx/crash.wav",
+                                            self.core.audio.CH_SFX,
                                             level=1.0)
                         await asyncio.sleep(2)
                         return await self.game_over()
@@ -331,33 +352,69 @@ class IndustrialStartup(GameMode):
                     is_aligned = (left_pos == (target_pos - 1)) and (right_pos == (target_pos + 1))
 
                     # Render Matrix Visuals
-                    self.jeb.matrix.fill(Palette.OFF, show=True)
+                    self.core.matrix.fill(Palette.OFF, show=True)
 
                     # Draw Target
                     if is_aligned:
                         for y in range(2, 6):
-                            self.jeb.matrix.draw_pixel(target_pos, y, Palette.GREEN, show=False, anim_mode="PULSE", speed=3.0)
+                            self.core.matrix.draw_pixel(
+                                target_pos,
+                                y,
+                                Palette.GREEN,
+                                show=False,
+                                anim_mode="PULSE",
+                                speed=3.0
+                            )
                     else:
                         for y in range(2, 6):
-                            self.jeb.matrix.draw_pixel(target_pos, y, Palette.YELLOW, show=False)
+                            self.core.matrix.draw_pixel(
+                                target_pos,
+                                y,
+                                Palette.YELLOW,
+                                show=False
+                            )
 
                     # Draw Left Bracket
                     if is_aligned:
                         for y in range(1, 7):
-                            self.jeb.matrix.draw_pixel(left_pos, y, Palette.GREEN, show=False, anim_mode="PULSE", speed=3.0)
+                            self.core.matrix.draw_pixel(
+                                left_pos,
+                                y,
+                                Palette.GREEN,
+                                show=False,
+                                anim_mode="PULSE",
+                                speed=3.0
+                            )
                     else:
                         for y in range(1, 7):
-                            self.jeb.matrix.draw_pixel(left_pos, y, Palette.CYAN, show=False)
+                            self.core.matrix.draw_pixel(
+                                left_pos,
+                                y,
+                                Palette.CYAN,
+                                show=False
+                            )
 
                     # Draw Right Bracket
                     if is_aligned:
                         for y in range(1, 7):
-                            self.jeb.matrix.draw_pixel(right_pos, y, Palette.GREEN, show=False, anim_mode="PULSE", speed=3.0)
+                            self.core.matrix.draw_pixel(
+                                right_pos,
+                                y,
+                                Palette.GREEN,
+                                show=False,
+                                anim_mode="PULSE",
+                                speed=3.0
+                            )
                     else:
                         for y in range(1, 7):
-                            self.jeb.matrix.draw_pixel(right_pos, y, Palette.MAGENTA, show=False)
+                            self.core.matrix.draw_pixel(
+                                right_pos,
+                                y,
+                                Palette.MAGENTA,
+                                show=False
+                            )
 
-                    self.jeb.matrix.pixels.show()
+                    self.core.matrix.pixels.show()
 
                     if is_aligned:
                         if lock_start_time is None:

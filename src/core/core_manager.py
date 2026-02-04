@@ -7,7 +7,7 @@ import busio
 import neopixel
 from adafruit_ticks import ticks_ms, ticks_diff
 
-from modes import IndustrialStartup, MainMenu, SafeCracker, Simon
+from modes import IndustrialStartup, JEBris, MainMenu, SafeCracker, Simon
 
 from satellites import IndustrialSatellite
 
@@ -44,7 +44,7 @@ class CoreManager:
             getattr(board, "GP11"), # Button B
             getattr(board, "GP12"), # Button C
             getattr(board, "GP13"), # Button D
-        ]        
+        ]
         # Mosfet Control Pin
         mosfet_pin = getattr(board, "GP14")
         # Connection Sense Pin
@@ -102,7 +102,13 @@ class CoreManager:
         ])
 
         # UART for satellite communication
-        self.uart = busio.UART(uart_tx, uart_rx, baudrate=115200, receiver_buffer_size=512, timeout=0.01)
+        self.uart = busio.UART(
+            uart_tx,
+            uart_rx,
+            baudrate=115200,
+            receiver_buffer_size=512,
+            timeout=0.01
+            )
 
         # System State
         self.satellites = {}
@@ -156,7 +162,7 @@ class CoreManager:
                 return "ESTOP_ABORT"
 
             # Long-press Button D to abort
-            if self.hid.is_pressed(3, long=True, duration=5000):
+            if self.hid.is_button_pressed(3, long=True, duration=5000):
                 sub_task.cancel()
                 await self.display.update_status("USER ABORT", "EXITING MODE...")
                 await self.cleanup_task(sub_task)
@@ -186,13 +192,23 @@ class CoreManager:
                 if sid in self.satellites:
                     if not self.satellites[sid].is_active:
                         self.satellites[sid].is_active = True
-                        asyncio.create_task(self.display.update_status("SAT RECONNECTED", f"ID: {sid}"))
+                        asyncio.create_task(
+                            self.display.update_status(
+                                "SAT RECONNECTED",
+                                f"ID: {sid}"
+                            )
+                        )
                         if self.satellites[sid].sat_type == "INDUSTRIAL":
                             self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
                             asyncio.create_task(self.audio.play_sfx("link_restored.wav", voice=1))
                     self.satellites[sid].update_from_packet(payload)
                 else:
-                    asyncio.create_task(self.display.update_status("UNKNOWN SAT",f"{sid} sent STATUS."))
+                    asyncio.create_task(
+                        self.display.update_status(
+                            "UNKNOWN SAT",
+                            f"{sid} sent STATUS."
+                        )
+                    )
             elif cmd == "POWER":
                 v_data = payload.split(",")
                 self.sat_telemetry[sid] = {
@@ -201,7 +217,12 @@ class CoreManager:
                     "log": float(v_data[2])
                 }
             elif cmd == "ERROR":
-                asyncio.create_task(self.display.update_status("REMOTE FAULT", f"SAT {sid}: {payload}"))
+                asyncio.create_task(
+                    self.display.update_status(
+                        "SAT ERROR",
+                        f"ID: {sid} ERR: {payload}"
+                    )
+                )
                 asyncio.create_task(self.audio.play_sfx("alarm_klaxon.wav", voice=1))
             elif cmd == "HELLO":
                 if sid in self.satellites:
@@ -209,12 +230,27 @@ class CoreManager:
                 else:
                     if payload == "INDUSTRIAL":
                         self.satellites[sid] = IndustrialSatellite(sid, self.uart)
-                    asyncio.create_task(self.display.update_status("NEW SAT",f"{sid} sent HELLO."))
+                    asyncio.create_task(
+                        self.display.update_status(
+                            "NEW SAT",
+                            f"{sid} sent HELLO."
+                        )
+                    )
             elif cmd == "NEW_SAT":
-                asyncio.create_task(self.display.update_status("SAT CONNECTED", f"TYPE {payload} FOUND"))
+                asyncio.create_task(
+                    self.display.update_status(
+                        "SAT CONNECTED",
+                        f"TYPE {payload} FOUND"
+                    )
+                )
                 self.uart.write(f"ALL|ID_ASSIGN|{payload}00\n".encode())
             else:
-                asyncio.create_task(self.display.update_status("UNKNOWN COMMAND", f"{sid} sent {cmd}"))
+                asyncio.create_task(
+                    self.display.update_status(
+                        "UNKNOWN COMMAND",
+                        f"{sid} sent {cmd}"
+                    )
+                )
         except Exception as e:
             print(f"Error handling packet: {e}")
 
@@ -243,7 +279,12 @@ class CoreManager:
                 else:
                     if not sat.is_active:
                         sat.is_active = True
-                        asyncio.create_task(self.display.update_status("LINK RESTORED", f"ID: {sid}"))
+                        asyncio.create_task(
+                            self.display.update_status(
+                                "LINK RESTORED",
+                                f"ID: {sid}"
+                            )
+                        )
 
             await asyncio.sleep(0.01)
 
@@ -364,6 +405,8 @@ class CoreManager:
 
             # Otherwise run the selected mode
             # Core Box Games
+            elif self.mode == "JEBRIS":
+                await self.run_mode_with_safety(JEBris(self))
             elif self.mode == "SIMON":
                 await self.run_mode_with_safety(Simon(self, 0.5, 3000))
             elif self.mode == "SAFE":
@@ -371,7 +414,10 @@ class CoreManager:
 
             # Industrial Satellite Games
             elif self.mode == "IND":
-                sat = next((s for s in self.satellites.values() if s.sat_type == "INDUSTRIAL"), None)
+                sat = next(
+                    (s for s in self.satellites.values() if s.sat_type == "INDUSTRIAL"),
+                    None,
+                )
                 if sat:
                     mode_instance = IndustrialStartup(self, sat)
                     run_ind = True
@@ -389,11 +435,19 @@ class CoreManager:
                                     run_ind = False
                                     continue
                                 secs_left = 60 - (elapsed // 1000)
-                                await self.display.update_status("LINK LOST", f"ABORT IN: {secs_left}s")
+                                await self.display.update_status(
+                                    "LINK LOST",
+                                    f"ABORT IN: {secs_left}s"
+                                )
                                 await asyncio.sleep(0.1)
                             if sat.is_active and run_ind:
                                 await self.display.update_status("LINK RESTORED", "RESUMING...")
-                                asyncio.create_task(self.audio.play_sfx("link_restored.wav", voice=1))
+                                asyncio.create_task(
+                                    self.audio.play_sfx(
+                                        "link_restored.wav",
+                                        voice=1
+                                    )
+                                )
                                 await asyncio.sleep(1)
                         else:
                             run_ind = False
