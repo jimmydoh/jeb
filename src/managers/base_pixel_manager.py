@@ -26,8 +26,7 @@ class BasePixelManager:
 
     def clear(self):
         """Stops all animations and clears LEDs."""
-        for i in range(self.num_pixels):
-            self.active_animations[i] = None
+        self.active_animations = [None] * self.num_pixels
         self._active_count = 0
         self.pixels.fill((0, 0, 0))
         self.pixels.show()
@@ -69,6 +68,9 @@ class BasePixelManager:
             if current is not None:
                 if priority < current.get("priority", 0):
                     continue
+            else:
+                # Increment counter when adding to empty slot
+                self._active_count += 1
 
             self.active_animations[i] = {
                 "type": anim_type,
