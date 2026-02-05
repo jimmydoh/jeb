@@ -1,6 +1,7 @@
 # File: src/utilities/__init__.py
 """Utility modules for JEB."""
 
+from .crc import calculate_crc8, verify_crc8
 from .icons import Icons
 from .jeb_pixel import JEBPixel
 from .mcp_keys import MCPKeys
@@ -8,6 +9,8 @@ from .palette import Palette
 from .pins import Pins
 
 __all__ = [
+    'calculate_crc8',
+    'verify_crc8',
     'Icons',
     'JEBPixel',
     'MCPKeys',
