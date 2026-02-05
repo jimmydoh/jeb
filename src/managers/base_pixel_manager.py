@@ -17,12 +17,17 @@ class BasePixelManager:
         self.pixels = pixel_object # JEBPixel wrapper
         self.num_pixels = self.pixels.n
 
-        # Format: index: { type, color, speed, start, duration, priority }
-        self.active_animations = {}
+        # Fixed-size list for animations (one slot per pixel)
+        # Each slot: None or { type, color, speed, start, duration, priority }
+        self.active_animations = [None] * self.num_pixels
+        
+        # Track active animation count to avoid O(n) checks
+        self._active_count = 0
 
     def clear(self):
         """Stops all animations and clears LEDs."""
-        self.active_animations.clear()
+        self.active_animations = [None] * self.num_pixels
+        self._active_count = 0
         self.pixels.fill((0, 0, 0))
         self.pixels.show()
 
@@ -31,12 +36,19 @@ class BasePixelManager:
         Registers an animation for a specific pixel index.
         Respects priority: Higher priority overwrites lower.
         """
+        # Validate index bounds
+        if idx < 0 or idx >= self.num_pixels:
+            return
+        
         # Check priority lock
-        if idx in self.active_animations:
-            current = self.active_animations[idx]
+        current = self.active_animations[idx]
+        if current is not None:
             # If new priority is lower than current running priority, ignore request
             if priority < current.get("priority", 0):
                 return
+        else:
+            # Adding a new animation
+            self._active_count += 1
 
         self.active_animations[idx] = {
             "type": anim_type,
@@ -52,9 +64,13 @@ class BasePixelManager:
         start_t = time.monotonic()
         for i in range(self.num_pixels):
             # We construct dict manually to sync start_time perfectly
-            if i in self.active_animations:
-                if priority < self.active_animations[i].get("priority", 0):
+            current = self.active_animations[i]
+            if current is not None:
+                if priority < current.get("priority", 0):
                     continue
+            else:
+                # Increment counter when adding to empty slot
+                self._active_count += 1
 
             self.active_animations[i] = {
                 "type": anim_type,
@@ -68,22 +84,26 @@ class BasePixelManager:
     async def animate_loop(self):
         """Unified background task to handle all pixel animations."""
         while True:
-            if not self.active_animations:
+            # Check if any animations are active using counter
+            if self._active_count == 0:
                 await asyncio.sleep(0.1)
                 continue
 
             now = time.monotonic()
             dirty = False
-            to_remove = []
 
-            for idx, anim in self.active_animations.items():
+            for idx in range(self.num_pixels):
+                anim = self.active_animations[idx]
+                if anim is None:
+                    continue
 
                 # 1. Duration Check
                 if anim["duration"]:
                     elapsed = now - anim["start"]
                     if elapsed >= anim["duration"]:
                         self.pixels[idx] = (0, 0, 0)
-                        to_remove.append(idx)
+                        self.active_animations[idx] = None
+                        self._active_count -= 1
                         dirty = True
                         continue
 
@@ -165,17 +185,13 @@ class BasePixelManager:
                     duration = 1.0 / anim["speed"]
                     if elapsed >= duration:
                         self.pixels[idx] = (0, 0, 0)
-                        to_remove.append(idx)
+                        self.active_animations[idx] = None
+                        self._active_count -= 1
                     else:
                         factor = 1.0 - (elapsed / duration)
                         base = anim["color"]
                         self.pixels[idx] = tuple(int(c * factor) for c in base)
                     dirty = True
-
-            # Cleanup
-            for idx in to_remove:
-                if idx in self.active_animations:
-                    del self.active_animations[idx]
 
             if dirty:
                 self.pixels.show()
