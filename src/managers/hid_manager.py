@@ -17,7 +17,7 @@ class HIDManager:
     """
     Unified Input Manager.
     Handles: Buttons, Latching Toggles, Momentary Toggles,
-        Encoders, Matrix Keypads, E-Stop, Expanded Inputs via MCP23017.
+        Encoders, Matrix Keypads, E-Stop (gameplay), Expanded Inputs via MCP23017.
 
     Buttons [board.GPx, board.GPy, ...]
         - Managed via keypad.Keys for debouncing and event handling.
@@ -31,7 +31,7 @@ class HIDManager:
     Matrix Keypads [[[key_map_0, ...],[row_pin_a, ...],[col_pin_a, ...]], ...]
         - Managed via keypad.Keypad for matrix scanning.
     E-Stop [board.GPx]
-        - Single digital input with pull-up.
+        - Single digital input with pull-up (for gameplay interaction).
     Expanded Inputs via MCP23017 (if provided)
         - Buttons, Latching Toggles, Momentary Toggles.
     """
@@ -639,17 +639,17 @@ class HIDManager:
     #region --- E-Stop Handling ---
     @property
     def estop(self):
-        """Returns True estop is pressed."""
+        """Returns True if E-Stop button is pressed (gameplay interaction)."""
         return self.estop_value
 
     def _sw_set_estop(self, value):
-        """Set the state of e-stop without hardware polling."""
+        """Set the state of E-Stop button without hardware polling (for testing/gameplay)."""
         if not self.monitor_only:
             return
         self.estop_value = value
 
     def _hw_poll_estop(self):
-        """Poll hardware e-stop and update state."""
+        """Poll hardware E-Stop button and update state (gameplay interaction)."""
         if self.monitor_only or not self._estop:
             return
         self.estop_value = not self._estop.value  # Active low

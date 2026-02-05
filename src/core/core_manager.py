@@ -309,7 +309,7 @@ class CoreManager:
             await asyncio.sleep(0.01)
 
     async def monitor_estop(self):
-        """Background task to monitor the Emergency Stop button.
+        """Background task to monitor the E-Stop button (gameplay interaction).
 
         Engaging the E-Stop triggers meltdown mode with audio alarms.
 
@@ -410,7 +410,7 @@ class CoreManager:
         """Main async loop for the Master Controller."""
         # Start background infrastructure tasks
         asyncio.create_task(self.monitor_sats())        # UART Comms
-        asyncio.create_task(self.monitor_estop())       # Emergency Stop
+        asyncio.create_task(self.monitor_estop())       # E-Stop Button (Gameplay)
         asyncio.create_task(self.monitor_power())       # Analog Power Monitoring
         asyncio.create_task(self.monitor_connection())  # RJ45 Link Detection
         asyncio.create_task(self.monitor_hw_hid())      # Local Hardware Input Polling
