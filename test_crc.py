@@ -117,6 +117,7 @@ def test_protocol_examples():
     
     examples = [
         "ALL|ID_ASSIGN|0100",
+        "SAT|NEW_SAT|01",
         "0101|STATUS|0000,C,N,0,0",
         "0101|POWER|24.2,23.8,5.0",
         "0101|ERROR|LOGIC_BROWNOUT:4.5V",

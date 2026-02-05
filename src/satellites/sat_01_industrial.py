@@ -407,7 +407,7 @@ class IndustrialSatellite(Satellite):
             # TX TO UPSTREAM
             if not self.id: # Initial Discovery Phase
                 if time.monotonic() - self.last_tx > 3.0:
-                    data = f"NEW_SAT|{self.sat_type_id}"
+                    data = f"SAT|NEW_SAT|{self.sat_type_id}"
                     crc = calculate_crc8(data)
                     self.uart_up.write(f"{data}|{crc}\n".encode())
                     self.last_tx = time.monotonic()
