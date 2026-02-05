@@ -35,6 +35,20 @@ class HIDManager:
     Expanded Inputs via MCP23017 (if provided)
         - Buttons, Latching Toggles, Momentary Toggles.
     """
+    
+    # Class constant for status buffer size
+    # Buffer size calculation for default order (7 fields with 6 commas):
+    # - Buttons: ~100 chars max
+    # - Toggles: ~100 chars max
+    # - Momentary: ~100 chars max
+    # - Keypads: ~100 chars max
+    # - Encoders: ~200 chars max (supports large position values like -99999:99999:...)
+    # - Encoder buttons: ~100 chars max
+    # - E-stop: 1 char
+    # - Separators: 6 commas + 1 newline = 7 chars
+    # Total estimate: ~808 bytes; using 1024 for safety margin
+    _STATUS_BUFFER_SIZE = 1024
+    
     def __init__(self,
                  buttons=None,
                  latching_toggles=None,
@@ -92,6 +106,9 @@ class HIDManager:
 
         # E-Stop State
         self.estop_value = False
+        
+        # Pre-allocated buffer for get_status_string to reduce heap fragmentation
+        self._status_buffer = bytearray(self._STATUS_BUFFER_SIZE)
         #endregion
 
         #region --- Initialize Always Available Properties ---
@@ -250,6 +267,13 @@ class HIDManager:
         for state in self.buttons_values:
             result += "1" if state else "0"
         return result
+    
+    def _buttons_to_buffer(self, buf, offset):
+        """Write button states to buffer at offset. Returns new offset."""
+        for state in self.buttons_values:
+            buf[offset] = ord('1') if state else ord('0')
+            offset += 1
+        return offset
     #endregion
 
     #region  --- Latching Toggles Handling ---
@@ -307,6 +331,13 @@ class HIDManager:
         for state in self.latching_values:
             result += "1" if state else "0"
         return result
+    
+    def _latching_to_buffer(self, buf, offset):
+        """Write latching toggle states to buffer at offset. Returns new offset."""
+        for state in self.latching_values:
+            buf[offset] = ord('1') if state else ord('0')
+            offset += 1
+        return offset
     #endregion
 
     #region --- Momentary Toggles Handling ---
@@ -386,6 +417,18 @@ class HIDManager:
             else:
                 result += "C"
         return result
+    
+    def _momentary_to_buffer(self, buf, offset):
+        """Write momentary toggle states to buffer at offset. Returns new offset."""
+        for toggle in self.momentary_values:
+            if toggle[0]:
+                buf[offset] = ord('U')
+            elif toggle[1]:
+                buf[offset] = ord('D')
+            else:
+                buf[offset] = ord('C')
+            offset += 1
+        return offset
     #endregion
 
     #region --- Encoder Handling ---
@@ -435,6 +478,37 @@ class HIDManager:
     def _encoders_string(self):
         """Returns a string representation of all encoder positions."""
         return ":".join([str(pos) for pos in self.encoder_positions])
+    
+    def _encoders_to_buffer(self, buf, offset):
+        """Write encoder positions to buffer at offset. Returns new offset."""
+        for i, pos in enumerate(self.encoder_positions):
+            if i > 0:
+                buf[offset] = ord(':')
+                offset += 1
+            # Convert integer to buffer without creating intermediate strings
+            # Handle negative numbers
+            if pos < 0:
+                buf[offset] = ord('-')
+                offset += 1
+                pos = -pos
+            # Special case for zero
+            if pos == 0:
+                buf[offset] = ord('0')
+                offset += 1
+            else:
+                # Calculate digits and write them in reverse, then reverse in place
+                start_offset = offset
+                while pos > 0:
+                    buf[offset] = ord('0') + (pos % 10)
+                    pos //= 10
+                    offset += 1
+                # Reverse the digits to correct order
+                end_offset = offset - 1
+                while start_offset < end_offset:
+                    buf[start_offset], buf[end_offset] = buf[end_offset], buf[start_offset]
+                    start_offset += 1
+                    end_offset -= 1
+        return offset
     #endregion
 
     #region --- Encoder Button Handling ---
@@ -490,6 +564,13 @@ class HIDManager:
         for state in self.encoder_buttons_values:
             result += "1" if state else "0"
         return result
+    
+    def _encoder_buttons_to_buffer(self, buf, offset):
+        """Write encoder button states to buffer at offset. Returns new offset."""
+        for state in self.encoder_buttons_values:
+            buf[offset] = ord('1') if state else ord('0')
+            offset += 1
+        return offset
     #endregion
 
     #region --- Matrix Keypad Handling ---
@@ -542,6 +623,17 @@ class HIDManager:
         for queues in self.matrix_keypads_queues:
             queue_values.append("".join(queues))
         return ":".join(queue_values)
+    
+    def _keypads_to_buffer(self, buf, offset):
+        """Write matrix keypad states to buffer at offset. Returns new offset."""
+        for i, queues in enumerate(self.matrix_keypads_queues):
+            if i > 0:
+                buf[offset] = ord(':')
+                offset += 1
+            for ch in queues:
+                buf[offset] = ord(ch)
+                offset += 1
+        return offset
     #endregion
 
     #region --- E-Stop Handling ---
@@ -565,6 +657,11 @@ class HIDManager:
     def _estop_string(self):
         """Returns '1' if estop is pressed, else '0'."""
         return "1" if self.estop_value else "0"
+    
+    def _estop_to_buffer(self, buf, offset):
+        """Write estop state to buffer at offset. Returns new offset."""
+        buf[offset] = ord('1') if self.estop_value else ord('0')
+        return offset + 1
     #endregion
 
     #region --- Expander MCP23017 Handling ---
@@ -674,19 +771,20 @@ class HIDManager:
     def get_status_string(self, order=None):
         """
         Read inputs and format status packet with custom ordering and selection.
+        Uses pre-allocated buffer to minimize heap fragmentation.
 
         :param order: A list of strings identifying which data to include and in what order.
                     If None, defaults to all fields in standard order.
         """
-        # 1. Map string keys to the actual class methods
+        # 1. Map string keys to the actual buffer-writing methods
         sources = {
-            'buttons': self._buttons_string,
-            'toggles': self._latching_toggles_string,
-            'momentary': self._momentary_toggles_string,
-            'keypads': self._matrix_keypads_string,
-            'encoders': self._encoders_string,
-            'encoder_btns': self._encoder_buttons_string,
-            'estop': self._estop_string
+            'buttons': self._buttons_to_buffer,
+            'toggles': self._latching_to_buffer,
+            'momentary': self._momentary_to_buffer,
+            'keypads': self._keypads_to_buffer,
+            'encoders': self._encoders_to_buffer,
+            'encoder_btns': self._encoder_buttons_to_buffer,
+            'estop': self._estop_to_buffer
         }
 
         # 2. Set default order if none is provided
@@ -696,15 +794,23 @@ class HIDManager:
                 'encoders', 'encoder_btns', 'estop'
             ]
 
-        # 3. Iterate, execute, and filter
-        result_parts = []
-        for key in order:
+        # 3. Write to pre-allocated buffer
+        offset = 0
+        for i, key in enumerate(order):
             # Check if key exists to prevent errors
             if key in sources:
-                # Execute the method
-                val = sources[key]()
-                result_parts.append(str(val) if val is not None else "")
+                # Add comma separator (except for first element)
+                if i > 0:
+                    self._status_buffer[offset] = ord(',')
+                    offset += 1
+                # Execute the buffer-writing method
+                offset = sources[key](self._status_buffer, offset)
 
-        # 4. Join with commas (handles spacing automatically) and add newline
-        return ",".join(result_parts) + "\n"
+        # 4. Add newline and convert used portion of buffer to string
+        self._status_buffer[offset] = ord('\n')
+        offset += 1
+        
+        # Return only the used portion of the buffer as a string
+        # bytearray.decode() avoids creating intermediate bytes object
+        return self._status_buffer[:offset].decode('utf-8')
     #endregion
