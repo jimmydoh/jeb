@@ -12,7 +12,7 @@ import time
 import busio
 import neopixel
 
-from utilities import JEBPixel, Palette, Pins
+from utilities import JEBPixel, Palette, Pins, calculate_crc8, verify_crc8
 
 from managers import HIDManager, LEDManager, PowerManager, SegmentManager, UARTManager
 
@@ -166,10 +166,14 @@ class IndustrialSatellite(Satellite):
                 self.segment.start_message(f"ID {self.id}", loop=False)
 
                 # Pass the NEW index downstream for the next box
-                self.uart_down.write(f"ALL|ID_ASSIGN|{self.id}\n".encode())
+                data = f"ALL|ID_ASSIGN|{self.id}"
+                crc = calculate_crc8(data)
+                self.uart_down.write(f"{data}|{crc}\n".encode())
             else:
                 # Not our type? Pass it along unchanged
-                self.uart_down.write(f"ALL|ID_ASSIGN|{val}\n".encode())
+                data = f"ALL|ID_ASSIGN|{val}"
+                crc = calculate_crc8(data)
+                self.uart_down.write(f"{data}|{crc}\n".encode())
 
         elif cmd == "SETENC":
             # Set the encoder position to a specific value
@@ -334,19 +338,25 @@ class IndustrialSatellite(Satellite):
 
             # Send periodic voltage reports upstream every 5 seconds
             if now - last_broadcast > 5.0:
-                self.uart_up.write(f"{self.id}|POWER|{v['in']},{v['bus']},{v['log']}\n".encode())
+                data = f"{self.id}|POWER|{v['in']},{v['bus']},{v['log']}"
+                crc = calculate_crc8(data)
+                self.uart_up.write(f"{data}|{crc}\n".encode())
                 last_broadcast = now
 
             # Safety Check: Logic rail sagging (Potential Buck Converter or Audio overload)
             if v["log"] < 4.7:
                 # Local warning: Dim LEDs to reduce current draw
                 self.leds.pixels.brightness = 0.05
-                self.uart_up.write(f"{self.id}|ERROR|LOGIC_BROWNOUT:{v['log']}V\n".encode())
+                data = f"{self.id}|ERROR|LOGIC_BROWNOUT:{v['log']}V"
+                crc = calculate_crc8(data)
+                self.uart_up.write(f"{data}|{crc}\n".encode())
 
             # Safety Check: Downstream Bus Failure
             if self.power.sat_pwr.value and v["bus"] < 17.0:
                 self.power.emergency_kill() # Instant cut-off
-                self.uart_up.write(f"{self.id}|ERROR|BUS_SHUTDOWN:LOW_V\n".encode())
+                data = f"{self.id}|ERROR|BUS_SHUTDOWN:LOW_V"
+                crc = calculate_crc8(data)
+                self.uart_up.write(f"{data}|{crc}\n".encode())
 
             await asyncio.sleep(0.5)
 
@@ -355,19 +365,27 @@ class IndustrialSatellite(Satellite):
         while True:
             # Scenario: Physical link detected but power is currently OFF
             if self.power.satbus_connected and not self.power.sat_pwr.value:
-                self.uart_up.write(f"{self.id}|LOG|LINK_DETECTED:INIT_PWR\n".encode())
+                data = f"{self.id}|LOG|LINK_DETECTED:INIT_PWR"
+                crc = calculate_crc8(data)
+                self.uart_up.write(f"{data}|{crc}\n".encode())
                 # Perform soft-start to protect the bus
                 success, error = await self.power.soft_start_satellites()
                 if success:
-                    self.uart_up.write(f"{self.id}|LOG|LINK_ACTIVE\n".encode())
+                    data = f"{self.id}|LOG|LINK_ACTIVE"
+                    crc = calculate_crc8(data)
+                    self.uart_up.write(f"{data}|{crc}\n".encode())
                 else:
-                    self.uart_up.write(f"{self.id}|ERROR|PWR_FAILED:{error}\n".encode())
+                    data = f"{self.id}|ERROR|PWR_FAILED:{error}"
+                    crc = calculate_crc8(data)
+                    self.uart_up.write(f"{data}|{crc}\n".encode())
                     self.leds.pixels.fill((255, 0, 0))
 
             # Scenario: Physical link lost while power is ON
             elif not self.power.satbus_connected and self.power.sat_pwr.value:
                 self.power.emergency_kill() # Immediate hardware cut-off
-                self.uart_up.write(f"{self.id}|ERROR|LINK_LOST\n".encode())
+                data = f"{self.id}|ERROR|LINK_LOST"
+                crc = calculate_crc8(data)
+                self.uart_up.write(f"{data}|{crc}\n".encode())
                 self.leds.pixels.fill((0, 0, 0))
 
             await asyncio.sleep(0.5)
@@ -389,7 +407,9 @@ class IndustrialSatellite(Satellite):
             # TX TO UPSTREAM
             if not self.id: # Initial Discovery Phase
                 if time.monotonic() - self.last_tx > 3.0:
-                    self.uart_up.write(f"NEW_SAT|{self.sat_type_id}\n".encode())
+                    data = f"SAT|NEW_SAT|{self.sat_type_id}"
+                    crc = calculate_crc8(data)
+                    self.uart_up.write(f"{data}|{crc}\n".encode())
                     self.last_tx = time.monotonic()
                     self.leds.flash_led(-1,
                                        Palette.AMBER,
@@ -398,9 +418,9 @@ class IndustrialSatellite(Satellite):
                                        priority=1)
             else: # Normal Operation
                 if time.monotonic() - self.last_tx > 0.1:
-                    self.uart_up.write(
-                        # 0101|STATUS
-                        f"{self.id}|STATUS|{self.hid.get_status_string()}\n".encode())
+                    data = f"{self.id}|STATUS|{self.hid.get_status_string()}"
+                    crc = calculate_crc8(data)
+                    self.uart_up.write(f"{data}|{crc}\n".encode())
                     self.last_tx = time.monotonic()
 
             # RX FROM UPSTREAM -> CMD PROCESSING & TX TO DOWNSTREAM
@@ -408,9 +428,17 @@ class IndustrialSatellite(Satellite):
                 # Use buffered read_line - non-blocking
                 line = self.uart_up.read_line()
                 if line and "|" in line:
-                    parts = line.split("|")
-                    if parts[0] == self.id or parts[0] == "ALL":
+                    # Verify CRC
+                    is_valid, data = verify_crc8(line)
+                    if not is_valid:
+                        # Discard corrupted packet
+                        print(f"CRC check failed, discarding packet: {line}")
+                        continue
+                    
+                    parts = data.split("|")
+                    if len(parts) >= 3 and (parts[0] == self.id or parts[0] == "ALL"):
                         self.process_local_cmd(parts[1], parts[2])
+                    # Forward packet downstream with original CRC
                     self.uart_down.write((line + "\n").encode())
             except ValueError as e:
                 # Buffer overflow or other error
