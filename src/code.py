@@ -150,8 +150,8 @@ else:
         app = CoreManager()
 
     elif role == "SAT" and type_id == "01":
-        from satellites import IndustrialSatellite
-        app = IndustrialSatellite(active=True, uart=None)
+        from satellites import IndustrialSatelliteFirmware
+        app = IndustrialSatelliteFirmware(uart=None)
 
     else:
         print("❗Unknown role/type_id combination. No application loaded.❗")

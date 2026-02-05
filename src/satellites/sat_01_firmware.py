@@ -1,18 +1,9 @@
 """
-Industrial Satellite Manager
+Industrial Satellite Firmware (Satellite-side)
 
-DEPRECATED: This class is deprecated and will be removed in a future release.
-
-This class violates the Single Responsibility Principle by handling both:
-1. Physical satellite operations (reading hardware)
-2. Core's representation (sending commands)
-
-Use these classes instead:
-- IndustrialSatelliteDriver: For Core-side telemetry parsing and command serialization
-- IndustrialSatelliteFirmware: For Satellite-side hardware I/O and logic
-
-A manager for both active industrial satellite boxes and the master controller
-to handle communication, HID inputs, LED control, segment display, and power management.
+Handles hardware I/O and logic for the Industrial Satellite when running
+on the actual satellite hardware. This class manages physical hardware
+including neopixels, segment displays, encoders, and power management.
 """
 
 import asyncio
@@ -31,148 +22,81 @@ from .base import Satellite
 TYPE_ID = "01"
 TYPE_NAME = "INDUSTRIAL"
 
-class IndustrialSatellite(Satellite):
-    """Satellite-side Manager to handle various subsystems.
+
+class IndustrialSatelliteFirmware(Satellite):
+    """Satellite-side firmware for Industrial Satellite.
     
-    DEPRECATED: This class is deprecated. Use:
-    - IndustrialSatelliteDriver for Core-side representation
-    - IndustrialSatelliteFirmware for Satellite-side hardware
+    Handles hardware I/O, power management, and local command processing.
+    Runs on the physical satellite hardware and manages all peripherals.
     """
-    def __init__(self, active=True, uart=None):
-        """Initialize the Industrial Satellite Manager.
-        
-        DEPRECATED: Use IndustrialSatelliteDriver or IndustrialSatelliteFirmware instead.
-        
-        Parameters:
-            active (bool): If True, initializes hardware (satellite mode).
-                          If False, initializes in monitor-only mode (core mode).
-            uart: UART manager for communication.
-        """
-        print("WARNING: IndustrialSatellite is deprecated. Use IndustrialSatelliteDriver or IndustrialSatelliteFirmware.")
+    
+    def __init__(self, uart=None):
+        """Initialize the Industrial Satellite Firmware."""
         super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, uart=uart)
 
         # State Variables
         self.last_tx = 0
 
-        if active:
-            # --- ACTIVE MODE (Running on Satellite Hardware) ---
-            # Define REAL Pins for the Industrial Satellite
+        # --- ACTIVE MODE (Running on Satellite Hardware) ---
+        # Define REAL Pins for the Industrial Satellite
+        Pins.initialize(profile="SAT", type_id=TYPE_ID)
 
-            Pins.initialize(profile="SAT", type_id=TYPE_ID)
+        # Init power manager first for voltage readings
+        self.power = PowerManager(
+            Pins.SENSE_PINS,
+            ["input", "satbus", "main"],
+            Pins.MOSFET_CONTROL,
+            Pins.SATBUS_DETECT
+        )
 
-            # Init power manager first for voltage readings
-            self.power = PowerManager(
-                Pins.SENSE_PINS,
-                ["input", "satbus", "main"],
-                Pins.MOSFET_CONTROL,
-                Pins.SATBUS_DETECT
-            )
+        # TODO Check power state
 
-            # TODO Check power state
+        # UART for satellite communication
+        uart_up_hw = busio.UART(
+            Pins.UART_TX,
+            Pins.UART_RX,
+            baudrate=115200,
+            receiver_buffer_size=512,
+            timeout=0.01
+        )
+        uart_down_hw = busio.UART(
+            Pins.UART_DOWN_TX,
+            Pins.UART_DOWN_RX,
+            baudrate=115200,
+            timeout=0.01
+        )
+        
+        # Wrap UARTs with buffering managers
+        self.uart_up = UARTManager(uart_up_hw)
+        self.uart_down = UARTManager(uart_down_hw)
 
-            # UART for satellite communication
-            uart_up_hw = busio.UART(
-                Pins.UART_TX,
-                Pins.UART_RX,
-                baudrate=115200,
-                receiver_buffer_size=512,
-                timeout=0.01
-            )
-            uart_down_hw = busio.UART(
-                Pins.UART_DOWN_TX,
-                Pins.UART_DOWN_RX,
-                baudrate=115200,
-                timeout=0.01
-            )
-            
-            # Wrap UARTs with buffering managers
-            self.uart_up = UARTManager(uart_up_hw)
-            self.uart_down = UARTManager(uart_down_hw)
+        # Init I2C bus
+        self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
 
-            # Init I2C bus
-            self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
+        # Init HID
+        self.hid = HIDManager(
+            latching_toggles=Pins.EXPANDER_LATCHING,
+            momentary_toggles=Pins.EXPANDER_MOMENTARY,
+            encoders=Pins.ENCODERS,
+            matrix_keypads=Pins.MATRIX_KEYPADS,
+            monitor_only=False
+        )
 
-            # Init HID
-            self.hid = HIDManager(
-                latching_toggles=Pins.EXPANDER_LATCHING,
-                momentary_toggles=Pins.EXPANDER_MOMENTARY,
-                encoders=Pins.ENCODERS,
-                matrix_keypads=Pins.MATRIX_KEYPADS,
-                monitor_only=False
-            )
+        # Init Segment Display
+        self.segment = SegmentManager(self.i2c)
 
-            # Init Segment Display
-            self.segment = SegmentManager(self.i2c)
+        # Init LED Hardware
+        self.root_pixels = neopixel.NeoPixel(
+            Pins.LED_CONTROL,
+            5,
+            brightness=0.3,
+            auto_write=False
+        )
 
-            # Init LED Hardware
-            self.root_pixels = neopixel.NeoPixel(
-                Pins.LED_CONTROL,
-                5,
-                brightness=0.3,
-                auto_write=False
-            )
+        # Init LEDManager with JEBPixel wrapper for the 5 onboard LEDs
+        self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=5)
+        self.leds = LEDManager(self.led_jeb_pixel)
 
-            # Init LEDManager with JEBPixel wrapper for the 5 onboard LEDs
-            self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=5)
-            self.leds = LEDManager(self.led_jeb_pixel)
-
-        else:
-            # --- MONITOR MODE (Running on Core / Virtual) ---
-            # Define PLACEHOLDERS for State Sizing
-
-            # Toggle Pins
-            latching_toggles = [0,0,0,0]
-
-            # Momentary Toggle Pins
-            momentary_toggles = [0]
-
-            # Encoders
-            encoders = [0]
-
-            # Matrix Keypads
-            matrix_keypads = [(
-                Pins.KEYPAD_MAP_3x3,
-                [],
-                []
-            )]
-
-            self.hid = HIDManager(
-                                latching_toggles=latching_toggles,
-                                momentary_toggles=momentary_toggles,
-                                encoders=encoders,
-                                matrix_keypads=matrix_keypads,
-                                monitor_only=True
-                                )
-
-#region # --- Satellite Monitoring Processes ---
-    # ONLY USED WHEN THIS CODE IS RUNNING ON THE MASTER CONTROLLER
-    def update_from_packet(self, data_str):
-        """Updates the attribute states in the HIDManager based on the received data string.
-
-        Example:
-            0000,C,N,0,0
-            1111,U,4014*,1,1
-        """
-        try:
-            self.update_heartbeat()
-            data = data_str.split(",")
-
-            self.hid.set_remote_state(
-                buttons=None,
-                latching_toggles=data[0],   # e.g. "0001",
-                momentary_toggles=data[1],  # e.g. "U" or "D"
-                encoders=data[3],           # e.g. "0", "22", "97"
-                encoder_buttons=data[4],    # e.g. "0" or "1
-                matrix_keypads=data[2],     # e.g. "N" or "4014*"
-                estop=None
-            )
-
-        except (IndexError, ValueError):
-            print(f"Malformed packet from Sat {self.id}")
-#endregion
-
-#region --- Active Satellite Processes ---
-    # ONLY USED WHEN THIS CODE IS RUNNING ON A SATELLITE
     async def process_local_cmd(self, cmd, val):
         """Process commands addressed to this satellite.
 
@@ -461,7 +385,7 @@ class IndustrialSatellite(Satellite):
                     
                     parts = data.split("|")
                     if len(parts) >= 3 and (parts[0] == self.id or parts[0] == "ALL"):
-                        self.process_local_cmd(parts[1], parts[2])
+                        await self.process_local_cmd(parts[1], parts[2])
                     # Forward packet downstream with original CRC
                     self.uart_down.write((line + "\n").encode())
             except ValueError as e:
@@ -471,4 +395,3 @@ class IndustrialSatellite(Satellite):
                 print(f"UART Unexpected Error: {e}")
 
             await asyncio.sleep(0.01)
-#endregion
