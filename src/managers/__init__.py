@@ -4,6 +4,7 @@
 from .audio_manager import AudioManager
 from .base_pixel_manager import BasePixelManager
 from .buzzer_manager import BuzzerManager
+from .data_manager import DataManager
 from .display_manager import DisplayManager
 from .hid_manager import HIDManager
 from .led_manager import LEDManager
@@ -15,6 +16,7 @@ __all__ = [
     "AudioManager",
     "BasePixelManager",
     "BuzzerManager",
+    "DataManager",
     "DisplayManager",
     "HIDManager",
     "LEDManager",

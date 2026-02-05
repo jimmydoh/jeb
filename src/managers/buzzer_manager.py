@@ -21,7 +21,7 @@ class BuzzerManager:
         # Standard Duty Cycle (50% is max volume for a piezo)
         if volume < 0.0 or volume > 1.0:
             raise ValueError("Volume must be between 0.0 and 1.0")
-        
+
         self.VOLUME_ON = int(volume * 2**16) - 1
         self.VOLUME_OFF = 0
 
@@ -43,29 +43,35 @@ class BuzzerManager:
         finally:
             self.buzzer.duty_cycle = self.VOLUME_OFF
 
-    async def _play_sequence_logic(self, sequence, tempo=1.0):
+    async def _play_sequence_logic(self, sequence, tempo=1.0, loop=False):
         """
         Internal logic to play a list of (frequency, duration) tuples.
         tempo: Speed multiplier (1.0 = normal, 0.5 = double speed)
         """
         try:
-            for freq, dur in sequence:
-                freq_rounded = int(round(freq))
-                if self.testing:
-                    print(f"Playing freq: {freq_rounded} Hz for {dur} sec")
-                if freq == 0:
+            while True:
+                for freq, dur in sequence:
+                    freq_rounded = int(round(freq))
+                    if self.testing:
+                        print(f"Playing freq: {freq_rounded} Hz for {dur} sec")
+                    if freq <= 0:
+                        self.buzzer.duty_cycle = self.VOLUME_OFF
+                    else:
+                        self.buzzer.frequency = freq_rounded
+                        self.buzzer.duty_cycle = self.VOLUME_ON
+
+                    await asyncio.sleep(dur * tempo)
+
+                    # Tiny gap between notes for articulation
                     self.buzzer.duty_cycle = self.VOLUME_OFF
-                else:
-                    self.buzzer.frequency = freq_rounded
-                    self.buzzer.duty_cycle = self.VOLUME_ON
+                    await asyncio.sleep(0.01)
 
-                await asyncio.sleep(dur * tempo)
+                if not loop:
+                    break
 
-                # Tiny gap between notes for articulation
+                await asyncio.sleep(0.1)  # Short pause before repeating
+
                 self.buzzer.duty_cycle = self.VOLUME_OFF
-                await asyncio.sleep(0.01)
-            
-            self.buzzer.duty_cycle = self.VOLUME_OFF
 
         except asyncio.CancelledError:
             self.buzzer.duty_cycle = self.VOLUME_OFF
@@ -81,17 +87,35 @@ class BuzzerManager:
             self._play_tone_logic(frequency, duration)
         )
 
-    def sequence(self, sequence, tempo=1.0):
+    def sequence(self, sequence, tempo=1.0, loop=False):
         """Plays a sequence of notes [(freq, dur), ...]."""
         self.stop()
         self._current_task = asyncio.create_task(
-            self._play_sequence_logic(sequence, tempo)
+            self._play_sequence_logic(sequence, tempo, loop)
         )
 
-    def play_song(self, song_data):
+    def play_song(self, song_data, loop=None):
         """Plays a predefined song from tones library."""
+
+        # Handle string input for convenience
+        if isinstance(song_data, str):
+            # Normalize to uppercase to be safe
+            song_name = song_data.upper()
+
+            # Check if this exists in the imported 'tones' library
+            if hasattr(tones, song_name):
+                song_data = getattr(tones, song_name)
+            else:
+                print(f"🔊 BuzzerManager Warning: Song '{song_name}' not found in tones.py")
+                return
+
+        if not isinstance(song_data, dict):
+            return
+
         bpm = song_data.get('bpm',120)
         sequence = song_data.get('sequence', [])
+
+        should_loop = loop if loop is not None else song_data.get('loop', False)
 
         print(f"Playing song at {bpm} BPM with {len(sequence)} notes.")
 
@@ -105,4 +129,4 @@ class BuzzerManager:
             dur = beat_length * beat_duration
             seq_converted.append((freq, dur))
 
-        self.sequence(seq_converted, tempo=1.0)
+        self.sequence(seq_converted, tempo=1.0, loop=should_loop)

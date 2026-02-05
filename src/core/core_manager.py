@@ -13,6 +13,8 @@ from satellites import IndustrialSatellite
 from utilities import JEBPixel, Pins
 
 from managers import AudioManager
+from managers import BuzzerManager
+from managers import DataManager
 from managers import DisplayManager
 from managers import HIDManager
 from managers import LEDManager
@@ -25,6 +27,9 @@ class CoreManager:
     def __init__(self, root_data_dir="/"):
 
         self.root_data_dir = root_data_dir
+
+        # Init Data Manager for persistent storage of scores and settings
+        self.data = DataManager(root_dir=root_data_dir)
 
         # Init Pins
         Pins.initialize(profile="CORE", type_id="00")

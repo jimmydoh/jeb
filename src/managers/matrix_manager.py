@@ -1,5 +1,5 @@
 # File: src/core/managers/matrix_manager.py
-"""Manages the GlowBit 64 Matrix HUD display."""
+"""Manages Matrix style LEDs."""
 
 import asyncio
 
@@ -8,7 +8,7 @@ from utilities import Palette, Icons
 from .base_pixel_manager import BasePixelManager
 
 class MatrixManager(BasePixelManager):
-    """Class to manage the GlowBit 64 Matrix HUD."""
+    """Class to manage Matrix style LED arrays, such as the GlowBit 64 LED Matrix."""
     def __init__(self, jeb_pixel):
         super().__init__(jeb_pixel)
 

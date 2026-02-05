@@ -34,6 +34,22 @@ class DisplayManager:
         self.dash_header = label.Label(terminalio.FONT, text="--- JADNET CORE ---", x=10, y=5)
         self.dash_group.append(self.dash_header)
 
+        # ** GAME INFO / SETTINGS VIEW **
+        self.game_info_group = displayio.Group()
+        self.game_header = label.Label(terminalio.FONT, text="", x=5, y=5)
+        self.game_score = label.Label(terminalio.FONT, text="", x=5, y=18)
+        self.game_settings_lines = []
+        for i in range(3): # Show 3 settings lines
+            lbl = label.Label(terminalio.FONT, text="", x=15, y=32 + (i * 12))
+            self.game_settings_lines.append(lbl)
+
+        self.settings_cursor = label.Label(terminalio.FONT, text=">", x=5, y=32)
+        self.game_info_group.append(self.game_header)
+        self.game_info_group.append(self.game_score)
+        self.game_info_group.append(self.settings_cursor)
+        for line in self.game_settings_lines:
+            self.game_info_group.append(line)
+
         # ** ADMIN MENU VIEW **
         self.admin_group = displayio.Group()
         self.admin_header = label.Label(terminalio.FONT, text="--- ADMIN MENU ---", x=10, y=5)
@@ -61,7 +77,7 @@ class DisplayManager:
         self.views = {
             "dashboard": self.dash_group,
             "menu": self.dash_group,
-            "dash_menu": self.dash_group,
+            "game_info": self.game_info_group,
             "admin_menu": self.admin_group,
             "debug_menu": self.debug_group
         }
@@ -93,6 +109,39 @@ class DisplayManager:
         self.status.text = main_text
         if sub_text is not None:
             self.sub_status.text = sub_text
+
+    def update_game_menu(self, title, score, settings, selected_idx, has_focus):
+        """Updates the Game Info / Settings screen.
+
+        settings: list of dicts {'label': 'SPEED', 'value': 'FAST'}
+        selected_idx: index of currently selected setting (if has_focus is True)
+        has_focus: Boolean, if True, show cursor on settings.
+        """
+        self.game_header.text = f"-- {title} --"
+        self.game_score.text = f"HIGH: {score}"
+
+        # Display Cursor only if settings are focused
+        if has_focus and len(settings) > 0:
+            self.settings_cursor.hidden = False
+            # Determine scroll offset if we have many settings
+            # Simple version: fixed 3 lines
+            start_idx = 0
+            if selected_idx > 2:
+                start_idx = selected_idx - 2
+
+            self.settings_cursor.y = 32 + ((selected_idx - start_idx) * 12)
+        else:
+            self.settings_cursor.hidden = True
+            start_idx = 0
+
+        # Draw Settings Lines
+        for i in range(3):
+            data_idx = start_idx + i
+            if data_idx < len(settings):
+                item = settings[data_idx]
+                self.game_settings_lines[i].text = f"{item['label']}: {item['value']}"
+            else:
+                self.game_settings_lines[i].text = ""
 
     def update_admin_menu(self, items, selected_idx):
         """Updates the text and carat position for the admin menu."""

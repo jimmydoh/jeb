@@ -17,6 +17,7 @@ class GameMode(BaseMode):
         """Standard Fail State."""
         self.core.matrix.show_icon("FAILURE", anim_mode="PULSE", speed=2.0)
         await self.core.audio.stop_all()
+        await self.core.buzzer.stop()
         await self.core.audio.play("audio/general/fail.wav",
                                     self.core.audio.CH_SFX,
                                     level=1.0,
@@ -29,6 +30,7 @@ class GameMode(BaseMode):
         """Standard Win State."""
         self.core.matrix.show_icon("SUCCESS", anim_mode="PULSE", speed=2.0)
         await self.core.audio.stop_all()
+        await self.core.buzzer.stop()
         await self.core.audio.play("audio/general/win.wav",
                                     self.core.audio.CH_SFX,
                                     level=1.0,

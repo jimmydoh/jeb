@@ -1,16 +1,29 @@
 # File: src/core/managers/led_manager.py
-"""Manages Core box NeoPixel animations and global effects (excluding the matrix)."""
+"""Manages simple LED arrays, such as individual button LEDs, sticks and strings."""
 
 from utilities import Palette
 
 from .base_pixel_manager import BasePixelManager
 
 class LEDManager(BasePixelManager):
-    """Manages the 4 button NeoPixel animations and global effects (ported from Satellite implementation)."""
+    """Class to control a number of individual LED elements in a 'straight line' format."""
     def __init__(self, jeb_pixel):
         super().__init__(jeb_pixel)
 
     # --- BASIC TRIGGERS ---
+    async def set_led(self, index, color, brightness=1.0, anim=None, duration=None, priority=2, speed=1.0):
+        """Sets a specific LED (or all LEDs) to a color with optional animation."""
+        targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
+        for i in targets:
+            if anim is None:
+                await self.solid_led(i, color, brightness=brightness, duration=duration, priority=priority)
+            elif anim == "FLASH":
+                await self.flash_led(i, color, brightness=brightness, duration=duration, priority=priority, speed=speed)
+            elif anim == "BREATH":
+                await self.breathe_led(i, color, brightness=brightness, duration=duration, priority=priority, speed=speed)
+            else:
+                await self.solid_led(i, color, brightness=brightness, duration=duration, priority=priority)
+
     async def off_led(self, index, priority=99):
         """Turns off a specific LED (or all LEDs)."""
         targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]

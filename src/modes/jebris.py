@@ -16,10 +16,21 @@ class JEBris(GameMode):
         super().__init__(core, "JEBRIS", "Tetris-inspired Falling Block Game")
 
         # --- GAME SETTINGS ---
+        difficulty = self.core.data.get_setting("JEBRIS", "difficulty", "NORMAL")
+        self.music_on = self.core.data.get_setting("JEBRIS", "music", "ON")
+        self.prev_highscore = self.core.data.get_setting("JEBRIS", "highscore", 0)
+
+        if difficulty == "EASY":
+            self.base_tick_ms = 1000
+        elif difficulty == "HARD":
+            self.base_tick_ms = 400
+        elif difficulty == "INSANE":
+            self.base_tick_ms = 200
+        else:
+            self.base_tick_ms = 800
+
         self.width = 8
         self.height = 8
-        self.speed_level = 1
-        self.base_tick_ms = 800  # Starting fall speed
 
         # --- SHAPES (Standard Tetrominoes) ---
         # Defined as (x, y) offsets relative to a center point
@@ -45,7 +56,7 @@ class JEBris(GameMode):
         # --- STATE ---
         self.grid = [[Palette.OFF for _ in range(self.width)] for _ in range(self.height)]
         self.score = 0
-        self.game_over = False
+        self.is_game_over = False
 
         # Active Piece
         self.current_piece = None
@@ -59,6 +70,9 @@ class JEBris(GameMode):
         self.reset_game()
 
         last_tick = time.monotonic()
+
+        if self.music_on:
+            await self.core.buzzer.play_song("TETRIS_THEME", loop=True)
 
         while True:
             now = time.monotonic()
@@ -80,8 +94,8 @@ class JEBris(GameMode):
                     self.spawn_piece()
 
                     if self.check_collision(self.current_piece, self.piece_x, self.piece_y):
-                        self.game_over = True
-                        await self.show_game_over()
+                        self.is_game_over = True
+                        await self.game_over()
                         self.reset_game()
 
                 last_tick = now
@@ -96,7 +110,7 @@ class JEBris(GameMode):
         """Resets the game state."""
         self.grid = [[Palette.OFF for _ in range(self.width)] for _ in range(self.height)]
         self.score = 0
-        self.game_over = False
+        self.is_game_over = False
         self.spawn_piece()
 
     def spawn_piece(self):
@@ -214,15 +228,28 @@ class JEBris(GameMode):
             # Optional: Play Sound
             # self.core.audio.play("line_clear")
 
-    async def show_game_over(self):
-        """Flash Red Animation."""
-        for _ in range(3):
-            self.core.matrix.fill(Palette.RED)
-            self.core.matrix.show()
-            await asyncio.sleep(0.2)
-            self.core.matrix.fill(Palette.OFF)
-            self.core.matrix.show()
-            await asyncio.sleep(0.2)
+    async def game_over(self):
+        """Standard Fail State."""
+
+        # Fill matrix with flashing red
+        await self.core.matrix.fill(
+            Palette.RED,
+            anim_mode="BLINK",
+            duration=2.0,
+            speed=0.5
+        )
+        await self.core.audio.stop_all()
+        await self.core.buzzer.stop()
+        await self.core.buzzer.play_song("GAME_OVER")
+        if self.score > self.prev_highscore:
+            self.core.data.set_setting("JEBRIS", "highscore", self.score)
+            await self.core.display.update_status("NEW HIGHSCORE!", f"SCORE: {self.score}")
+        else:
+            await self.core.display.update_status(f"YOUR SCORE: {self.score}", f"HIGHSCORE: {self.prev_highscore}")
+            await asyncio.sleep(1)
+        await asyncio.sleep(2)
+        return "GAME_OVER"
+
 
     def draw(self):
         """Renders the grid and active piece to the matrix."""
