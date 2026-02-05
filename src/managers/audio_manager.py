@@ -39,33 +39,35 @@ class AudioManager:
             try:
                 # Open the file, read it completely, then close it
                 f = open(self.root_data_dir + filename, "rb")
-                wav = audiocore.WaveFile(f, bytearray(256))
-                
-                # Extract audio properties
-                sample_rate = wav.sample_rate
-                channel_count = wav.channel_count
-                bits_per_sample = wav.bits_per_sample
-                
-                # Read all audio data into memory
-                audio_data = bytearray()
-                while True:
-                    samples = bytearray(1024)
-                    num_read = wav.readinto(samples)
-                    if num_read == 0:
-                        break
-                    audio_data.extend(samples[:num_read])
-                
-                # Close the file handle immediately
-                f.close()
-                
-                # Create RawSample from the decoded data
-                raw_sample = audiocore.RawSample(
-                    audio_data,
-                    channel_count=channel_count,
-                    sample_rate=sample_rate
-                )
-                
-                self._cache[filename] = raw_sample
+                try:
+                    wav = audiocore.WaveFile(f, bytearray(256))
+                    
+                    # Extract audio properties
+                    sample_rate = wav.sample_rate
+                    channel_count = wav.channel_count
+                    bits_per_sample = wav.bits_per_sample
+                    
+                    # Read all audio data into memory
+                    audio_data = bytearray()
+                    while True:
+                        samples = bytearray(1024)
+                        num_read = wav.readinto(samples)
+                        if num_read == 0:
+                            break
+                        audio_data.extend(samples[:num_read])
+                    
+                    # Create RawSample from the decoded data
+                    raw_sample = audiocore.RawSample(
+                        audio_data,
+                        channel_count=channel_count,
+                        sample_rate=sample_rate,
+                        bits_per_sample=bits_per_sample
+                    )
+                    
+                    self._cache[filename] = raw_sample
+                finally:
+                    # Always close the file handle
+                    f.close()
             except OSError:
                 print(f"Audio Error: Could not preload {filename}")
 
