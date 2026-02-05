@@ -104,17 +104,25 @@ class PowerManager:
         self.sat_pwr.value = True
         start_time = time.monotonic()
 
+        # Blanking time: Ignore voltage readings for the first 15ms
+        # This allows satellite input capacitors to charge before 
+        # enforcing the 17.0V limit, preventing false brownout detection
+        blanking_time = 0.015  # 15ms blanking period
+        
         # Fast-check loop: monitor voltage every 15ms during 500ms ramp-up
         # to detect short circuits immediately instead of waiting full delay
         total_delay = 0.5  # 500ms total ramp-up time
         check_interval = 0.015  # 15ms check interval
         
         while time.monotonic() - start_time < total_delay:
-            # Check for short circuit during ramp-up
-            v = self.status
-            if v["satbus" if "satbus" in self.sense_names else "1"] < 17.0:
-                self.sat_pwr.value = False
-                return False, "BUS BROWNOUT"
+            elapsed = time.monotonic() - start_time
+            
+            # Only check for short circuit after blanking time has elapsed
+            if elapsed >= blanking_time:
+                v = self.status
+                if v["satbus" if "satbus" in self.sense_names else "1"] < 17.0:
+                    self.sat_pwr.value = False
+                    return False, "BUS BROWNOUT"
             
             await asyncio.sleep(check_interval)
 
