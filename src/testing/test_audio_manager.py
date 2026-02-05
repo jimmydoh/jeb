@@ -5,10 +5,21 @@ import sys
 import os
 import tempfile
 
+# Constants for buffer sizes (matching AudioManager implementation)
+WAVE_FILE_BUFFER_SIZE = 256
+READ_BUFFER_SIZE = 1024
+MAX_PRELOAD_SIZE_BYTES = 20 * 1024  # 20KB
+
 
 # Mock audiocore and related modules since they're CircuitPython specific
+# Note: These mocks simplify the actual CircuitPython API for testing purposes
 class MockRawSample:
-    """Mock RawSample for testing."""
+    """Mock RawSample for testing.
+    
+    Note: This is a simplified mock. The actual CircuitPython audiocore.RawSample
+    may have a slightly different API, but this is sufficient for testing the
+    preload logic which focuses on file size checks and caching behavior.
+    """
     def __init__(self, audio_data, channel_count, sample_rate, bits_per_sample):
         self.audio_data = audio_data
         self.channel_count = channel_count
@@ -97,14 +108,14 @@ class AudioManager:
                     continue
                 
                 # Only preload files smaller than 20KB
-                if file_size > 20480:  # 20KB in bytes
-                    print(f"Audio Info: Skipping preload of {filename} ({file_size} bytes > 20KB). Will stream from disk.")
+                if file_size > MAX_PRELOAD_SIZE_BYTES:
+                    print(f"Audio Info: Skipping preload of {filename} ({file_size} bytes > {MAX_PRELOAD_SIZE_BYTES} bytes). Will stream from disk.")
                     continue
                 
                 # Open the file, read it completely, then close it
                 f = open(filepath, "rb")
                 try:
-                    wav = MockAudioCore.WaveFile(f, bytearray(256))
+                    wav = MockAudioCore.WaveFile(f, bytearray(WAVE_FILE_BUFFER_SIZE))
                     
                     # Extract audio properties
                     sample_rate = wav.sample_rate
@@ -114,7 +125,7 @@ class AudioManager:
                     # Read all audio data into memory
                     audio_data = bytearray()
                     while True:
-                        samples = bytearray(1024)
+                        samples = bytearray(READ_BUFFER_SIZE)
                         num_read = wav.readinto(samples)
                         if num_read == 0:
                             break

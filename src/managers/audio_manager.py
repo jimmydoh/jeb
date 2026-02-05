@@ -6,6 +6,10 @@ import audiobusio
 import audiocore
 import audiomixer
 
+# Maximum file size (in bytes) for preloading into RAM
+# Files larger than this will be streamed from disk to prevent MemoryError
+MAX_PRELOAD_SIZE_BYTES = 20 * 1024  # 20KB
+
 class AudioManager:
     """Manages audio playback and mixing."""
     def __init__(self, sck, ws, sd, voice_count=3, root_data_dir="/"):
@@ -46,14 +50,14 @@ class AudioManager:
                 
                 # Check file size before attempting to load
                 try:
-                    file_size = os.stat(filepath)[6]  # st_size is at index 6
+                    file_size = os.stat(filepath).st_size
                 except OSError:
                     print(f"Audio Error: Could not stat {filename}")
                     continue
                 
                 # Only preload files smaller than 20KB
-                if file_size > 20480:  # 20KB in bytes
-                    print(f"Audio Info: Skipping preload of {filename} ({file_size} bytes > 20KB). Will stream from disk.")
+                if file_size > MAX_PRELOAD_SIZE_BYTES:
+                    print(f"Audio Info: Skipping preload of {filename} ({file_size} bytes > {MAX_PRELOAD_SIZE_BYTES} bytes). Will stream from disk.")
                     continue
                 
                 # Open the file, read it completely, then close it
