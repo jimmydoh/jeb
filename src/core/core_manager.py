@@ -3,6 +3,7 @@
 
 import asyncio
 import busio
+import microcontroller
 import neopixel
 from adafruit_ticks import ticks_ms, ticks_diff
 
@@ -405,8 +406,12 @@ class CoreManager:
         self.audio.play("voice/os_online.wav", channel=self.audio.CH_VOICE)
 
         while True:
+            # Feed the hardware watchdog timer to prevent system reset
+            microcontroller.watchdog.feed()
+            
             # Meltdown state pauses the menu selection
             while self.meltdown:
+                microcontroller.watchdog.feed()
                 await asyncio.sleep(0.1)
 
             # MAIN MENU

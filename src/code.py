@@ -30,6 +30,7 @@ import time
 import board
 import busio
 import digitalio
+import microcontroller
 import sdcardio
 import storage
 import supervisor
@@ -128,6 +129,17 @@ test_mode = config.get("test_mode", False)
 
 print(f"ROLE: {role}, ID: {type_id}, NAME: {type_name}")
 
+# Enable Hardware Watchdog Timer for system reliability
+# The watchdog will reset the system if it's not fed within the timeout period
+# This prevents indefinite hangs and ensures system recovery
+WATCHDOG_TIMEOUT = 8.0  # 8 seconds - reasonable for async event loop iterations
+try:
+    microcontroller.watchdog.timeout = WATCHDOG_TIMEOUT
+    microcontroller.watchdog.mode = microcontroller.WatchDogMode.RESET
+    print(f"Watchdog Timer enabled: {WATCHDOG_TIMEOUT}s timeout")
+except Exception as e:
+    print(f"⚠️ Warning: Could not enable watchdog timer: {e}")
+
 if test_mode:
     print("⚠️ Running in TEST MODE. No main application will be loaded. ⚠️")
     from testing import TestManager
@@ -151,12 +163,20 @@ if __name__ == "__main__":
     try:
         if app is None:
             print("‼️No application loaded.‼️")
+            # Feed watchdog in idle loop to prevent reset
+            while True:
+                microcontroller.watchdog.feed()
+                time.sleep(1)
         else:
             print(f"Starting main app loop for {type_name} ")
+            # Feed watchdog before starting main application
+            microcontroller.watchdog.feed()
             asyncio.run(app.start())
     except Exception as e:
         print(f"🚨⛔ CRITICAL CRASH: {e}")
         import traceback
         traceback.print_exception(e)
+        # Feed watchdog one last time before reload to prevent premature reset
+        microcontroller.watchdog.feed()
         time.sleep(5)
         supervisor.reload()

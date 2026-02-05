@@ -2,6 +2,7 @@ import sys
 
 import asyncio
 import busio
+import microcontroller
 import supervisor
 
 from managers import BuzzerManager
@@ -150,6 +151,9 @@ class TestManager():
         print("="*30)
 
         while True:
+            # Feed the hardware watchdog timer to prevent system reset
+            microcontroller.watchdog.feed()
+            
             print("\n[MAIN MENU]")
             print("1. Test Buzzer (GP10)")
             print("2. I2C Bus Scan (GP4/5)")

@@ -6,6 +6,7 @@ to handle communication, HID inputs, LED control, segment display, and power man
 """
 
 import asyncio
+import microcontroller
 import time
 
 import busio
@@ -378,6 +379,8 @@ class IndustrialSatellite(Satellite):
         asyncio.create_task(self.relay_downstream_to_upstream())
 
         while True:
+            # Feed the hardware watchdog timer to prevent system reset
+            microcontroller.watchdog.feed()
 
             # TX TO UPSTREAM
             if not self.id: # Initial Discovery Phase
