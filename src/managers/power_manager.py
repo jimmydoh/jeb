@@ -101,12 +101,21 @@ class PowerManager:
 
         self.sat_pwr.value = True
 
-        await asyncio.sleep(0.5) # Wait for satellite buck converters
-
-        v = self.status
-        if v["satbus" if "satbus" in self.sense_names else "1"] < 17.0:
-            self.sat_pwr.value = False
-            return False, "BUS BROWNOUT"
+        # Fast-check loop: monitor voltage every 15ms during 500ms ramp-up
+        # to detect short circuits immediately instead of waiting full delay
+        total_delay = 0.5  # 500ms total ramp-up time
+        check_interval = 0.015  # 15ms check interval
+        elapsed = 0.0
+        
+        while elapsed < total_delay:
+            await asyncio.sleep(check_interval)
+            elapsed += check_interval
+            
+            # Check for short circuit during ramp-up
+            v = self.status
+            if v["satbus" if "satbus" in self.sense_names else "1"] < 17.0:
+                self.sat_pwr.value = False
+                return False, "BUS BROWNOUT"
 
         return True, "OK"
 
