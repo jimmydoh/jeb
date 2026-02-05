@@ -1,9 +1,9 @@
 # File: src/modes/jebris.py
 """JEBris Game Mode - A Tetris-inspired Falling Block Game for an 8x8 LED Matrix."""
 
-import time
 import random
 import asyncio
+from adafruit_ticks import ticks_ms, ticks_diff
 
 from utilities import Palette
 
@@ -12,6 +12,17 @@ from .game_mode import GameMode
 
 class JEBris(GameMode):
     """JEBris: A Tetris-inspired Falling Block Game."""
+    
+    # State machine constants
+    STATE_PLAYING = "PLAYING"
+    STATE_CLEARING_LINES = "CLEARING_LINES"
+    
+    # Input debounce constants (in milliseconds)
+    DEBOUNCE_LEFT_MS = 100
+    DEBOUNCE_ROTATE_MS = 200
+    DEBOUNCE_DROP_MS = 0  # No debounce for fast drop
+    DEBOUNCE_RIGHT_MS = 100
+    
     def __init__(self, core):
         super().__init__(core, "JEBRIS", "Tetris-inspired Falling Block Game")
 
@@ -63,47 +74,78 @@ class JEBris(GameMode):
         self.piece_x = 0
         self.piece_y = 0
         self.piece_color = Palette.OFF
+        
+        # --- TIMING STATE (for non-blocking input debouncing) ---
+        # Track last input time for each button (0: Left, 1: Rotate, 2: Drop, 3: Right)
+        self.last_input_time = [0, 0, 0, 0]
+        self.input_debounce_ms = [
+            self.DEBOUNCE_LEFT_MS,
+            self.DEBOUNCE_ROTATE_MS,
+            self.DEBOUNCE_DROP_MS,
+            self.DEBOUNCE_RIGHT_MS
+        ]
+        
+        # --- STATE MACHINE for line clearing ---
+        self.game_state = self.STATE_PLAYING
+        self.lines_to_clear = set()  # Set for O(1) lookup during rendering
+        self.clear_animation_start = 0
+        self.clear_animation_duration_ms = 50
 
     async def run(self):
         """Main Game Loop"""
         print(f"Starting {self.name}")
         self.reset_game()
 
-        last_tick = time.monotonic()
+        last_tick = ticks_ms()
 
         if self.music_on:
             await self.core.buzzer.play_song("TETRIS_THEME", loop=True)
 
         while True:
-            now = time.monotonic()
+            now = ticks_ms()
 
-            # 1. INPUT HANDLING
-            # We assume Core Buttons 0-3. Remap as needed.
-            # 0: Left, 1: Rotate, 2: Drop/Down, 3: Right
-            self.handle_input()
+            # STATE MACHINE: Handle different game states
+            if self.game_state == self.STATE_PLAYING:
+                # 1. INPUT HANDLING (non-blocking)
+                self.handle_input(now)
 
-            # 2. GRAVITY LOGIC
-            # Calculate speed based on level (faster as score goes up)
-            tick_interval = max(0.1, (self.base_tick_ms - (self.score * 50)) / 1000.0)
+                # 2. GRAVITY LOGIC
+                # Calculate speed based on level (faster as score goes up)
+                # Cap score multiplier to prevent nonsensical tick intervals
+                score_speedup = min(self.score * 50, self.base_tick_ms - 100)
+                tick_interval_ms = max(100, self.base_tick_ms - score_speedup)
 
-            if now - last_tick > tick_interval:
-                if not self.move_piece(0, 1):
-                    # Piece hit bottom/stack
-                    self.lock_piece()
-                    self.clear_lines()
+                if ticks_diff(now, last_tick) > tick_interval_ms:
+                    if not self.move_piece(0, 1):
+                        # Piece hit bottom/stack
+                        self.lock_piece()
+                        # Start line clearing state machine
+                        self.start_clear_lines()
+                        if not self.lines_to_clear:
+                            # No lines to clear, spawn immediately
+                            self.spawn_piece()
+                            if self.check_collision(self.current_piece, self.piece_x, self.piece_y):
+                                self.is_game_over = True
+                                await self.pre_game_over()
+
+                    last_tick = now
+                    
+            elif self.game_state == self.STATE_CLEARING_LINES:
+                # Handle line clearing animation (non-blocking)
+                if ticks_diff(now, self.clear_animation_start) > self.clear_animation_duration_ms:
+                    # Animation done, remove lines and return to playing
+                    self.finish_clear_lines()
                     self.spawn_piece()
-
                     if self.check_collision(self.current_piece, self.piece_x, self.piece_y):
                         self.is_game_over = True
                         await self.pre_game_over()
-
-                last_tick = now
+                    self.game_state = self.STATE_PLAYING
 
             # 3. RENDER
             self.draw()
 
             # Yield control for async background tasks (like HID updates)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.01)  # Reduced from 0.05 for more responsive gameplay
 
     def reset_game(self):
         """Resets the game state."""
@@ -122,34 +164,32 @@ class JEBris(GameMode):
         self.piece_x = self.width // 2
         self.piece_y = 0 # Might spawn slightly inside logic, check collision immediately
 
-    def handle_input(self):
-        """Checks for button presses."""
-        # Note: Depending on your HIDManager update logic, you might use
-        # is_pressed() (continuous) or check a queue.
-        # Here we use 'was_pressed' logic if available, or simple state checks with debouncing.
-
+    def handle_input(self, now):
+        """Checks for button presses with non-blocking debouncing."""
         hid = self.core.hid
 
         # LEFT (Btn 0)
-        if hid.is_pressed(0): # You might need a debounce helper here
-            self.move_piece(-1, 0)
-            # Simple debounce sleep to prevent flying across screen
-            time.sleep(0.1)
+        if hid.is_pressed(0):
+            if ticks_diff(now, self.last_input_time[0]) > self.input_debounce_ms[0]:
+                self.move_piece(-1, 0)
+                self.last_input_time[0] = now
 
         # ROTATE (Btn 1)
         if hid.is_pressed(1):
-            self.rotate_piece()
-            time.sleep(0.2)
+            if ticks_diff(now, self.last_input_time[1]) > self.input_debounce_ms[1]:
+                self.rotate_piece()
+                self.last_input_time[1] = now
 
         # FAST DROP (Btn 2)
         if hid.is_pressed(2):
+            # No debounce for fast drop to allow continuous dropping
             self.move_piece(0, 1)
-            # No sleep, allow fast dropping
 
         # RIGHT (Btn 3)
         if hid.is_pressed(3):
-            self.move_piece(1, 0)
-            time.sleep(0.1)
+            if ticks_diff(now, self.last_input_time[3]) > self.input_debounce_ms[3]:
+                self.move_piece(1, 0)
+                self.last_input_time[3] = now
 
     def move_piece(self, dx, dy):
         """Attempts to move the piece. Returns True if successful."""
@@ -200,32 +240,44 @@ class JEBris(GameMode):
             if 0 <= nx < self.width and 0 <= ny < self.height:
                 self.grid[ny][nx] = self.piece_color
 
-    def clear_lines(self):
-        """Checks for full rows, removes them, and shifts grid down."""
-        lines_cleared = 0
-        # Iterate from bottom up
-        y = self.height - 1
-        while y >= 0:
+    def start_clear_lines(self):
+        """Initiates line clearing animation without blocking."""
+        self.lines_to_clear = set()
+        
+        # Find all full rows
+        for y in range(self.height):
             if Palette.OFF not in self.grid[y]:
-                # Flash White Line
+                self.lines_to_clear.add(y)
+        
+        if self.lines_to_clear:
+            # Start animation state
+            self.game_state = self.STATE_CLEARING_LINES
+            self.clear_animation_start = ticks_ms()
+            
+            # Flash lines white immediately (visual feedback)
+            for y in self.lines_to_clear:
                 for x in range(self.width):
                     self.core.matrix.set_pixel(x, y, Palette.WHITE)
-                self.core.matrix.show()
-                time.sleep(0.05)
-
-                # Remove row
-                del self.grid[y]
-                # Add new empty row at top
-                self.grid.insert(0, [Palette.OFF for _ in range(self.width)])
-                lines_cleared += 1
-                # Don't decrement y, check this index again (it's a new row now)
-            else:
-                y -= 1
-
-        if lines_cleared > 0:
-            self.score += lines_cleared
-            # Optional: Play Sound
-            # self.core.audio.play("line_clear")
+            self.core.matrix.show()
+    
+    def finish_clear_lines(self):
+        """Completes line clearing after animation finishes."""
+        if not self.lines_to_clear:
+            return
+            
+        lines_cleared = len(self.lines_to_clear)
+        
+        # Remove cleared rows (sort in reverse order to avoid index shifting issues)
+        for y in sorted(self.lines_to_clear, reverse=True):
+            del self.grid[y]
+            # Add new empty row at top
+            self.grid.insert(0, [Palette.OFF for _ in range(self.width)])
+        
+        # Update score
+        self.score += lines_cleared
+        
+        # Clear the lines set
+        self.lines_to_clear = set()
 
     def draw(self):
         """Renders the grid and active piece to the matrix."""
@@ -235,11 +287,14 @@ class JEBris(GameMode):
         # 2. Draw Static Grid
         for y in range(self.height):
             for x in range(self.width):
-                if self.grid[y][x] != Palette.OFF:
+                # If we're in clearing state, show white for lines being cleared
+                if self.game_state == self.STATE_CLEARING_LINES and y in self.lines_to_clear:
+                    self.core.matrix.set_pixel(x, y, Palette.WHITE)
+                elif self.grid[y][x] != Palette.OFF:
                     self.core.matrix.set_pixel(x, y, self.grid[y][x])
 
-        # 3. Draw Active Piece
-        if self.current_piece:
+        # 3. Draw Active Piece (only in PLAYING state)
+        if self.game_state == self.STATE_PLAYING and self.current_piece:
             for x, y in self.current_piece:
                 nx = self.piece_x + x
                 ny = self.piece_y + y
