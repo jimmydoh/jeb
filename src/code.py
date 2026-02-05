@@ -176,7 +176,8 @@ if __name__ == "__main__":
         print(f"🚨⛔ CRITICAL CRASH: {e}")
         import traceback
         traceback.print_exception(e)
-        # Feed watchdog one last time before reload to prevent premature reset
+        # Reduced sleep to maintain watchdog margin before reload
+        time.sleep(2)
+        # Feed watchdog after sleep, before reload
         microcontroller.watchdog.feed()
-        time.sleep(5)
         supervisor.reload()
