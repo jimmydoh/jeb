@@ -385,7 +385,7 @@ class IndustrialSatelliteFirmware(Satellite):
                     
                     parts = data.split("|")
                     if len(parts) >= 3 and (parts[0] == self.id or parts[0] == "ALL"):
-                        self.process_local_cmd(parts[1], parts[2])
+                        await self.process_local_cmd(parts[1], parts[2])
                     # Forward packet downstream with original CRC
                     self.uart_down.write((line + "\n").encode())
             except ValueError as e:
