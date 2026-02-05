@@ -50,6 +50,11 @@ class PowerManager:
         # Scaling Factors
         self.RATIO_20V = 0.1263  # 47k / 6.8k
         self.RATIO_5V = 0.5      # 10k / 10k
+        
+        # Soft Start Configuration
+        # Blanking time allows satellite input capacitors to charge before
+        # voltage checks begin, preventing false brownout detection
+        self.SOFT_START_BLANKING_TIME = 0.015  # 15ms blanking period
 
     def get_v(self, sensor, ratio):
         """Converts ADC reading to actual voltage based on divider ratio."""
@@ -104,11 +109,6 @@ class PowerManager:
         self.sat_pwr.value = True
         start_time = time.monotonic()
 
-        # Blanking time: Ignore voltage readings for the first 15ms
-        # This allows satellite input capacitors to charge before 
-        # enforcing the 17.0V limit, preventing false brownout detection
-        blanking_time = 0.015  # 15ms blanking period
-        
         # Fast-check loop: monitor voltage every 15ms during 500ms ramp-up
         # to detect short circuits immediately instead of waiting full delay
         total_delay = 0.5  # 500ms total ramp-up time
@@ -118,7 +118,7 @@ class PowerManager:
             elapsed = time.monotonic() - start_time
             
             # Only check for short circuit after blanking time has elapsed
-            if elapsed >= blanking_time:
+            if elapsed >= self.SOFT_START_BLANKING_TIME:
                 v = self.status
                 if v["satbus" if "satbus" in self.sense_names else "1"] < 17.0:
                     self.sat_pwr.value = False
