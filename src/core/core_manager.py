@@ -9,7 +9,7 @@ from adafruit_ticks import ticks_ms, ticks_diff
 
 from modes import IndustrialStartup, JEBris, MainMenu, SafeCracker, Simon
 
-from satellites import IndustrialSatellite
+from satellites import IndustrialSatelliteDriver
 
 from utilities import JEBPixel, Pins, calculate_crc8, verify_crc8
 
@@ -246,7 +246,7 @@ class CoreManager:
                     self.satellites[sid].update_heartbeat()
                 else:
                     if payload == "INDUSTRIAL":
-                        self.satellites[sid] = IndustrialSatellite(sid, self.uart)
+                        self.satellites[sid] = IndustrialSatelliteDriver(sid, self.uart)
                     asyncio.create_task(
                         self.display.update_status(
                             "NEW SAT",
