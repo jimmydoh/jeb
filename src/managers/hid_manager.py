@@ -35,6 +35,20 @@ class HIDManager:
     Expanded Inputs via MCP23017 (if provided)
         - Buttons, Latching Toggles, Momentary Toggles.
     """
+    
+    # Class constant for status buffer size
+    # Buffer size calculation for default order (7 fields with 6 commas):
+    # - Buttons: ~100 chars max
+    # - Toggles: ~100 chars max
+    # - Momentary: ~100 chars max
+    # - Keypads: ~100 chars max
+    # - Encoders: ~200 chars max (supports large position values like -99999:99999:...)
+    # - Encoder buttons: ~100 chars max
+    # - E-stop: 1 char
+    # - Separators: 6 commas + 1 newline = 7 chars
+    # Total estimate: ~808 bytes; using 1024 for safety margin
+    _STATUS_BUFFER_SIZE = 1024
+    
     def __init__(self,
                  buttons=None,
                  latching_toggles=None,
@@ -94,17 +108,6 @@ class HIDManager:
         self.estop_value = False
         
         # Pre-allocated buffer for get_status_string to reduce heap fragmentation
-        # Buffer size calculation for default order (7 fields with 6 commas):
-        # - Buttons: ~100 chars max
-        # - Toggles: ~100 chars max
-        # - Momentary: ~100 chars max
-        # - Keypads: ~100 chars max
-        # - Encoders: ~200 chars max (supports large position values like -99999:99999:...)
-        # - Encoder buttons: ~100 chars max
-        # - E-stop: 1 char
-        # - Separators: 6 commas + 1 newline = 7 chars
-        # Total estimate: ~808 bytes; using 1024 for safety margin
-        self._STATUS_BUFFER_SIZE = 1024
         self._status_buffer = bytearray(self._STATUS_BUFFER_SIZE)
         #endregion
 
@@ -808,5 +811,6 @@ class HIDManager:
         offset += 1
         
         # Return only the used portion of the buffer as a string
-        return bytes(self._status_buffer[:offset]).decode('utf-8')
+        # bytearray.decode() avoids creating intermediate bytes object
+        return self._status_buffer[:offset].decode('utf-8')
     #endregion
