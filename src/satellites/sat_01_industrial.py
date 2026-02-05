@@ -11,7 +11,7 @@ import time
 import busio
 import neopixel
 
-from utilities import JEBPixel, Palette, Pins
+from utilities import JEBPixel, Palette, Pins, calculate_crc16, verify_crc16
 
 from managers import HIDManager, LEDManager, PowerManager, SegmentManager
 
@@ -144,6 +144,25 @@ class IndustrialSatellite(Satellite):
 
 #region --- Active Satellite Processes ---
     # ONLY USED WHEN THIS CODE IS RUNNING ON A SATELLITE
+    
+    def send_upstream(self, packet_data):
+        """Helper method to send a packet upstream with CRC.
+        
+        Parameters:
+            packet_data (str): The packet data without CRC or newline (e.g., "01|STATUS|data")
+        """
+        crc = calculate_crc16(packet_data)
+        self.uart_up.write(f"{packet_data}|{crc}\n".encode())
+    
+    def send_downstream(self, packet_data):
+        """Helper method to send a packet downstream with CRC.
+        
+        Parameters:
+            packet_data (str): The packet data without CRC or newline (e.g., "ALL|ID_ASSIGN|0100")
+        """
+        crc = calculate_crc16(packet_data)
+        self.uart_down.write(f"{packet_data}|{crc}\n".encode())
+    
     async def process_local_cmd(self, cmd, val):
         """Process commands addressed to this satellite.
 
@@ -161,10 +180,10 @@ class IndustrialSatellite(Satellite):
                 self.segment.start_message(f"ID {self.id}", loop=False)
 
                 # Pass the NEW index downstream for the next box
-                self.uart_down.write(f"ALL|ID_ASSIGN|{self.id}\n".encode())
+                self.send_downstream(f"ALL|ID_ASSIGN|{self.id}")
             else:
                 # Not our type? Pass it along unchanged
-                self.uart_down.write(f"ALL|ID_ASSIGN|{val}\n".encode())
+                self.send_downstream(f"ALL|ID_ASSIGN|{val}")
 
         elif cmd == "SETENC":
             # Set the encoder position to a specific value
@@ -329,19 +348,19 @@ class IndustrialSatellite(Satellite):
 
             # Send periodic voltage reports upstream every 5 seconds
             if now - last_broadcast > 5.0:
-                self.uart_up.write(f"{self.id}|POWER|{v['in']},{v['bus']},{v['log']}\n".encode())
+                self.send_upstream(f"{self.id}|POWER|{v['in']},{v['bus']},{v['log']}")
                 last_broadcast = now
 
             # Safety Check: Logic rail sagging (Potential Buck Converter or Audio overload)
             if v["log"] < 4.7:
                 # Local warning: Dim LEDs to reduce current draw
                 self.leds.pixels.brightness = 0.05
-                self.uart_up.write(f"{self.id}|ERROR|LOGIC_BROWNOUT:{v['log']}V\n".encode())
+                self.send_upstream(f"{self.id}|ERROR|LOGIC_BROWNOUT:{v['log']}V")
 
             # Safety Check: Downstream Bus Failure
             if self.power.sat_pwr.value and v["bus"] < 17.0:
                 self.power.emergency_kill() # Instant cut-off
-                self.uart_up.write(f"{self.id}|ERROR|BUS_SHUTDOWN:LOW_V\n".encode())
+                self.send_upstream(f"{self.id}|ERROR|BUS_SHUTDOWN:LOW_V")
 
             await asyncio.sleep(0.5)
 
@@ -350,19 +369,19 @@ class IndustrialSatellite(Satellite):
         while True:
             # Scenario: Physical link detected but power is currently OFF
             if self.power.satbus_connected and not self.power.sat_pwr.value:
-                self.uart_up.write(f"{self.id}|LOG|LINK_DETECTED:INIT_PWR\n".encode())
+                self.send_upstream(f"{self.id}|LOG|LINK_DETECTED:INIT_PWR")
                 # Perform soft-start to protect the bus
                 success, error = await self.power.soft_start_satellites()
                 if success:
-                    self.uart_up.write(f"{self.id}|LOG|LINK_ACTIVE\n".encode())
+                    self.send_upstream(f"{self.id}|LOG|LINK_ACTIVE")
                 else:
-                    self.uart_up.write(f"{self.id}|ERROR|PWR_FAILED:{error}\n".encode())
+                    self.send_upstream(f"{self.id}|ERROR|PWR_FAILED:{error}")
                     self.leds.pixels.fill((255, 0, 0))
 
             # Scenario: Physical link lost while power is ON
             elif not self.power.satbus_connected and self.power.sat_pwr.value:
                 self.power.emergency_kill() # Immediate hardware cut-off
-                self.uart_up.write(f"{self.id}|ERROR|LINK_LOST\n".encode())
+                self.send_upstream(f"{self.id}|ERROR|LINK_LOST")
                 self.leds.pixels.fill((0, 0, 0))
 
             await asyncio.sleep(0.5)
@@ -382,7 +401,9 @@ class IndustrialSatellite(Satellite):
             # TX TO UPSTREAM
             if not self.id: # Initial Discovery Phase
                 if time.monotonic() - self.last_tx > 3.0:
-                    self.uart_up.write(f"NEW_SAT|{self.sat_type_id}\n".encode())
+                    packet_data = f"??|NEW_SAT|{self.sat_type_id}"
+                    crc = calculate_crc16(packet_data)
+                    self.uart_up.write(f"{packet_data}|{crc}\n".encode())
                     self.last_tx = time.monotonic()
                     self.leds.flash_led(-1,
                                        Palette.AMBER,
@@ -391,19 +412,24 @@ class IndustrialSatellite(Satellite):
                                        priority=1)
             else: # Normal Operation
                 if time.monotonic() - self.last_tx > 0.1:
-                    self.uart_up.write(
-                        # 0101|STATUS
-                        f"{self.id}|STATUS|{self.hid.get_status_string()}\n".encode())
+                    self.send_upstream(f"{self.id}|STATUS|{self.hid.get_status_string()}")
                     self.last_tx = time.monotonic()
 
             # RX FROM UPSTREAM -> CMD PROCESSING & TX TO DOWNSTREAM
             if self.uart_up.in_waiting:
                 line = self.uart_up.readline().decode().strip()
                 if "|" in line:
-                    parts = line.split("|")
-                    if parts[0] == self.id or parts[0] == "ALL":
-                        self.process_local_cmd(parts[1], parts[2])
-                    self.uart_down.write((line + "\n").encode())
+                    # Verify CRC before processing
+                    is_valid, data_without_crc = verify_crc16(line)
+                    if is_valid:
+                        parts = data_without_crc.split("|")
+                        if parts[0] == self.id or parts[0] == "ALL":
+                            self.process_local_cmd(parts[1], parts[2])
+                        # Forward downstream with CRC intact
+                        crc = calculate_crc16(data_without_crc)
+                        self.uart_down.write(f"{data_without_crc}|{crc}\n".encode())
+                    else:
+                        print(f"CRC FAILED: Corrupted packet discarded: {line}")
 
             await asyncio.sleep(0.01)
 #endregion
