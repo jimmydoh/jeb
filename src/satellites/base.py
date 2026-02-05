@@ -1,6 +1,7 @@
 """"""
 
 from adafruit_ticks import ticks_ms
+from utilities import calculate_crc16
 
 class Satellite:
     """Base class for all satellite boxes.
@@ -39,4 +40,6 @@ class Satellite:
             cmd (str): Command type - LED | DSP.
             val (str): Command value.
         """
-        self.uart.write(f"{self.id}|{cmd}|{val}\n".encode())
+        packet_data = f"{self.id}|{cmd}|{val}"
+        crc = calculate_crc16(packet_data)
+        self.uart.write(f"{packet_data}|{crc}\n".encode())

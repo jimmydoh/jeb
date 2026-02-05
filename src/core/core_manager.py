@@ -10,7 +10,7 @@ from modes import IndustrialStartup, JEBris, MainMenu, SafeCracker, Simon
 
 from satellites import IndustrialSatellite
 
-from utilities import JEBPixel, Pins
+from utilities import JEBPixel, Pins, calculate_crc16, verify_crc16
 
 from managers import AudioManager
 from managers import BuzzerManager
@@ -123,7 +123,9 @@ class CoreManager:
         self.satellites = {}
 
         # Broadcast to Industrial type (01) starting at index 00
-        self.uart.write("ALL|ID_ASSIGN|0100\n".encode())
+        packet_data = "ALL|ID_ASSIGN|0100"
+        crc = calculate_crc16(packet_data)
+        self.uart.write(f"{packet_data}|{crc}\n".encode())
         await asyncio.sleep(0.5)
 
     def get_sat(self, sid):
@@ -179,7 +181,14 @@ class CoreManager:
         """Parses incoming UART packets and updates satellite states."""
         self.last_raw_uart = line
         try:
-            parts = line.split("|", 2)
+            # Verify CRC first
+            is_valid, data_without_crc = verify_crc16(line)
+            if not is_valid:
+                # Discard corrupted packet
+                print(f"CRC FAILED: Corrupted packet discarded: {line}")
+                return
+            
+            parts = data_without_crc.split("|", 2)
             if len(parts) < 3:
                 return  # Malformed packet
 
@@ -246,7 +255,9 @@ class CoreManager:
                         f"TYPE {payload} FOUND"
                     )
                 )
-                self.uart.write(f"ALL|ID_ASSIGN|{payload}00\n".encode())
+                packet_data = f"ALL|ID_ASSIGN|{payload}00"
+                crc = calculate_crc16(packet_data)
+                self.uart.write(f"{packet_data}|{crc}\n".encode())
             else:
                 asyncio.create_task(
                     self.display.update_status(
