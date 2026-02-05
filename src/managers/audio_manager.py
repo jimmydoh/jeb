@@ -34,11 +34,30 @@ class AudioManager:
         Loads small WAV files into memory permanently.
         Call this during boot for UI sounds (ticks, clicks, beeps).
         Decodes the audio into RAM and closes file handles immediately.
+        
+        Files larger than 20KB are skipped and will be streamed from disk instead.
+        This prevents MemoryError on RP2350 with limited RAM (520KB).
         """
+        import os
+        
         for filename in files:
             try:
+                filepath = self.root_data_dir + filename
+                
+                # Check file size before attempting to load
+                try:
+                    file_size = os.stat(filepath)[6]  # st_size is at index 6
+                except OSError:
+                    print(f"Audio Error: Could not stat {filename}")
+                    continue
+                
+                # Only preload files smaller than 20KB
+                if file_size > 20480:  # 20KB in bytes
+                    print(f"Audio Info: Skipping preload of {filename} ({file_size} bytes > 20KB). Will stream from disk.")
+                    continue
+                
                 # Open the file, read it completely, then close it
-                f = open(self.root_data_dir + filename, "rb")
+                f = open(filepath, "rb")
                 try:
                     wav = audiocore.WaveFile(f, bytearray(256))
                     
@@ -64,7 +83,8 @@ class AudioManager:
                         bits_per_sample=bits_per_sample
                     )
                     
-                    self._cache[filename] = raw_sample
+                    self._cache[filepath] = raw_sample
+                    print(f"Audio Info: Preloaded {filename} ({file_size} bytes)")
                 finally:
                     # Always close the file handle
                     f.close()
