@@ -1,6 +1,16 @@
 """
 Industrial Satellite Manager
 
+DEPRECATED: This class is deprecated and will be removed in a future release.
+
+This class violates the Single Responsibility Principle by handling both:
+1. Physical satellite operations (reading hardware)
+2. Core's representation (sending commands)
+
+Use these classes instead:
+- IndustrialSatelliteDriver: For Core-side telemetry parsing and command serialization
+- IndustrialSatelliteFirmware: For Satellite-side hardware I/O and logic
+
 A manager for both active industrial satellite boxes and the master controller
 to handle communication, HID inputs, LED control, segment display, and power management.
 """
@@ -22,9 +32,23 @@ TYPE_ID = "01"
 TYPE_NAME = "INDUSTRIAL"
 
 class IndustrialSatellite(Satellite):
-    """Satellite-side Manager to handle various subsystems."""
+    """Satellite-side Manager to handle various subsystems.
+    
+    DEPRECATED: This class is deprecated. Use:
+    - IndustrialSatelliteDriver for Core-side representation
+    - IndustrialSatelliteFirmware for Satellite-side hardware
+    """
     def __init__(self, active=True, uart=None):
-        """Initialize the Industrial Satellite Manager."""
+        """Initialize the Industrial Satellite Manager.
+        
+        DEPRECATED: Use IndustrialSatelliteDriver or IndustrialSatelliteFirmware instead.
+        
+        Parameters:
+            active (bool): If True, initializes hardware (satellite mode).
+                          If False, initializes in monitor-only mode (core mode).
+            uart: UART manager for communication.
+        """
+        print("WARNING: IndustrialSatellite is deprecated. Use IndustrialSatelliteDriver or IndustrialSatelliteFirmware.")
         super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, uart=uart)
 
         # State Variables
