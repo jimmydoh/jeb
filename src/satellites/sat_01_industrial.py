@@ -13,7 +13,7 @@ import neopixel
 
 from utilities import JEBPixel, Palette, Pins
 
-from managers import HIDManager, LEDManager, PowerManager, SegmentManager
+from managers import HIDManager, LEDManager, PowerManager, SegmentManager, UARTManager
 
 from .base import Satellite
 
@@ -46,19 +46,23 @@ class IndustrialSatellite(Satellite):
             # TODO Check power state
 
             # UART for satellite communication
-            self.uart_up = busio.UART(
+            uart_up_hw = busio.UART(
                 Pins.UART_TX,
                 Pins.UART_RX,
                 baudrate=115200,
                 receiver_buffer_size=512,
                 timeout=0.01
             )
-            self.uart_down = busio.UART(
+            uart_down_hw = busio.UART(
                 Pins.UART_DOWN_TX,
                 Pins.UART_DOWN_RX,
                 baudrate=115200,
                 timeout=0.01
             )
+            
+            # Wrap UARTs with buffering managers
+            self.uart_up = UARTManager(uart_up_hw)
+            self.uart_down = UARTManager(uart_down_hw)
 
             # Init I2C bus
             self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
@@ -397,13 +401,19 @@ class IndustrialSatellite(Satellite):
                     self.last_tx = time.monotonic()
 
             # RX FROM UPSTREAM -> CMD PROCESSING & TX TO DOWNSTREAM
-            if self.uart_up.in_waiting:
-                line = self.uart_up.readline().decode().strip()
-                if "|" in line:
+            try:
+                # Use buffered read_line - non-blocking
+                line = self.uart_up.read_line()
+                if line and "|" in line:
                     parts = line.split("|")
                     if parts[0] == self.id or parts[0] == "ALL":
                         self.process_local_cmd(parts[1], parts[2])
                     self.uart_down.write((line + "\n").encode())
+            except ValueError as e:
+                # Buffer overflow or other error
+                print(f"UART Error: {e}")
+            except Exception as e:
+                print(f"UART Unexpected Error: {e}")
 
             await asyncio.sleep(0.01)
 #endregion
