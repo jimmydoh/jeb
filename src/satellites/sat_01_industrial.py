@@ -401,20 +401,19 @@ class IndustrialSatellite(Satellite):
                     self.last_tx = time.monotonic()
 
             # RX FROM UPSTREAM -> CMD PROCESSING & TX TO DOWNSTREAM
-            if self.uart_up.in_waiting:
-                try:
-                    # Use buffered read_line - non-blocking
-                    line = self.uart_up.read_line()
-                    if line and "|" in line:
-                        parts = line.split("|")
-                        if parts[0] == self.id or parts[0] == "ALL":
-                            self.process_local_cmd(parts[1], parts[2])
-                        self.uart_down.write((line + "\n").encode())
-                except ValueError as e:
-                    # Buffer overflow or other error
-                    print(f"UART Error: {e}")
-                except Exception as e:
-                    print(f"UART Unexpected Error: {e}")
+            try:
+                # Use buffered read_line - non-blocking
+                line = self.uart_up.read_line()
+                if line and "|" in line:
+                    parts = line.split("|")
+                    if parts[0] == self.id or parts[0] == "ALL":
+                        self.process_local_cmd(parts[1], parts[2])
+                    self.uart_down.write((line + "\n").encode())
+            except ValueError as e:
+                # Buffer overflow or other error
+                print(f"UART Error: {e}")
+            except Exception as e:
+                print(f"UART Unexpected Error: {e}")
 
             await asyncio.sleep(0.01)
 #endregion

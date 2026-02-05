@@ -64,11 +64,11 @@ class UARTManager:
         Raises:
             ValueError: If buffer exceeds max_buffer_size (potential malformed data).
         """
-        # Read available bytes into buffer
-        while self.uart.in_waiting > 0:
-            byte = self.uart.read(1)
-            if byte:
-                self.buffer.extend(byte)
+        # Read all available bytes into buffer at once for efficiency
+        if self.uart.in_waiting > 0:
+            available_bytes = self.uart.read(self.uart.in_waiting)
+            if available_bytes:
+                self.buffer.extend(available_bytes)
                 
                 # Check for buffer overflow (potential malformed packet)
                 if len(self.buffer) > self.max_buffer_size:
@@ -81,8 +81,8 @@ class UARTManager:
         if newline_idx >= 0:
             # Extract the line (including \n)
             line_bytes = bytes(self.buffer[:newline_idx + 1])
-            # Remove the extracted line from buffer
-            self.buffer = self.buffer[newline_idx + 1:]
+            # Remove the extracted line from buffer in-place
+            del self.buffer[:newline_idx + 1]
             
             # Decode and return the line (without \n)
             try:

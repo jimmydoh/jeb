@@ -265,7 +265,7 @@ class CoreManager:
         """Background task to monitor inbound messages from satellite boxes."""
         while True:
             # UART Packet Handling with buffering
-            if self.power.satbus_powered and self.uart.in_waiting > 0:
+            if self.power.satbus_powered:
                 try:
                     # Use buffered read_line - non-blocking
                     line = self.uart.read_line()
