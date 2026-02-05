@@ -6,6 +6,10 @@ import audiobusio
 import audiocore
 import audiomixer
 
+# Maximum file size (in bytes) for preloading into RAM
+# Files larger than this will be streamed from disk to prevent MemoryError
+MAX_PRELOAD_SIZE_BYTES = 20 * 1024  # 20KB
+
 class AudioManager:
     """Manages audio playback and mixing."""
     def __init__(self, sck, ws, sd, voice_count=3, root_data_dir="/"):
@@ -34,11 +38,30 @@ class AudioManager:
         Loads small WAV files into memory permanently.
         Call this during boot for UI sounds (ticks, clicks, beeps).
         Decodes the audio into RAM and closes file handles immediately.
+        
+        Files larger than 20KB are skipped and will be streamed from disk instead.
+        This prevents MemoryError on RP2350 with limited RAM (520KB).
         """
+        import os
+        
         for filename in files:
             try:
+                filepath = self.root_data_dir + filename
+                
+                # Check file size before attempting to load
+                try:
+                    file_size = os.stat(filepath).st_size
+                except OSError:
+                    print(f"Audio Error: Could not stat {filename}")
+                    continue
+                
+                # Only preload files smaller than 20KB
+                if file_size > MAX_PRELOAD_SIZE_BYTES:
+                    print(f"Audio Info: Skipping preload of {filename} ({file_size} bytes > {MAX_PRELOAD_SIZE_BYTES} bytes). Will stream from disk.")
+                    continue
+                
                 # Open the file, read it completely, then close it
-                f = open(self.root_data_dir + filename, "rb")
+                f = open(filepath, "rb")
                 try:
                     wav = audiocore.WaveFile(f, bytearray(256))
                     
@@ -64,7 +87,8 @@ class AudioManager:
                         bits_per_sample=bits_per_sample
                     )
                     
-                    self._cache[filename] = raw_sample
+                    self._cache[filepath] = raw_sample
+                    print(f"Audio Info: Preloaded {filename} ({file_size} bytes)")
                 finally:
                     # Always close the file handle
                     f.close()
