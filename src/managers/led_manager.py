@@ -34,6 +34,7 @@ class LEDManager(BasePixelManager):
                 if priority < current.get("priority", 0):
                     continue
                 self.active_animations[i] = None
+                self._active_count -= 1
                 self.pixels[i] = Palette.OFF
 
         self.pixels.show()

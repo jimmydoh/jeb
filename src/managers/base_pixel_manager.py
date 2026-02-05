@@ -20,11 +20,15 @@ class BasePixelManager:
         # Fixed-size list for animations (one slot per pixel)
         # Each slot: None or { type, color, speed, start, duration, priority }
         self.active_animations = [None] * self.num_pixels
+        
+        # Track active animation count to avoid O(n) checks
+        self._active_count = 0
 
     def clear(self):
         """Stops all animations and clears LEDs."""
         for i in range(self.num_pixels):
             self.active_animations[i] = None
+        self._active_count = 0
         self.pixels.fill((0, 0, 0))
         self.pixels.show()
 
@@ -33,12 +37,19 @@ class BasePixelManager:
         Registers an animation for a specific pixel index.
         Respects priority: Higher priority overwrites lower.
         """
+        # Validate index bounds
+        if idx < 0 or idx >= self.num_pixels:
+            return
+        
         # Check priority lock
         current = self.active_animations[idx]
         if current is not None:
             # If new priority is lower than current running priority, ignore request
             if priority < current.get("priority", 0):
                 return
+        else:
+            # Adding a new animation
+            self._active_count += 1
 
         self.active_animations[idx] = {
             "type": anim_type,
@@ -71,9 +82,8 @@ class BasePixelManager:
     async def animate_loop(self):
         """Unified background task to handle all pixel animations."""
         while True:
-            # Check if any animations are active
-            has_animations = any(anim is not None for anim in self.active_animations)
-            if not has_animations:
+            # Check if any animations are active using counter
+            if self._active_count == 0:
                 await asyncio.sleep(0.1)
                 continue
 
@@ -91,6 +101,7 @@ class BasePixelManager:
                     if elapsed >= anim["duration"]:
                         self.pixels[idx] = (0, 0, 0)
                         self.active_animations[idx] = None
+                        self._active_count -= 1
                         dirty = True
                         continue
 
@@ -173,6 +184,7 @@ class BasePixelManager:
                     if elapsed >= duration:
                         self.pixels[idx] = (0, 0, 0)
                         self.active_animations[idx] = None
+                        self._active_count -= 1
                     else:
                         factor = 1.0 - (elapsed / duration)
                         base = anim["color"]
