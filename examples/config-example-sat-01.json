@@ -1,5 +1,8 @@
 {
     "role": "SAT",
     "type_id": "01",
-    "type_name": "INDUSTRIAL"
+    "type_name": "INDUSTRIAL",
+    "mount_sd_card": false,
+    "debug_mode": false,
+    "test_mode": false
 }

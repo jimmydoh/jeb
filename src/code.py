@@ -118,47 +118,45 @@ if config.get("mount_sd_card"):
     else:
         ROOT_DATA_DIR = "/"
 
-if config.get("test_mode"):
-    print("⚠️ TEST MODE TRIGGERED ⚠️")
-    print("Loading Test Runner")
+app = None
 
-    import test_runner
-    asyncio.run(test_runner.run())
+role = config.get("role", "UNKNOWN")
+type_id = config.get("type_id", "--")
+type_name = config.get("type_name", "UNKNOWN")
+debug_mode = config.get("debug_mode", False)
+test_mode = config.get("test_mode", False)
+
+print(f"ROLE: {role}, ID: {type_id}, NAME: {type_name}")
+
+if test_mode:
+    print("⚠️ Running in TEST MODE. No main application will be loaded. ⚠️")
+    from testing import TestManager
+    app = TestManager(role, type_id)
 else:
-    app = None
-
-    role = config.get("role", "CORE")
-    type_id = config.get("type_id", "00")
-    debug_mode = config.get("debug_mode", False)
-
-    # 1. Load Configuration
-    print(f"LOADING ROLE: {config.get('role')}")
-
-    # 2. Conditional Loading
-    if config["role"] == "CORE" and type_id == "00":
+    if role == "CORE" and type_id == "00":
         from core.core_manager import CoreManager
         app = CoreManager()
 
-    elif config["role"] == "SAT" and type_id == "01":
+    elif role == "SAT" and type_id == "01":
         from satellites import IndustrialSatellite
         app = IndustrialSatellite(active=True, uart=None)
 
     else:
         print("❗Unknown role/type_id combination. No application loaded.❗")
-        print(f"Role: {role}, Type ID: {type_id}")
         while True:
             time.sleep(1)
 
-    # 3. Main Execution
-    if __name__ == "__main__":
-        try:
-            if app is None:
-                print("‼️No application loaded.‼️")
-            else:
-                asyncio.run(app.start())
-        except Exception as e:
-            print(f"🚨⛔ CRITICAL CRASH: {e}")
-            import traceback
-            traceback.print_exception(e)
-            time.sleep(5)
-            supervisor.reload()
+# 3. Main Execution
+if __name__ == "__main__":
+    try:
+        if app is None:
+            print("‼️No application loaded.‼️")
+        else:
+            print(f"Starting main app loop for {type_name} ")
+            asyncio.run(app.start())
+    except Exception as e:
+        print(f"🚨⛔ CRITICAL CRASH: {e}")
+        import traceback
+        traceback.print_exception(e)
+        time.sleep(5)
+        supervisor.reload()

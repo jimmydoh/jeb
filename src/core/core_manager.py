@@ -44,6 +44,10 @@ class CoreManager:
 
         # TODO Check power state
 
+        # Init Buzzer for early audio feedback
+        self.buzzer = BuzzerManager(Pins.BUZZER, volume=0.5)
+        self.buzzer.play_song("POWER_UP")
+
         # Init I2C bus
         self.i2c = busio.I2C(
             Pins.I2C_SCL,

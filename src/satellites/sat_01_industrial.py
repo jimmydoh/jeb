@@ -8,7 +8,6 @@ to handle communication, HID inputs, LED control, segment display, and power man
 import asyncio
 import time
 
-import board
 import busio
 import neopixel
 

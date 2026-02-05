@@ -3,9 +3,9 @@
 
 import asyncio
 
-from .utility_mode import UtilityMode
-
 from utilities import Palette,tones
+
+from .utility_mode import UtilityMode
 
 class MainMenu(UtilityMode):
     """Main Menu for selecting modes."""

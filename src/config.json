@@ -4,5 +4,5 @@
     "type_name": "CORE",
     "mount_sd_card": false,
     "debug_mode": false,
-    "test_mode": false
+    "test_mode": true
 }
