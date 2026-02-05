@@ -20,6 +20,7 @@ from managers import HIDManager
 from managers import LEDManager
 from managers import MatrixManager
 from managers import PowerManager
+from managers import UARTManager
 
 class CoreManager:
     """Class to hold global state for the master controller."""
@@ -100,13 +101,16 @@ class CoreManager:
         ])
 
         # UART for satellite communication
-        self.uart = busio.UART(
+        uart_hw = busio.UART(
             Pins.UART_TX,
             Pins.UART_RX,
             baudrate=115200,
             receiver_buffer_size=512,
             timeout=0.01
             )
+        
+        # Wrap UART with buffering manager
+        self.uart = UARTManager(uart_hw)
 
         # System State
         self.satellites = {}
@@ -260,17 +264,18 @@ class CoreManager:
     async def monitor_sats(self):
         """Background task to monitor inbound messages from satellite boxes."""
         while True:
-            # UART Packet Handling
+            # UART Packet Handling with buffering
             if self.power.satbus_powered and self.uart.in_waiting > 0:
-                while self.uart.in_waiting > 0:
-                    raw_line = self.uart.readline()
-                    if raw_line is not None:
-                        try:
-                            line = raw_line.decode().strip()
-                            if line:
-                                self.handle_packet(line)
-                        except UnicodeError:
-                            print("UART Malformed Packet Received")
+                try:
+                    # Use buffered read_line - non-blocking
+                    line = self.uart.read_line()
+                    if line:
+                        self.handle_packet(line)
+                except ValueError as e:
+                    # Buffer overflow or other error
+                    print(f"UART Error: {e}")
+                except Exception as e:
+                    print(f"UART Unexpected Error: {e}")
 
             # Link Watchdog
             now = ticks_ms()
