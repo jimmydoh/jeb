@@ -94,10 +94,18 @@ class HIDManager:
         self.estop_value = False
         
         # Pre-allocated buffer for get_status_string to reduce heap fragmentation
-        # Estimate max size: buttons(100) + toggles(100) + momentary(100) + 
-        # keypads(100) + encoders(100) + encoder_btns(100) + estop(1) + commas(6) + newline(1) = ~608 bytes
-        # Use 1024 to be safe
-        self._status_buffer = bytearray(1024)
+        # Buffer size calculation for default order (7 fields with 6 commas):
+        # - Buttons: ~100 chars max
+        # - Toggles: ~100 chars max
+        # - Momentary: ~100 chars max
+        # - Keypads: ~100 chars max
+        # - Encoders: ~200 chars max (supports large position values like -99999:99999:...)
+        # - Encoder buttons: ~100 chars max
+        # - E-stop: 1 char
+        # - Separators: 6 commas + 1 newline = 7 chars
+        # Total estimate: ~808 bytes; using 1024 for safety margin
+        self._STATUS_BUFFER_SIZE = 1024
+        self._status_buffer = bytearray(self._STATUS_BUFFER_SIZE)
         #endregion
 
         #region --- Initialize Always Available Properties ---
@@ -474,11 +482,29 @@ class HIDManager:
             if i > 0:
                 buf[offset] = ord(':')
                 offset += 1
-            # Convert integer to string and write each digit
-            pos_str = str(pos)
-            for ch in pos_str:
-                buf[offset] = ord(ch)
+            # Convert integer to buffer without creating intermediate strings
+            # Handle negative numbers
+            if pos < 0:
+                buf[offset] = ord('-')
                 offset += 1
+                pos = -pos
+            # Special case for zero
+            if pos == 0:
+                buf[offset] = ord('0')
+                offset += 1
+            else:
+                # Calculate digits and write them in reverse, then reverse in place
+                start_offset = offset
+                while pos > 0:
+                    buf[offset] = ord('0') + (pos % 10)
+                    pos //= 10
+                    offset += 1
+                # Reverse the digits to correct order
+                end_offset = offset - 1
+                while start_offset < end_offset:
+                    buf[start_offset], buf[end_offset] = buf[end_offset], buf[start_offset]
+                    start_offset += 1
+                    end_offset -= 1
         return offset
     #endregion
 
