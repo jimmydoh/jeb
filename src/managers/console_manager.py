@@ -9,14 +9,14 @@ from managers import BuzzerManager
 from utilities import Pins,tones
 
 
-class TestManager():
-    """A simple test manager for hardware diagnostics and development testing."""
+class ConsoleManager():
+    """A simple console manager for hardware diagnostics and development testing."""
 
     def __init__(self, role, type_id):
         self.role = role
         self.type_id = type_id
         Pins.initialize(profile=role, type_id=type_id)
-        print(f"TestManager for role {self.role} and type_id {self.type_id} initialized.")
+        print(f"ConsoleManager for role {self.role} and type_id {self.type_id} initialized.")
 
     async def get_input(self, prompt):
         """Safe blocking input wrapper."""
@@ -153,7 +153,7 @@ class TestManager():
         while True:
             # Feed the hardware watchdog timer to prevent system reset
             microcontroller.watchdog.feed()
-            
+
             print("\n[MAIN MENU]")
             print("1. Test Buzzer (GP10)")
             print("2. I2C Bus Scan (GP4/5)")
