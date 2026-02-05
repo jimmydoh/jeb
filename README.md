@@ -30,7 +30,7 @@
 
 ### What Makes JEB Special?
 
-- **🛡️ Safety-First Design**: Hardware watchdog timers, undervoltage lockout (UVLO), emergency stop mechanisms, and MOSFET firewalls
+- **🛡️ Safety-First Design**: Hardware watchdog timers, undervoltage lockout (UVLO), and MOSFET firewalls
 - **🔌 Modular Architecture**: Plug-and-play satellite expansion via RJ45 daisy-chaining with automatic detection
 - **⚡ Power Management**: Intelligent power distribution with high-side switching and multi-rail buck converters
 - **🎮 Rich User Interface**: OLED displays, LED matrices, audio feedback, rotary encoders, and custom input controls
@@ -51,10 +51,11 @@
   - Rotary encoder with button
   - Four programmable buttons via I/O expander
 - **Safety Systems**: 
-  - Hardware E-Stop detection
   - MOSFET firewall with boot protection
   - Watchdog timer (8s timeout)
   - Software UVLO (< 18V blocks startup)
+- **Gameplay Features**:
+  - E-Stop button for interactive gameplay mechanics
 
 ### Satellite System
 - **Modular Design**: Chainable satellite units for distributed control
@@ -361,17 +362,12 @@ JEB incorporates multiple layers of safety protection:
    - Blocks system startup if input < 18.0V
    - Prevents brownout conditions and unstable operation
 
-3. **Emergency Stop**
-   - Dedicated 100Hz monitoring task
-   - Sub-20ms shutdown response time
-   - Hardware E-Stop pin (GP7, active low)
-
-4. **Link Protection** (Satellites)
+3. **Link Protection** (Satellites)
    - Automatic power cutoff on cable disconnect
    - Brownout detection with automatic load reduction
    - Short circuit watchdog with emergency kill
 
-5. **Error Recovery**
+4. **Error Recovery**
    - Comprehensive exception handling
    - Automatic supervisor reload on critical crashes
    - Graceful degradation on subsystem failures

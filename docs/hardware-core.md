@@ -70,7 +70,7 @@
 | **GP4** | I2C SDA | Main Bus (OLED, Expander) |
 | **GP5** | I2C SCL | Main Bus (OLED, Expander) |
 | **GP6** | LED Data | NeoPixel Control Line |
-| **GP7** | E-Stop Detect | Active Low (Safety Cut-off) |
+| **GP7** | E-Stop Button | Active Low (Gameplay Interaction) |
 | **GP8** | SPARE | |
 | **GP9** | SPARE | |
 | **GP10**| Buzzer | PWM Audio (Piezo) |
@@ -115,4 +115,3 @@
 2.  **Electrical Buffer:** 1kΩ resistors protect UART pins from cable faults.
 3.  **Voltage Clamp:** Zener diodes on all ADC inputs prevent >3.3V exposure.
 4.  **Software UVLO:** Blocking logic prevents system initialization under 18V.
-5.  **Async E-Stop:** Dedicated 100Hz monitoring task ensures sub-20ms shutdown response.
