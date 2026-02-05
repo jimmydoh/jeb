@@ -27,12 +27,13 @@ class LEDManager(BasePixelManager):
     async def off_led(self, index, priority=99):
         """Turns off a specific LED (or all LEDs)."""
         targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
-        # Stop animation by deleting from dict
+        # Stop animation by setting to None
         for i in targets:
-            if i in self.active_animations:
-                if priority < self.active_animations[i].get("priority", 0):
+            current = self.active_animations[i]
+            if current is not None:
+                if priority < current.get("priority", 0):
                     continue
-                del self.active_animations[i]
+                self.active_animations[i] = None
                 self.pixels[i] = Palette.OFF
 
         self.pixels.show()
