@@ -95,27 +95,28 @@ class PowerManager:
 
     async def soft_start_satellites(self):
         """Powers up the expansion chain with a safety check."""
+        import time
+        
         v = self.status
         if v["input" if "input" in self.sense_names else "0"] < 18.0:
             return False, "LOW INPUT VOLTAGE"
 
         self.sat_pwr.value = True
+        start_time = time.monotonic()
 
         # Fast-check loop: monitor voltage every 15ms during 500ms ramp-up
         # to detect short circuits immediately instead of waiting full delay
         total_delay = 0.5  # 500ms total ramp-up time
         check_interval = 0.015  # 15ms check interval
-        elapsed = 0.0
         
-        while elapsed < total_delay:
-            await asyncio.sleep(check_interval)
-            elapsed += check_interval
-            
+        while time.monotonic() - start_time < total_delay:
             # Check for short circuit during ramp-up
             v = self.status
             if v["satbus" if "satbus" in self.sense_names else "1"] < 17.0:
                 self.sat_pwr.value = False
                 return False, "BUS BROWNOUT"
+            
+            await asyncio.sleep(check_interval)
 
         return True, "OK"
 
