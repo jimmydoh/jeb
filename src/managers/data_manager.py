@@ -25,7 +25,7 @@ class DataManager:
     def load(self):
         """Load data from disk."""
         try:
-            with open(self.file_path, "r") as f:
+            with open(self.file_path, "r", encoding="utf-8") as f:
                 self.data = json.load(f)
         except (OSError, ValueError):
             print("No game data found, creating new.")
@@ -34,36 +34,39 @@ class DataManager:
     def save(self):
         """Save data to disk."""
         try:
-            with open(self.file_path, "w") as f:
+            with open(self.file_path, "w", encoding="utf-8") as f:
                 json.dump(self.data, f)
         except OSError as e:
             print(f"Error saving game data: {e}")
 
-    def get_score(self, game_key):
+    def get_high_score(self, mode_name, variant):
         """Get high score for a game."""
-        return self.data.get(game_key, {}).get("high_score", 0)
+        return self.data.get(mode_name, {}).get(variant, {}).get("high_score", 0)
 
-    def set_score(self, game_key, score):
+    def save_high_score(self, mode_name, variant, score):
         """Set high score if higher than current."""
-        current = self.get_score(game_key)
-        if score > current:
-            if game_key not in self.data:
-                self.data[game_key] = {}
-            self.data[game_key]["high_score"] = score
+        # Ensure mode and variant exist in data structure
+        if mode_name not in self.data:
+            self.data[mode_name] = {}
+        if variant not in self.data[mode_name]:
+            self.data[mode_name][variant] = {}
+        current_high = self.data[mode_name][variant].get("high_score", 0)
+        if score > current_high:
+            self.data[mode_name][variant]["high_score"] = score
             self.save()
             return True
         return False
 
-    def get_setting(self, game_key, setting_key, default=None):
+    def get_setting(self, mode_name, setting_key, default=None):
         """Retrieve a specific setting."""
-        return self.data.get(game_key, {}).get("settings", {}).get(setting_key, default)
+        return self.data.get(mode_name, {}).get("CONFIG", {}).get(setting_key, default)
 
-    def set_setting(self, game_key, setting_key, value):
+    def set_setting(self, mode_name, setting_key, value):
         """Update a specific setting."""
-        if game_key not in self.data:
-            self.data[game_key] = {}
-        if "settings" not in self.data[game_key]:
-            self.data[game_key]["settings"] = {}
-
-        self.data[game_key]["settings"][setting_key] = value
+        # Ensure mode and CONFIG exist in data structure
+        if mode_name not in self.data:
+            self.data[mode_name] = {}
+        if "CONFIG" not in self.data[mode_name]:
+            self.data[mode_name]["CONFIG"] = {}
+        self.data[mode_name]["CONFIG"][setting_key] = value
         self.save()

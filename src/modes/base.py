@@ -7,6 +7,7 @@ class BaseMode:
         self.core = core
         self.name = name
         self.description = description
+        self.variant = "DEFAULT"
 
     async def enter(self):
         """Standard setup routine."""

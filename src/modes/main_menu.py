@@ -21,8 +21,18 @@ class MainMenu(UtilityMode):
                 "name": "JEBRIS",
                 "icon": "JEBRIS",
                 "settings": [
-                    {"key": "difficulty", "label": "SPEED", "options": ["EASY","NORMAL", "HARD", "INSANE"], "default": "NORMAL"},
-                    {"key": "music", "label": "MUSIC", "options": ["ON", "OFF"], "default": "ON"}
+                    {
+                        "key": "difficulty",
+                        "label": "SPEED",
+                        "options": ["EASY","NORMAL", "HARD", "INSANE"],
+                        "default": "NORMAL"
+                    },
+                    {
+                        "key": "music",
+                        "label": "MUSIC",
+                        "options": ["ON", "OFF"],
+                        "default": "ON"
+                    }
                 ],
                 "requires": ["CORE"] # Always Available
             },
@@ -30,7 +40,18 @@ class MainMenu(UtilityMode):
                 "name": "SIMON",
                 "icon": "SIMON",
                 "settings": [
-                    {"key": "mode", "label": "MODE", "options": ["CLASSIC", "SPEED"], "default": "CLASSIC"}
+                    {
+                        "key": "mode",
+                        "label": "MODE",
+                        "options": ["CLASSIC", "REVERSE", "BLIND"],
+                        "default": "CLASSIC"
+                    },
+                    {
+                        "key": "difficulty",
+                        "label": "DIFF",
+                        "options": ["EASY","NORMAL", "HARD", "INSANE"],
+                        "default": "NORMAL"
+                    }
                 ],
                 "requires": ["CORE"] # Always Available
             },

@@ -21,25 +21,21 @@ class MatrixManager(BasePixelManager):
             return (y * 8) + x
         return (y * 8) + (7 - x)
 
-    def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0):
+    def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None):
         """Sets a specific pixel on the matrix."""
         if 0 <= x < 8 and 0 <= y < 8:
             idx = self._get_idx(x, y)
 
-            if anim_mode:
-                self.set_animation(idx, anim_mode, color, speed)
-            else:
-                if idx in self.active_animations:
-                    del self.active_animations[idx]
-                self.pixels[idx] = color
+            anim_mode = anim_mode if anim_mode else "SOLID"
+            self.set_animation(idx, anim_mode, color, speed, duration)
 
         if show:
             self.pixels.show()
 
-    def fill(self, color, show=True, anim_mode=None, speed=1.0):
+    def fill(self, color, show=True, anim_mode=None, speed=1.0, duration=None):
         """Fills the entire matrix with a single color or simple animation."""
         if anim_mode:
-            self.fill_animation(anim_mode, color, speed)
+            self.fill_animation(anim_mode, color, speed, duration)
         else:
             self.clear()
             self.pixels.fill(color)
@@ -110,7 +106,7 @@ class MatrixManager(BasePixelManager):
             self.draw_pixel(i % 8, 7 - (i // 8), color, show=False)
         self.pixels.show()
 
-    async def draw_quadrant(self, quad_idx, color, anim_mode=None, speed=1.0):
+    async def draw_quadrant(self, quad_idx, color, anim_mode=None, speed=1.0, duration=None):
         """Fills one of four 4x4 quadrants: 0=TopLeft, 1=TopRight, 2=BottomLeft, 3=BottomRight."""
         # Define start X, Y for each quadrant
         offsets = [(0,0), (4,0), (0,4), (4,4)]
@@ -118,5 +114,5 @@ class MatrixManager(BasePixelManager):
 
         for y in range(4):
             for x in range(4):
-                self.draw_pixel(ox + x, oy + y, color, show=False, anim_mode=anim_mode, speed=speed)
+                self.draw_pixel(ox + x, oy + y, color, show=False, anim_mode=anim_mode, speed=speed, duration=duration)
         self.pixels.show()

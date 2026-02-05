@@ -32,16 +32,18 @@ class BuzzerManager:
 
         self.buzzer.duty_cycle = self.VOLUME_OFF
 
-    async def _play_tone_logic(self, frequency, duration):
+    async def _play_tone_logic(self, frequency, duration=None):
         """Internal logic to play a single tone."""
         try:
             self.buzzer.frequency = frequency
             self.buzzer.duty_cycle = self.VOLUME_ON
-            await asyncio.sleep(duration)
+            if duration is not None and duration > 0:
+                await asyncio.sleep(duration)
         except asyncio.CancelledError:
-            pass
-        finally:
             self.buzzer.duty_cycle = self.VOLUME_OFF
+        finally:
+            if duration is not None and duration > 0:
+                self.buzzer.duty_cycle = self.VOLUME_OFF
 
     async def _play_sequence_logic(self, sequence, tempo=1.0, loop=False):
         """
@@ -80,7 +82,7 @@ class BuzzerManager:
 
     # --- PUBLIC TRIGGERS ---
 
-    def tone(self, frequency, duration=0.1):
+    def tone(self, frequency, duration=None):
         """Plays a single non-blocking tone."""
         self.stop() # Preempt any existing sound
         self._current_task = asyncio.create_task(

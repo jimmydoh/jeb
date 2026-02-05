@@ -95,8 +95,7 @@ class JEBris(GameMode):
 
                     if self.check_collision(self.current_piece, self.piece_x, self.piece_y):
                         self.is_game_over = True
-                        await self.game_over()
-                        self.reset_game()
+                        await self.pre_game_over()
 
                 last_tick = now
 
@@ -228,29 +227,6 @@ class JEBris(GameMode):
             # Optional: Play Sound
             # self.core.audio.play("line_clear")
 
-    async def game_over(self):
-        """Standard Fail State."""
-
-        # Fill matrix with flashing red
-        await self.core.matrix.fill(
-            Palette.RED,
-            anim_mode="BLINK",
-            duration=2.0,
-            speed=0.5
-        )
-        await self.core.audio.stop_all()
-        await self.core.buzzer.stop()
-        await self.core.buzzer.play_song("GAME_OVER")
-        if self.score > self.prev_highscore:
-            self.core.data.set_setting("JEBRIS", "highscore", self.score)
-            await self.core.display.update_status("NEW HIGHSCORE!", f"SCORE: {self.score}")
-        else:
-            await self.core.display.update_status(f"YOUR SCORE: {self.score}", f"HIGHSCORE: {self.prev_highscore}")
-            await asyncio.sleep(1)
-        await asyncio.sleep(2)
-        return "GAME_OVER"
-
-
     def draw(self):
         """Renders the grid and active piece to the matrix."""
         # 1. Clear buffer (not display)
@@ -272,3 +248,18 @@ class JEBris(GameMode):
 
         # 4. Push to Hardware
         self.core.matrix.show()
+
+    async def pre_game_over(self):
+        """Initial custom end game sequence before showing final score and high score."""
+        # Fill matrix with flashing red
+        await self.core.matrix.fill(
+            Palette.RED,
+            anim_mode="BLINK",
+            duration=2.0,
+            speed=0.5
+        )
+        await self.core.audio.stop_all()
+        await self.core.buzzer.stop()
+        await self.core.buzzer.play_song("GAME_OVER")
+        await asyncio.sleep(2)
+        return await self.game_over()
