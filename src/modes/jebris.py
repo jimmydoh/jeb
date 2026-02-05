@@ -12,6 +12,17 @@ from .game_mode import GameMode
 
 class JEBris(GameMode):
     """JEBris: A Tetris-inspired Falling Block Game."""
+    
+    # State machine constants
+    STATE_PLAYING = "PLAYING"
+    STATE_CLEARING_LINES = "CLEARING_LINES"
+    
+    # Input debounce constants (in milliseconds)
+    DEBOUNCE_LEFT_MS = 100
+    DEBOUNCE_ROTATE_MS = 200
+    DEBOUNCE_DROP_MS = 0  # No debounce for fast drop
+    DEBOUNCE_RIGHT_MS = 100
+    
     def __init__(self, core):
         super().__init__(core, "JEBRIS", "Tetris-inspired Falling Block Game")
 
@@ -67,11 +78,16 @@ class JEBris(GameMode):
         # --- TIMING STATE (for non-blocking input debouncing) ---
         # Track last input time for each button (0: Left, 1: Rotate, 2: Drop, 3: Right)
         self.last_input_time = [0, 0, 0, 0]
-        self.input_debounce_ms = [100, 200, 0, 100]  # Debounce times per button
+        self.input_debounce_ms = [
+            self.DEBOUNCE_LEFT_MS,
+            self.DEBOUNCE_ROTATE_MS,
+            self.DEBOUNCE_DROP_MS,
+            self.DEBOUNCE_RIGHT_MS
+        ]
         
         # --- STATE MACHINE for line clearing ---
-        self.game_state = "PLAYING"  # States: "PLAYING", "CLEARING_LINES"
-        self.lines_to_clear = []  # List of row indices to clear
+        self.game_state = self.STATE_PLAYING
+        self.lines_to_clear = set()  # Set for O(1) lookup during rendering
         self.clear_animation_start = 0
         self.clear_animation_duration_ms = 50
 
@@ -89,13 +105,15 @@ class JEBris(GameMode):
             now = ticks_ms()
 
             # STATE MACHINE: Handle different game states
-            if self.game_state == "PLAYING":
+            if self.game_state == self.STATE_PLAYING:
                 # 1. INPUT HANDLING (non-blocking)
                 self.handle_input(now)
 
                 # 2. GRAVITY LOGIC
                 # Calculate speed based on level (faster as score goes up)
-                tick_interval_ms = max(100, self.base_tick_ms - (self.score * 50))
+                # Cap score multiplier to prevent nonsensical tick intervals
+                score_speedup = min(self.score * 50, self.base_tick_ms - 100)
+                tick_interval_ms = max(100, self.base_tick_ms - score_speedup)
 
                 if ticks_diff(now, last_tick) > tick_interval_ms:
                     if not self.move_piece(0, 1):
@@ -112,7 +130,7 @@ class JEBris(GameMode):
 
                     last_tick = now
                     
-            elif self.game_state == "CLEARING_LINES":
+            elif self.game_state == self.STATE_CLEARING_LINES:
                 # Handle line clearing animation (non-blocking)
                 if ticks_diff(now, self.clear_animation_start) > self.clear_animation_duration_ms:
                     # Animation done, remove lines and return to playing
@@ -121,7 +139,7 @@ class JEBris(GameMode):
                     if self.check_collision(self.current_piece, self.piece_x, self.piece_y):
                         self.is_game_over = True
                         await self.pre_game_over()
-                    self.game_state = "PLAYING"
+                    self.game_state = self.STATE_PLAYING
 
             # 3. RENDER
             self.draw()
@@ -224,16 +242,16 @@ class JEBris(GameMode):
 
     def start_clear_lines(self):
         """Initiates line clearing animation without blocking."""
-        self.lines_to_clear = []
+        self.lines_to_clear = set()
         
         # Find all full rows
         for y in range(self.height):
             if Palette.OFF not in self.grid[y]:
-                self.lines_to_clear.append(y)
+                self.lines_to_clear.add(y)
         
         if self.lines_to_clear:
             # Start animation state
-            self.game_state = "CLEARING_LINES"
+            self.game_state = self.STATE_CLEARING_LINES
             self.clear_animation_start = ticks_ms()
             
             # Flash lines white immediately (visual feedback)
@@ -258,8 +276,8 @@ class JEBris(GameMode):
         # Update score
         self.score += lines_cleared
         
-        # Clear the lines list
-        self.lines_to_clear = []
+        # Clear the lines set
+        self.lines_to_clear = set()
 
     def draw(self):
         """Renders the grid and active piece to the matrix."""
@@ -270,13 +288,13 @@ class JEBris(GameMode):
         for y in range(self.height):
             for x in range(self.width):
                 # If we're in clearing state, show white for lines being cleared
-                if self.game_state == "CLEARING_LINES" and y in self.lines_to_clear:
+                if self.game_state == self.STATE_CLEARING_LINES and y in self.lines_to_clear:
                     self.core.matrix.set_pixel(x, y, Palette.WHITE)
                 elif self.grid[y][x] != Palette.OFF:
                     self.core.matrix.set_pixel(x, y, self.grid[y][x])
 
         # 3. Draw Active Piece (only in PLAYING state)
-        if self.game_state == "PLAYING" and self.current_piece:
+        if self.game_state == self.STATE_PLAYING and self.current_piece:
             for x, y in self.current_piece:
                 nx = self.piece_x + x
                 ny = self.piece_y + y
