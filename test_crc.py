@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Unit tests for CRC-8 implementation."""
 
+import sys
+
 
 def calculate_crc8(data):
     """Calculate CRC-8 checksum for a given string.
