@@ -124,7 +124,7 @@ class Simon(GameMode):
                     )
 
                 # Audio: Play tone (non-blocking for better timing)
-                await self.core.buzzer.play_tone(
+                await self.core.buzzer.tone(
                     self.colors_tones[val],
                     duration=final_speed
                 )
@@ -150,7 +150,7 @@ class Simon(GameMode):
                     self.colors[i],
                     brightness=0.5,
                     priority=1,
-                    speed=2.0
+                    speed=1.0 / self.speed_factor
                 )
 
             # Determine target sequence based on mode
@@ -197,9 +197,9 @@ class Simon(GameMode):
                                 self.colors[i],
                                 brightness=0.8,
                                 anim_mode="FLASH",
-                                speed=0.1
+                                speed=1.0 / self.speed_factor
                             )
-                            await self.core.buzzer.play_tone(
+                            await self.core.buzzer.tone(
                                 self.colors_tones[i]
                             )
 
@@ -209,6 +209,7 @@ class Simon(GameMode):
 
                             # Turn off the matrix quadrant and restore breathing LED
                             await self.core.matrix.draw_quadrant(i, Palette.OFF)
+                            await self.core.leds.off_led(i)
                             await self.core.leds.breathe_led(
                                 i,
                                 self.colors[i],
