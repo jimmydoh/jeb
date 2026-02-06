@@ -30,7 +30,11 @@ def _encode_destination(dest_str, dest_map, max_index_value):
         type_id = int(dest_str)
         return bytes([type_id])
     
-    raise ValueError(f"Invalid destination format: {dest_str}")
+    raise ValueError(
+        f"Invalid destination format: {dest_str}. "
+        f"Expected 4-digit numeric ID (e.g., '0101'), mapped destination string, "
+        f"or single type ID."
+    )
 
 
 def _decode_destination(data, offset, dest_reverse_map, max_index_value):

@@ -17,13 +17,10 @@ from .uart_transport import UARTTransport
 # Users can import from here: from transport import COMMAND_MAP, DEST_MAP
 # Or from protocol module directly: from protocol import COMMAND_MAP, DEST_MAP
 try:
-    # Import from parent directory (protocol.py at src level)
-    import sys
-    import os
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE
-except ImportError:
-    # If protocol module not available, provide empty defaults
+    # Try to import from parent package (protocol.py at src level)
+    from ..protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE
+except (ImportError, ValueError):
+    # If relative import fails (e.g., running as script), provide empty defaults
     COMMAND_MAP = {}
     DEST_MAP = {}
     MAX_INDEX_VALUE = 100

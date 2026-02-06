@@ -75,7 +75,6 @@ class MockUARTManager:
 from transport import Message, UARTTransport
 
 # Import protocol definitions
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE
 
 
