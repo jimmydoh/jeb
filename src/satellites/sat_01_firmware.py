@@ -32,10 +32,8 @@ class IndustrialSatelliteFirmware(Satellite):
     Runs on the physical satellite hardware and manages all peripherals.
     """
     
-    def __init__(self, uart=None):
+    def __init__(self):
         """Initialize the Industrial Satellite Firmware."""
-        # Note: uart parameter is for backwards compatibility but not used
-        
         # State Variables
         self.last_tx = 0
 

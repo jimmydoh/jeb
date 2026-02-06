@@ -124,7 +124,7 @@ class CoreManager:
         self.mode = "DASHBOARD"
         self.meltdown = False
         self.sat_active = False
-        self.last_raw_uart = ""
+        self.last_message_debug = ""
 
     async def discover_satellites(self):
         """Triggers the ID assignment chain."""
@@ -188,8 +188,8 @@ class CoreManager:
 
     def handle_message(self, message):
         """Processes incoming messages and updates satellite states."""
-        # Store raw representation for debugging
-        self.last_raw_uart = str(message)
+        # Store message representation for debugging
+        self.last_message_debug = str(message)
         try:
             sid = message.destination
             cmd = message.command

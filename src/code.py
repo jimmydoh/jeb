@@ -151,7 +151,7 @@ else:
 
     elif role == "SAT" and type_id == "01":
         from satellites import IndustrialSatelliteFirmware
-        app = IndustrialSatelliteFirmware(uart=None)
+        app = IndustrialSatelliteFirmware()
 
     else:
         print("❗Unknown role/type_id combination. No application loaded.❗")
