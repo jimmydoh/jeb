@@ -34,7 +34,7 @@ def calculate_crc8(data):
                 crc <<= 1
             crc &= 0xFF
     
-    return f"{crc:02X}".encode('ascii')
+    return crc
 
 
 # Mock utilities module

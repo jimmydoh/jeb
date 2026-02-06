@@ -97,6 +97,7 @@ class MockUARTManager:
 
 # Now import the transport classes
 from transport import Message, UARTTransport
+from protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
 
 def test_message_creation():
@@ -132,7 +133,7 @@ def test_uart_transport_send():
     print("\nTesting UARTTransport send...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Send a message
     msg = Message("ALL", "ID_ASSIGN", "0100")
@@ -159,7 +160,7 @@ def test_uart_transport_receive():
     print("\nTesting UARTTransport receive...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Create a valid message by sending it first (to get proper binary format)
     msg_out = Message("0101", "STATUS", "100,200")
@@ -186,7 +187,7 @@ def test_uart_transport_receive_invalid_crc():
     print("\nTesting UARTTransport reject invalid CRC...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Create a valid packet then corrupt its CRC
     msg_out = Message("0101", "STATUS", "100,200")
@@ -214,7 +215,7 @@ def test_uart_transport_receive_malformed():
     print("\nTesting UARTTransport reject malformed messages...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Create a malformed packet (too short - just a couple of bytes)
     malformed_packet = b'\x01\x02\x00'  # Too short to be valid
@@ -235,7 +236,7 @@ def test_uart_transport_receive_empty():
     print("\nTesting UARTTransport with no data...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Try to receive when nothing is available
     msg = transport.receive()
@@ -250,7 +251,7 @@ def test_uart_transport_clear_buffer():
     print("\nTesting UARTTransport clear_buffer...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Clear the buffer
     transport.clear_buffer()
@@ -265,7 +266,7 @@ def test_transport_abstraction():
     print("\nTesting transport abstraction...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Send a message - user doesn't need to know about CRC or COBS framing
     msg_out = Message("0101", "LED", "255,128,64,32")

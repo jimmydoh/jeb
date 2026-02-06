@@ -34,7 +34,7 @@ def calculate_crc8(data):
                 crc <<= 1
             crc &= 0xFF
     
-    return f"{crc:02X}".encode('ascii')
+    return crc
 
 
 # Mock utilities module
@@ -77,6 +77,7 @@ class MockUARTManager:
 
 # Now import the transport classes
 from transport import Message, UARTTransport
+from protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
 
 def test_binary_payload_returns_bytes():
@@ -84,7 +85,8 @@ def test_binary_payload_returns_bytes():
     print("Testing binary payload returns bytes...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    # Use empty schemas so payloads are returned as raw bytes (backward compatibility mode)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, {})
     
     # Send a message with numeric payload (will be encoded as binary)
     msg_out = Message("0101", "LED", "0,255,128,64")
@@ -107,7 +109,7 @@ def test_text_payload_returns_string():
     print("\nTesting text payload returns string...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Send a message with text payload
     msg_out = Message("0101", "DSP", "HELLO")
@@ -195,7 +197,8 @@ def test_no_string_boomerang():
     print("\nTesting no String Boomerang (performance fix)...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    # Use empty schemas so payloads are returned as raw bytes (backward compatibility mode)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, {})
     
     # Send LED command with 4 values
     msg_out = Message("0101", "LED", "0,255,128,64")
@@ -227,7 +230,8 @@ def test_heap_efficiency():
     print("\nTesting heap efficiency (object allocation)...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    # Use empty schemas so payloads are returned as raw bytes (backward compatibility mode)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, {})
     
     # OLD WAY (String Boomerang):
     # bytes [0, 255, 128, 64] -> string "0,255,128,64" -> split -> ["0", "255", "128", "64"] -> parse -> [0, 255, 128, 64]

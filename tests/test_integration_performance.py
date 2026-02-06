@@ -37,7 +37,7 @@ def calculate_crc8(data):
                 crc <<= 1
             crc &= 0xFF
     
-    return f"{crc:02X}".encode('ascii')
+    return crc
 
 # Mock utilities module
 class MockUtilities:
@@ -67,6 +67,7 @@ class MockUARTManager:
 
 # Import transport
 from transport import Message, UARTTransport
+from protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
 
 def simulate_led_command_processing(payload):
@@ -98,7 +99,8 @@ def test_end_to_end_binary_flow():
     
     # MASTER SIDE: Create and send LED command
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    # Use empty schemas to test raw bytes flow (backward compatibility mode)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, {})
     
     # Send LED command: LED 0, RGB(255, 128, 64), 2.0s duration, 0.8 brightness, priority 3
     msg_out = Message("0101", "LED", "0,255,128,64")
@@ -185,7 +187,8 @@ def test_struct_unpack_ultimate_performance():
     print("\nTesting ultimate performance with struct.unpack...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    # Use empty schemas to test raw bytes flow (backward compatibility mode)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, {})
     
     # Send LED command
     msg_out = Message("0101", "LED", "10,20,30,40,50,60,70")
@@ -231,7 +234,7 @@ def test_backward_compatibility():
     print("\nTesting backward compatibility with text payloads...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Text command: DSP with message
     msg_out = Message("0101", "DSP", "HELLO WORLD")
@@ -253,19 +256,19 @@ def test_backward_compatibility():
 
 
 def test_mixed_commands():
-    """Test handling of mixed binary and text commands."""
-    print("\nTesting mixed binary and text commands...")
+    """Test handling of mixed commands with schemas."""
+    print("\nTesting commands with payload schemas...")
     
     test_cases = [
-        ("LED", "0,255,0,0", "bytes", "Binary LED command"),
+        ("LED", "0,255,0,0", "str", "Numeric bytes command"),
         ("DSP", "READY", "str", "Text display command"),
-        ("POWER", "19.5,18.2,5.0", "bytes", "Binary power values"),
+        ("POWER", "19.5,18.2,5.0", "str", "Float values command"),
         ("ID_ASSIGN", "0101", "str", "Text ID assignment"),
     ]
     
     for cmd, payload, expected_type, description in test_cases:
         mock_uart = MockUARTManager()
-        transport = UARTTransport(mock_uart)
+        transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
         
         msg_out = Message("0101", cmd, payload)
         transport.send(msg_out)
@@ -277,10 +280,9 @@ def test_mixed_commands():
         
         print(f"  {cmd:12s} | {description:30s} | {actual_type:5s} | ✓")
         
-        # Note: We expect numeric payloads to be bytes, text payloads to be strings
-        # Some payloads might be either depending on content
+        # With schemas, all payloads are decoded to strings for easy parsing
     
-    print("✓ Mixed commands test passed")
+    print("✓ Schema-based commands test passed")
 
 
 if __name__ == "__main__":
