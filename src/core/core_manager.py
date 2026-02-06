@@ -211,7 +211,7 @@ class CoreManager:
                                 f"ID: {sid}"
                             )
                         )
-                        if self.satellites[sid].sat_type == "INDUSTRIAL":
+                        if self.satellites[sid].sat_type_name == "INDUSTRIAL":
                             self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
                             asyncio.create_task(
                                 self.audio.play(
