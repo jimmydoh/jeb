@@ -48,7 +48,7 @@ def calculate_crc8(data):
                 crc <<= 1
             crc &= 0xFF
     
-    return f"{crc:02X}".encode('ascii')
+    return crc
 
 
 def verify_crc8(packet):
@@ -68,8 +68,9 @@ def verify_crc8(packet):
     
     # Compare CRCs (handle type mismatch)
     if isinstance(received_crc, str):
-        # Decode bytes CRC for comparison with string CRC
-        calculated_crc = calculated_crc.decode('ascii')
+        # Convert integer CRC to hex string for comparison
+        calculated_crc_str = f"{calculated_crc:02X}"
+        return calculated_crc_str == received_crc, data
     
     return calculated_crc == received_crc, data
 
@@ -141,7 +142,7 @@ def test_uart_transport_send():
     
     # Verify CRC is correct
     data = "|".join(parts[:3])
-    expected_crc = calculate_crc8(data).decode('ascii')
+    expected_crc = f"{calculate_crc8(data):02X}"
     assert parts[3] == expected_crc, f"CRC mismatch: expected {expected_crc}, got {parts[3]}"
     
     print("✓ UARTTransport send test passed")
@@ -156,7 +157,7 @@ def test_uart_transport_receive():
     
     # Queue a valid packet
     data = "0101|STATUS|0000,C,N,0,0"
-    crc = calculate_crc8(data).decode('ascii')
+    crc = f"{calculate_crc8(data):02X}"
     packet = f"{data}|{crc}"
     mock_uart.receive_queue.append(packet)
     
@@ -200,7 +201,7 @@ def test_uart_transport_receive_malformed():
     transport = UARTTransport(mock_uart)
     
     # Queue a malformed packet (not enough fields)
-    crc = calculate_crc8("INCOMPLETE").decode('ascii')
+    crc = f"{calculate_crc8('INCOMPLETE'):02X}"
     packet = f"INCOMPLETE|{crc}"
     mock_uart.receive_queue.append(packet)
     
