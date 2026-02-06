@@ -73,10 +73,10 @@ class UARTManager:
                 try:
                     self.buffer.extend(available_bytes)
                 except ValueError:
-                    # Buffer overflow - clear and raise error
-                    self.buffer.clear()
+                    # Buffer overflow - clear buffer and alert user
                     print("WARNING: UART buffer overflow - dropped packets. Buffer cleared.")
-                    raise ValueError("UART buffer overflow - clearing buffer")
+                    self.buffer.clear()
+                    raise ValueError("UART buffer overflow - buffer has been cleared")
         
         # Check if we have a complete line
         newline_idx = self.buffer.find(b'\n')
@@ -119,10 +119,10 @@ class UARTManager:
                 try:
                     self.buffer.extend(available_bytes)
                 except ValueError:
-                    # Buffer overflow - clear and raise error
-                    self.buffer.clear()
+                    # Buffer overflow - clear buffer and alert user
                     print("WARNING: UART buffer overflow - dropped packets. Buffer cleared.")
-                    raise ValueError("UART buffer overflow - clearing buffer")
+                    self.buffer.clear()
+                    raise ValueError("UART buffer overflow - buffer has been cleared")
         
         # Check if we have the delimiter
         delim_idx = self.buffer.find(delimiter)

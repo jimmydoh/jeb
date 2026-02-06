@@ -58,7 +58,7 @@ class RingBuffer:
         self._size += data_len
     
     def find(self, pattern):
-        """Find pattern using native C-speed optimizations.
+        """Find the first occurrence of pattern in the buffer using native C-speed optimizations.
         
         Parameters:
             pattern: Bytes pattern to search for.
@@ -72,8 +72,10 @@ class RingBuffer:
         if len(pattern) > self._size:
             return -1
         
+        # Determine the end of the first physical chunk
+        first_chunk_end = self._capacity if self._tail + self._size > self._capacity else self._tail + self._size
+        
         # Search the first physical chunk (from tail to end of buffer or head)
-        first_chunk_end = min(self._capacity, self._tail + self._size)
         res = self._buffer.find(pattern, self._tail, first_chunk_end)
         if res != -1:
             return res - self._tail
