@@ -13,7 +13,7 @@ import microcontroller
 import busio
 import neopixel
 
-from utilities import JEBPixel, Palette, Pins
+from utilities import JEBPixel, Palette, Pins, parse_values, get_int, get_float, get_str
 
 from transport import Message, UARTTransport
 
@@ -135,12 +135,14 @@ class IndustrialSatelliteFirmware(Satellite):
         elif cmd == "SETENC":
             # Set the encoder position to a specific value
             if len(val) > 0:
-                self.hid.reset_encoder(int(val))
+                values = parse_values(val)
+                self.hid.reset_encoder(get_int(values, 0))
 
         elif cmd == "LED" or cmd == "LEDFLASH" or cmd == "LEDBREATH":
-            p = val.split(",")
-            idx_raw = p[0]
-            target_indices = range(6) if idx_raw == "ALL" else [int(idx_raw)]
+            # Parse payload once for all LED types
+            values = parse_values(val)
+            idx_raw = get_str(values, 0)
+            target_indices = range(6) if idx_raw == "ALL" else [get_int(values, 0)]
 
             for i in target_indices:
 
@@ -149,10 +151,13 @@ class IndustrialSatelliteFirmware(Satellite):
                 # Set LED 0 to RGB(100,100,100) for 2.0 seconds at 20% brightness, priority 2
                 if cmd == "LED":
                     # Static Color
-                    r, g, b = int(p[1]), int(p[2]), int(p[3])
-                    duration = float(p[4]) if len(p) > 4 and float(p[4]) > 0 else None
-                    brightness = float(p[5]) if len(p) > 5 else 1.0
-                    priority = int(p[6]) if len(p) > 6 else 2
+                    r = get_int(values, 1)
+                    g = get_int(values, 2)
+                    b = get_int(values, 3)
+                    duration_val = get_float(values, 4)
+                    duration = duration_val if duration_val > 0 else None
+                    brightness = get_float(values, 5, 1.0)
+                    priority = get_int(values, 6, 2)
                     self.leds.solid_led(i,
                                        (r, g, b),
                                        brightness=brightness,
@@ -164,12 +169,16 @@ class IndustrialSatelliteFirmware(Satellite):
                 # LED 0 flashes green for 2s at 50% brightness, speed 0.5s on, 0.1s off, priority 2
                 elif cmd == "LEDFLASH":
                     # Flashing Animation
-                    r, g, b = int(p[1]), int(p[2]), int(p[3])
-                    duration = float(p[4]) if len(p) > 4 and float(p[4]) > 0 else None
-                    brightness = float(p[5]) if len(p) > 5 else 1.0
-                    priority = int(p[6]) if len(p) > 6 else 2
-                    speed = float(p[7]) if len(p) > 7 else 0.1
-                    off_speed = float(p[8]) if len(p) > 8 else None
+                    r = get_int(values, 1)
+                    g = get_int(values, 2)
+                    b = get_int(values, 3)
+                    duration_val = get_float(values, 4)
+                    duration = duration_val if duration_val > 0 else None
+                    brightness = get_float(values, 5, 1.0)
+                    priority = get_int(values, 6, 2)
+                    speed = get_float(values, 7, 0.1)
+                    off_speed_val = get_float(values, 8)
+                    off_speed = off_speed_val if off_speed_val > 0 else None
                     self.leds.flash_led(i,
                                        (r, g, b),
                                        brightness=brightness,
@@ -183,11 +192,14 @@ class IndustrialSatelliteFirmware(Satellite):
                 # LED 0 breathes blue over 2s at 20% brightness, speed 2.0, priority 3
                 elif cmd == "LEDBREATH":
                     # Breathing Animation
-                    r, g, b = int(p[1]), int(p[2]), int(p[3])
-                    duration = float(p[4]) if len(p) > 4 and float(p[4]) > 0 else None
-                    brightness = float(p[5]) if len(p) > 5 else 1.0
-                    priority = int(p[6]) if len(p) > 6 else 2
-                    speed = float(p[7]) if len(p) > 7 else 2.0
+                    r = get_int(values, 1)
+                    g = get_int(values, 2)
+                    b = get_int(values, 3)
+                    duration_val = get_float(values, 4)
+                    duration = duration_val if duration_val > 0 else None
+                    brightness = get_float(values, 5, 1.0)
+                    priority = get_int(values, 6, 2)
+                    speed = get_float(values, 7, 2.0)
                     self.leds.breathe_led(i,
                                          (r, g, b),
                                          brightness=brightness,
@@ -199,10 +211,13 @@ class IndustrialSatelliteFirmware(Satellite):
             # E.g. LEDCYLON|r,g,b,duration,speed
             # LEDCYLON|255,0,0,2.0,0.08
             # Red Cylon for 2 seconds at 0.08 speed
-            p = val.split(",")
-            r, g, b = int(p[0]), int(p[1]), int(p[2])
-            duration = float(p[3]) if len(p) > 3 and float(p[3]) > 0 else 2.0
-            speed = float(p[4]) if len(p) > 4 else 0.08
+            values = parse_values(val)
+            r = get_int(values, 0)
+            g = get_int(values, 1)
+            b = get_int(values, 2)
+            duration_val = get_float(values, 3, 2.0)
+            duration = duration_val if duration_val > 0 else 2.0
+            speed = get_float(values, 4, 0.08)
             self.leds.start_cylon((r, g, b),
                                  duration=duration,
                                  speed=speed)
@@ -211,10 +226,13 @@ class IndustrialSatelliteFirmware(Satellite):
             # E.g. LEDCENTRI|r,g,b,duration,speed
             # LEDCENTRI|255,0,0,2.0,0.08
             # Red Centrifuge for 2 seconds at 0.08 speed
-            p = val.split(",")
-            r, g, b = int(p[0]), int(p[1]), int(p[2])
-            duration = float(p[3]) if len(p) > 3 and float(p[3]) > 0 else 2.0
-            speed = float(p[4]) if len(p) > 4 else 0.08
+            values = parse_values(val)
+            r = get_int(values, 0)
+            g = get_int(values, 1)
+            b = get_int(values, 2)
+            duration_val = get_float(values, 3, 2.0)
+            duration = duration_val if duration_val > 0 else 2.0
+            speed = get_float(values, 4, 0.08)
             self.leds.start_centrifuge((r, g, b),
                                       duration=duration,
                                       speed=speed)
@@ -223,9 +241,10 @@ class IndustrialSatelliteFirmware(Satellite):
             # E.g. LEDRAINBOW|duration,speed
             # LEDRAINBOW|2.0,0.08
             # Rainbow for 2 seconds at 0.08 speed
-            p = val.split(",")
-            duration = float(p[0]) if len(p) > 0 and float(p[0]) > 0 else 2.0
-            speed = float(p[1]) if len(p) > 1 else 0.08
+            values = parse_values(val)
+            duration_val = get_float(values, 0, 2.0)
+            duration = duration_val if duration_val > 0 else 2.0
+            speed = get_float(values, 1, 0.08)
             self.leds.start_rainbow(duration=duration,
                                    speed=speed)
 
@@ -233,9 +252,10 @@ class IndustrialSatelliteFirmware(Satellite):
             # E.g. LEDGLITCH|duration,speed
             # LEDGLITCH|2.0,0.08
             # Glitch for 2 seconds at 0.08 speed
-            p = val.split(",")
-            duration = float(p[0]) if len(p) > 0 and float(p[0]) > 0 else 2.0
-            speed = float(p[1]) if len(p) > 1 else 0.08
+            values = parse_values(val)
+            duration_val = get_float(values, 0, 2.0)
+            duration = duration_val if duration_val > 0 else 2.0
+            speed = get_float(values, 1, 0.08)
             # TODO Find a way to pass multiple colors
             colors = [
                 Palette.YELLOW,
@@ -251,11 +271,11 @@ class IndustrialSatelliteFirmware(Satellite):
             # E.g. DSP|message,loop,speed,direction
             # DSP|HELLO,1,0.2,L
             # Display "HELLO" looping at 0.2s speed, left direction
-            p = val.split(",")
-            message = p[0]
-            loop = True if (len(p) > 1 and p[1] == "1") else False
-            speed = float(p[2]) if len(p) > 2 else 0.3
-            direction = p[3] if len(p) > 3 else "L"
+            values = parse_values(val)
+            message = get_str(values, 0)
+            loop = True if get_str(values, 1) == "1" else False
+            speed = get_float(values, 2, 0.3)
+            direction = get_str(values, 3, "L")
 
             # Cancel any existing display task and start new one
             self.segment.start_message(message, loop, speed, direction)
@@ -264,14 +284,18 @@ class IndustrialSatelliteFirmware(Satellite):
             # E.g. DSPCORRUPT|duration
             # DSPCORRUPT|2.0
             # Start corruption animation for 2 seconds
-            duration = float(val) if val and float(val) > 0 else 2.0
+            values = parse_values(val)
+            duration_val = get_float(values, 0, 2.0)
+            duration = duration_val if duration_val > 0 else 2.0
             self.segment.start_corruption(duration)
 
         elif cmd == "DSPMATRIX":
             # E.g. DSPMATRIX|duration
             # DSPMATRIX|2.0
             # Start matrix rain animation for 2 seconds
-            duration = float(val) if val and float(val) > 0 else 2.0
+            values = parse_values(val)
+            duration_val = get_float(values, 0, 2.0)
+            duration = duration_val if duration_val > 0 else 2.0
             self.segment.start_matrix(duration)
 
     async def relay_downstream_to_upstream(self):
