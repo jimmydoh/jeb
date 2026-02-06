@@ -28,14 +28,16 @@ import os
 import time
 
 import board
-import busio
-import digitalio
 import microcontroller
-import sdcardio
-import storage
 import supervisor
 
-ROOT_DATA_DIR = "/"
+# Check if SD card was mounted in boot.py
+try:
+    from boot import SD_MOUNTED
+except ImportError:
+    SD_MOUNTED = False
+
+ROOT_DATA_DIR = "/sd" if SD_MOUNTED else "/"
 
 def file_exists(filename):
     """Check if a file exists on the filesystem."""
@@ -72,48 +74,10 @@ def load_config():
         print("Using default configuration.")
         return default_config
 
-def initialize_sd_card():
-    """Initialize the SD card and mount it."""
-    # SD Card Setup
-    # SPI Pin Setup for Pico 2
-    # SCK=GP18, MOSI=GP19, MISO=GP16, CS=GP17
-    try:
-        print("Initializing SPI interface", end="")
-        spi_clock = getattr(board, "GP18")
-        spi_mosi = getattr(board, "GP19")
-        spi_miso = getattr(board, "GP16")
-        sdcard_cs = getattr(board, "GP17")
-        spi = busio.SPI(clock=spi_clock, MOSI=spi_mosi, MISO=spi_miso)
-        print(" - ✅")
-    except Exception as e:
-        print(" - ❌")
-        print(f"SPI initialization failed: {e}")
-        return False
-
-    try:
-        print("Initializing SD card", end="")
-        sdcard = sdcardio.SDCard(spi, digitalio.DigitalInOut(sdcard_cs))
-        print(" - ✅")
-    except Exception as e:
-        print(" - ❌")
-        print(f"SD Card initialization failed: {e}")
-        return False
-
-    try:
-        print("Mounting SD card", end="")
-        vfs = storage.VfsFat(sdcard)
-        storage.mount(vfs, "/sd")
-        print(" - ✅")
-    except Exception as e:
-        print(" - ❌")
-        print(f"SD Card mounting failed: {e}")
-        return False
-
-    return True
-
 # --- ENTRY POINT ---
 
 print("*** BOOTING JEB SYSTEM ***")
+print(f"SD Card mounted: {SD_MOUNTED}")
 config = load_config()
 
 # --- OTA UPDATE CHECK ---
@@ -126,17 +90,21 @@ try:
         print("   OTA UPDATE REQUIRED")
         print("="*50 + "\n")
         
-        # Check if Wi-Fi is configured
-        if config.get("wifi_ssid") and config.get("update_url"):
+        # Check if Wi-Fi is configured and SD card is mounted
+        if not SD_MOUNTED:
+            print("⚠️ SD card not mounted - OTA updates require SD card")
+            print("Skipping update")
+            clear_update_flag()
+        elif config.get("wifi_ssid") and config.get("update_url"):
             try:
-                updater = Updater(config)
+                updater = Updater(config, sd_mounted=SD_MOUNTED)
                 update_success = updater.run_update()
                 
                 # Clear update flag
                 clear_update_flag()
                 
                 if update_success:
-                    print("\n✓ Update successful - rebooting...")
+                    print("\n✓ Update downloaded to SD card - rebooting...")
                     updater.reboot()
                 else:
                     print("\n⚠️ Update failed - continuing with existing firmware")
@@ -154,12 +122,6 @@ try:
         
 except ImportError:
     print("⚠️ Updater module not available")
-
-if config.get("mount_sd_card"):
-    if initialize_sd_card():
-        ROOT_DATA_DIR = "/sd"
-    else:
-        ROOT_DATA_DIR = "/"
 
 app = None
 

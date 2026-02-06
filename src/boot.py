@@ -18,6 +18,48 @@ mosfet_control.value = False  # LOW = MOSFETs OFF (Safe State)
 
 print("boot.py: MOSFET_CONTROL (GP14) initialized to LOW (Safe State)")
 
+# --- SD CARD INITIALIZATION ---
+# Initialize SD card early for OTA updates (files downloaded to SD card)
+
+SD_MOUNTED = False
+
+def initialize_sd_card():
+    """Initialize the SD card and mount it at /sd."""
+    global SD_MOUNTED
+    
+    try:
+        import busio
+        import sdcardio
+        
+        print("boot.py: Initializing SPI for SD card", end="")
+        spi_clock = getattr(board, "GP18")
+        spi_mosi = getattr(board, "GP19")
+        spi_miso = getattr(board, "GP16")
+        sdcard_cs = getattr(board, "GP17")
+        spi = busio.SPI(clock=spi_clock, MOSI=spi_mosi, MISO=spi_miso)
+        print(" - ✅")
+        
+        print("boot.py: Initializing SD card", end="")
+        sdcard = sdcardio.SDCard(spi, digitalio.DigitalInOut(sdcard_cs))
+        print(" - ✅")
+        
+        print("boot.py: Mounting SD card at /sd", end="")
+        vfs = storage.VfsFat(sdcard)
+        storage.mount(vfs, "/sd")
+        print(" - ✅")
+        
+        SD_MOUNTED = True
+        return True
+        
+    except Exception as e:
+        print(" - ❌")
+        print(f"boot.py: SD card initialization failed: {e}")
+        print("boot.py: OTA updates will not be available")
+        return False
+
+# Try to initialize SD card
+initialize_sd_card()
+
 # --- OTA UPDATE MODE DETECTION ---
 # Check if we need to enable filesystem writes for OTA updates
 

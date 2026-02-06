@@ -123,18 +123,20 @@ def test_updater_initialization():
     """Test Updater initialization with config."""
     print("\nTesting Updater initialization...")
     
-    # Test with valid config
+    # Test with valid config and SD mounted
     valid_config = {
         "wifi_ssid": "TestSSID",
         "wifi_password": "TestPassword",
-        "update_url": "http://example.com/manifest.json"
+        "update_url": "http://example.com"
     }
     
     try:
-        updater_instance = updater.Updater(valid_config)
+        updater_instance = updater.Updater(valid_config, sd_mounted=True)
         assert updater_instance.wifi_ssid == "TestSSID"
         assert updater_instance.wifi_password == "TestPassword"
-        assert updater_instance.update_url == "http://example.com/manifest.json"
+        assert updater_instance.update_url == "http://example.com"
+        assert updater_instance.sd_mounted == True
+        assert updater_instance.download_dir == "/sd/update"
         print("  ✓ Valid config accepted")
     except Exception as e:
         print(f"  ✗ Failed with valid config: {e}")
@@ -147,11 +149,19 @@ def test_updater_initialization():
     }
     
     try:
-        updater.Updater(invalid_config)
+        updater.Updater(invalid_config, sd_mounted=True)
         print("  ✗ Should have raised error for missing config")
         assert False, "Should have raised UpdaterError"
     except updater.UpdaterError as e:
         print(f"  ✓ Correctly rejected invalid config: {e}")
+    
+    # Test without SD card
+    try:
+        updater.Updater(valid_config, sd_mounted=False)
+        print("  ✗ Should have raised error for missing SD card")
+        assert False, "Should have raised UpdaterError"
+    except updater.UpdaterError as e:
+        print(f"  ✓ Correctly rejected without SD card: {e}")
     
     print("✓ Updater initialization test passed")
 
@@ -261,9 +271,9 @@ def test_check_current_version():
         config = {
             "wifi_ssid": "test",
             "wifi_password": "test",
-            "update_url": "http://test.com/manifest.json"
+            "update_url": "http://test.com"
         }
-        updater_instance = updater.Updater(config)
+        updater_instance = updater.Updater(config, sd_mounted=True)
         
         # Test 1: No version.json
         version = updater_instance.check_current_version()
@@ -342,9 +352,9 @@ def test_verify_files():
         config = {
             "wifi_ssid": "test",
             "wifi_password": "test",
-            "update_url": "http://test.com/manifest.json"
+            "update_url": "http://test.com"
         }
-        updater_instance = updater.Updater(config)
+        updater_instance = updater.Updater(config, sd_mounted=True)
         updater_instance.manifest = manifest
         
         # Verify files
@@ -383,9 +393,9 @@ def test_write_version_info():
         config = {
             "wifi_ssid": "test",
             "wifi_password": "test",
-            "update_url": "http://test.com/manifest.json"
+            "update_url": "http://test.com"
         }
-        updater_instance = updater.Updater(config)
+        updater_instance = updater.Updater(config, sd_mounted=True)
         updater_instance.manifest = {
             "version": "1.0.0",
             "build_timestamp": "2024-01-01T00:00:00Z",

@@ -47,7 +47,7 @@ class Updater:
     - Writing version information
     """
     
-    def __init__(self, config):
+    def __init__(self, config, sd_mounted=False):
         """
         Initialize the updater with configuration.
         
@@ -55,14 +55,18 @@ class Updater:
             config (dict): Configuration dictionary containing:
                 - wifi_ssid: Wi-Fi network name
                 - wifi_password: Wi-Fi password
-                - update_url: URL to manifest.json
+                - update_url: Base URL to update server (e.g., https://server.com/)
+            sd_mounted (bool): Whether SD card is mounted at /sd
         """
         self.config = config
         self.wifi_ssid = config.get("wifi_ssid")
         self.wifi_password = config.get("wifi_password")
-        self.update_url = config.get("update_url")
+        self.update_url = config.get("update_url", "").rstrip("/")  # Remove trailing slash
         self.manifest = None
+        self.remote_version = None
         self.http_session = None
+        self.sd_mounted = sd_mounted
+        self.download_dir = "/sd/update" if sd_mounted else "/update"
         
         # Validate configuration
         if not WIFI_AVAILABLE:
@@ -72,6 +76,9 @@ class Updater:
             raise UpdaterError(
                 "Missing required config: wifi_ssid, wifi_password, or update_url"
             )
+        
+        if not sd_mounted:
+            raise UpdaterError("SD card must be mounted for OTA updates")
     
     def connect_wifi(self, timeout=30):
         """
@@ -123,9 +130,48 @@ class Updater:
             wifi.radio.enabled = False
             print("Wi-Fi disconnected")
     
+    def fetch_remote_version(self):
+        """
+        Download and parse the remote version.json file.
+        This is checked first to see if an update is needed before
+        downloading the full manifest.
+        
+        Returns:
+            dict: Parsed version dictionary
+            
+        Raises:
+            UpdaterError: If download or parsing fails
+        """
+        version_url = f"{self.update_url}/version.json"
+        print(f"Fetching version info from: {version_url}")
+        
+        try:
+            response = self.http_session.get(version_url, timeout=10)
+            
+            if response.status_code != 200:
+                raise UpdaterError(
+                    f"Failed to fetch version: HTTP {response.status_code}"
+                )
+            
+            # Parse JSON
+            self.remote_version = response.json()
+            response.close()
+            
+            # Validate version structure
+            if "version" not in self.remote_version:
+                raise UpdaterError("Invalid version.json structure")
+            
+            print(f"✓ Remote version: {self.remote_version['version']}")
+            
+            return self.remote_version
+            
+        except Exception as e:
+            raise UpdaterError(f"Failed to fetch version: {e}")
+    
     def fetch_manifest(self):
         """
         Download and parse the remote manifest file.
+        The manifest is at: {update_url}/manifest.json
         
         Returns:
             dict: Parsed manifest dictionary
@@ -133,10 +179,14 @@ class Updater:
         Raises:
             UpdaterError: If download or parsing fails
         """
-        print(f"Fetching manifest from: {self.update_url}")
+        if not self.remote_version:
+            raise UpdaterError("Must fetch remote version first")
+        
+        manifest_url = f"{self.update_url}/manifest.json"
+        print(f"Fetching manifest from: {manifest_url}")
         
         try:
-            response = self.http_session.get(self.update_url, timeout=10)
+            response = self.http_session.get(manifest_url, timeout=10)
             
             if response.status_code != 200:
                 raise UpdaterError(
@@ -230,7 +280,9 @@ class Updater:
     
     def download_file(self, file_info):
         """
-        Download a single file from the remote server.
+        Download a single file from the remote server to SD card.
+        Files are downloaded to /sd/update/ directory and then
+        need to be copied to final location.
         
         Args:
             file_info (dict): File information from manifest
@@ -246,15 +298,21 @@ class Updater:
         expected_hash = file_info["sha256"]
         size = file_info["size"]
         
-        # Construct full URL (assuming base URL is the directory containing manifest)
-        base_url = self.update_url.rsplit("/", 1)[0]
-        file_url = f"{base_url}/{download_path}"
+        # Construct full URL with version folder
+        # Format: {base_url}/{version}/{download_path}
+        version = self.remote_version["version"]
+        file_url = f"{self.update_url}/{version}/{download_path}"
+        
+        # Download to SD card staging area
+        local_path = f"{self.download_dir}/{path}"
         
         print(f"Downloading: {path} ({size} bytes)")
+        print(f"  From: {file_url}")
+        print(f"  To: {local_path}")
         
         try:
             # Create directory if needed
-            dir_path = path.rsplit("/", 1)[0] if "/" in path else ""
+            dir_path = local_path.rsplit("/", 1)[0] if "/" in local_path else ""
             if dir_path:
                 try:
                     os.makedirs(dir_path)
@@ -270,13 +328,13 @@ class Updater:
                 )
             
             # Write to file
-            with open(path, "wb") as f:
+            with open(local_path, "wb") as f:
                 f.write(response.content)
             
             response.close()
             
             # Verify hash
-            actual_hash = self.calculate_sha256(path)
+            actual_hash = self.calculate_sha256(local_path)
             if actual_hash != expected_hash:
                 raise UpdaterError(
                     f"Hash mismatch for {path}: expected {expected_hash}, got {actual_hash}"
@@ -390,27 +448,32 @@ class Updater:
             # Step 1: Connect to Wi-Fi
             self.connect_wifi()
             
-            # Step 2: Fetch manifest
-            self.fetch_manifest()
+            # Step 2: Fetch remote version (small file to check if update needed)
+            self.fetch_remote_version()
             
-            # Check if update is needed
-            if current_version and current_version.get("version") == self.manifest["version"]:
-                print(f"\n✓ Already up to date: {self.manifest['version']}")
+            # Check if update is needed based on version
+            if current_version and current_version.get("version") == self.remote_version["version"]:
+                print(f"\n✓ Already up to date: {self.remote_version['version']}")
                 return True
             
-            # Step 3: Verify files
+            # Step 3: Fetch full manifest (only if update needed)
+            self.fetch_manifest()
+            
+            # Step 4: Verify files
             files_to_update, files_ok = self.verify_files()
             
-            # Step 4: Update files
+            # Step 5: Download files to SD card
             if not self.update_files(files_to_update):
                 raise UpdaterError("File update failed")
             
-            # Step 5: Write version info
+            # Step 6: Write version info
             self.write_version_info()
             
             print("\n" + "="*50)
             print("   UPDATE COMPLETE")
             print("="*50 + "\n")
+            print("⚠️  Files downloaded to SD card staging area")
+            print("⚠️  Reboot required to apply updates")
             
             return True
             
