@@ -33,16 +33,47 @@ Add the following fields to your `config.json`:
 {
   "wifi_ssid": "YOUR_WIFI_SSID",
   "wifi_password": "YOUR_WIFI_PASSWORD",
-  "update_url": "https://your-server.com/manifest.json",
+  "update_url": "https://your-server.com",
   ... other config ...
 }
 ```
 
-**Security Note**: Always use HTTPS for `update_url` to prevent man-in-the-middle attacks.
+**Important Notes**: 
+- Always use HTTPS for `update_url` to prevent man-in-the-middle attacks
+- `update_url` should be the base URL (not including manifest.json)
+- SD card must be mounted for OTA updates (files stage to `/sd/update/`)
+
+## Server File Structure
+
+The update server should host files in this structure:
+
+```
+https://your-server.com/
+├── version.json         (tiny file checked first)
+├── manifest.json        (full manifest)
+└── 0.1.0/              (version folder)
+    └── mpy/
+        ├── boot.mpy
+        ├── code.mpy
+        └── ...
+```
+
+### version.json (Checked First)
+
+Small file (~200 bytes) checked first to determine if an update is needed:
+
+```json
+{
+  "version": "0.1.0",
+  "build_timestamp": "2026-02-06T11:33:14Z",
+  "file_count": 42,
+  "total_size": 125840
+}
+```
 
 ## Manifest Format
 
-The manifest is a JSON file hosted on your server that defines the desired firmware state:
+The manifest is a JSON file at `{update_url}/manifest.json` that defines the complete firmware state:
 
 ```json
 {
@@ -71,19 +102,26 @@ The manifest is a JSON file hosted on your server that defines the desired firmw
 - **build_timestamp**: ISO 8601 UTC timestamp
 - **files**: Array of file objects:
   - **path**: Target path on device (relative to root)
-  - **download_path**: Remote path for download (relative to manifest URL)
+  - **download_path**: Remote path for download (relative to version folder)
   - **sha256**: SHA256 hash for verification
   - **size**: File size in bytes
+
+### File Download URLs
+
+Files are downloaded from: `{update_url}/{version}/{download_path}`
+
+Example: `https://your-server.com/0.1.0/mpy/boot.mpy`
 
 ## Update Process
 
 ### 1. First Boot Detection
 
 On first boot, the system:
-1. Detects missing `version.json`
-2. Mounts filesystem as writable
-3. Disables USB mass storage
-4. Triggers update check
+1. `boot.py` initializes SD card at `/sd`
+2. Detects missing `version.json`
+3. Mounts filesystem as writable
+4. Disables USB mass storage
+5. Triggers update check
 
 ### 2. Update Flag
 
@@ -100,35 +138,61 @@ trigger_update()
 ```
 ┌─────────────────┐
 │  Boot (boot.py) │
+├─────────────────┤
+│ 1. Init SD card │
+│ 2. Check update │
+│    flag/version │
+│ 3. Toggle perms │
 └────────┬────────┘
-         │
-         ├─→ Check for version.json
-         │   or .update_flag
-         │
-         ├─→ Update needed?
-         │   ├─ Yes: Mount writable, disable USB
-         │   └─ No:  Mount read-only, enable USB
          │
 ┌────────▼────────┐
 │ Main (code.py)  │
 └────────┬────────┘
          │
-         ├─→ Update mode detected?
-         │   └─ Yes: Run updater
+         ├─→ SD mounted?
+         │   └─ No: Skip update
          │
 ┌────────▼────────┐
 │    Updater      │
 ├─────────────────┤
 │ 1. Connect WiFi │
-│ 2. Fetch Manifest│
-│ 3. Verify Files │
-│ 4. Download Δ   │
-│ 5. Write version.json│
-│ 6. Reboot       │
+│ 2. Fetch        │
+│    version.json │
+│ 3. Version      │
+│    changed?     │
+│    └─ No: Exit  │
+│ 4. Fetch full   │
+│    manifest     │
+│ 5. Verify files │
+│ 6. Download to  │
+│    /sd/update/  │
+│ 7. Write        │
+│    version.json │
+│ 8. Reboot       │
 └─────────────────┘
 ```
 
-### 4. File Verification
+### 4. Version Check Optimization
+
+The updater first downloads a tiny `version.json` (~200 bytes) to check if an update is needed:
+
+1. Compare remote version with local version
+2. If versions match → skip update (saves bandwidth)
+3. If versions differ → download full manifest and update
+
+### 5. File Download and Staging
+
+Files are downloaded to SD card staging area:
+
+1. Download to `/sd/update/{path}`
+2. Verify SHA256 hash
+3. On next boot, files can be copied from staging to final location
+
+**Note**: Current implementation stages files to SD card. A future enhancement could copy files from staging to internal flash on boot.
+
+### 6. File Verification
+         │
+### 6. File Verification
 
 The updater compares local files against the manifest:
 
@@ -137,20 +201,21 @@ The updater compares local files against the manifest:
 3. If missing or mismatch → download
 4. If match → skip (already up to date)
 
-### 5. Delta Updates
+### 7. Delta Updates
 
 Only files that are missing or changed are downloaded, reducing:
 - Download time
 - Network usage
 - Flash write cycles
 
-### 6. Safety Features
+### 8. Safety Features
 
 - **Graceful Abort**: If Wi-Fi fails or manifest is unreachable, boot existing firmware
 - **Hash Verification**: Each downloaded file is verified against SHA256
 - **Atomic Writes**: Files are written completely before verification
 - **USB Lockout**: USB mass storage disabled during update to prevent corruption
 - **Version Tracking**: `version.json` records successful updates
+- **SD Card Required**: Updates require SD card for staging (flash is read-only)
 
 ## Version Tracking
 
@@ -313,18 +378,33 @@ Required CircuitPython libraries:
 
 ```python
 from updater import Updater
+from boot import SD_MOUNTED  # Check if SD card is mounted
 
 config = {
     "wifi_ssid": "MyNetwork",
     "wifi_password": "password123",
-    "update_url": "https://example.com/manifest.json"
+    "update_url": "https://example.com"  # Base URL, not manifest.json
 }
 
-updater = Updater(config)
+# SD card must be mounted
+updater = Updater(config, sd_mounted=SD_MOUNTED)
 success = updater.run_update()
 
 if success:
     updater.reboot()
+```
+
+### Update Process Methods
+
+```python
+# Step-by-step update process
+updater.connect_wifi()              # Connect to Wi-Fi
+updater.fetch_remote_version()      # Fetch version.json (small file)
+updater.fetch_manifest()            # Fetch full manifest if needed
+files_to_update, _ = updater.verify_files()  # Compare with local
+updater.update_files(files_to_update)        # Download to /sd/update/
+updater.write_version_info()        # Write version.json
+updater.reboot()                    # Reboot to apply
 ```
 
 ### Helper Functions
