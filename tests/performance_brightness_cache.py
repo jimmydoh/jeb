@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
-"""Performance comparison for brightness cache optimization."""
+"""
+Performance comparison for brightness calculation approaches.
+
+NOTE: This file demonstrates the performance trade-off between cached and 
+stateless approaches. The JEB project uses the STATELESS approach despite 
+being slower because:
+
+1. Memory Safety: CircuitPython's GC doesn't compact memory, leading to heap
+   fragmentation when clearing caches repeatedly (e.g., breathing animations).
+2. Hardware Capability: The RP2350 (150MHz+) can handle the extra computation
+   easily - the CPU cost is negligible.
+3. Robustness: Memory stability is more important than microseconds of CPU time
+   in industrial/long-running applications.
+
+This file is kept for documentation purposes to show the performance characteristics
+of both approaches.
+"""
 
 import sys
 import time
@@ -63,8 +79,11 @@ def test_with_cache(num_iterations=10000):
 
 def main():
     print("=" * 70)
-    print("Performance Test: Brightness Cache Optimization")
+    print("Performance Test: Brightness Calculation Approaches")
     print("=" * 70)
+    print()
+    print("NOTE: JEB uses the STATELESS approach for memory safety,")
+    print("      despite being slightly slower. See file header for details.")
     print()
     print("Simulating show_icon rendering with 4 colors and repeated calls...")
     print()
@@ -95,6 +114,9 @@ def main():
     print("Results:")
     print(f"  Speedup:     {speedup:.2f}x faster")
     print(f"  Improvement: {improvement:.1f}% reduction in execution time")
+    print()
+    print("  IMPORTANT: Despite the speedup, JEB uses the stateless approach")
+    print("             because memory safety is more critical than CPU speed.")
     print()
     
     # Calculate tuple allocations saved
