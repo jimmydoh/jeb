@@ -194,6 +194,28 @@ TETRIS_THEME = {
     ]
 }
 
+# -- SYNTHIO SCORES ---
+
+WARP_CORE_IDLE = {
+    'bpm': 30,  # Very slow tempo
+    'sequence': [
+        # (Note, Beats) - At 30 BPM, 1 beat = 2 seconds
+        ('C3', 4.0),   # 8 seconds of low C
+        ('G2', 4.0),   # 8 seconds of lower G (creates depth)
+        ('C3', 4.0),   # Return to C
+        ('A#2', 4.0),  # A dissonant interval for "sci-fi" tension
+    ]
+}
+
+MAINFRAME_THINKING = {
+    'bpm': 600, # Ultra fast
+    'sequence': [
+        ('C6', 1), ('-', 1), ('E6', 1), ('C6', 1), # Random high blips
+        ('-', 2), ('G5', 1), ('-', 4),
+        ('C7', 1), ('-', 1), ('B6', 1)
+    ]
+}
+
 # --- TONE CALCULATOR ---
 def note(note_name):
     """Converts a note name (e.g., 'A4', 'C#5') to its frequency in Hz."""

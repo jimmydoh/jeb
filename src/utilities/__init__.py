@@ -9,6 +9,7 @@ from .mcp_keys import MCPKeys
 from .palette import Palette
 from .payload_parser import parse_values, unpack_bytes, get_int, get_float, get_str
 from .pins import Pins
+from .synth_registry import Waveforms, Envelopes, Patches
 
 __all__ = [
     'cobs_encode',
@@ -24,5 +25,8 @@ __all__ = [
     'get_int',
     'get_float',
     'get_str',
-    'Pins'
+    'Pins',
+    'Waveforms',
+    'Envelopes',
+    'Patches',
     ]

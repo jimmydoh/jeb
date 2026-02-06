@@ -23,6 +23,7 @@ from managers import HIDManager
 from managers import LEDManager
 from managers import MatrixManager
 from managers import PowerManager
+from managers import SynthManager
 from managers import UARTManager
 
 class CoreManager:
@@ -65,6 +66,10 @@ class CoreManager:
             Pins.I2S_SD,
             root_data_dir=self.root_data_dir
         )
+
+        self.synth = SynthManager()
+        self.audio.attach_synth(self.synth.source) # Connect synth to audio mixer
+        
         self.display = DisplayManager(self.i2c)
         self.hid = HIDManager(
             encoders=Pins.ENCODERS,
@@ -111,10 +116,10 @@ class CoreManager:
             receiver_buffer_size=512,
             timeout=0.01
             )
-        
+
         # Wrap UART with buffering manager
         uart_manager = UARTManager(uart_hw)
-        
+
         # Wrap with transport layer for protocol handling
         self.transport = UARTTransport(uart_manager, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
@@ -411,6 +416,7 @@ class CoreManager:
         asyncio.create_task(self.monitor_hw_hid())      # Local Hardware Input Polling
         asyncio.create_task(self.leds.animate_loop())   # Button LED Animations
         asyncio.create_task(self.matrix.animate_loop()) # Matrix LED Animations
+        asyncio.create_task(self.synth.start_generative_drone()) # Background Music Drone
 
         # Fancy bootup sequence
         #TODO Add boot animation
@@ -419,7 +425,7 @@ class CoreManager:
         while True:
             # Feed the hardware watchdog timer to prevent system reset
             microcontroller.watchdog.feed()
-            
+
             # Meltdown state pauses the menu selection
             while self.meltdown:
                 microcontroller.watchdog.feed()
