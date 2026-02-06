@@ -328,7 +328,7 @@ class IndustrialSatelliteFirmware(Satellite):
 
             # Send periodic voltage reports upstream every 5 seconds
             if now - last_broadcast > 5.0:
-                msg_out = Message(self.id, "POWER", f"{v['in']},{v['bus']},{v['log']}")
+                msg_out = Message(self.id, "POWER", [v['in'], v['bus'], v['log']])
                 self.transport_up.send(msg_out)
                 last_broadcast = now
 
