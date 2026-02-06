@@ -101,7 +101,7 @@ jobs:
             echo "Compiling $pyfile..."
             if mpy-cross "$pyfile" -o "build/mpy/${relpath%.py}.mpy" 2>&1; then
               echo "  ✓ Success: build/mpy/${relpath%.py}.mpy"
-              ((success_count++))
+              success_count=$((success_count + 1))
             else
               echo "  ✗ Failed: $pyfile"
               if [ -z "$failed_files" ]; then
@@ -109,7 +109,7 @@ jobs:
               else
                 failed_files="$failed_files"$'\n'"$pyfile"
               fi
-              ((fail_count++))
+              fail_count=$((fail_count + 1))
             fi
           done < <(find src -name "*.py" -type f)
           
