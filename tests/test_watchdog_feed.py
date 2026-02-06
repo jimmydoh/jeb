@@ -70,7 +70,9 @@ def test_watchdog_feed_present_in_code():
     feed_pos = loop_body.find('microcontroller.watchdog.feed()')
     sleep_pos = loop_body.find('await asyncio.sleep(0.1)')
     
-    if feed_pos > sleep_pos:
+    if sleep_pos == -1:
+        print("  ⚠ Warning: 'await asyncio.sleep(0.1)' not found in loop")
+    elif feed_pos > sleep_pos:
         print("  ⚠ Warning: watchdog.feed() appears after sleep, should be at top of loop")
     else:
         print("  ✓ watchdog.feed() is positioned correctly (before sleep)")
