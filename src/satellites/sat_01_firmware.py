@@ -15,7 +15,7 @@ import neopixel
 
 from utilities import JEBPixel, Palette, Pins, parse_values, get_int, get_float, get_str
 
-from transport import Message, UARTTransport
+from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE
 
 from managers import HIDManager, LEDManager, PowerManager, SegmentManager, UARTManager
 
@@ -71,8 +71,8 @@ class IndustrialSatelliteFirmware(Satellite):
         uart_down_mgr = UARTManager(uart_down_hw)
         
         # Wrap with transport layer
-        self.transport_up = UARTTransport(uart_up_mgr)
-        self.transport_down = UARTTransport(uart_down_mgr)
+        self.transport_up = UARTTransport(uart_up_mgr, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE)
+        self.transport_down = UARTTransport(uart_down_mgr, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE)
         
         # Store the raw UART managers for relay functionality
         self.uart_up_mgr = uart_up_mgr

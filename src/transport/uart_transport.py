@@ -5,61 +5,19 @@ from utilities import cobs_encode, cobs_decode, calculate_crc8
 from .message import Message
 
 
-# Command string to byte mapping
-COMMAND_MAP = {
-    # Core commands
-    "STATUS": 0x01,
-    "ID_ASSIGN": 0x02,
-    "NEW_SAT": 0x03,
-    "ERROR": 0x04,
-    "LOG": 0x05,
-    "POWER": 0x06,
-    
-    # LED commands
-    "LED": 0x10,
-    "LEDFLASH": 0x11,
-    "LEDBREATH": 0x12,
-    "LEDCYLON": 0x13,
-    "LEDCENTRI": 0x14,
-    "LEDRAINBOW": 0x15,
-    "LEDGLITCH": 0x16,
-    
-    # Display commands
-    "DSP": 0x20,
-    "DSPCORRUPT": 0x21,
-    "DSPMATRIX": 0x22,
-    
-    # Encoder commands
-    "SETENC": 0x30,
-}
-
-# Reverse mapping for decoding
-COMMAND_REVERSE_MAP = {v: k for k, v in COMMAND_MAP.items()}
-
-
-# Special destination IDs
-DEST_MAP = {
-    "ALL": 0xFF,
-    "SAT": 0xFE,
-}
-
-DEST_REVERSE_MAP = {v: k for k, v in DEST_MAP.items()}
-
-# Maximum value for single-byte index (used to distinguish 1-byte vs 2-byte dest IDs)
-MAX_INDEX_VALUE = 100
-
-
-def _encode_destination(dest_str):
+def _encode_destination(dest_str, dest_map, max_index_value):
     """Encode destination string to byte(s).
     
     Parameters:
         dest_str (str): Destination like "ALL", "SAT", or "0101"
+        dest_map (dict): Mapping of special destination strings to byte values
+        max_index_value (int): Maximum value for single-byte index
         
     Returns:
         bytes: Encoded destination (1-2 bytes)
     """
-    if dest_str in DEST_MAP:
-        return bytes([DEST_MAP[dest_str]])
+    if dest_str in dest_map:
+        return bytes([dest_map[dest_str]])
     
     # Parse numeric ID like "0101" -> type=01, index=01
     if len(dest_str) == 4 and dest_str.isdigit():
@@ -75,12 +33,14 @@ def _encode_destination(dest_str):
     raise ValueError(f"Invalid destination format: {dest_str}")
 
 
-def _decode_destination(data, offset):
+def _decode_destination(data, offset, dest_reverse_map, max_index_value):
     """Decode destination from bytes.
     
     Parameters:
         data (bytes): Raw packet data
         offset (int): Starting offset for destination
+        dest_reverse_map (dict): Reverse mapping of byte values to destination strings
+        max_index_value (int): Maximum value for single-byte index
         
     Returns:
         tuple: (dest_str, bytes_consumed)
@@ -91,11 +51,11 @@ def _decode_destination(data, offset):
     dest_byte = data[offset]
     
     # Check for special destinations
-    if dest_byte in DEST_REVERSE_MAP:
-        return DEST_REVERSE_MAP[dest_byte], 1
+    if dest_byte in dest_reverse_map:
+        return dest_reverse_map[dest_byte], 1
     
     # Check if next byte is part of ID (indices are typically < MAX_INDEX_VALUE)
-    if offset + 1 < len(data) and data[offset + 1] < MAX_INDEX_VALUE:
+    if offset + 1 < len(data) and data[offset + 1] < max_index_value:
         # Two-byte ID: type + index
         type_id = dest_byte
         index = data[offset + 1]
@@ -105,32 +65,34 @@ def _decode_destination(data, offset):
     return f"{dest_byte:02d}", 1
 
 
-def _encode_command(cmd_str):
+def _encode_command(cmd_str, command_map):
     """Encode command string to byte.
     
     Parameters:
         cmd_str (str): Command string like "LED"
+        command_map (dict): Mapping of command strings to byte values
         
     Returns:
         int: Command byte
     """
-    if cmd_str in COMMAND_MAP:
-        return COMMAND_MAP[cmd_str]
+    if cmd_str in command_map:
+        return command_map[cmd_str]
     
     raise ValueError(f"Unknown command: {cmd_str}")
 
 
-def _decode_command(cmd_byte):
+def _decode_command(cmd_byte, command_reverse_map):
     """Decode command byte to string.
     
     Parameters:
         cmd_byte (int): Command byte
+        command_reverse_map (dict): Reverse mapping of byte values to command strings
         
     Returns:
         str: Command string
     """
-    if cmd_byte in COMMAND_REVERSE_MAP:
-        return COMMAND_REVERSE_MAP[cmd_byte]
+    if cmd_byte in command_reverse_map:
+        return command_reverse_map[cmd_byte]
     
     raise ValueError(f"Unknown command byte: 0x{cmd_byte:02X}")
 
@@ -231,13 +193,28 @@ class UARTTransport:
     - New: [DEST][CMD][PAYLOAD][CRC] + COBS (zero parsing, direct byte access)
     """
     
-    def __init__(self, uart_manager):
+    def __init__(self, uart_manager, command_map=None, dest_map=None, max_index_value=100):
         """Initialize UART transport.
         
         Parameters:
             uart_manager (UARTManager): The UART manager for physical I/O.
+            command_map (dict, optional): Command string to byte mapping. 
+                If None, an empty map is used (transport won't encode/decode commands).
+            dest_map (dict, optional): Special destination string to byte mapping.
+                If None, an empty map is used (only numeric IDs supported).
+            max_index_value (int, optional): Maximum value for single-byte index.
+                Defaults to 100.
         """
         self.uart_manager = uart_manager
+        
+        # Store the maps for encoding/decoding
+        self.command_map = command_map if command_map is not None else {}
+        self.command_reverse_map = {v: k for k, v in self.command_map.items()}
+        
+        self.dest_map = dest_map if dest_map is not None else {}
+        self.dest_reverse_map = {v: k for k, v in self.dest_map.items()}
+        
+        self.max_index_value = max_index_value
     
     def send(self, message):
         """Send a message over UART using binary protocol with COBS framing.
@@ -246,10 +223,10 @@ class UARTTransport:
             message (Message): The message to send.
         """
         # Encode destination
-        dest_bytes = _encode_destination(message.destination)
+        dest_bytes = _encode_destination(message.destination, self.dest_map, self.max_index_value)
         
         # Encode command
-        cmd_byte = bytes([_encode_command(message.command)])
+        cmd_byte = bytes([_encode_command(message.command, self.command_map)])
         
         # Encode payload
         payload_bytes = _encode_payload(message.payload)
@@ -321,7 +298,7 @@ class UARTTransport:
         
         # Parse destination
         try:
-            destination, dest_len = _decode_destination(data, 0)
+            destination, dest_len = _decode_destination(data, 0, self.dest_reverse_map, self.max_index_value)
         except ValueError as e:
             print(f"Destination decode error: {e}")
             return None
@@ -333,7 +310,7 @@ class UARTTransport:
             return None
         
         try:
-            command = _decode_command(data[offset])
+            command = _decode_command(data[offset], self.command_reverse_map)
         except ValueError as e:
             print(f"Command decode error: {e}")
             return None

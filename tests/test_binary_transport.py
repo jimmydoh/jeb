@@ -74,6 +74,10 @@ class MockUARTManager:
 # Now import the transport classes
 from transport import Message, UARTTransport
 
+# Import protocol definitions
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+from protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE
+
 
 def test_message_creation():
     """Test Message class creation and properties."""
@@ -94,7 +98,7 @@ def test_binary_transport_send_simple():
     print("\nTesting binary transport send (simple)...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE)
     
     # Send a message
     msg = Message("ALL", "ID_ASSIGN", "0100")
@@ -121,7 +125,7 @@ def test_binary_transport_send_led_command():
     print("\nTesting binary transport send (LED command)...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE)
     
     # Send LED command with numeric values
     msg = Message("0101", "LED", "0,255,128,64")
@@ -142,7 +146,7 @@ def test_binary_transport_receive_simple():
     print("\nTesting binary transport receive (simple)...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE)
     
     # First send a message to get valid packet format
     msg_out = Message("0101", "STATUS", "100,200")
@@ -181,7 +185,7 @@ def test_binary_transport_roundtrip():
     
     for msg_out in test_cases:
         mock_uart = MockUARTManager()
-        transport = UARTTransport(mock_uart)
+        transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE)
         
         # Send
         transport.send(msg_out)
@@ -207,7 +211,7 @@ def test_binary_transport_invalid_crc():
     print("\nTesting binary transport reject invalid CRC...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE)
     
     # Send a valid message
     msg = Message("0101", "STATUS", "100")
@@ -233,7 +237,7 @@ def test_binary_transport_no_data():
     print("\nTesting binary transport with no data...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE)
     
     # Try to receive when nothing is available
     msg = transport.receive()
@@ -248,7 +252,7 @@ def test_binary_transport_clear_buffer():
     print("\nTesting binary transport clear_buffer...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE)
     
     # Clear the buffer
     transport.clear_buffer()
@@ -270,7 +274,7 @@ def test_binary_vs_text_overhead():
     
     # Binary protocol
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE)
     msg = Message("0101", "STATUS", "100,200,50")
     transport.send(msg)
     binary_packet = mock_uart.sent_packets[0]
@@ -295,7 +299,7 @@ def test_special_destinations():
     
     for dest, cmd, payload in test_cases:
         mock_uart = MockUARTManager()
-        transport = UARTTransport(mock_uart)
+        transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE)
         
         msg_out = Message(dest, cmd, payload)
         transport.send(msg_out)
