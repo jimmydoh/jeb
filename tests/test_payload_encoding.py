@@ -34,7 +34,7 @@ def calculate_crc8(data):
                 crc <<= 1
             crc &= 0xFF
     
-    return f"{crc:02X}".encode('ascii')
+    return crc
 
 
 # Mock utilities module
@@ -73,6 +73,7 @@ class MockUARTManager:
 
 # Import transport classes
 from transport import Message, UARTTransport
+from protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
 
 def test_id_assign_preserves_leading_zeros():
@@ -80,7 +81,7 @@ def test_id_assign_preserves_leading_zeros():
     print("Testing ID_ASSIGN with leading zeros...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Test case from problem statement: "01" should stay as "01", not become 1
     test_cases = [
@@ -111,7 +112,7 @@ def test_new_sat_preserves_string_ids():
     print("\nTesting NEW_SAT with string IDs...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     test_cases = ["01", "02", "03", "10"]
     
@@ -136,7 +137,7 @@ def test_led_commands_use_byte_encoding():
     print("\nTesting LED command byte encoding...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # LED command should encode R,G,B,brightness as 4 bytes
     msg_out = Message("0101", "LED", "255,128,64,100")
@@ -157,7 +158,7 @@ def test_power_commands_use_float_encoding():
     print("\nTesting POWER command float encoding...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # POWER command uses floats for voltage/current
     msg_out = Message("0101", "POWER", "19.5,18.2,5.0")
@@ -183,7 +184,7 @@ def test_display_commands_preserve_text():
     print("\nTesting DSP text preservation...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     test_texts = [
         "HELLO",
@@ -213,7 +214,7 @@ def test_backward_compatibility():
     print("\nTesting backward compatibility for commands without schemas...")
     
     mock_uart = MockUARTManager()
-    transport = UARTTransport(mock_uart)
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Test STATUS with correct number of values (5 bytes)
     msg_out = Message("0101", "STATUS", "100,200,50,75,25")
@@ -246,7 +247,7 @@ def test_roundtrip_all_command_types():
     
     for msg_out in test_cases:
         mock_uart = MockUARTManager()
-        transport = UARTTransport(mock_uart)
+        transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
         
         transport.send(msg_out)
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
