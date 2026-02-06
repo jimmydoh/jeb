@@ -165,9 +165,10 @@ def test_no_direct_uart_writes():
     
     # Check that all writes are in _upstream_tx_worker
     for match in write_matches:
-        # Get the method context
+        # Get the method context - check both async and sync methods
         before_text = content[:match.start()]
-        last_method = re.findall(r'async def (\w+)\(self', before_text)
+        # Match both "async def method_name(self" and "def method_name(self"
+        last_method = re.findall(r'(?:async\s+)?def\s+(\w+)\(self', before_text)
         if last_method:
             method_name = last_method[-1]
             assert method_name == '_upstream_tx_worker', \

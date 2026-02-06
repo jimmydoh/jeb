@@ -49,10 +49,17 @@ class _QueuedUARTManager:
         
         Parameters:
             data (bytes): Data to queue for transmission.
+            
+        Raises:
+            asyncio.QueueFull: If the queue is somehow bounded and full.
         """
-        # Use put_nowait for synchronous context
-        # This is safe because asyncio.Queue is unbounded by default
-        self.queue.put_nowait(data)
+        try:
+            # Use put_nowait for synchronous context
+            # This is safe because asyncio.Queue is unbounded by default
+            self.queue.put_nowait(data)
+        except Exception as e:
+            # In case of unexpected queue behavior, raise with context
+            raise RuntimeError(f"Failed to queue UART data: {e}") from e
 
 
 class IndustrialSatelliteFirmware(Satellite):
@@ -373,6 +380,8 @@ class IndustrialSatelliteFirmware(Satellite):
             if self.uart_down_mgr.in_waiting > 0:
                 # Read whatever is available and queue it for upstream transmission
                 num_read = self.uart_down_mgr.readinto(buf)
+                # Copy to bytes() is necessary since buf is reused in the loop
+                # and the queued data must remain valid until the TX worker processes it
                 await self.upstream_queue.put(bytes(buf[:num_read]))
             await asyncio.sleep(0) # Yield control immediately to other tasks
 
