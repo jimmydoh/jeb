@@ -282,7 +282,7 @@ def _decode_payload(payload_bytes, cmd_schema=None):
         cmd_schema (dict, optional): Schema defining payload structure
         
     Returns:
-        str: Decoded payload string
+        bytes or str: Raw bytes for binary data, decoded string for text data
     """
     if not payload_bytes:
         return ""
@@ -329,8 +329,9 @@ def _decode_payload(payload_bytes, cmd_schema=None):
     except UnicodeDecodeError:
         pass
     
-    # Default: treat as byte sequence
-    return ','.join(str(b) for b in payload_bytes)
+    # Return raw bytes for binary data - let the application layer decide how to decode
+    # This avoids the "String Boomerang" problem where we convert bytes -> string -> bytes
+    return payload_bytes
 
 
 class UARTTransport:
@@ -384,7 +385,7 @@ class UARTTransport:
         
         # Calculate CRC on raw packet
         crc = calculate_crc8(raw_packet)
-        crc_byte = bytes([int(crc.decode('ascii'), 16)])
+        crc_byte = bytes([crc])
         
         # Add CRC to packet
         packet_with_crc = raw_packet + crc_byte
@@ -438,10 +439,9 @@ class UARTTransport:
         
         # Verify CRC
         calculated_crc = calculate_crc8(data)
-        calculated_crc_int = int(calculated_crc.decode('ascii'), 16)
         
-        if crc_byte != calculated_crc_int:
-            print(f"CRC check failed: expected 0x{calculated_crc_int:02X}, got 0x{crc_byte:02X}")
+        if crc_byte != calculated_crc:
+            print(f"CRC check failed: expected 0x{calculated_crc:02X}, got 0x{crc_byte:02X}")
             return None
         
         # Parse destination

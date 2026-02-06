@@ -9,14 +9,13 @@ def calculate_crc8(data):
 
     Uses CRC-8-CCITT polynomial (0x07) for error detection in UART packets.
     
-    Note: This test implementation returns strings for simplicity.
-    The actual implementation in src/utilities/crc.py returns bytes.
+    Note: This test implementation returns integers to match the production code.
 
     Parameters:
         data (str or bytes): The data to calculate CRC for (e.g., "ID|CMD|VAL" or b"ID|CMD|VAL").
 
     Returns:
-        str: Two-character hexadecimal CRC value (e.g., "A3").
+        int: CRC-8 value as integer (e.g., 0xA3).
     """
     crc = 0x00
     polynomial = 0x07
@@ -34,7 +33,7 @@ def calculate_crc8(data):
                 crc <<= 1
             crc &= 0xFF
 
-    return f"{crc:02X}"
+    return crc
 
 
 def verify_crc8(packet):
@@ -61,9 +60,13 @@ def verify_crc8(packet):
     
     # Handle type mismatch for comparison
     if isinstance(received_crc, bytes):
-        calculated_crc = calculated_crc.encode('ascii')
+        # Decode bytes to string for comparison
+        received_crc = received_crc.decode('ascii')
+    
+    # Convert integer CRC to hex string for comparison
+    calculated_crc_str = f"{calculated_crc:02X}"
 
-    return calculated_crc == received_crc, data
+    return calculated_crc_str == received_crc, data
 
 
 def test_calculate_crc8():
@@ -73,20 +76,20 @@ def test_calculate_crc8():
     # Test case 1: Simple packet
     data1 = "ALL|ID_ASSIGN|0100"
     crc1 = calculate_crc8(data1)
-    print(f"  Data: '{data1}' -> CRC: {crc1}")
-    assert len(crc1) == 2, "CRC should be 2 characters"
-    assert all(c in '0123456789ABCDEF' for c in crc1), "CRC should be hex"
+    print(f"  Data: '{data1}' -> CRC: 0x{crc1:02X}")
+    assert isinstance(crc1, int), "CRC should be an integer"
+    assert 0 <= crc1 <= 255, "CRC should be a valid byte value"
 
     # Test case 2: Different data should produce different CRC
     data2 = "0101|STATUS|0000,C,N,0,0"
     crc2 = calculate_crc8(data2)
-    print(f"  Data: '{data2}' -> CRC: {crc2}")
+    print(f"  Data: '{data2}' -> CRC: 0x{crc2:02X}")
     assert crc1 != crc2, "Different data should produce different CRC"
 
     # Test case 3: Same data should produce same CRC
     crc3 = calculate_crc8(data1)
     assert crc1 == crc3, "Same data should produce same CRC"
-    print(f"  Same data produces same CRC: {crc1} == {crc3}")
+    print(f"  Same data produces same CRC: 0x{crc1:02X} == 0x{crc3:02X}")
 
     print("✓ CRC-8 calculation tests passed")
 
@@ -98,7 +101,7 @@ def test_verify_crc8():
     # Test case 1: Valid packet
     data = "ALL|ID_ASSIGN|0100"
     crc = calculate_crc8(data)
-    packet = f"{data}|{crc}"
+    packet = f"{data}|{crc:02X}"
     is_valid, extracted_data = verify_crc8(packet)
     print(f"  Valid packet: '{packet}'")
     assert is_valid, "Valid packet should pass verification"
@@ -114,7 +117,7 @@ def test_verify_crc8():
 
     # Test case 3: Corrupted data (bit flip in data)
     corrupted_data = "ALL|ID_ASSIGN|0101"  # Changed 0100 to 0101
-    bad_packet2 = f"{corrupted_data}|{crc}"  # Using old CRC
+    bad_packet2 = f"{corrupted_data}|{crc:02X}"  # Using old CRC
     is_valid, extracted_data = verify_crc8(bad_packet2)
     print(f"  Corrupted data packet: '{bad_packet2}'")
     assert not is_valid, "Packet with corrupted data should fail verification"
@@ -146,10 +149,10 @@ def test_protocol_examples():
 
     for data in examples:
         crc = calculate_crc8(data)
-        packet = f"{data}|{crc}"
+        packet = f"{data}|{crc:02X}"
         is_valid, extracted = verify_crc8(packet)
         status = "✓" if is_valid else "✗"
-        print(f"  {status} '{data}' -> CRC: {crc}")
+        print(f"  {status} '{data}' -> CRC: 0x{crc:02X}")
         assert is_valid, f"Failed to verify packet: {packet}"
         assert extracted == data, f"Data mismatch: {extracted} != {data}"
 
@@ -162,7 +165,7 @@ def test_error_detection():
 
     data = "0101|STATUS|0000,C,N,0,0"
     crc = calculate_crc8(data)
-    packet = f"{data}|{crc}"
+    packet = f"{data}|{crc:02X}"
 
     # Introduce single-bit errors at different positions
     error_count = 0
@@ -178,7 +181,7 @@ def test_error_detection():
             corrupted[i] = 'X'
 
         corrupted_data = ''.join(corrupted)
-        corrupted_packet = f"{corrupted_data}|{crc}"
+        corrupted_packet = f"{corrupted_data}|{crc:02X}"
         is_valid, _ = verify_crc8(corrupted_packet)
 
         if not is_valid:
@@ -198,13 +201,13 @@ def test_bytes_input():
     # Test calculate_crc8 with bytes
     data_bytes = b"ALL|ID_ASSIGN|0100"
     crc_from_bytes = calculate_crc8(data_bytes)
-    print(f"  CRC from bytes: {crc_from_bytes}")
-    assert isinstance(crc_from_bytes, str), "CRC should be string in test implementation"
+    print(f"  CRC from bytes: 0x{crc_from_bytes:02X}")
+    assert isinstance(crc_from_bytes, int), "CRC should be integer in test implementation"
     
     # Test calculate_crc8 with string (should give same result)
     data_str = "ALL|ID_ASSIGN|0100"
     crc_from_str = calculate_crc8(data_str)
-    print(f"  CRC from string: {crc_from_str}")
+    print(f"  CRC from string: 0x{crc_from_str:02X}")
     assert crc_from_bytes == crc_from_str, "CRC from bytes and string should match"
     
     # Test verify_crc8 with bytes packet
