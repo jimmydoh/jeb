@@ -3,12 +3,14 @@
 This manifest defines all modes available in the system and their requirements.
 The core_manager uses this to dynamically load and execute modes without
 needing to maintain hardcoded references to individual mode classes.
+
+Note: MainMenu is not included in this registry as it's always used directly
+by core_manager and doesn't need dynamic loading.
 """
 
-# Import all mode classes
+# Import all mode classes (except MainMenu to avoid circular import)
 from .industrial_startup import IndustrialStartup
 from .jebris import JEBris
-from .main_menu import MainMenu
 from .safe_cracker import SafeCracker
 from .simon import Simon
 
