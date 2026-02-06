@@ -53,17 +53,17 @@ def test_ringbuffer_performance(iterations=1000):
 
 def test_large_buffer_scenario():
     """Test scenario with large buffer accumulation."""
-    print("\nTesting large buffer scenario (800 bytes in buffer)...")
+    print("\nTesting large buffer scenario (900+ bytes in buffer)...")
     
     # Bytearray test
     buffer = bytearray()
-    # Fill buffer with data to reach ~800 bytes
+    # Fill buffer with data to reach ~900 bytes
     for i in range(100):
         buffer.extend(f"Data{i:04d} ".encode())  # ~10 bytes per item = ~1000 bytes
     
     start_time = time.time()
     for _ in range(1000):
-        # Find pattern and delete from front (O(N) where N=~800)
+        # Find pattern and delete from front (O(N) where N=~900)
         idx = buffer.find(b' ')
         if idx >= 0:
             del buffer[:idx + 1]

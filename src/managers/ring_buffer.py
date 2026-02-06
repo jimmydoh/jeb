@@ -37,10 +37,25 @@ class RingBuffer:
         if self._size + data_len > self._capacity:
             raise ValueError(f"Buffer overflow: cannot add {data_len} bytes to buffer with {self._capacity - self._size} bytes free")
         
-        for byte in data:
-            self._buffer[self._head] = byte
-            self._head = (self._head + 1) % self._capacity
-            self._size += 1
+        # Optimize by copying in chunks when possible
+        if data_len == 0:
+            return
+        
+        # Calculate how much we can write before wrapping
+        space_before_wrap = self._capacity - self._head
+        
+        if data_len <= space_before_wrap:
+            # No wrap - single copy
+            self._buffer[self._head:self._head + data_len] = data
+            self._head = (self._head + data_len) % self._capacity
+        else:
+            # Wrap required - two copies
+            self._buffer[self._head:self._head + space_before_wrap] = data[:space_before_wrap]
+            remaining = data_len - space_before_wrap
+            self._buffer[0:remaining] = data[space_before_wrap:]
+            self._head = remaining
+        
+        self._size += data_len
     
     def find(self, pattern):
         """Find the first occurrence of pattern in the buffer.
@@ -54,8 +69,21 @@ class RingBuffer:
         if self._size == 0 or len(pattern) == 0:
             return -1
         
-        # Search through the logical buffer
-        for i in range(self._size - len(pattern) + 1):
+        pattern_len = len(pattern)
+        if pattern_len > self._size:
+            return -1
+        
+        # For single-byte patterns, optimize with direct search
+        if pattern_len == 1:
+            target = pattern[0]
+            for i in range(self._size):
+                if self._get_byte_at(i) == target:
+                    return i
+            return -1
+        
+        # For multi-byte patterns, search through the logical buffer
+        max_start = self._size - pattern_len + 1
+        for i in range(max_start):
             match = True
             for j, byte in enumerate(pattern):
                 if self._get_byte_at(i + j) != byte:
