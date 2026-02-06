@@ -36,14 +36,14 @@ class UARTTransport:
         # Format data without CRC
         data = f"{message.destination}|{message.command}|{message.payload}"
         
-        # Calculate CRC
+        # Calculate CRC (returns bytes)
         crc = calculate_crc8(data)
         
         # Format complete packet with CRC and newline
-        packet = f"{data}|{crc}\n"
+        packet = f"{data}|".encode() + crc + b"\n"
         
         # Send via UART
-        self.uart_manager.write(packet.encode())
+        self.uart_manager.write(packet)
     
     def receive(self):
         """Receive a message from UART if available.
@@ -69,13 +69,21 @@ class UARTTransport:
             print(f"CRC check failed, discarding packet: {line}")
             return None
         
-        # Parse message components
-        parts = data.split("|", 2)
+        # Parse message components (handle both str and bytes)
+        if isinstance(data, bytes):
+            parts = data.split(b"|", 2)
+        else:
+            parts = data.split("|", 2)
+            
         if len(parts) < 3:
             # Malformed packet (not enough fields)
             return None
         
-        destination, command, payload = parts[0], parts[1], parts[2]
+        # Decode bytes to strings for Message if needed
+        if isinstance(data, bytes):
+            destination, command, payload = parts[0].decode(), parts[1].decode(), parts[2].decode()
+        else:
+            destination, command, payload = parts[0], parts[1], parts[2]
         
         # Return parsed message
         return Message(destination, command, payload)
