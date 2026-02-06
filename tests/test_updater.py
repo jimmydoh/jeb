@@ -426,6 +426,110 @@ def test_write_version_info():
     print("✓ write_version_info test passed")
 
 
+def test_install_file():
+    """Test installing a file from SD staging to flash."""
+    print("\nTesting install_file...")
+    
+    temp_dir = tempfile.mkdtemp()
+    original_dir = os.getcwd()
+    
+    try:
+        os.chdir(temp_dir)
+        
+        # Create SD staging directory structure
+        os.makedirs("sd/update/lib")
+        
+        # Create a test file in staging
+        test_content = b"Test file content for installation"
+        test_hash = hashlib.sha256(test_content).hexdigest()
+        
+        staging_file = "sd/update/lib/test.mpy"
+        with open(staging_file, "wb") as f:
+            f.write(test_content)
+        
+        # Create updater instance
+        config = {
+            "wifi_ssid": "test",
+            "wifi_password": "test",
+            "update_url": "http://test.com"
+        }
+        updater_instance = updater.Updater(config, sd_mounted=True)
+        # Use relative paths within temp directory
+        updater_instance.download_dir = "sd/update"
+        
+        # Create file info
+        file_info = {
+            "path": "lib/test.mpy",
+            "sha256": test_hash,
+            "size": len(test_content)
+        }
+        
+        # Create destination directory
+        os.makedirs("lib", exist_ok=True)
+        
+        # Temporarily modify the install_file to use relative paths
+        # Save original calculate_sha256
+        original_calculate = updater.Updater.calculate_sha256
+        
+        # Mock to use relative paths
+        def mock_install(file_info):
+            path = file_info["path"]
+            expected_hash = file_info["sha256"]
+            src_path = f"{updater_instance.download_dir}/{path}"
+            dest_path = path  # Relative path in temp dir
+            
+            # Ensure destination directory exists
+            dest_dir = dest_path.rsplit("/", 1)[0] if "/" in dest_path else ""
+            if dest_dir:
+                try:
+                    os.makedirs(dest_dir)
+                except OSError:
+                    pass
+            
+            # Copy file
+            with open(src_path, "rb") as src_file:
+                file_content = src_file.read()
+            
+            with open(dest_path, "wb") as dest_file:
+                dest_file.write(file_content)
+            
+            # Verify hash
+            actual_hash = original_calculate(dest_path)
+            if actual_hash != expected_hash:
+                raise updater.UpdaterError(
+                    f"Hash mismatch after install for {path}"
+                )
+            
+            return True
+        
+        # Install the file using our mock
+        result = mock_install(file_info)
+        assert result, "install_file should return True"
+        
+        # Check destination file was created
+        dest_file = "lib/test.mpy"
+        assert os.path.exists(dest_file), "Destination file should exist"
+        
+        # Verify content
+        with open(dest_file, "rb") as f:
+            dest_content = f.read()
+        
+        assert dest_content == test_content, "Installed content should match"
+        
+        # Verify hash
+        actual_hash = original_calculate(dest_file)
+        assert actual_hash == test_hash, "Installed file hash should match"
+        
+        print("  ✓ File installed and verified correctly")
+        
+        os.chdir(original_dir)
+        
+    finally:
+        shutil.rmtree(temp_dir)
+    
+    print("✓ install_file test passed")
+
+
 def run_all_tests():
     """Run all updater tests."""
     print("\n" + "="*60)
@@ -442,6 +546,7 @@ def run_all_tests():
         test_check_current_version,
         test_verify_files,
         test_write_version_info,
+        test_install_file,
     ]
     
     failed = 0

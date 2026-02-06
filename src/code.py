@@ -32,11 +32,16 @@ import microcontroller
 import supervisor
 
 # Check if SD card was mounted in boot.py
-try:
-    from boot import SD_MOUNTED
-except ImportError:
-    SD_MOUNTED = False
+# Note: We cannot import boot.py as it will re-execute the script
+# Instead, check if /sd directory exists in the filesystem
+def is_sd_mounted():
+    """Check if SD card is mounted by checking for /sd directory."""
+    try:
+        return 'sd' in os.listdir('/')
+    except OSError:
+        return False
 
+SD_MOUNTED = is_sd_mounted()
 ROOT_DATA_DIR = "/sd" if SD_MOUNTED else "/"
 
 def file_exists(filename):

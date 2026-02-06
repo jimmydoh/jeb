@@ -374,7 +374,93 @@ class Updater:
                 print(f"  ✗ Error: {e}")
                 return False
         
-        print(f"\n✓ Successfully updated {success_count}/{total} files")
+        print(f"\n✓ Successfully downloaded {success_count}/{total} files")
+        return success_count == total
+    
+    def install_file(self, file_info):
+        """
+        Install a single file from SD card staging to internal flash.
+        
+        Args:
+            file_info (dict): File information from manifest
+            
+        Returns:
+            bool: True if successful
+            
+        Raises:
+            UpdaterError: If installation fails
+        """
+        path = file_info["path"]
+        expected_hash = file_info["sha256"]
+        
+        # Source: SD card staging area
+        src_path = f"{self.download_dir}/{path}"
+        # Destination: Internal flash root
+        dest_path = f"/{path}"
+        
+        print(f"Installing: {path}")
+        print(f"  From: {src_path}")
+        print(f"  To: {dest_path}")
+        
+        try:
+            # Ensure destination directory exists
+            dest_dir = dest_path.rsplit("/", 1)[0] if "/" in dest_path else ""
+            if dest_dir and dest_dir != "/":
+                try:
+                    os.makedirs(dest_dir)
+                    print(f"  Created directory: {dest_dir}")
+                except OSError:
+                    pass  # Directory already exists
+            
+            # Copy file from SD to flash
+            with open(src_path, "rb") as src_file:
+                file_content = src_file.read()
+            
+            with open(dest_path, "wb") as dest_file:
+                dest_file.write(file_content)
+            
+            # Verify hash of installed file
+            actual_hash = self.calculate_sha256(dest_path)
+            if actual_hash != expected_hash:
+                raise UpdaterError(
+                    f"Hash mismatch after install for {path}: expected {expected_hash}, got {actual_hash}"
+                )
+            
+            print(f"  ✓ Installed and verified: {path}")
+            return True
+            
+        except Exception as e:
+            raise UpdaterError(f"Failed to install {path}: {e}")
+    
+    def install_files(self, files_to_install):
+        """
+        Install all downloaded files from SD card to internal flash.
+        
+        Args:
+            files_to_install (list): List of file info dictionaries
+            
+        Returns:
+            bool: True if all files installed successfully
+        """
+        total = len(files_to_install)
+        
+        if total == 0:
+            print("No files need installing")
+            return True
+        
+        print(f"\nInstalling {total} file(s) to internal flash...")
+        
+        success_count = 0
+        for i, file_info in enumerate(files_to_install, 1):
+            print(f"\n[{i}/{total}] ", end="")
+            try:
+                self.install_file(file_info)
+                success_count += 1
+            except UpdaterError as e:
+                print(f"  ✗ Error: {e}")
+                return False
+        
+        print(f"\n✓ Successfully installed {success_count}/{total} files")
         return success_count == total
     
     def write_version_info(self):
@@ -462,18 +548,22 @@ class Updater:
             # Step 4: Verify files
             files_to_update, files_ok = self.verify_files()
             
-            # Step 5: Download files to SD card
+            # Step 5: Download files to SD card staging area
             if not self.update_files(files_to_update):
-                raise UpdaterError("File update failed")
+                raise UpdaterError("File download failed")
             
-            # Step 6: Write version info
+            # Step 6: Install files from SD card to internal flash
+            if not self.install_files(files_to_update):
+                raise UpdaterError("File installation failed")
+            
+            # Step 7: Write version info
             self.write_version_info()
             
             print("\n" + "="*50)
             print("   UPDATE COMPLETE")
             print("="*50 + "\n")
-            print("⚠️  Files downloaded to SD card staging area")
-            print("⚠️  Reboot required to apply updates")
+            print("✓ Firmware updated successfully")
+            print("✓ Rebooting to apply changes...")
             
             return True
             
