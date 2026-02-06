@@ -20,9 +20,8 @@ class SynthManager:
         # mode=synthio.Mode.POLYPHONIC allows multiple notes at once
         self.synth = synthio.Synthesizer(sample_rate=sample_rate)
 
-        # Track active notes to allow manual stopping
-        # Format: { "note_id": synthio.Note }
-        self._active_notes = {}
+        # Note: Active notes are managed directly by the synthesizer
+        # using press() and release() methods
 
     @property
     def source(self):
@@ -39,7 +38,10 @@ class SynthManager:
             duration (float): If set, note auto-releases after seconds.
                               If None, note holds until stop_note is called.
         """
-        patch = getattr(Patches, patch_name, Patches.UI_SELECT)
+        patch = getattr(Patches, patch_name, None)
+        if patch is None:
+            print(f"Warning: Patch '{patch_name}' not found, using UI_SELECT")
+            patch = Patches.UI_SELECT
 
         # Create the note object
         # We assume standard amplitude; ADSR handles the rest
@@ -82,7 +84,10 @@ class SynthManager:
         bpm = sequence_data.get('bpm', 120)
         beat_duration = 60.0 / bpm
 
-        patch = getattr(Patches, patch_name, Patches.UI_SELECT)
+        patch = getattr(Patches, patch_name, None)
+        if patch is None:
+            print(f"Warning: Patch '{patch_name}' not found, using UI_SELECT")
+            patch = Patches.UI_SELECT
 
         for item in sequence_data['sequence']:
             # Handle both (freq, dur) and ('NoteName', dur) formats
