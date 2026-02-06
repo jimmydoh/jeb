@@ -154,7 +154,8 @@ class IndustrialSatelliteFirmware(Satellite):
                     r = get_int(values, 1)
                     g = get_int(values, 2)
                     b = get_int(values, 3)
-                    duration = get_float(values, 4) if get_float(values, 4) > 0 else None
+                    duration_val = get_float(values, 4)
+                    duration = duration_val if duration_val > 0 else None
                     brightness = get_float(values, 5, 1.0)
                     priority = get_int(values, 6, 2)
                     self.leds.solid_led(i,
@@ -171,11 +172,13 @@ class IndustrialSatelliteFirmware(Satellite):
                     r = get_int(values, 1)
                     g = get_int(values, 2)
                     b = get_int(values, 3)
-                    duration = get_float(values, 4) if get_float(values, 4) > 0 else None
+                    duration_val = get_float(values, 4)
+                    duration = duration_val if duration_val > 0 else None
                     brightness = get_float(values, 5, 1.0)
                     priority = get_int(values, 6, 2)
                     speed = get_float(values, 7, 0.1)
-                    off_speed = get_float(values, 8) if get_float(values, 8) > 0 else None
+                    off_speed_val = get_float(values, 8)
+                    off_speed = off_speed_val if off_speed_val > 0 else None
                     self.leds.flash_led(i,
                                        (r, g, b),
                                        brightness=brightness,
@@ -192,7 +195,8 @@ class IndustrialSatelliteFirmware(Satellite):
                     r = get_int(values, 1)
                     g = get_int(values, 2)
                     b = get_int(values, 3)
-                    duration = get_float(values, 4) if get_float(values, 4) > 0 else None
+                    duration_val = get_float(values, 4)
+                    duration = duration_val if duration_val > 0 else None
                     brightness = get_float(values, 5, 1.0)
                     priority = get_int(values, 6, 2)
                     speed = get_float(values, 7, 2.0)
@@ -211,7 +215,8 @@ class IndustrialSatelliteFirmware(Satellite):
             r = get_int(values, 0)
             g = get_int(values, 1)
             b = get_int(values, 2)
-            duration = get_float(values, 3, 2.0) if get_float(values, 3) > 0 else 2.0
+            duration_val = get_float(values, 3, 2.0)
+            duration = duration_val if duration_val > 0 else 2.0
             speed = get_float(values, 4, 0.08)
             self.leds.start_cylon((r, g, b),
                                  duration=duration,
@@ -225,7 +230,8 @@ class IndustrialSatelliteFirmware(Satellite):
             r = get_int(values, 0)
             g = get_int(values, 1)
             b = get_int(values, 2)
-            duration = get_float(values, 3, 2.0) if get_float(values, 3) > 0 else 2.0
+            duration_val = get_float(values, 3, 2.0)
+            duration = duration_val if duration_val > 0 else 2.0
             speed = get_float(values, 4, 0.08)
             self.leds.start_centrifuge((r, g, b),
                                       duration=duration,
@@ -236,7 +242,8 @@ class IndustrialSatelliteFirmware(Satellite):
             # LEDRAINBOW|2.0,0.08
             # Rainbow for 2 seconds at 0.08 speed
             values = parse_values(val)
-            duration = get_float(values, 0, 2.0) if get_float(values, 0) > 0 else 2.0
+            duration_val = get_float(values, 0, 2.0)
+            duration = duration_val if duration_val > 0 else 2.0
             speed = get_float(values, 1, 0.08)
             self.leds.start_rainbow(duration=duration,
                                    speed=speed)
@@ -246,7 +253,8 @@ class IndustrialSatelliteFirmware(Satellite):
             # LEDGLITCH|2.0,0.08
             # Glitch for 2 seconds at 0.08 speed
             values = parse_values(val)
-            duration = get_float(values, 0, 2.0) if get_float(values, 0) > 0 else 2.0
+            duration_val = get_float(values, 0, 2.0)
+            duration = duration_val if duration_val > 0 else 2.0
             speed = get_float(values, 1, 0.08)
             # TODO Find a way to pass multiple colors
             colors = [
@@ -277,7 +285,8 @@ class IndustrialSatelliteFirmware(Satellite):
             # DSPCORRUPT|2.0
             # Start corruption animation for 2 seconds
             values = parse_values(val)
-            duration = get_float(values, 0, 2.0) if get_float(values, 0) > 0 else 2.0
+            duration_val = get_float(values, 0, 2.0)
+            duration = duration_val if duration_val > 0 else 2.0
             self.segment.start_corruption(duration)
 
         elif cmd == "DSPMATRIX":
@@ -285,7 +294,8 @@ class IndustrialSatelliteFirmware(Satellite):
             # DSPMATRIX|2.0
             # Start matrix rain animation for 2 seconds
             values = parse_values(val)
-            duration = get_float(values, 0, 2.0) if get_float(values, 0) > 0 else 2.0
+            duration_val = get_float(values, 0, 2.0)
+            duration = duration_val if duration_val > 0 else 2.0
             self.segment.start_matrix(duration)
 
     async def relay_downstream_to_upstream(self):

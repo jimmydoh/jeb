@@ -45,6 +45,9 @@ DEST_MAP = {
 
 DEST_REVERSE_MAP = {v: k for k, v in DEST_MAP.items()}
 
+# Maximum value for single-byte index (used to distinguish 1-byte vs 2-byte dest IDs)
+MAX_INDEX_VALUE = 100
+
 
 def _encode_destination(dest_str):
     """Encode destination string to byte(s).
@@ -91,8 +94,8 @@ def _decode_destination(data, offset):
     if dest_byte in DEST_REVERSE_MAP:
         return DEST_REVERSE_MAP[dest_byte], 1
     
-    # Check if next byte is part of ID
-    if offset + 1 < len(data) and data[offset + 1] < 100:
+    # Check if next byte is part of ID (indices are typically < MAX_INDEX_VALUE)
+    if offset + 1 < len(data) and data[offset + 1] < MAX_INDEX_VALUE:
         # Two-byte ID: type + index
         type_id = dest_byte
         index = data[offset + 1]
