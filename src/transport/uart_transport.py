@@ -1,20 +1,231 @@
-"""UART transport implementation with CRC and line framing."""
+"""UART transport implementation with binary protocol and COBS framing."""
 
-from utilities import calculate_crc8, verify_crc8
+import struct
+from utilities import cobs_encode, cobs_decode, calculate_crc8
 from .message import Message
 
 
+# Command string to byte mapping
+COMMAND_MAP = {
+    # Core commands
+    "STATUS": 0x01,
+    "ID_ASSIGN": 0x02,
+    "NEW_SAT": 0x03,
+    "ERROR": 0x04,
+    "LOG": 0x05,
+    "POWER": 0x06,
+    
+    # LED commands
+    "LED": 0x10,
+    "LEDFLASH": 0x11,
+    "LEDBREATH": 0x12,
+    "LEDCYLON": 0x13,
+    "LEDCENTRI": 0x14,
+    "LEDRAINBOW": 0x15,
+    "LEDGLITCH": 0x16,
+    
+    # Display commands
+    "DSP": 0x20,
+    "DSPCORRUPT": 0x21,
+    "DSPMATRIX": 0x22,
+    
+    # Encoder commands
+    "SETENC": 0x30,
+}
+
+# Reverse mapping for decoding
+COMMAND_REVERSE_MAP = {v: k for k, v in COMMAND_MAP.items()}
+
+
+# Special destination IDs
+DEST_MAP = {
+    "ALL": 0xFF,
+    "SAT": 0xFE,
+}
+
+DEST_REVERSE_MAP = {v: k for k, v in DEST_MAP.items()}
+
+
+def _encode_destination(dest_str):
+    """Encode destination string to byte(s).
+    
+    Parameters:
+        dest_str (str): Destination like "ALL", "SAT", or "0101"
+        
+    Returns:
+        bytes: Encoded destination (1-2 bytes)
+    """
+    if dest_str in DEST_MAP:
+        return bytes([DEST_MAP[dest_str]])
+    
+    # Parse numeric ID like "0101" -> type=01, index=01
+    if len(dest_str) == 4 and dest_str.isdigit():
+        type_id = int(dest_str[:2])
+        index = int(dest_str[2:])
+        return bytes([type_id, index])
+    
+    # Default: treat as type-only (backward compat)
+    if dest_str.isdigit():
+        type_id = int(dest_str)
+        return bytes([type_id])
+    
+    raise ValueError(f"Invalid destination format: {dest_str}")
+
+
+def _decode_destination(data, offset):
+    """Decode destination from bytes.
+    
+    Parameters:
+        data (bytes): Raw packet data
+        offset (int): Starting offset for destination
+        
+    Returns:
+        tuple: (dest_str, bytes_consumed)
+    """
+    if offset >= len(data):
+        raise ValueError("Insufficient data for destination")
+    
+    dest_byte = data[offset]
+    
+    # Check for special destinations
+    if dest_byte in DEST_REVERSE_MAP:
+        return DEST_REVERSE_MAP[dest_byte], 1
+    
+    # Check if next byte is part of ID
+    if offset + 1 < len(data) and data[offset + 1] < 100:
+        # Two-byte ID: type + index
+        type_id = dest_byte
+        index = data[offset + 1]
+        return f"{type_id:02d}{index:02d}", 2
+    
+    # Single byte: type only
+    return f"{dest_byte:02d}", 1
+
+
+def _encode_command(cmd_str):
+    """Encode command string to byte.
+    
+    Parameters:
+        cmd_str (str): Command string like "LED"
+        
+    Returns:
+        int: Command byte
+    """
+    if cmd_str in COMMAND_MAP:
+        return COMMAND_MAP[cmd_str]
+    
+    raise ValueError(f"Unknown command: {cmd_str}")
+
+
+def _decode_command(cmd_byte):
+    """Decode command byte to string.
+    
+    Parameters:
+        cmd_byte (int): Command byte
+        
+    Returns:
+        str: Command string
+    """
+    if cmd_byte in COMMAND_REVERSE_MAP:
+        return COMMAND_REVERSE_MAP[cmd_byte]
+    
+    raise ValueError(f"Unknown command byte: 0x{cmd_byte:02X}")
+
+
+def _encode_payload(payload_str):
+    """Encode payload string to bytes.
+    
+    For comma-separated numeric values, encode as packed bytes.
+    For text strings, encode as UTF-8.
+    
+    Parameters:
+        payload_str (str): Payload string
+        
+    Returns:
+        bytes: Encoded payload
+    """
+    if not payload_str:
+        return b''
+    
+    # Try to parse as comma-separated values
+    parts = payload_str.split(',')
+    
+    # Check if all parts are numeric
+    try:
+        values = []
+        for part in parts:
+            # Try integer
+            if part.isdigit() or (part.startswith('-') and part[1:].isdigit()):
+                val = int(part)
+                values.append(val)
+            else:
+                # Try float
+                val = float(part)
+                # Encode float as 4-byte IEEE 754
+                values.append(struct.pack('<f', val))
+        
+        # Pack integers as bytes (use appropriate size)
+        result = bytearray()
+        for val in values:
+            if isinstance(val, bytes):
+                result.extend(val)
+            elif -128 <= val <= 255:
+                result.append(val & 0xFF)
+            elif -32768 <= val <= 32767:
+                result.extend(struct.pack('<h', val))
+            else:
+                result.extend(struct.pack('<i', val))
+        
+        return bytes(result)
+    except (ValueError, OverflowError):
+        # Not all numeric - encode as UTF-8 string
+        return payload_str.encode('utf-8')
+
+
+def _decode_payload(payload_bytes):
+    """Decode payload bytes to string.
+    
+    Parameters:
+        payload_bytes (bytes): Raw payload data
+        
+    Returns:
+        str: Decoded payload string
+    """
+    if not payload_bytes:
+        return ""
+    
+    # Try to decode as UTF-8 text first
+    try:
+        text = payload_bytes.decode('utf-8')
+        # Check if it's printable ASCII-ish
+        if all(32 <= ord(c) <= 126 or c in '\n\r\t' for c in text):
+            return text
+    except UnicodeDecodeError:
+        pass
+    
+    # Otherwise, treat as comma-separated integers
+    values = [str(b) for b in payload_bytes]
+    return ','.join(values)
+
+
 class UARTTransport:
-    """UART transport implementation.
+    """UART transport implementation with binary protocol and COBS framing.
     
-    Handles UART-specific concerns:
-    - Message formatting: "DEST|CMD|PAYLOAD|CRC\n"
-    - CRC-8 calculation and verification
-    - Line-based framing with newline termination
-    - Integration with UARTManager for buffered I/O
+    Binary Protocol Format:
+    - [DEST][CMD][PAYLOAD][CRC] (before COBS encoding)
+    - DEST: 1-2 bytes (special values or type+index)
+    - CMD: 1 byte (command code)
+    - PAYLOAD: N bytes (binary data)
+    - CRC: 1 byte (CRC-8 checksum)
     
-    This transport uses the existing UARTManager for low-level
-    buffering and line reading, while adding the protocol layer.
+    COBS Framing:
+    - Packets are COBS-encoded to eliminate 0x00 bytes
+    - 0x00 is used as packet terminator
+    - No newlines or text-based parsing required
+    
+    This replaces the old text-based protocol:
+    - Old: "DEST|CMD|PAYLOAD|CRC\n" (expensive string parsing)
+    - New: [DEST][CMD][PAYLOAD][CRC] + COBS (zero parsing, direct byte access)
     """
     
     def __init__(self, uart_manager):
@@ -26,29 +237,43 @@ class UARTTransport:
         self.uart_manager = uart_manager
     
     def send(self, message):
-        """Send a message over UART.
-        
-        Formats the message as "DEST|CMD|PAYLOAD|CRC\n" and transmits.
+        """Send a message over UART using binary protocol with COBS framing.
         
         Parameters:
             message (Message): The message to send.
         """
-        # Format data without CRC
-        data = f"{message.destination}|{message.command}|{message.payload}"
+        # Encode destination
+        dest_bytes = _encode_destination(message.destination)
         
-        # Calculate CRC (returns bytes)
-        crc = calculate_crc8(data)
+        # Encode command
+        cmd_byte = bytes([_encode_command(message.command)])
         
-        # Format complete packet with CRC and newline
-        packet = data.encode() + b"|" + crc + b"\n"
+        # Encode payload
+        payload_bytes = _encode_payload(message.payload)
+        
+        # Build raw packet (before COBS)
+        raw_packet = dest_bytes + cmd_byte + payload_bytes
+        
+        # Calculate CRC on raw packet
+        crc = calculate_crc8(raw_packet)
+        crc_byte = bytes([int(crc.decode('ascii'), 16)])
+        
+        # Add CRC to packet
+        packet_with_crc = raw_packet + crc_byte
+        
+        # COBS encode (eliminates 0x00 bytes)
+        cobs_encoded = cobs_encode(packet_with_crc)
+        
+        # Append 0x00 terminator
+        final_packet = cobs_encoded + b'\x00'
         
         # Send via UART
-        self.uart_manager.write(packet)
+        self.uart_manager.write(final_packet)
     
     def receive(self):
         """Receive a message from UART if available.
         
-        Reads buffered lines from UART, verifies CRC, and parses into Message.
+        Reads COBS-framed packets, decodes, verifies CRC, and parses into Message.
         
         Returns:
             Message or None: Received message if available and valid, None otherwise.
@@ -56,36 +281,66 @@ class UARTTransport:
         Raises:
             ValueError: If buffer overflow occurs (propagated from UARTManager).
         """
-        # Read line from UART buffer (non-blocking)
-        line = self.uart_manager.read_line()
+        # Read until we find a 0x00 terminator
+        packet = self.uart_manager.read_until(b'\x00')
         
-        if not line:
+        if not packet:
             return None
+        
+        # Remove terminator
+        if packet.endswith(b'\x00'):
+            packet = packet[:-1]
+        
+        if not packet:
+            return None
+        
+        try:
+            # COBS decode
+            decoded_packet = cobs_decode(packet)
+        except ValueError as e:
+            print(f"COBS decode error: {e}")
+            return None
+        
+        if len(decoded_packet) < 3:  # Minimum: dest(1) + cmd(1) + crc(1)
+            return None
+        
+        # Extract CRC (last byte)
+        crc_byte = decoded_packet[-1]
+        data = decoded_packet[:-1]
         
         # Verify CRC
-        is_valid, data = verify_crc8(line)
-        if not is_valid:
-            # Discard corrupted packet
-            print(f"CRC check failed, discarding packet: {line}")
+        calculated_crc = calculate_crc8(data)
+        calculated_crc_int = int(calculated_crc.decode('ascii'), 16)
+        
+        if crc_byte != calculated_crc_int:
+            print(f"CRC check failed: expected 0x{calculated_crc_int:02X}, got 0x{crc_byte:02X}")
             return None
         
-        # Parse message components (handle both str and bytes)
-        if isinstance(data, bytes):
-            parts = data.split(b"|", 2)
-        else:
-            parts = data.split("|", 2)
-            
-        if len(parts) < 3:
-            # Malformed packet (not enough fields)
+        # Parse destination
+        try:
+            destination, dest_len = _decode_destination(data, 0)
+        except ValueError as e:
+            print(f"Destination decode error: {e}")
             return None
         
-        # Decode bytes to strings for Message if needed
-        if isinstance(data, bytes):
-            destination, command, payload = parts[0].decode(), parts[1].decode(), parts[2].decode()
-        else:
-            destination, command, payload = parts[0], parts[1], parts[2]
+        offset = dest_len
         
-        # Return parsed message
+        # Parse command
+        if offset >= len(data):
+            return None
+        
+        try:
+            command = _decode_command(data[offset])
+        except ValueError as e:
+            print(f"Command decode error: {e}")
+            return None
+        
+        offset += 1
+        
+        # Parse payload
+        payload_bytes = data[offset:]
+        payload = _decode_payload(payload_bytes)
+        
         return Message(destination, command, payload)
     
     def clear_buffer(self):

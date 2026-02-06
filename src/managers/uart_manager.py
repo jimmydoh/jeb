@@ -94,6 +94,45 @@ class UARTManager:
         # No complete line available yet
         return None
     
+    def read_until(self, delimiter):
+        """Read bytes from UART until delimiter is found.
+        
+        Non-blocking read that accumulates bytes into a buffer and returns
+        when the delimiter is found. Used for binary protocols with specific
+        terminators (e.g., 0x00 for COBS framing).
+        
+        Parameters:
+            delimiter (bytes): Delimiter to search for (e.g., b'\\x00')
+            
+        Returns:
+            bytes: Data including delimiter if available, None otherwise.
+            
+        Raises:
+            ValueError: If buffer exceeds max_buffer_size (potential malformed data).
+        """
+        # Read all available bytes into buffer
+        if self.uart.in_waiting > 0:
+            available_bytes = self.uart.read(self.uart.in_waiting)
+            if available_bytes:
+                self.buffer.extend(available_bytes)
+                
+                # Check for buffer overflow
+                if len(self.buffer) > self.max_buffer_size:
+                    self.buffer.clear()
+                    raise ValueError("UART buffer overflow - clearing buffer")
+        
+        # Check if we have the delimiter
+        delim_idx = self.buffer.find(delimiter)
+        if delim_idx >= 0:
+            # Extract data including delimiter
+            data = bytes(self.buffer[:delim_idx + len(delimiter)])
+            # Remove from buffer
+            del self.buffer[:delim_idx + len(delimiter)]
+            return data
+        
+        # Delimiter not found yet
+        return None
+    
     def clear_buffer(self):
         """Clear the internal buffer.
         
