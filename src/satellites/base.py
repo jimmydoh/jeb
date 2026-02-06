@@ -29,6 +29,11 @@ class Satellite:
         self.transport = transport
         self.last_seen = 0
         self.is_active = True
+    
+    @property
+    def sat_type(self):
+        """Alias for sat_type_name for backward compatibility."""
+        return self.sat_type_name
 
     def update_heartbeat(self):
         """Update the last seen timestamp."""

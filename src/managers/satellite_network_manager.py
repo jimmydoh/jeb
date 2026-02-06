@@ -99,7 +99,7 @@ class SatelliteNetworkManager:
                         asyncio.create_task(
                             self.display.update_status("SAT RECONNECTED", f"ID: {sid}")
                         )
-                        if self.satellites[sid].sat_type_name == "INDUSTRIAL":
+                        if self.satellites[sid].sat_type == "INDUSTRIAL":
                             self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
                             asyncio.create_task(
                                 self.audio.play(
