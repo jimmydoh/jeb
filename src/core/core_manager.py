@@ -1,5 +1,9 @@
 # File: src/core/core_manager.py
-"""Core Manager for JEB Master Controller."""
+"""
+Core Manager for JEB Master Controller.
+
+TODO: Implement HardwareContext for modes to limit access
+"""
 
 import asyncio
 import busio
@@ -198,7 +202,7 @@ class CoreManager:
         while not sub_task.done():
             # Feed the watchdog to prevent system reset during long-running modes
             microcontroller.watchdog.feed()
-            
+
             # E-Stop engaged
             if self.meltdown:
                 sub_task.cancel()
