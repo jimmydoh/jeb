@@ -6,6 +6,7 @@ import asyncio
 from utilities import Palette,tones
 
 from .utility_mode import UtilityMode
+from .manifest import MODE_REGISTRY, is_mode_available
 
 class MainMenu(UtilityMode):
     """Main Menu for selecting modes."""
@@ -13,61 +14,6 @@ class MainMenu(UtilityMode):
     def __init__(self, core):
         super().__init__(core, name="MAIN MENU", description="Select a mode to begin", timeout=10)
         self.state = "DASHBOARD"
-
-        # --- GAME METADATA REGISTRY ---
-        # Defines available settings for each game
-        self.game_registry = {
-            "JEBRIS": {
-                "name": "JEBRIS",
-                "icon": "JEBRIS",
-                "settings": [
-                    {
-                        "key": "difficulty",
-                        "label": "SPEED",
-                        "options": ["EASY","NORMAL", "HARD", "INSANE"],
-                        "default": "NORMAL"
-                    },
-                    {
-                        "key": "music",
-                        "label": "MUSIC",
-                        "options": ["ON", "OFF"],
-                        "default": "ON"
-                    }
-                ],
-                "requires": ["CORE"] # Always Available
-            },
-            "SIMON": {
-                "name": "SIMON",
-                "icon": "SIMON",
-                "settings": [
-                    {
-                        "key": "mode",
-                        "label": "MODE",
-                        "options": ["CLASSIC", "REVERSE", "BLIND"],
-                        "default": "CLASSIC"
-                    },
-                    {
-                        "key": "difficulty",
-                        "label": "DIFF",
-                        "options": ["EASY","NORMAL", "HARD", "INSANE"],
-                        "default": "NORMAL"
-                    }
-                ],
-                "requires": ["CORE"] # Always Available
-            },
-            "SAFE": {
-                "name": "SAFE CRACKER",
-                "icon": "SAFE",
-                "settings": [],  # No settings for Safe Cracker yet
-                "requires": ["CORE"] # Always Available
-            },
-            "IND": {
-                "name": "INDUSTRIAL",
-                "icon": "IND",
-                "settings": [],
-                "requires": ["INDUSTRIAL"] # Only show if Industrial Satellite is connected
-            }
-        }
 
     def _set_state(self, new_state):
         """Helper to switch states and update UI accordingly."""
@@ -132,14 +78,10 @@ class MainMenu(UtilityMode):
                 if curr_pos != last_pos or self.core.hid.dial_pressed:
                     self._set_state("MENU")
                     last_pos = curr_pos
-                    # Re-build available games list based on registry and connected satellites
+                    # Re-build available games list based on manifest and connected satellites
                     menu_items = []
-                    for key, meta in self.game_registry.items():
-                        # Add all requires=CORE modes first
-                        if "CORE" in meta["requires"]:
-                            menu_items.append((key, meta))
-                        # Then add any modes that have their requirements met by connected satellites
-                        if all(req in self.core.satellites for req in meta["requires"]):
+                    for key, meta in MODE_REGISTRY.items():
+                        if is_mode_available(key, self.core.satellites):
                             menu_items.append((key, meta))
 
                     self.core.audio.play(
@@ -165,8 +107,8 @@ class MainMenu(UtilityMode):
                     speed=2.0
                 )
 
-                game_key = menu_items[selected_game_idx]
-                meta = self.game_registry.get(
+                game_key = menu_items[selected_game_idx][0]
+                meta = MODE_REGISTRY.get(
                     game_key,
                     {"name": game_key, "icon": "DEFAULT", "settings": []}
                 )
@@ -212,8 +154,8 @@ class MainMenu(UtilityMode):
                         )
 
                         # Update Icon
-                        new_key = menu_items[selected_game_idx]
-                        new_meta = self.game_registry.get(new_key, {"icon": "DEFAULT"})
+                        new_key = menu_items[selected_game_idx][0]
+                        new_meta = MODE_REGISTRY.get(new_key, {"icon": "DEFAULT"})
                         asyncio.create_task(
                             self.core.matrix.show_icon(
                                 new_meta["icon"],

@@ -6,6 +6,7 @@ from .jebris import JEBris
 from .main_menu import MainMenu
 from .safe_cracker import SafeCracker
 from .simon import Simon
+from .manifest import MODE_REGISTRY, get_mode_class, get_required_satellite, is_mode_available, get_available_modes
 
 __all__ = [
     "IndustrialStartup",
@@ -13,4 +14,9 @@ __all__ = [
     "MainMenu",
     "SafeCracker",
     "Simon",
+    "MODE_REGISTRY",
+    "get_mode_class",
+    "get_required_satellite",
+    "is_mode_available",
+    "get_available_modes",
 ]

@@ -7,7 +7,7 @@ import microcontroller
 import neopixel
 from adafruit_ticks import ticks_ms, ticks_diff
 
-from modes import IndustrialStartup, JEBris, MainMenu, SafeCracker, Simon
+from modes import MainMenu, get_mode_class, get_required_satellite
 
 from satellites import IndustrialSatelliteDriver
 
@@ -440,25 +440,35 @@ class CoreManager:
                 # System is in meltdown; loop back and wait for reset
                 continue
 
-            # Otherwise run the selected mode
-            # Core Box Games
-            elif self.mode == "JEBRIS":
-                await self.run_mode_with_safety(JEBris(self))
-            elif self.mode == "SIMON":
-                await self.run_mode_with_safety(Simon(self, 0.5, 3000))
-            elif self.mode == "SAFE":
-                await self.run_mode_with_safety(SafeCracker(self))
+            # Handle special admin/utility modes
+            if self.mode in ["SETTINGS", "DEBUG", "CALIB", "UARTLOG"]:
+                continue
+            elif self.mode == "FACTORY_RESET":
+                await self.display.update_status("FACTORY RESET", "REBOOTING...")
+                await asyncio.sleep(2)
+                continue
 
-            # Industrial Satellite Games
-            elif self.mode == "IND":
+            # Get the mode class from the manifest
+            mode_class = get_mode_class(self.mode)
+            if not mode_class:
+                # Unknown mode, return to menu
+                await self.display.update_status("UNKNOWN MODE", f"Mode: {self.mode}")
+                await asyncio.sleep(2)
+                continue
+
+            # Check if mode requires a satellite
+            required_sat_type = get_required_satellite(self.mode)
+            if required_sat_type:
+                # Find the required satellite
                 sat = next(
-                    (s for s in self.satellites.values() if s.sat_type == "INDUSTRIAL"),
+                    (s for s in self.satellites.values() if s.sat_type_name == required_sat_type),
                     None,
                 )
                 if sat:
-                    mode_instance = IndustrialStartup(self, sat)
-                    run_ind = True
-                    while run_ind:
+                    # Create mode instance with satellite
+                    mode_instance = mode_class(self, sat)
+                    run_mode = True
+                    while run_mode:
                         result = await self.run_mode_with_safety(mode_instance, target_sat=sat)
                         if result == "LINK_LOST":
                             await self.display.update_status("LINK LOST", "RECONNECT IN 60s")
@@ -471,10 +481,10 @@ class CoreManager:
                             await asyncio.sleep(1)
                             # 60 second countdown
                             disconnect_time = ticks_ms()
-                            while not sat.is_active and run_ind:
+                            while not sat.is_active and run_mode:
                                 elapsed = ticks_diff(ticks_ms(), disconnect_time)
                                 if elapsed > 60000:
-                                    run_ind = False
+                                    run_mode = False
                                     continue
                                 secs_left = 60 - (elapsed // 1000)
                                 await self.display.update_status(
@@ -482,7 +492,7 @@ class CoreManager:
                                     f"ABORT IN: {secs_left}s"
                                 )
                                 await asyncio.sleep(0.1)
-                            if sat.is_active and run_ind:
+                            if sat.is_active and run_mode:
                                 await self.display.update_status("LINK RESTORED", "RESUMING...")
                                 asyncio.create_task(
                                     self.audio.play(
@@ -492,18 +502,13 @@ class CoreManager:
                                 )
                                 await asyncio.sleep(1)
                         else:
-                            run_ind = False
-            # Returns from sub-menus
-            elif self.mode == "SETTINGS":
-                continue
-            elif self.mode == "DEBUG":
-                continue
-            elif self.mode == "CALIB":
-                continue
-            elif self.mode == "UARTLOG":
-                continue
-            elif self.mode == "FACTORY_RESET":
-                await self.display.update_status("FACTORY RESET", "REBOOTING...")
-                await asyncio.sleep(2)
+                            run_mode = False
+                else:
+                    # Required satellite not found
+                    await self.display.update_status("SAT REQUIRED", f"Need {required_sat_type}")
+                    await asyncio.sleep(2)
+            else:
+                # Mode doesn't require a satellite - run directly
+                await self.run_mode_with_safety(mode_class(self))
 
             await asyncio.sleep(0.1)
