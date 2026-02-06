@@ -145,8 +145,21 @@ class CoreManager:
             uart_manager, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
         )
         
+        # Watchdog Flag Pattern - Prevents blind feeding if critical tasks crash
+        # Each critical background task must set its flag to True each iteration
+        # The watchdog is only fed if ALL flags are True, then flags are reset
+        self.watchdog_flags = {
+            "sat_network": False,
+            "estop": False,
+            "power": False,
+            "connection": False,
+            "hw_hid": False,
+        }
+        
         # Initialize Satellite Network Manager
-        self.sat_network = SatelliteNetworkManager(self.transport, self.display, self.audio)
+        self.sat_network = SatelliteNetworkManager(
+            self.transport, self.display, self.audio, self.watchdog_flags
+        )
         if debug_mode:
             self.sat_network.set_debug_mode(True)
 
@@ -217,6 +230,23 @@ class CoreManager:
         """Access last debug message from SatelliteNetworkManager."""
         return self.sat_network.last_message_debug
 
+    def safe_feed_watchdog(self):
+        """Feed watchdog only if all critical tasks are alive.
+        
+        Uses the Watchdog Flag Pattern to prevent blind feeding.
+        Only feeds if all critical background tasks have set their flags,
+        indicating they are still running properly.
+        """
+        # Check if all critical tasks have reported in
+        if all(self.watchdog_flags.values()):
+            # All tasks are alive - safe to feed the watchdog
+            microcontroller.watchdog.feed()
+            # Reset all flags for the next iteration
+            for key in self.watchdog_flags:
+                self.watchdog_flags[key] = False
+        # If any flag is False, we DON'T feed the watchdog
+        # This will trigger a system reset, recovering from the zombie state
+
     async def cleanup_task(self, task):
         """Gracefully awaits the cancellation of a task."""
         try:
@@ -235,8 +265,8 @@ class CoreManager:
         sub_task = asyncio.create_task(mode_instance.execute())
 
         while not sub_task.done():
-            # Feed the watchdog to prevent system reset during long-running modes
-            microcontroller.watchdog.feed()
+            # Feed the watchdog only if all critical tasks are alive
+            self.safe_feed_watchdog()
 
             # E-Stop engaged
             if self.meltdown:
@@ -269,6 +299,9 @@ class CoreManager:
         Releasing the E-Stop resets the system.
         """
         while True:
+            # Set watchdog flag to indicate this task is alive
+            self.watchdog_flags["estop"] = True
+            
             if not self.hid.estop and not self.meltdown:
                 self.meltdown = True
                 self.sat_network.send_all("LED", "ALL,0,0,0")  # Kill all LEDs
@@ -303,6 +336,9 @@ class CoreManager:
     async def monitor_power(self):
         """Background task to watch for brownouts or disconnects."""
         while True:
+            # Set watchdog flag to indicate this task is alive
+            self.watchdog_flags["power"] = True
+            
             v = self.power.status
 
             if self.mode == "DASHBOARD":
@@ -326,6 +362,9 @@ class CoreManager:
     async def monitor_connection(self):
         """Background task to detect physical RJ45 connection and manage bus power."""
         while True:
+            # Set watchdog flag to indicate this task is alive
+            self.watchdog_flags["connection"] = True
+            
             if self.power.satbus_connected and not self.power.satbus_powered:
                 # PHYSICAL LINK DETECTED - Trigger Soft Start
                 await self.display.update_status("LINK DETECTED", "POWERING BUS...")
@@ -352,6 +391,9 @@ class CoreManager:
     async def monitor_hw_hid(self):
         """Background task to poll hardware inputs."""
         while True:
+            # Set watchdog flag to indicate this task is alive
+            self.watchdog_flags["hw_hid"] = True
+            
             self.hid.hw_update()
             await asyncio.sleep(0.01)
 
@@ -373,12 +415,12 @@ class CoreManager:
         # TODO Add boot animation and audio
 
         while True:
-            # Feed the hardware watchdog timer to prevent system reset
-            microcontroller.watchdog.feed()
+            # Feed the watchdog only if all critical tasks are alive
+            self.safe_feed_watchdog()
 
             # Meltdown state pauses the menu selection
             while self.meltdown:
-                microcontroller.watchdog.feed()
+                self.safe_feed_watchdog()
                 await asyncio.sleep(0.1)
 
             # --- GENERIC MODE RUNNER ---

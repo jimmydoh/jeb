@@ -2,8 +2,9 @@
 """Test that the watchdog feed fix is present in run_mode_with_safety.
 
 This test validates that the fix for the watchdog starvation issue has been
-applied correctly by checking that microcontroller.watchdog.feed() is called
-in the run_mode_with_safety method's waiting loop.
+applied correctly by checking that watchdog feeding is called in the 
+run_mode_with_safety method's waiting loop. The implementation now uses
+the safe_feed_watchdog() method which implements the watchdog flag pattern.
 """
 
 import sys
@@ -15,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 
 def test_watchdog_feed_present_in_code():
-    """Test that watchdog.feed() call is present in run_mode_with_safety."""
+    """Test that watchdog feeding is present in run_mode_with_safety."""
     print("\nTesting that watchdog feed is present in code...")
     
     # Read the core_manager.py file
@@ -59,23 +60,23 @@ def test_watchdog_feed_present_in_code():
     if next_def != -1:
         loop_body = loop_body[:next_def]
     
-    # Check for watchdog feed call in the loop
-    if 'microcontroller.watchdog.feed()' not in loop_body:
-        print("  ✗ 'microcontroller.watchdog.feed()' not found in while loop")
+    # Check for watchdog feed call in the loop (now uses safe_feed_watchdog)
+    if 'self.safe_feed_watchdog()' not in loop_body:
+        print("  ✗ 'self.safe_feed_watchdog()' not found in while loop")
         return False
     
-    print("  ✓ Found 'microcontroller.watchdog.feed()' in while loop")
+    print("  ✓ Found 'self.safe_feed_watchdog()' in while loop")
     
     # Check that the feed is before the sleep call (at the top of the loop)
-    feed_pos = loop_body.find('microcontroller.watchdog.feed()')
+    feed_pos = loop_body.find('self.safe_feed_watchdog()')
     sleep_pos = loop_body.find('await asyncio.sleep(0.1)')
     
     if sleep_pos == -1:
         print("  ⚠ Warning: 'await asyncio.sleep(0.1)' not found in loop")
     elif feed_pos > sleep_pos:
-        print("  ⚠ Warning: watchdog.feed() appears after sleep, should be at top of loop")
+        print("  ⚠ Warning: safe_feed_watchdog() appears after sleep, should be at top of loop")
     else:
-        print("  ✓ watchdog.feed() is positioned correctly (before sleep)")
+        print("  ✓ safe_feed_watchdog() is positioned correctly (before sleep)")
     
     return True
 
@@ -107,16 +108,16 @@ def test_watchdog_feed_in_main_loop():
     start_body = match.group(1)
     print("  ✓ Found start() method")
     
-    # Check for watchdog feed in the main loop
-    if 'microcontroller.watchdog.feed()' not in start_body:
-        print("  ✗ 'microcontroller.watchdog.feed()' not found in start() method")
+    # Check for watchdog feed in the main loop (now uses safe_feed_watchdog)
+    if 'self.safe_feed_watchdog()' not in start_body:
+        print("  ✗ 'self.safe_feed_watchdog()' not found in start() method")
         return False
     
-    print("  ✓ Found 'microcontroller.watchdog.feed()' in start() method")
+    print("  ✓ Found 'self.safe_feed_watchdog()' in start() method")
     
     # Count occurrences
-    feed_count = start_body.count('microcontroller.watchdog.feed()')
-    print(f"  ✓ Found {feed_count} watchdog feed call(s) in start() method")
+    feed_count = start_body.count('self.safe_feed_watchdog()')
+    print(f"  ✓ Found {feed_count} safe_feed_watchdog call(s) in start() method")
     
     return True
 
@@ -174,10 +175,11 @@ if __name__ == "__main__":
         print("ALL TESTS PASSED ✓")
         print()
         print("The fix successfully:")
-        print("  • Adds watchdog.feed() in run_mode_with_safety loop")
-        print("  • Maintains watchdog.feed() in main start() loop")
+        print("  • Uses safe_feed_watchdog() in run_mode_with_safety loop")
+        print("  • Uses safe_feed_watchdog() in main start() loop")
         print("  • Imports microcontroller module for watchdog access")
         print("  • Prevents system reset during long-running modes")
+        print("  • Implements watchdog flag pattern to prevent blind feeding")
         sys.exit(0)
     else:
         print("SOME TESTS FAILED ✗")
