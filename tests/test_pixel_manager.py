@@ -38,7 +38,7 @@ def test_animation_slot_initialization():
     print("Testing AnimationSlot initialization...")
     
     slot = AnimationSlot()
-    assert slot.active == False, "New slot should be inactive"
+    assert not slot.active, "New slot should be inactive"
     assert slot.type is None, "Type should be None"
     assert slot.color is None, "Color should be None"
     assert slot.speed == 1.0, "Speed should default to 1.0"
@@ -58,7 +58,7 @@ def test_animation_slot_set():
     # Set animation properties
     slot.set("BLINK", (255, 0, 0), 2.0, 1.5, 3.0, 5)
     
-    assert slot.active == True, "Slot should be active after set"
+    assert slot.active, "Slot should be active after set"
     assert slot.type == "BLINK", "Type should be BLINK"
     assert slot.color == (255, 0, 0), "Color should be (255, 0, 0)"
     assert slot.speed == 2.0, "Speed should be 2.0"
@@ -100,10 +100,10 @@ def test_animation_slot_clear():
     
     slot = AnimationSlot()
     slot.set("GLITCH", (128, 128, 128), 1.0, 0.0, 1.0, 1)
-    assert slot.active == True, "Slot should be active after set"
+    assert slot.active, "Slot should be active after set"
     
     slot.clear()
-    assert slot.active == False, "Slot should be inactive after clear"
+    assert not slot.active, "Slot should be inactive after clear"
     # Other properties remain but slot is marked inactive
     assert slot.type == "GLITCH", "Type should remain (but slot is inactive)"
     
