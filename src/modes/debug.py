@@ -7,6 +7,14 @@ from .utility_mode import UtilityMode
 class DebugMode(UtilityMode):
     """Debug Mode for testing and diagnostics."""
 
+    METADATA = {
+        "id": "DEBUG",
+        "name": "DEBUG MODE",
+        "icon": "DEFAULT",
+        "requires": ["CORE"],
+        "settings": []
+    }
+
     def __init__(self, core):
         super().__init__(
             core,

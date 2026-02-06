@@ -19,7 +19,7 @@ from managers import (
     SynthManager,
     UARTManager,
 )
-from modes import AVAILABLE_MODES
+from modes import AVAILABLE_MODES, BaseMode
 from satellites import IndustrialSatelliteDriver
 from transport import (
     Message,
@@ -38,7 +38,6 @@ from utilities import (
 
 class CoreManager:
     """Class to hold global state for the master controller."""
-
     def __init__(self, root_data_dir="/", debug_mode=False):
 
         self.debug_mode = debug_mode
@@ -125,8 +124,12 @@ class CoreManager:
         self.satellites = {}
         self.sat_telemetry = {}
         self._mode_registry = {}
+        # Map Mode IDs to Classes for O(1) lookup
+        self.modes = {}
         for mode_class in AVAILABLE_MODES:
-            self._mode_registry[mode_class.__name__] = mode_class
+            # Safely access METADATA, defaulting if missing
+            meta = getattr(mode_class, "METADATA", BaseMode.METADATA)
+            self.modes[meta["id"]] = mode_class
         self.mode = "DASHBOARD"
         self.meltdown = False
         self.sat_active = False
@@ -434,82 +437,87 @@ class CoreManager:
                 microcontroller.watchdog.feed()
                 await asyncio.sleep(0.1)
 
-            # MAIN MENU
-            # Display the main menu and get selected mode
-            self.mode = await self.run_mode_with_safety(self._get_mode("MainMenu")(self))
+            # --- GENERIC MODE RUNNER ---
+            if self.mode in self.modes:
+                mode_class = self.modes[self.mode]
+                meta = mode_class.METADATA
 
-            # Handle e-stops first
-            if self.mode == "ESTOP_ABORT":
-                # System is in meltdown; loop back and wait for reset
-                continue
+                # Check Dependencies
+                target_sat = None
+                requirements_met = True
 
-            # Otherwise run the selected mode
-            # Core Box Games
-            elif self.mode == "JEBRIS":
-                await self.run_mode_with_safety(self._get_mode("JEBris")(self))
-            elif self.mode == "SIMON":
-                await self.run_mode_with_safety(self._get_mode("Simon")(self, 0.5, 3000))
-            elif self.mode == "SAFE":
-                await self.run_mode_with_safety(self._get_mode("SafeCracker")(self))
+                for req in meta.get("requires", []):
+                    if req == "CORE":
+                        continue
+                    found = False
+                    for sat in self.satellites.values():
+                        if sat.sat_type == req and sat.is_active:
+                            found = True
+                            target_sat = sat  # Set target satellite for monitoring
+                            break
+                    if not found:
+                        requirements_met = False
+                        break
 
-            # Industrial Satellite Games
-            elif self.mode == "IND":
-                sat = next(
-                    (s for s in self.satellites.values() if s.sat_type == "INDUSTRIAL"),
-                    None,
-                )
-                if sat:
-                    mode_instance = self._get_mode("IndustrialStartup")(self, sat)
-                    run_ind = True
-                    while run_ind:
-                        result = await self.run_mode_with_safety(
-                            mode_instance, target_sat=sat
-                        )
-                        if result == "LINK_LOST":
-                            await self.display.update_status(
-                                "LINK LOST", "RECONNECT IN 60s"
+                if requirements_met:
+                    mode_instance = mode_class(self)
+
+                    if target_sat:
+                        run_robust = True
+                        while run_robust:
+                            result = await self.run_mode_with_safety(
+                                mode_instance, target_sat=target_sat
                             )
-                            asyncio.create_task(
-                                self.audio.play(
-                                    "link_lost.wav", channel=self.audio.CH_SFX
-                                )
-                            )
-                            await asyncio.sleep(1)
-                            # 60 second countdown
-                            disconnect_time = ticks_ms()
-                            while not sat.is_active and run_ind:
-                                elapsed = ticks_diff(ticks_ms(), disconnect_time)
-                                if elapsed > 60000:
-                                    run_ind = False
-                                    continue
-                                secs_left = 60 - (elapsed // 1000)
+                            if result == "LINK_LOST":
                                 await self.display.update_status(
-                                    "LINK LOST", f"ABORT IN: {secs_left}s"
-                                )
-                                await asyncio.sleep(0.1)
-                            if sat.is_active and run_ind:
-                                await self.display.update_status(
-                                    "LINK RESTORED", "RESUMING..."
+                                    "LINK LOST", "RECONNECT IN 60s"
                                 )
                                 asyncio.create_task(
                                     self.audio.play(
-                                        "link_restored.wav", channel=self.audio.CH_SFX
+                                        "link_lost.wav", channel=self.audio.CH_SFX
                                     )
                                 )
                                 await asyncio.sleep(1)
-                        else:
-                            run_ind = False
-            # Returns from sub-menus
-            elif self.mode == "SETTINGS":
-                continue
-            elif self.mode == "DEBUG":
-                continue
-            elif self.mode == "CALIB":
-                continue
-            elif self.mode == "UARTLOG":
-                continue
-            elif self.mode == "FACTORY_RESET":
-                await self.display.update_status("FACTORY RESET", "REBOOTING...")
+                                # 60 second countdown
+                                disconnect_time = ticks_ms()
+                                while not sat.is_active and run_robust:
+                                    elapsed = ticks_diff(ticks_ms(), disconnect_time)
+                                    if elapsed > 60000:
+                                        run_robust = False
+                                        continue
+                                    secs_left = 60 - (elapsed // 1000)
+                                    await self.display.update_status(
+                                        "LINK LOST", f"ABORT IN: {secs_left}s"
+                                    )
+                                    await asyncio.sleep(0.1)
+                                if sat.is_active and run_robust:
+                                    await self.display.update_status(
+                                        "LINK RESTORED", "RESUMING..."
+                                    )
+                                    asyncio.create_task(
+                                        self.audio.play(
+                                            "link_restored.wav", channel=self.audio.CH_SFX
+                                        )
+                                    )
+                                    await asyncio.sleep(1)
+                            else:
+                                run_robust = False
+                    else:
+                        await self.run_mode_with_safety(mode_instance)
+                else:
+                    print(f"Cannot start {self.mode}: Missing Dependency")
+                    await self.display.update_status(
+                        "REQUIREMENT NOT MET", f"NEED {', '.join(meta.get('requires', []))}"
+                    )
+                    await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
+                    await asyncio.sleep(2)
+                    self.mode = "DASHBOARD"  # Return to dashboard if requirements not met
+
+            else:
+                print(f"Mode {self.mode} not found in registry.")
+                await self.display.update_status("MODE NOT FOUND", self.mode)
+                await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
                 await asyncio.sleep(2)
+                self.mode = "DASHBOARD"  # Return to dashboard if mode not found
 
             await asyncio.sleep(0.1)

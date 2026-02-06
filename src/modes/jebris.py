@@ -12,17 +12,38 @@ from .game_mode import GameMode
 
 class JEBris(GameMode):
     """JEBris: A Tetris-inspired Falling Block Game."""
-    
+
+    METADATA = {
+        "id": "JEBRIS",
+        "name": "JEBRIS",
+        "icon": "JEBRIS",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "SPEED",
+                "options": ["EASY", "NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "music",
+                "label": "MUSIC",
+                "options": ["ON", "OFF"],
+                "default": "ON"
+            }
+        ]
+    }
+
     # State machine constants
     STATE_PLAYING = "PLAYING"
     STATE_CLEARING_LINES = "CLEARING_LINES"
-    
+
     # Input debounce constants (in milliseconds)
     DEBOUNCE_LEFT_MS = 100
     DEBOUNCE_ROTATE_MS = 200
     DEBOUNCE_DROP_MS = 0  # No debounce for fast drop
     DEBOUNCE_RIGHT_MS = 100
-    
+
     def __init__(self, core):
         super().__init__(core, "JEBRIS", "Tetris-inspired Falling Block Game")
 
@@ -74,7 +95,7 @@ class JEBris(GameMode):
         self.piece_x = 0
         self.piece_y = 0
         self.piece_color = Palette.OFF
-        
+
         # --- TIMING STATE (for non-blocking input debouncing) ---
         # Track last input time for each button (0: Left, 1: Rotate, 2: Drop, 3: Right)
         self.last_input_time = [0, 0, 0, 0]
@@ -84,7 +105,7 @@ class JEBris(GameMode):
             self.DEBOUNCE_DROP_MS,
             self.DEBOUNCE_RIGHT_MS
         ]
-        
+
         # --- STATE MACHINE for line clearing ---
         self.game_state = self.STATE_PLAYING
         self.lines_to_clear = set()  # Set for O(1) lookup during rendering
@@ -129,7 +150,7 @@ class JEBris(GameMode):
                                 await self.pre_game_over()
 
                     last_tick = now
-                    
+
             elif self.game_state == self.STATE_CLEARING_LINES:
                 # Handle line clearing animation (non-blocking)
                 if ticks_diff(now, self.clear_animation_start) > self.clear_animation_duration_ms:
@@ -243,39 +264,39 @@ class JEBris(GameMode):
     def start_clear_lines(self):
         """Initiates line clearing animation without blocking."""
         self.lines_to_clear = set()
-        
+
         # Find all full rows
         for y in range(self.height):
             if Palette.OFF not in self.grid[y]:
                 self.lines_to_clear.add(y)
-        
+
         if self.lines_to_clear:
             # Start animation state
             self.game_state = self.STATE_CLEARING_LINES
             self.clear_animation_start = ticks_ms()
-            
+
             # Flash lines white immediately (visual feedback)
             for y in self.lines_to_clear:
                 for x in range(self.width):
                     self.core.matrix.set_pixel(x, y, Palette.WHITE)
             self.core.matrix.show()
-    
+
     def finish_clear_lines(self):
         """Completes line clearing after animation finishes."""
         if not self.lines_to_clear:
             return
-            
+
         lines_cleared = len(self.lines_to_clear)
-        
+
         # Remove cleared rows (sort in reverse order to avoid index shifting issues)
         for y in sorted(self.lines_to_clear, reverse=True):
             del self.grid[y]
             # Add new empty row at top
             self.grid.insert(0, [Palette.OFF for _ in range(self.width)])
-        
+
         # Update score
         self.score += lines_cleared
-        
+
         # Clear the lines set
         self.lines_to_clear = set()
 
