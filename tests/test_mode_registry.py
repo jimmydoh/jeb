@@ -76,6 +76,21 @@ def test_core_manager_updated():
     assert "from modes import IndustrialStartup, JEBris, MainMenu, SafeCracker, Simon" not in content, \
         "Old direct import still present in CoreManager"
     
+    # NEW: Check that modes are accessed via _mode_registry, not extracted to module-level variables
+    assert 'IndustrialStartup = _mode_registry["IndustrialStartup"]' not in content, \
+        "Mode extraction found - modes should be accessed dynamically via _mode_registry"
+    assert 'JEBris = _mode_registry["JEBris"]' not in content, \
+        "Mode extraction found - modes should be accessed dynamically via _mode_registry"
+    assert 'MainMenu = _mode_registry["MainMenu"]' not in content, \
+        "Mode extraction found - modes should be accessed dynamically via _mode_registry"
+    
+    # NEW: Verify modes are accessed dynamically
+    assert '_mode_registry["MainMenu"]' in content, "MainMenu should be accessed via _mode_registry"
+    assert '_mode_registry["JEBris"]' in content, "JEBris should be accessed via _mode_registry"
+    assert '_mode_registry["Simon"]' in content, "Simon should be accessed via _mode_registry"
+    assert '_mode_registry["SafeCracker"]' in content, "SafeCracker should be accessed via _mode_registry"
+    assert '_mode_registry["IndustrialStartup"]' in content, "IndustrialStartup should be accessed via _mode_registry"
+    
     print("✓ CoreManager updated correctly")
     return True
 

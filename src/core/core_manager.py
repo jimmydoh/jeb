@@ -9,22 +9,12 @@ from adafruit_ticks import ticks_ms, ticks_diff
 
 from modes import AVAILABLE_MODES
 
-# Extract mode classes from the manifest for use in this module
+# Build mode registry from the manifest for dynamic mode access
 # This creates a mode registry without tight coupling to specific imports
+# Modes are accessed via _mode_registry["ModeName"] throughout this module
 _mode_registry = {}
 for mode_class in AVAILABLE_MODES:
     _mode_registry[mode_class.__name__] = mode_class
-
-# Get mode classes from registry with validation
-# Using dictionary access to fail fast with KeyError if a mode is missing
-try:
-    IndustrialStartup = _mode_registry["IndustrialStartup"]
-    JEBris = _mode_registry["JEBris"]
-    MainMenu = _mode_registry["MainMenu"]
-    SafeCracker = _mode_registry["SafeCracker"]
-    Simon = _mode_registry["Simon"]
-except KeyError as e:
-    raise ImportError(f"Required mode class {e} not found in AVAILABLE_MODES manifest") from e
 
 from satellites import IndustrialSatelliteDriver
 
@@ -450,7 +440,7 @@ class CoreManager:
 
             # MAIN MENU
             # Display the main menu and get selected mode
-            self.mode = await self.run_mode_with_safety(MainMenu(self))
+            self.mode = await self.run_mode_with_safety(_mode_registry["MainMenu"](self))
 
             # Handle e-stops first
             if self.mode == "ESTOP_ABORT":
@@ -460,11 +450,11 @@ class CoreManager:
             # Otherwise run the selected mode
             # Core Box Games
             elif self.mode == "JEBRIS":
-                await self.run_mode_with_safety(JEBris(self))
+                await self.run_mode_with_safety(_mode_registry["JEBris"](self))
             elif self.mode == "SIMON":
-                await self.run_mode_with_safety(Simon(self, 0.5, 3000))
+                await self.run_mode_with_safety(_mode_registry["Simon"](self, 0.5, 3000))
             elif self.mode == "SAFE":
-                await self.run_mode_with_safety(SafeCracker(self))
+                await self.run_mode_with_safety(_mode_registry["SafeCracker"](self))
 
             # Industrial Satellite Games
             elif self.mode == "IND":
@@ -473,7 +463,7 @@ class CoreManager:
                     None,
                 )
                 if sat:
-                    mode_instance = IndustrialStartup(self, sat)
+                    mode_instance = _mode_registry["IndustrialStartup"](self, sat)
                     run_ind = True
                     while run_ind:
                         result = await self.run_mode_with_safety(mode_instance, target_sat=sat)
