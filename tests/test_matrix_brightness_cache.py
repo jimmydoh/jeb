@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for MatrixManager brightness cache optimization."""
+"""Unit tests for MatrixManager stateless brightness calculation."""
 
 import sys
 import os
@@ -63,21 +63,16 @@ class MockPixelObject:
         pass
 
 
-# Now define the MatrixManager with the optimization
+# Now define the MatrixManager with the stateless brightness calculation
 class MatrixManager(BasePixelManager):
-    """Test version of MatrixManager with brightness cache."""
+    """Test version of MatrixManager with stateless brightness calculation."""
     def __init__(self, jeb_pixel):
         super().__init__(jeb_pixel)
-        
-        # Pre-calculated brightness cache to avoid tuple allocation
-        # Key: (base_color_tuple, brightness_int), Value: dimmed_color_tuple
-        # Limited to 128 entries to prevent unbounded memory growth
-        self._brightness_cache = {}
-        self._CACHE_SIZE_LIMIT = 128
     
     def _get_dimmed_color(self, base_color, brightness):
         """
-        Get brightness-adjusted color with caching to avoid repeated tuple allocation.
+        Stateless brightness calculation.
+        Sacrifices a tiny amount of CPU speed for significantly better memory stability.
         
         Args:
             base_color: Tuple of (r, g, b) values
@@ -85,46 +80,35 @@ class MatrixManager(BasePixelManager):
             
         Returns:
             Tuple of brightness-adjusted (r, g, b) values
-        """
-        # Fast path: brightness is 0.0, return black (common for "off" pixels)
-        if brightness == 0.0:
-            return (0, 0, 0)
-        
-        # Fast path: brightness is 1.0, return original color
-        if brightness == 1.0:
-            return base_color
-        
-        # Convert brightness to integer (0-100) with rounding for better precision
-        brightness_int = round(brightness * 100)
-        
-        # Create cache key with integer brightness
-        cache_key = (base_color, brightness_int)
-        
-        # Check cache
-        if cache_key not in self._brightness_cache:
-            # Safety valve: clear cache if it grows too large
-            if len(self._brightness_cache) >= self._CACHE_SIZE_LIMIT:
-                self._brightness_cache.clear()
             
-            # Calculate and cache the dimmed color using integer brightness
-            brightness_factor = brightness_int / 100.0
-            self._brightness_cache[cache_key] = tuple(int(c * brightness_factor) for c in base_color)
-        
-        return self._brightness_cache[cache_key]
+        Note:
+            On RP2350 (150MHz+), this math is incredibly fast. Removed the cache
+            to prevent heap fragmentation in CircuitPython's non-compacting GC.
+        """
+        if brightness >= 1.0:
+            return base_color
+        if brightness <= 0.0:
+            return (0, 0, 0)
+            
+        # On RP2350, this math is incredibly fast
+        return (
+            int(base_color[0] * brightness),
+            int(base_color[1] * brightness),
+            int(base_color[2] * brightness)
+        )
 
 
-def test_brightness_cache_initialization():
-    """Test that the brightness cache is initialized."""
-    print("Testing brightness cache initialization...")
+def test_stateless_initialization():
+    """Test that the manager initializes without a cache."""
+    print("Testing stateless initialization...")
     
     mock_pixels = MockPixelObject()
     manager = MatrixManager(mock_pixels)
     
-    assert hasattr(manager, '_brightness_cache'), "Manager should have _brightness_cache attribute"
-    assert isinstance(manager._brightness_cache, dict), "_brightness_cache should be a dict"
-    assert len(manager._brightness_cache) == 0, "Cache should start empty"
+    assert not hasattr(manager, '_brightness_cache'), "Manager should not have _brightness_cache attribute"
+    assert not hasattr(manager, '_CACHE_SIZE_LIMIT'), "Manager should not have _CACHE_SIZE_LIMIT attribute"
     
-    print("✓ Brightness cache initialization test passed")
+    print("✓ Stateless initialization test passed")
 
 
 def test_get_dimmed_color_basic():
@@ -134,30 +118,27 @@ def test_get_dimmed_color_basic():
     mock_pixels = MockPixelObject()
     manager = MatrixManager(mock_pixels)
     
-    # Test with brightness = 1.0 (should return original color, no cache)
+    # Test with brightness = 1.0 (should return original color)
     base_color = (200, 100, 50)
     result = manager._get_dimmed_color(base_color, 1.0)
     assert result == base_color, f"Brightness 1.0 should return original color, got {result}"
-    assert len(manager._brightness_cache) == 0, "Cache should remain empty for brightness 1.0 (fast path)"
     
     # Test with brightness = 0.5
     result = manager._get_dimmed_color(base_color, 0.5)
     expected = (100, 50, 25)  # 200*0.5=100, 100*0.5=50, 50*0.5=25
     assert result == expected, f"Expected {expected}, got {result}"
-    assert len(manager._brightness_cache) == 1, "Cache should have 1 entry"
     
-    # Test with brightness = 0.0 (should return black, no cache)
+    # Test with brightness = 0.0 (should return black)
     result = manager._get_dimmed_color(base_color, 0.0)
     expected = (0, 0, 0)
     assert result == expected, f"Expected {expected}, got {result}"
-    assert len(manager._brightness_cache) == 1, "Cache should remain 1 entry (0.0 uses fast path)"
     
     print("✓ _get_dimmed_color basic functionality test passed")
 
 
-def test_brightness_cache_reuse():
-    """Test that cache is reused for repeated calls."""
-    print("\nTesting brightness cache reuse...")
+def test_stateless_calculation():
+    """Test that calculations are done without caching."""
+    print("\nTesting stateless calculation...")
     
     mock_pixels = MockPixelObject()
     manager = MatrixManager(mock_pixels)
@@ -165,34 +146,32 @@ def test_brightness_cache_reuse():
     base_color = (150, 150, 150)
     brightness = 0.75
     
-    # First call - should populate cache
+    # First call - should calculate result
     result1 = manager._get_dimmed_color(base_color, brightness)
-    cache_size1 = len(manager._brightness_cache)
     
-    # Second call with same parameters - should use cache
+    # Second call with same parameters - should calculate again (no cache)
     result2 = manager._get_dimmed_color(base_color, brightness)
-    cache_size2 = len(manager._brightness_cache)
     
     assert result1 == result2, "Results should be identical"
-    assert cache_size1 == cache_size2, "Cache size should not increase on reuse"
-    assert cache_size1 == 1, f"Cache should have exactly 1 entry, has {cache_size1}"
     
-    # Verify the results are the same object (cache hit)
-    assert id(result1) == id(result2), "Should return same cached tuple object"
+    # Verify the results are NOT the same object (no caching)
+    # Note: Due to Python's integer interning, very small tuples may have same id,
+    # but we're testing the concept that there's no cache
+    assert not hasattr(manager, '_brightness_cache'), "Manager should not have cache"
     
-    print("✓ Brightness cache reuse test passed")
+    print("✓ Stateless calculation test passed")
 
 
-def test_brightness_rounding():
-    """Test that brightness values are converted to integers for cache efficiency."""
-    print("\nTesting brightness integer conversion...")
+def test_brightness_precision():
+    """Test that brightness values are calculated with proper precision."""
+    print("\nTesting brightness precision...")
     
     mock_pixels = MockPixelObject()
     manager = MatrixManager(mock_pixels)
     
     base_color = (200, 100, 50)
     
-    # These should all convert to 75 (int) and use the same cache entry
+    # Test various brightness values - each should calculate independently
     brightness_values = [0.751, 0.752, 0.753, 0.754]
     
     results = []
@@ -200,16 +179,17 @@ def test_brightness_rounding():
         result = manager._get_dimmed_color(base_color, brightness)
         results.append(result)
     
-    # All results should be the same because they convert to int 75
-    assert all(r == results[0] for r in results), "All values converting to same int should produce same result"
-    assert len(manager._brightness_cache) == 1, f"Should have 1 cache entry, has {len(manager._brightness_cache)}"
+    # Results should be calculated directly from brightness (no rounding to int)
+    # int(200 * 0.751) = 150, int(200 * 0.752) = 150, etc.
+    # All should give same result due to int() truncation
+    assert all(r == results[0] for r in results), "Similar brightness values should produce same result after int()"
     
-    print("✓ Brightness integer conversion test passed")
+    print("✓ Brightness precision test passed")
 
 
-def test_multiple_colors_cached():
-    """Test that different base colors create separate cache entries."""
-    print("\nTesting multiple colors cached...")
+def test_multiple_colors_calculated():
+    """Test that different base colors produce correct results."""
+    print("\nTesting multiple colors calculated...")
     
     mock_pixels = MockPixelObject()
     manager = MatrixManager(mock_pixels)
@@ -226,20 +206,17 @@ def test_multiple_colors_cached():
         result = manager._get_dimmed_color(color, brightness)
         results.append(result)
     
-    # Should have 3 cache entries (one per color)
-    assert len(manager._brightness_cache) == 3, f"Should have 3 cache entries, has {len(manager._brightness_cache)}"
+    # Verify results are correct
+    assert results[0] == (127, 0, 0), f"Red dimmed should be (127, 0, 0), got {results[0]}"
+    assert results[1] == (0, 127, 0), f"Green dimmed should be (0, 127, 0), got {results[1]}"
+    assert results[2] == (0, 0, 127), f"Blue dimmed should be (0, 0, 127), got {results[2]}"
     
-    # Verify results are different
-    assert results[0] == (127, 0, 0), "Red dimmed should be (127, 0, 0)"
-    assert results[1] == (0, 127, 0), "Green dimmed should be (0, 127, 0)"
-    assert results[2] == (0, 0, 127), "Blue dimmed should be (0, 0, 127)"
-    
-    print("✓ Multiple colors cached test passed")
+    print("✓ Multiple colors calculated test passed")
 
 
-def test_cache_efficiency():
-    """Test that cache significantly reduces tuple allocations."""
-    print("\nTesting cache efficiency...")
+def test_calculation_correctness():
+    """Test that calculations are always correct without caching."""
+    print("\nTesting calculation correctness...")
     
     mock_pixels = MockPixelObject()
     manager = MatrixManager(mock_pixels)
@@ -248,13 +225,16 @@ def test_cache_efficiency():
     brightness = 0.8
     
     # Simulate calling for many pixels (like in show_icon)
+    results = []
     for _ in range(100):
         result = manager._get_dimmed_color(base_color, brightness)
+        results.append(result)
     
-    # Despite 100 calls, should only have 1 cache entry
-    assert len(manager._brightness_cache) == 1, f"Should have 1 cache entry despite 100 calls, has {len(manager._brightness_cache)}"
+    # All results should be identical and correct
+    expected = (160, 80, 40)  # 200*0.8=160, 100*0.8=80, 50*0.8=40
+    assert all(r == expected for r in results), f"All results should be {expected}"
     
-    print("✓ Cache efficiency test passed")
+    print("✓ Calculation correctness test passed")
 
 
 def test_edge_cases():
@@ -270,9 +250,13 @@ def test_edge_cases():
     result = manager._get_dimmed_color(base_color, 0)
     assert result == (0, 0, 0), "Brightness 0 should return black"
     
-    # Test brightness = 1
+    # Test brightness = 1.0 (exactly)
     result = manager._get_dimmed_color(base_color, 1.0)
     assert result == base_color, "Brightness 1.0 should return original"
+    
+    # Test brightness > 1.0 (should clamp to original)
+    result = manager._get_dimmed_color(base_color, 1.5)
+    assert result == base_color, "Brightness > 1.0 should return original"
     
     # Test very small brightness
     result = manager._get_dimmed_color(base_color, 0.01)
@@ -285,68 +269,19 @@ def test_edge_cases():
     print("✓ Edge cases test passed")
 
 
-def test_cache_key_format():
-    """Test that cache keys are properly formatted with integer brightness."""
-    print("\nTesting cache key format...")
-    
-    mock_pixels = MockPixelObject()
-    manager = MatrixManager(mock_pixels)
-    
-    base_color = (200, 150, 100)
-    brightness = 0.753
-    
-    manager._get_dimmed_color(base_color, brightness)
-    
-    # Check that the cache key is properly formed with integer brightness
-    expected_key = ((200, 150, 100), 75)  # int(0.753 * 100) = 75
-    assert expected_key in manager._brightness_cache, f"Expected key {expected_key} in cache"
-    
-    print("✓ Cache key format test passed")
-
-
-def test_cache_size_limit():
-    """Test that cache is cleared when it exceeds size limit."""
-    print("\nTesting cache size limit...")
-    
-    mock_pixels = MockPixelObject()
-    manager = MatrixManager(mock_pixels)
-    
-    # Fill cache to just below limit (128 entries)
-    base_color = (100, 100, 100)
-    for i in range(manager._CACHE_SIZE_LIMIT):
-        # Use different colors to create unique cache entries
-        color = (i, i, i)
-        manager._get_dimmed_color(color, 0.5)
-    
-    # Verify cache is at limit
-    assert len(manager._brightness_cache) == manager._CACHE_SIZE_LIMIT, \
-        f"Cache should be at limit {manager._CACHE_SIZE_LIMIT}, has {len(manager._brightness_cache)}"
-    
-    # Add one more entry - should trigger cache clear
-    manager._get_dimmed_color((255, 255, 255), 0.5)
-    
-    # Cache should be small again (only the new entry)
-    assert len(manager._brightness_cache) == 1, \
-        f"Cache should be cleared and have 1 entry, has {len(manager._brightness_cache)}"
-    
-    print("✓ Cache size limit test passed")
-
-
 if __name__ == "__main__":
     print("=" * 60)
-    print("MatrixManager Brightness Cache Test Suite")
+    print("MatrixManager Stateless Brightness Calculation Test Suite")
     print("=" * 60)
     
     try:
-        test_brightness_cache_initialization()
+        test_stateless_initialization()
         test_get_dimmed_color_basic()
-        test_brightness_cache_reuse()
-        test_brightness_rounding()
-        test_multiple_colors_cached()
-        test_cache_efficiency()
+        test_stateless_calculation()
+        test_brightness_precision()
+        test_multiple_colors_calculated()
+        test_calculation_correctness()
         test_edge_cases()
-        test_cache_key_format()
-        test_cache_size_limit()
         
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")

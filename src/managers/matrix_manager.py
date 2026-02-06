@@ -14,12 +14,6 @@ class MatrixManager(BasePixelManager):
 
         self.palette = Palette.PALETTE_LIBRARY
         self.icons = Icons.ICON_LIBRARY
-        
-        # Pre-calculated brightness cache to avoid tuple allocation
-        # Key: (base_color_tuple, brightness_int), Value: dimmed_color_tuple
-        # Limited to 128 entries to prevent unbounded memory growth
-        self._brightness_cache = {}
-        self._CACHE_SIZE_LIMIT = 128
 
     def _get_idx(self, x, y):
         """Maps 2D (0-7) to Serpentine 1D index."""
@@ -29,7 +23,8 @@ class MatrixManager(BasePixelManager):
     
     def _get_dimmed_color(self, base_color, brightness):
         """
-        Get brightness-adjusted color with caching to avoid repeated tuple allocation.
+        Stateless brightness calculation.
+        Sacrifices a tiny amount of CPU speed for significantly better memory stability.
         
         Args:
             base_color: Tuple of (r, g, b) values
@@ -39,38 +34,20 @@ class MatrixManager(BasePixelManager):
             Tuple of brightness-adjusted (r, g, b) values
             
         Note:
-            Brightness is converted to integer (0-100) for cache efficiency and faster
-            hashing. Cache is limited to 128 entries to prevent unbounded memory growth.
-            When the limit is reached, the cache is cleared to avoid memory exhaustion.
+            On RP2350 (150MHz+), this math is incredibly fast. Removed the cache
+            to prevent heap fragmentation in CircuitPython's non-compacting GC.
         """
-        # Fast path: brightness is 0.0, return black (common for "off" pixels)
-        if brightness == 0.0:
-            return (0, 0, 0)
-        
-        # Fast path: brightness is 1.0, return original color
-        if brightness == 1.0:
+        if brightness >= 1.0:
             return base_color
-        
-        # Convert brightness to integer (0-100) with rounding for better precision
-        brightness_int = round(brightness * 100)
-        
-        # Create cache key with integer brightness
-        cache_key = (base_color, brightness_int)
-        
-        # Check cache
-        if cache_key not in self._brightness_cache:
-            # Safety valve: clear cache if it grows too large
-            # Note: This causes a brief performance dip when cache clears, but ensures
-            # bounded memory. For typical icon usage (palette colors at common brightness
-            # levels), the cache rarely fills. LRU eviction would be smoother but more complex.
-            if len(self._brightness_cache) >= self._CACHE_SIZE_LIMIT:
-                self._brightness_cache.clear()
+        if brightness <= 0.0:
+            return (0, 0, 0)
             
-            # Calculate and cache the dimmed color using integer brightness
-            brightness_factor = brightness_int / 100.0
-            self._brightness_cache[cache_key] = tuple(int(c * brightness_factor) for c in base_color)
-        
-        return self._brightness_cache[cache_key]
+        # On RP2350, this math is incredibly fast
+        return (
+            int(base_color[0] * brightness),
+            int(base_color[1] * brightness),
+            int(base_color[2] * brightness)
+        )
 
     def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None):
         """Sets a specific pixel on the matrix."""
