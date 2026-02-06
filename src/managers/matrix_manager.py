@@ -49,19 +49,23 @@ class MatrixManager(BasePixelManager):
         Internal method to perform SLIDE_LEFT animation.
         Runs as a background task to avoid blocking the caller.
         """
-        for offset in range(8, -1, -1):  # Slide from right to left
-            self.fill(Palette.OFF, show=False)
-            for y in range(8):
-                for x in range(8):
-                    target_x = x - offset
-                    if 0 <= target_x < 8:
-                        pixel_value = icon_data[y * 8 + x]
-                        if pixel_value != 0:
-                            base = color if color else self.palette[pixel_value]
-                            px_color = tuple(int(c * brightness) for c in base)
-                            self.draw_pixel(target_x, y, px_color)
-            self.pixels.show()
-            await asyncio.sleep(0.05)
+        try:
+            for offset in range(8, -1, -1):  # Slide from right to left
+                self.fill(Palette.OFF, show=False)
+                for y in range(8):
+                    for x in range(8):
+                        target_x = x - offset
+                        if 0 <= target_x < 8:
+                            pixel_value = icon_data[y * 8 + x]
+                            if pixel_value != 0:
+                                base = color if color else self.palette[pixel_value]
+                                px_color = tuple(int(c * brightness) for c in base)
+                                self.draw_pixel(target_x, y, px_color)
+                self.pixels.show()
+                await asyncio.sleep(0.05)
+        except Exception as e:
+            # Log error but don't crash - animation is non-critical
+            print(f"Error in SLIDE_LEFT animation: {e}")
 
     async def show_icon(
             self,
