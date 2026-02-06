@@ -21,16 +21,16 @@ class IndustrialSatelliteDriver(Satellite):
     Handles telemetry parsing and command serialization.
     Does not load hardware libraries or perform hardware I/O.
     """
-
-    def __init__(self, sid, uart):
+    
+    def __init__(self, sid, transport):
         """Initialize the Industrial Satellite Driver.
 
         Parameters:
             sid (str): Satellite ID assigned by the Core.
-            uart: UART manager for communication.
+            transport: Transport layer for communication.
         """
-        super().__init__(sid=sid, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, uart=uart)
-
+        super().__init__(sid=sid, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, transport=transport)
+        
         # Initialize HIDManager in monitor-only mode (no hardware)
 
         # Define PLACEHOLDERS for State Sizing
