@@ -154,9 +154,7 @@ def test_stateless_calculation():
     
     assert result1 == result2, "Results should be identical"
     
-    # Verify the results are NOT the same object (no caching)
-    # Note: Due to Python's integer interning, very small tuples may have same id,
-    # but we're testing the concept that there's no cache
+    # Verify there is no cache
     assert not hasattr(manager, '_brightness_cache'), "Manager should not have cache"
     
     print("✓ Stateless calculation test passed")
@@ -179,10 +177,10 @@ def test_brightness_precision():
         result = manager._get_dimmed_color(base_color, brightness)
         results.append(result)
     
-    # Results should be calculated directly from brightness (no rounding to int)
+    # Results use direct multiplication then int() truncation
     # int(200 * 0.751) = 150, int(200 * 0.752) = 150, etc.
-    # All should give same result due to int() truncation
-    assert all(r == results[0] for r in results), "Similar brightness values should produce same result after int()"
+    # All give same result due to int() truncation
+    assert all(r == results[0] for r in results), "Similar brightness values should produce same result after int() truncation"
     
     print("✓ Brightness precision test passed")
 
