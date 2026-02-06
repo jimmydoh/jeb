@@ -116,6 +116,45 @@ def initialize_sd_card():
 print("*** BOOTING JEB SYSTEM ***")
 config = load_config()
 
+# --- OTA UPDATE CHECK ---
+# Check if we need to run the updater before starting the main application
+try:
+    from updater import should_check_for_updates, Updater, clear_update_flag
+    
+    if should_check_for_updates():
+        print("\n" + "="*50)
+        print("   OTA UPDATE REQUIRED")
+        print("="*50 + "\n")
+        
+        # Check if Wi-Fi is configured
+        if config.get("wifi_ssid") and config.get("update_url"):
+            try:
+                updater = Updater(config)
+                update_success = updater.run_update()
+                
+                # Clear update flag
+                clear_update_flag()
+                
+                if update_success:
+                    print("\n✓ Update successful - rebooting...")
+                    updater.reboot()
+                else:
+                    print("\n⚠️ Update failed - continuing with existing firmware")
+                    
+            except Exception as e:
+                print(f"\n❌ Updater error: {e}")
+                print("Continuing with existing firmware")
+                clear_update_flag()
+        else:
+            print("⚠️ Wi-Fi not configured - skipping update")
+            print("Configure wifi_ssid and update_url in config.json")
+            clear_update_flag()
+        
+        print()
+        
+except ImportError:
+    print("⚠️ Updater module not available")
+
 if config.get("mount_sd_card"):
     if initialize_sd_card():
         ROOT_DATA_DIR = "/sd"

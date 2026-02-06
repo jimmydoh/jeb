@@ -4,5 +4,8 @@
     "type_name": "CORE",
     "mount_sd_card": false,
     "debug_mode": false,
-    "test_mode": true
+    "test_mode": true,
+    "wifi_ssid": "",
+    "wifi_password": "",
+    "update_url": ""
 }
