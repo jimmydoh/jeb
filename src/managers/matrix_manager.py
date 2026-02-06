@@ -16,8 +16,10 @@ class MatrixManager(BasePixelManager):
         self.icons = Icons.ICON_LIBRARY
         
         # Pre-calculated brightness cache to avoid tuple allocation
-        # Key: (base_color_tuple, brightness_rounded), Value: dimmed_color_tuple
+        # Key: (base_color_tuple, brightness_int), Value: dimmed_color_tuple
+        # Limited to 128 entries to prevent unbounded memory growth
         self._brightness_cache = {}
+        self._CACHE_SIZE_LIMIT = 128
 
     def _get_idx(self, x, y):
         """Maps 2D (0-7) to Serpentine 1D index."""
@@ -37,27 +39,33 @@ class MatrixManager(BasePixelManager):
             Tuple of brightness-adjusted (r, g, b) values
             
         Note:
-            Brightness is rounded to 2 decimal places (0.01 granularity) for cache
-            efficiency. This provides 101 possible brightness levels while keeping
-            the cache effective. The visual difference from exact brightness values
-            is imperceptible (< 0.5 RGB units per channel).
+            Brightness is converted to integer (0-100) for cache efficiency and faster
+            hashing. Cache is limited to 128 entries to prevent unbounded memory growth.
+            When the limit is reached, the cache is cleared to avoid memory exhaustion.
         """
+        # Fast path: brightness is 0.0, return black (common for "off" pixels)
+        if brightness == 0.0:
+            return (0, 0, 0)
+        
         # Fast path: brightness is 1.0, return original color
         if brightness == 1.0:
             return base_color
         
-        # Round brightness to 2 decimal places for cache efficiency
-        # This gives us 101 possible brightness levels (0.00 to 1.00)
-        brightness_key = round(brightness, 2)
+        # Convert brightness to integer (0-100) for faster hashing
+        brightness_int = int(brightness * 100)
         
-        # Create cache key
-        cache_key = (base_color, brightness_key)
+        # Create cache key with integer brightness
+        cache_key = (base_color, brightness_int)
         
         # Check cache
         if cache_key not in self._brightness_cache:
-            # Calculate and cache the dimmed color using rounded brightness
-            # This ensures consistent results for similar brightness values
-            self._brightness_cache[cache_key] = tuple(int(c * brightness_key) for c in base_color)
+            # Safety valve: clear cache if it grows too large
+            if len(self._brightness_cache) >= self._CACHE_SIZE_LIMIT:
+                self._brightness_cache.clear()
+            
+            # Calculate and cache the dimmed color using integer brightness
+            brightness_factor = brightness_int / 100.0
+            self._brightness_cache[cache_key] = tuple(int(c * brightness_factor) for c in base_color)
         
         return self._brightness_cache[cache_key]
 

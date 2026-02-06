@@ -70,8 +70,10 @@ class MatrixManager(BasePixelManager):
         super().__init__(jeb_pixel)
         
         # Pre-calculated brightness cache to avoid tuple allocation
-        # Key: (base_color_tuple, brightness_rounded), Value: dimmed_color_tuple
+        # Key: (base_color_tuple, brightness_int), Value: dimmed_color_tuple
+        # Limited to 128 entries to prevent unbounded memory growth
         self._brightness_cache = {}
+        self._CACHE_SIZE_LIMIT = 128
     
     def _get_dimmed_color(self, base_color, brightness):
         """
@@ -84,21 +86,29 @@ class MatrixManager(BasePixelManager):
         Returns:
             Tuple of brightness-adjusted (r, g, b) values
         """
+        # Fast path: brightness is 0.0, return black (common for "off" pixels)
+        if brightness == 0.0:
+            return (0, 0, 0)
+        
         # Fast path: brightness is 1.0, return original color
         if brightness == 1.0:
             return base_color
         
-        # Round brightness to 2 decimal places for cache efficiency
-        # This gives us 101 possible brightness levels (0.00 to 1.00)
-        brightness_key = round(brightness, 2)
+        # Convert brightness to integer (0-100) for faster hashing
+        brightness_int = int(brightness * 100)
         
-        # Create cache key
-        cache_key = (base_color, brightness_key)
+        # Create cache key with integer brightness
+        cache_key = (base_color, brightness_int)
         
         # Check cache
         if cache_key not in self._brightness_cache:
-            # Calculate and cache the dimmed color
-            self._brightness_cache[cache_key] = tuple(int(c * brightness_key) for c in base_color)
+            # Safety valve: clear cache if it grows too large
+            if len(self._brightness_cache) >= self._CACHE_SIZE_LIMIT:
+                self._brightness_cache.clear()
+            
+            # Calculate and cache the dimmed color using integer brightness
+            brightness_factor = brightness_int / 100.0
+            self._brightness_cache[cache_key] = tuple(int(c * brightness_factor) for c in base_color)
         
         return self._brightness_cache[cache_key]
 
@@ -140,7 +150,7 @@ def test_get_dimmed_color_basic():
     result = manager._get_dimmed_color(base_color, 0.0)
     expected = (0, 0, 0)
     assert result == expected, f"Expected {expected}, got {result}"
-    assert len(manager._brightness_cache) == 2, "Cache should have 2 entries"
+    assert len(manager._brightness_cache) == 1, "Cache should remain 1 entry (0.0 returns black directly)"
     
     print("✓ _get_dimmed_color basic functionality test passed")
 
@@ -174,27 +184,27 @@ def test_brightness_cache_reuse():
 
 
 def test_brightness_rounding():
-    """Test that brightness values are rounded for cache efficiency."""
-    print("\nTesting brightness rounding...")
+    """Test that brightness values are converted to integers for cache efficiency."""
+    print("\nTesting brightness integer conversion...")
     
     mock_pixels = MockPixelObject()
     manager = MatrixManager(mock_pixels)
     
     base_color = (200, 100, 50)
     
-    # These should all round to 0.75 and use the same cache entry
-    brightness_values = [0.751, 0.749, 0.7501, 0.7499]
+    # These should all convert to 75 (int) and use the same cache entry
+    brightness_values = [0.751, 0.752, 0.753, 0.754]
     
     results = []
     for brightness in brightness_values:
         result = manager._get_dimmed_color(base_color, brightness)
         results.append(result)
     
-    # All results should be the same because they round to 0.75
-    assert all(r == results[0] for r in results), "All rounded values should produce same result"
+    # All results should be the same because they convert to int 75
+    assert all(r == results[0] for r in results), "All values converting to same int should produce same result"
     assert len(manager._brightness_cache) == 1, f"Should have 1 cache entry, has {len(manager._brightness_cache)}"
     
-    print("✓ Brightness rounding test passed")
+    print("✓ Brightness integer conversion test passed")
 
 
 def test_multiple_colors_cached():
@@ -276,7 +286,7 @@ def test_edge_cases():
 
 
 def test_cache_key_format():
-    """Test that cache keys are properly formatted."""
+    """Test that cache keys are properly formatted with integer brightness."""
     print("\nTesting cache key format...")
     
     mock_pixels = MockPixelObject()
@@ -287,11 +297,39 @@ def test_cache_key_format():
     
     manager._get_dimmed_color(base_color, brightness)
     
-    # Check that the cache key is properly formed
-    expected_key = ((200, 150, 100), 0.75)  # Should round to 0.75
+    # Check that the cache key is properly formed with integer brightness
+    expected_key = ((200, 150, 100), 75)  # int(0.753 * 100) = 75
     assert expected_key in manager._brightness_cache, f"Expected key {expected_key} in cache"
     
     print("✓ Cache key format test passed")
+
+
+def test_cache_size_limit():
+    """Test that cache is cleared when it exceeds size limit."""
+    print("\nTesting cache size limit...")
+    
+    mock_pixels = MockPixelObject()
+    manager = MatrixManager(mock_pixels)
+    
+    # Fill cache to just below limit (128 entries)
+    base_color = (100, 100, 100)
+    for i in range(manager._CACHE_SIZE_LIMIT):
+        # Use different colors to create unique cache entries
+        color = (i, i, i)
+        manager._get_dimmed_color(color, 0.5)
+    
+    # Verify cache is at limit
+    assert len(manager._brightness_cache) == manager._CACHE_SIZE_LIMIT, \
+        f"Cache should be at limit {manager._CACHE_SIZE_LIMIT}, has {len(manager._brightness_cache)}"
+    
+    # Add one more entry - should trigger cache clear
+    manager._get_dimmed_color((255, 255, 255), 0.5)
+    
+    # Cache should be small again (only the new entry)
+    assert len(manager._brightness_cache) == 1, \
+        f"Cache should be cleared and have 1 entry, has {len(manager._brightness_cache)}"
+    
+    print("✓ Cache size limit test passed")
 
 
 if __name__ == "__main__":
@@ -308,6 +346,7 @@ if __name__ == "__main__":
         test_cache_efficiency()
         test_edge_cases()
         test_cache_key_format()
+        test_cache_size_limit()
         
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")

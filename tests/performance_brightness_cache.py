@@ -35,14 +35,20 @@ def test_with_cache(num_iterations=10000):
     ]
     brightness = 0.75
     cache = {}
+    cache_limit = 128
     
     def get_dimmed_color(base_color, brightness):
+        if brightness == 0.0:
+            return (0, 0, 0)
         if brightness == 1.0:
             return base_color
-        brightness_key = round(brightness, 2)
-        cache_key = (base_color, brightness_key)
+        brightness_int = int(brightness * 100)
+        cache_key = (base_color, brightness_int)
         if cache_key not in cache:
-            cache[cache_key] = tuple(int(c * brightness_key) for c in base_color)
+            if len(cache) >= cache_limit:
+                cache.clear()
+            brightness_factor = brightness_int / 100.0
+            cache[cache_key] = tuple(int(c * brightness_factor) for c in base_color)
         return cache[cache_key]
     
     start = time.perf_counter()
