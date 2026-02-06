@@ -44,27 +44,12 @@ class MatrixManager(BasePixelManager):
 
     # TODO draw_line, draw_rect, draw_circle, draw_text, etc.
 
-    async def show_icon(
-            self,
-            icon_name,
-            clear=True,
-            anim_mode=None,
-            speed=1.0,
-            color=None,
-            brightness=1.0
-        ):
+    async def _animate_slide_left(self, icon_data, color, brightness):
         """
-        Displays a predefined icon on the matrix with optional animation.
-        anim_mode: None, "PULSE", "BLINK" are non-blocking via the animate_loop.
-        anim_mode: "SLIDE_LEFT" is blocking (transition).
+        Internal method to perform SLIDE_LEFT animation.
+        Runs as a background task to avoid blocking the caller.
         """
-        if clear:
-            self.clear()
-
-        icon_data = self.icons.get(icon_name, self.icons["DEFAULT"])
-
-        # Handle Blocking Animations First
-        if anim_mode == "SLIDE_LEFT":
+        try:
             for offset in range(8, -1, -1):  # Slide from right to left
                 self.fill(Palette.OFF, show=False)
                 for y in range(8):
@@ -78,6 +63,36 @@ class MatrixManager(BasePixelManager):
                                 self.draw_pixel(target_x, y, px_color)
                 self.pixels.show()
                 await asyncio.sleep(0.05)
+        except asyncio.CancelledError:
+            # Task was cancelled - clean up and exit gracefully
+            raise
+        except Exception as e:
+            # Log error but don't crash - animation is non-critical
+            # Note: print() is standard for CircuitPython/embedded systems
+            print(f"Error in SLIDE_LEFT animation: {e}")
+
+    async def show_icon(
+            self,
+            icon_name,
+            clear=True,
+            anim_mode=None,
+            speed=1.0,
+            color=None,
+            brightness=1.0
+        ):
+        """
+        Displays a predefined icon on the matrix with optional animation.
+        anim_mode: None, "PULSE", "BLINK" are non-blocking via the animate_loop.
+        anim_mode: "SLIDE_LEFT" is non-blocking (spawned as background task).
+        """
+        if clear:
+            self.clear()
+
+        icon_data = self.icons.get(icon_name, self.icons["DEFAULT"])
+
+        # Handle SLIDE_LEFT Animation - Spawn as background task
+        if anim_mode == "SLIDE_LEFT":
+            asyncio.create_task(self._animate_slide_left(icon_data, color, brightness))
             return
 
         for y in range(8):
