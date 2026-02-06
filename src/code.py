@@ -60,7 +60,10 @@ def load_config():
             with open("config.json", "r", encoding="utf-8") as f:
                 config_data = json.load(f)
                 print("Configuration loaded from config.json")
-                return {**default_config, **config_data}  # Merge with defaults
+                # Merge with defaults - MicroPython compatible
+                merged_config = default_config.copy()
+                merged_config.update(config_data)
+                return merged_config
         else:
             print("No config.json found. Using default configuration.")
             return default_config

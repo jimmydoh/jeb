@@ -63,7 +63,7 @@
   - Dual 14-segment LED displays
   - 4x3 matrix keypad
   - 4x latching toggle switches
-  - 6x NeoPixel indicators
+  - 5x NeoPixel indicators
   - Rotary encoder with button
 - **Smart Power Management**:
   - Brownout detection with automatic LED dimming
@@ -165,10 +165,10 @@ The system uses an **asynchronous event-driven architecture** built on CircuitPy
 
 #### User Interface
 - **Displays**: Dual HT16K33 14-segment LED displays (I2C addresses 0x70, 0x71)
-- **Keypad**: 4x3 matrix (rows GP7-10, cols GP11-13)
+- **Keypad**: 4x3 matrix (rows GP16-18, cols GP19-21)
 - **Switches**: 4x latching toggles + 1x (On-Off-On) momentary
 - **Encoder**: Incremental rotary encoder with push button
-- **LEDs**: 6x NeoPixels with async animation engine
+- **LEDs**: 5x NeoPixels with async animation engine
 
 #### Communication
 - **Dual UART**: 
@@ -283,6 +283,7 @@ jeb/
 │   ├── boot.py                    # Hardware safety initialization (runs before code.py)
 │   ├── code.py                    # Main entry point and application loader
 │   ├── config.json                # Device configuration
+│   ├── protocol.py                # Protocol definitions and command mappings
 │   │
 │   ├── core/                      # CORE unit implementation
 │   │   ├── __init__.py
@@ -290,7 +291,9 @@ jeb/
 │   │
 │   ├── satellites/                # Satellite unit implementations
 │   │   ├── __init__.py
-│   │   └── (satellite modules)
+│   │   ├── base.py                # Base satellite class
+│   │   ├── sat_01_driver.py       # Satellite 01 hardware driver
+│   │   └── sat_01_firmware.py     # Satellite 01 firmware
 │   │
 │   ├── modes/                     # Mode system (UI/UX states)
 │   │   ├── base.py                # BaseMode class for inheritance
@@ -298,31 +301,70 @@ jeb/
 │   │   ├── game_mode.py           # Interactive game modes
 │   │   ├── debug.py               # Debug/diagnostic mode
 │   │   ├── utility_mode.py        # System utilities
-│   │   └── ...
+│   │   ├── industrial_startup.py  # Industrial satellite startup sequence
+│   │   ├── jebris.py              # Tetris-style game mode
+│   │   ├── safe_cracker.py        # Safe cracking game mode
+│   │   ├── simon.py               # Simon Says game mode
+│   │   └── manifest.py            # Mode manifest/registry
 │   │
 │   ├── managers/                  # System managers
+│   │   ├── __init__.py
 │   │   ├── hid_manager.py         # Human Interface Device handling
 │   │   ├── uart_manager.py        # UART communication handler
-│   │   └── ...
+│   │   ├── audio_manager.py       # Audio system management
+│   │   ├── buzzer_manager.py      # Buzzer control
+│   │   ├── console_manager.py     # Serial console management
+│   │   ├── data_manager.py        # Data storage and management
+│   │   ├── display_manager.py     # OLED display control
+│   │   ├── led_manager.py         # LED control
+│   │   ├── matrix_manager.py      # LED matrix control
+│   │   ├── power_manager.py       # Power system monitoring
+│   │   ├── satellite_network_manager.py  # Satellite network coordination
+│   │   ├── segment_manager.py     # 14-segment display control
+│   │   ├── synth_manager.py       # Audio synthesis
+│   │   ├── base_pixel_manager.py  # Base class for pixel-based displays
+│   │   └── ring_buffer.py         # Ring buffer utility
 │   │
-│   ├── utilities/                 # Helper modules
-│   │   └── (utility functions)
+│   ├── transport/                 # Communication transport layer
+│   │   ├── __init__.py
+│   │   ├── base_transport.py      # Abstract transport base class
+│   │   ├── message.py             # Message structure definitions
+│   │   └── uart_transport.py      # UART transport implementation
 │   │
-│   └── testing/                   # Test framework
-│       ├── test_manager.py        # Test mode controller
-│       ├── test_crc.py            # CRC implementation tests
-│       └── __init__.py
+│   └── utilities/                 # Helper modules
+│       ├── __init__.py
+│       ├── cobs.py                # COBS encoding/decoding
+│       ├── context.py             # Global context management
+│       ├── crc.py                 # CRC calculations
+│       ├── icons.py               # Icon definitions for display
+│       ├── jeb_pixel.py           # Custom pixel class
+│       ├── mcp_keys.py            # MCP23008 key mappings
+│       ├── palette.py             # Color palette definitions
+│       ├── payload_parser.py      # Binary payload parsing
+│       ├── pins.py                # Pin definitions
+│       ├── synth_registry.py      # Synthesis pattern registry
+│       └── tones.py               # Musical tone definitions
 │
 ├── docs/                          # Documentation
 │   ├── hardware-core.md           # CORE hardware specifications
 │   ├── hardware-sat-01.md         # Satellite 01 specifications
-│   └── CRC_IMPLEMENTATION.md      # Communication protocol details
+│   ├── BINARY_PROTOCOL.md         # Binary protocol specification
+│   ├── CRC_IMPLEMENTATION.md      # CRC implementation details
+│   ├── PAYLOAD_ENCODING.md        # Payload encoding documentation
+│   ├── SYNTHIO_IMPLEMENTATION.md  # Audio synthesis implementation
+│   └── TRANSPORT_ABSTRACTION.md   # Transport layer abstraction
 │
 ├── examples/                      # Example configurations
 │   ├── config-example-core.json   # CORE config template
 │   └── config-example-sat-01.json # Satellite config template
 │
+├── tests/                         # Test suite (Python/pytest)
+│   ├── test_*.py                  # Unit and integration tests
+│   └── performance_*.py           # Performance benchmarks
+│
 ├── .gitignore                     # Git ignore patterns
+├── LICENSE                        # MIT License
+├── TEST_COVERAGE_REPORT.md        # Test coverage report
 └── README.md                      # This file
 ```
 
@@ -386,11 +428,16 @@ Enable test mode in `config.json` to run system tests without full hardware:
 }
 ```
 
-This loads the `TestManager` which provides:
-- Hardware diagnostics
-- CRC implementation validation
-- I/O testing
-- Communication protocol testing
+This runs diagnostic tests and validation routines for the system components.
+
+### Testing
+
+The project includes a comprehensive test suite in the `tests/` directory with unit tests, integration tests, and performance benchmarks. Tests are written for Python/pytest and can be run on development machines:
+
+- Unit tests for individual components (managers, utilities, transport layer)
+- Integration tests for multi-component interactions
+- Performance benchmarks for critical paths (brightness calculations, payload encoding)
+- Hardware-specific tests for satellite communication and protocol validation
 
 ### Development Roadmap
 
@@ -410,6 +457,21 @@ This loads the `TestManager` which provides:
 - [ ] UART buffering and flow control
 - [ ] Multi-satellite chain testing
 
+### Automated Builds
+
+The repository includes a GitHub Action workflow that automatically compiles Python source files to MicroPython bytecode (`.mpy` files) for faster loading and reduced memory usage. The workflow:
+
+- Compiles all Python files in `src/` using `mpy-cross`
+- Generates a `manifest.json` with file paths and SHA256 hashes
+- Generates a lightweight `version.json` for quick version checks
+- Automatically determines version from VERSION file, git tags, or git history
+- Uploads compiled files as GitHub Actions artifacts
+- Creates release archives when tags are pushed
+
+**Version Management:** Update the `VERSION` file in the repository root to specify the build version, or use git tags for releases.
+
+For details, see [.github/workflows/README.md](.github/workflows/README.md).
+
 ### Contributing
 
 Contributions are welcome! Please:
@@ -427,7 +489,11 @@ Detailed hardware and implementation documentation is available in the `docs/` d
 
 - **[hardware-core.md](docs/hardware-core.md)**: Complete CORE unit specifications, GPIO mapping, and schematics
 - **[hardware-sat-01.md](docs/hardware-sat-01.md)**: Industrial Satellite specifications and pinout
-- **[CRC_IMPLEMENTATION.md](docs/CRC_IMPLEMENTATION.md)**: Communication protocol and CRC details
+- **[BINARY_PROTOCOL.md](docs/BINARY_PROTOCOL.md)**: Binary protocol specification and message format
+- **[CRC_IMPLEMENTATION.md](docs/CRC_IMPLEMENTATION.md)**: CRC implementation and validation details
+- **[PAYLOAD_ENCODING.md](docs/PAYLOAD_ENCODING.md)**: Payload encoding and decoding documentation
+- **[TRANSPORT_ABSTRACTION.md](docs/TRANSPORT_ABSTRACTION.md)**: Transport layer abstraction design
+- **[SYNTHIO_IMPLEMENTATION.md](docs/SYNTHIO_IMPLEMENTATION.md)**: Audio synthesis system implementation
 
 ---
 

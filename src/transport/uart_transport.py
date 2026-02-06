@@ -424,6 +424,11 @@ class UARTTransport:
         Raises:
             ValueError: If buffer overflow occurs (propagated from UARTManager).
         """
+        # Check if bytes are available before attempting to read
+        # This prevents blocking I/O in async loops
+        if self.uart_manager.in_waiting == 0 and self.uart_manager.buffer_size == 0:
+            return None
+        
         # Read until we find a 0x00 terminator
         packet = self.uart_manager.read_until(b'\x00')
         

@@ -1,0 +1,235 @@
+name: Build MPY Files
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/**/*.py'
+  pull_request:
+    paths:
+      - 'src/**/*.py'
+  workflow_dispatch:
+
+jobs:
+  build-mpy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install mpy-cross
+        run: |
+          pip install mpy-cross
+      
+      - name: Determine version
+        id: version
+        run: |
+          # Try multiple methods to determine version, in order of preference:
+          
+          # 1. Check for VERSION file in repository
+          if [ -f "VERSION" ]; then
+            VERSION=$(tr -d '\n\r' < VERSION | xargs)
+            echo "Version from VERSION file: $VERSION"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "source=VERSION file" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # 2. Check for version.txt file
+          if [ -f "version.txt" ]; then
+            VERSION=$(tr -d '\n\r' < version.txt | xargs)
+            echo "Version from version.txt: $VERSION"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "source=version.txt file" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # 3. Check if we're on a git tag
+          if git describe --exact-match --tags HEAD 2>/dev/null; then
+            VERSION=$(git describe --exact-match --tags HEAD)
+            echo "Version from git tag: $VERSION"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "source=git tag" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # 4. Use git describe to generate a version from commits
+          if git describe --tags --always --dirty 2>/dev/null; then
+            VERSION=$(git describe --tags --always --dirty)
+            echo "Version from git describe: $VERSION"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "source=git describe" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # 5. Fallback: use date-based version
+          VERSION="0.0.0-$(date -u +%Y%m%d.%H%M%S)"
+          echo "Version (fallback date-based): $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "source=date-based fallback" >> $GITHUB_OUTPUT
+      
+      - name: Create output directory
+        run: |
+          mkdir -p build/mpy
+          echo "Build version: ${{ steps.version.outputs.version }}"
+          echo "Version source: ${{ steps.version.outputs.source }}"
+      
+      - name: Compile Python files to MPY
+        run: |
+          # Find all .py files in src directory and compile them
+          # Track compilation results
+          success_count=0
+          fail_count=0
+          failed_files=""
+          
+          while IFS= read -r pyfile; do
+            # Get the relative path from src
+            relpath="${pyfile#src/}"
+            # Create directory structure in build/mpy
+            mkdir -p "build/mpy/$(dirname "$relpath")"
+            # Compile to .mpy
+            echo "Compiling $pyfile..."
+            if mpy-cross "$pyfile" -o "build/mpy/${relpath%.py}.mpy" 2>&1; then
+              echo "  ✓ Success: build/mpy/${relpath%.py}.mpy"
+              success_count=$((success_count + 1))
+            else
+              echo "  ✗ Failed: $pyfile"
+              if [ -z "$failed_files" ]; then
+                failed_files="$pyfile"
+              else
+                failed_files="$failed_files"$'\n'"$pyfile"
+              fi
+              fail_count=$((fail_count + 1))
+            fi
+          done < <(find src -name "*.py" -type f)
+          
+          echo ""
+          echo "=== Compilation Summary ==="
+          echo "Successfully compiled: $success_count files"
+          echo "Failed to compile: $fail_count files"
+          
+          if [ -n "$failed_files" ]; then
+            echo ""
+            echo "Failed files:"
+            echo "$failed_files"
+          fi
+      
+      - name: Generate manifest.json and version.json
+        run: |
+          python3 << 'EOF'
+          import os
+          import json
+          import hashlib
+          
+          def calculate_sha256(filepath):
+              """Calculate SHA256 hash of a file."""
+              sha256_hash = hashlib.sha256()
+              with open(filepath, "rb") as f:
+                  for byte_block in iter(lambda: f.read(4096), b""):
+                      sha256_hash.update(byte_block)
+              return sha256_hash.hexdigest()
+          
+          build_timestamp = os.popen('date -u +"%Y-%m-%dT%H:%M:%SZ"').read().strip()
+          version = os.environ.get('BUILD_VERSION', '0.0.0-unknown')
+          
+          manifest = {
+              "version": version,
+              "build_timestamp": build_timestamp,
+              "files": []
+          }
+          
+          # Walk through build/mpy directory
+          total_size = 0
+          for root, dirs, files in os.walk("build/mpy"):
+              for file in files:
+                  if file.endswith(".mpy"):
+                      filepath = os.path.join(root, file)
+                      # Get relative path from build/mpy
+                      relpath = os.path.relpath(filepath, "build/mpy")
+                      
+                      file_size = os.path.getsize(filepath)
+                      total_size += file_size
+                      
+                      file_info = {
+                          "path": relpath,
+                          "download_path": f"mpy/{relpath}",
+                          "sha256": calculate_sha256(filepath),
+                          "size": file_size
+                      }
+                      manifest["files"].append(file_info)
+          
+          # Sort files by path for consistent output
+          manifest["files"].sort(key=lambda x: x["path"])
+          
+          # Write manifest.json to build directory
+          with open("build/manifest.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+          
+          print(f"Generated manifest.json with {len(manifest['files'])} files")
+          
+          # Generate lightweight version.json
+          version_info = {
+              "version": version,
+              "build_timestamp": build_timestamp,
+              "file_count": len(manifest["files"]),
+              "total_size": total_size
+          }
+          
+          with open("build/version.json", "w") as f:
+              json.dump(version_info, f, indent=2)
+          
+          print(f"Generated version.json ({os.path.getsize('build/version.json')} bytes)")
+          EOF
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
+      
+      - name: Display manifest and version
+        run: |
+          echo "=== Generated Manifest ==="
+          cat build/manifest.json
+          echo ""
+          echo "=== Generated Version ==="
+          cat build/version.json
+      
+      - name: Upload MPY files
+        uses: actions/upload-artifact@v4
+        with:
+          name: mpy-files
+          path: build/mpy/
+          retention-days: 90
+      
+      - name: Upload manifest and version
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest
+          path: |
+            build/manifest.json
+            build/version.json
+          retention-days: 90
+      
+      - name: Create release artifacts (on tag push)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cd build
+          tar -czf mpy-files.tar.gz mpy/
+          zip -r mpy-files.zip mpy/
+      
+      - name: Upload release artifacts (on tag push)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-archives
+          path: |
+            build/mpy-files.tar.gz
+            build/mpy-files.zip
+          retention-days: 90

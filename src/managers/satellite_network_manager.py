@@ -17,17 +17,19 @@ class SatelliteNetworkManager:
     - Satellite registry management
     """
     
-    def __init__(self, transport, display, audio):
+    def __init__(self, transport, display, audio, watchdog_flags=None):
         """Initialize the satellite network manager.
         
         Args:
             transport: UARTTransport instance for communication
             display: DisplayManager instance for status updates
             audio: AudioManager instance for audio feedback
+            watchdog_flags: Optional dict to set watchdog flag for this task
         """
         self.transport = transport
         self.display = display
         self.audio = audio
+        self.watchdog_flags = watchdog_flags
         
         # Satellite Registry
         self.satellites = {}
@@ -157,6 +159,10 @@ class SatelliteNetworkManager:
         - Link watchdog to detect disconnected satellites
         """
         while True:
+            # Set watchdog flag to indicate this task is alive
+            if self.watchdog_flags is not None:
+                self.watchdog_flags["sat_network"] = True
+            
             # Message Handling via transport layer
             try:
                 # Receive message via transport (non-blocking)

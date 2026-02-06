@@ -53,9 +53,20 @@ class MockUARTManager:
     def __init__(self):
         self.sent_packets = []
         self.receive_buffer = bytearray()
+        self._in_waiting = 0
     
     def write(self, data):
         self.sent_packets.append(data)
+    
+    @property
+    def in_waiting(self):
+        """Mock in_waiting property."""
+        return self._in_waiting
+    
+    @property
+    def buffer_size(self):
+        """Mock buffer_size property."""
+        return len(self.receive_buffer)
     
     def read_until(self, delimiter):
         idx = self.receive_buffer.find(delimiter)
