@@ -7,7 +7,20 @@ import microcontroller
 import neopixel
 from adafruit_ticks import ticks_ms, ticks_diff
 
-from modes import IndustrialStartup, JEBris, MainMenu, SafeCracker, Simon
+from modes import AVAILABLE_MODES
+
+# Extract mode classes from the manifest for use in this module
+# This creates a mode registry without tight coupling to specific imports
+_mode_registry = {}
+for mode_class in AVAILABLE_MODES:
+    _mode_registry[mode_class.__name__] = mode_class
+
+# Get mode classes from registry
+IndustrialStartup = _mode_registry.get("IndustrialStartup")
+JEBris = _mode_registry.get("JEBris")
+MainMenu = _mode_registry.get("MainMenu")
+SafeCracker = _mode_registry.get("SafeCracker")
+Simon = _mode_registry.get("Simon")
 
 from satellites import IndustrialSatelliteDriver
 
