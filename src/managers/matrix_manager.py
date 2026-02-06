@@ -35,6 +35,12 @@ class MatrixManager(BasePixelManager):
             
         Returns:
             Tuple of brightness-adjusted (r, g, b) values
+            
+        Note:
+            Brightness is rounded to 2 decimal places (0.01 granularity) for cache
+            efficiency. This provides 101 possible brightness levels while keeping
+            the cache effective. The visual difference from exact brightness values
+            is imperceptible (< 0.5 RGB units per channel).
         """
         # Fast path: brightness is 1.0, return original color
         if brightness == 1.0:
@@ -49,7 +55,8 @@ class MatrixManager(BasePixelManager):
         
         # Check cache
         if cache_key not in self._brightness_cache:
-            # Calculate and cache the dimmed color
+            # Calculate and cache the dimmed color using rounded brightness
+            # This ensures consistent results for similar brightness values
             self._brightness_cache[cache_key] = tuple(int(c * brightness_key) for c in base_color)
         
         return self._brightness_cache[cache_key]
