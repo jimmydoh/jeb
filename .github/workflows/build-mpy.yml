@@ -38,7 +38,7 @@ jobs:
           
           # 1. Check for VERSION file in repository
           if [ -f "VERSION" ]; then
-            VERSION=$(tr -d '\n\r' < VERSION | xargs)
+            VERSION=$(tr -d '\n\r' < VERSION)
             echo "Version from VERSION file: $VERSION"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "source=VERSION file" >> $GITHUB_OUTPUT
@@ -47,7 +47,7 @@ jobs:
           
           # 2. Check for version.txt file
           if [ -f "version.txt" ]; then
-            VERSION=$(tr -d '\n\r' < version.txt | xargs)
+            VERSION=$(tr -d '\n\r' < version.txt)
             echo "Version from version.txt: $VERSION"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "source=version.txt file" >> $GITHUB_OUTPUT
