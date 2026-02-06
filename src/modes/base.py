@@ -5,21 +5,49 @@ class BaseMode:
     """
     Base class for all modes.
 
-    Subclasses should define a METADATA class attribute:
-    METADATA = {
-        "id": "UNIQUE_ID",          # Used for state switching
-        "name": "Display Name",     # Shown in Menu
-        "icon": "ICON_KEY",         # Icon from Icon Library
-        "requires": ["CORE"],       # "CORE", "INDUSTRIAL", etc.
-        "settings": [               # Optional Settings
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["EASY", "NORMAL"],
-                "default": "NORMAL"
-            }
-        ]
-    }
+    All mode subclasses must define a METADATA class attribute that describes
+    the mode's properties and requirements. This metadata is used by the
+    CoreManager for mode registration and by the main menu for displaying
+    available modes and checking hardware requirements.
+
+    METADATA Structure:
+        id (str): Unique identifier for the mode (e.g., "MAIN_MENU", "SIMON")
+        name (str): Human-readable display name shown in the menu
+        icon (str): Icon key from the icon library for visual representation
+        requires (List[str]): Hardware dependencies required to run this mode
+            - "CORE": Always available (built-in hardware)
+            - Other values match satellite types (e.g., "INDUSTRIAL", "AUDIO")
+        settings (List[dict]): Optional configuration settings for the mode
+            Each setting dict must have:
+                - key (str): Internal identifier for the setting
+                - label (str): Short display label
+                - options (List): Available values for the setting
+                - default: Default value (must be in options)
+
+    Example METADATA:
+        METADATA = {
+            "id": "SIMON",
+            "name": "Simon Says",
+            "icon": "GAME",
+            "requires": ["CORE"],
+            "settings": [
+                {
+                    "key": "difficulty",
+                    "label": "DIFF",
+                    "options": ["EASY", "NORMAL", "HARD"],
+                    "default": "NORMAL"
+                }
+            ]
+        }
+    
+    Access Pattern:
+        Modes are registered in CoreManager.modes as:
+            Dict[mode_id, mode_class]
+        
+        To access mode metadata from a registered mode:
+            meta = self.core.modes[mode_id].METADATA
+            mode_name = meta["name"]
+            requirements = meta["requires"]
     """
 
     # Default Metadata
