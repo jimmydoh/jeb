@@ -12,17 +12,18 @@ import shutil
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Mock CircuitPython modules that aren't available in regular Python
-class MockWiFi:
-    class Radio:
-        def __init__(self):
-            self.connected = False
-            self.ipv4_address = "192.168.1.100"
-            self.enabled = True
-        
-        def connect(self, ssid, password, timeout=30):
-            self.connected = True
+class MockRadio:
+    def __init__(self):
+        self.connected = False
+        self.ipv4_address = "192.168.1.100"
+        self.enabled = True
     
-    radio = Radio()
+    def connect(self, ssid, password, timeout=30):
+        self.connected = True
+
+class MockWiFiModule:
+    """Mock wifi module with radio attribute."""
+    radio = MockRadio()
 
 class MockSocketPool:
     def __init__(self, radio):
@@ -46,8 +47,8 @@ class MockMicrocontroller:
     def reset():
         pass
 
-# Install mocks
-sys.modules['wifi'] = MockWiFi()
+# Install mocks as modules
+sys.modules['wifi'] = MockWiFiModule
 sys.modules['socketpool'] = MockSocketPool
 sys.modules['ssl'] = MockSSL
 sys.modules['adafruit_requests'] = MockRequests

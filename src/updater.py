@@ -329,10 +329,20 @@ class Updater:
         if not self.manifest:
             raise UpdaterError("No manifest loaded")
         
+        # Format timestamp as ISO string for JSON serialization
+        try:
+            current_time = time.localtime()
+            update_timestamp = "{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}Z".format(
+                current_time[0], current_time[1], current_time[2],
+                current_time[3], current_time[4], current_time[5]
+            )
+        except Exception:
+            update_timestamp = "unknown"
+        
         version_info = {
             "version": self.manifest["version"],
             "build_timestamp": self.manifest.get("build_timestamp", "unknown"),
-            "update_timestamp": time.localtime(),
+            "update_timestamp": update_timestamp,
             "file_count": len(self.manifest["files"])
         }
         
