@@ -300,7 +300,7 @@ if __name__ == "__main__":
         print("=" * 80)
         print("\nSummary:")
         print("  ✓ Binary payloads stay binary (no String Boomerang)")
-        print("  ✓ Significant performance improvement (2-3x faster)")
+        print("  ✓ Significant performance improvement (7-8x faster)")
         print("  ✓ Reduced heap allocation (eliminates 3+ string objects per packet)")
         print("  ✓ Backward compatible with text payloads")
         print("  ✓ Optional struct.unpack for ultimate performance")

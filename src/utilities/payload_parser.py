@@ -81,6 +81,9 @@ def unpack_bytes(payload_bytes, format_string='B'):
     Returns:
         tuple: Unpacked values
         
+    Raises:
+        struct.error: If the format string doesn't match the data size
+        
     Example:
         >>> unpack_bytes(b'\\x64\\xc8', 'BB')
         (100, 200)
@@ -90,12 +93,7 @@ def unpack_bytes(payload_bytes, format_string='B'):
     if not payload_bytes:
         return ()
     
-    try:
-        return struct.unpack(format_string, payload_bytes)
-    except struct.error as e:
-        # If unpack fails, return empty tuple
-        print(f"Warning: Binary unpack failed ({e}), returning empty")
-        return ()
+    return struct.unpack(format_string, payload_bytes)
 
 
 def get_int(values, index, default=0):
