@@ -127,7 +127,13 @@ def test_encoding_constants():
         value = getattr(protocol, enc)
         assert isinstance(value, str), f"Encoding constant '{enc}' should be a string"
     
-    print(f"✓ All {len(expected_encodings)} encoding constants defined")
+    # Check that all encoding constants have unique values
+    values = [getattr(protocol, enc) for enc in expected_encodings]
+    unique_values = set(values)
+    assert len(values) == len(unique_values), \
+        f"Encoding constants should have unique values, found duplicates in {values}"
+    
+    print(f"✓ All {len(expected_encodings)} encoding constants defined with unique values")
 
 
 def test_payload_schemas():

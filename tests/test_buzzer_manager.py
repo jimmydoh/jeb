@@ -53,6 +53,9 @@ class MockPwmio:
 
 sys.modules['pwmio'] = MockPwmio()
 
+# Mock tones module - define TEST_SONG at module level for reusability
+TEST_SONG = {'sequence': [('C4', 0.25), ('D4', 0.25), ('E4', 0.5)], 'bpm': 120, 'loop': False}
+
 # Mock tones module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities'))
 from tones import note, BEEP, SUCCESS
@@ -76,7 +79,7 @@ class MockUtilities:
         note = staticmethod(note)
         BEEP = BEEP
         SUCCESS = SUCCESS
-        TEST_SONG = {'sequence': [('C4', 0.25), ('D4', 0.25), ('E4', 0.5)], 'bpm': 120, 'loop': False}
+        TEST_SONG = TEST_SONG  # Use the module-level constant
 
 sys.modules['utilities'] = MockUtilities()
 sys.modules['utilities.tones'] = MockUtilities.tones

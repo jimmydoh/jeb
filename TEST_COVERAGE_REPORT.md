@@ -5,13 +5,13 @@ This document provides a comprehensive analysis of unit test coverage for the JE
 
 ## Test Coverage Summary
 
-### Before This PR (Previous Session)
+### Baseline (Before Current PR)
 - **Total Source Modules**: 48 Python files
 - **Modules with Tests**: 16 (33.3%)
 - **Test Files**: 18
 - **Total Test Cases**: 95+
 
-### After This PR (Current Session)
+### After This PR
 - **Total Source Modules**: 48 Python files
 - **Modules with Tests**: 19 (39.6%)
 - **Test Files**: 21
