@@ -102,15 +102,16 @@ def _decode_command(cmd_byte, command_reverse_map):
 
 
 def _encode_payload(payload_str, cmd_schema=None, encoding_constants=None):
-    """Encode payload string/list/tuple to bytes with explicit type handling.
+    """Encode payload string/list/tuple/bytes to bytes with explicit type handling.
     
     This function eliminates the fragility of "magic" type guessing by using
     command-specific schemas that explicitly define expected data types.
     
     Parameters:
-        payload_str (str, list, or tuple): Payload to encode. Can be:
+        payload_str (str, list, tuple, or bytes): Payload to encode. Can be:
             - str: Comma-separated values or text
             - list/tuple: Direct numeric values (avoids string parsing overhead)
+            - bytes: Already encoded payload (returned as-is)
         cmd_schema (dict, optional): Schema defining payload structure
         encoding_constants (dict, optional): Dictionary with ENCODING_* constants
         
@@ -119,6 +120,10 @@ def _encode_payload(payload_str, cmd_schema=None, encoding_constants=None):
     """
     if not payload_str:
         return b''
+    
+    # Handle bytes input - return as-is (already encoded)
+    if isinstance(payload_str, (bytes, bytearray)):
+        return bytes(payload_str)
     
     # Handle list/tuple inputs directly without string conversion
     if isinstance(payload_str, (list, tuple)):
