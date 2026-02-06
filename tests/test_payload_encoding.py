@@ -179,6 +179,68 @@ def test_power_commands_use_float_encoding():
     print("✓ POWER command float encoding test passed")
 
 
+def test_power_commands_accept_list_tuple():
+    """Test that POWER commands accept list/tuple inputs directly (no string parsing)."""
+    print("\nTesting POWER command with list/tuple inputs...")
+    
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+    
+    # Test with list input (satellite-side optimization)
+    test_values = [19.5, 18.2, 5.0]
+    msg_out = Message("0101", "POWER", test_values)
+    transport.send(msg_out)
+    
+    mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
+    msg_in = transport.receive()
+    
+    assert msg_in is not None
+    payload_parts = msg_in.payload.split(',')
+    assert len(payload_parts) == 3
+    assert abs(float(payload_parts[0]) - 19.5) < 0.01
+    assert abs(float(payload_parts[1]) - 18.2) < 0.01
+    assert abs(float(payload_parts[2]) - 5.0) < 0.01
+    
+    print("  ✓ List input encoded correctly")
+    
+    # Test with tuple input
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+    
+    test_values = (19.5, 18.2, 5.0)
+    msg_out = Message("0101", "POWER", test_values)
+    transport.send(msg_out)
+    
+    mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
+    msg_in = transport.receive()
+    
+    assert msg_in is not None
+    payload_parts = msg_in.payload.split(',')
+    assert len(payload_parts) == 3
+    assert abs(float(payload_parts[0]) - 19.5) < 0.01
+    assert abs(float(payload_parts[1]) - 18.2) < 0.01
+    assert abs(float(payload_parts[2]) - 5.0) < 0.01
+    
+    print("  ✓ Tuple input encoded correctly")
+    
+    # Verify list/tuple produces same result as string
+    mock_uart_str = MockUARTManager()
+    transport_str = UARTTransport(mock_uart_str, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+    msg_str = Message("0101", "POWER", "19.5,18.2,5.0")
+    transport_str.send(msg_str)
+    
+    mock_uart_list = MockUARTManager()
+    transport_list = UARTTransport(mock_uart_list, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+    msg_list = Message("0101", "POWER", [19.5, 18.2, 5.0])
+    transport_list.send(msg_list)
+    
+    assert mock_uart_str.sent_packets[0] == mock_uart_list.sent_packets[0], \
+        "String and list encoding should produce identical binary packets"
+    
+    print("  ✓ List/tuple produce identical binary output as string")
+    print("✓ POWER list/tuple input test passed")
+
+
 def test_display_commands_preserve_text():
     """Test that DSP command preserves text exactly."""
     print("\nTesting DSP text preservation...")
@@ -283,6 +345,7 @@ if __name__ == "__main__":
         test_new_sat_preserves_string_ids()
         test_led_commands_use_byte_encoding()
         test_power_commands_use_float_encoding()
+        test_power_commands_accept_list_tuple()
         test_display_commands_preserve_text()
         test_backward_compatibility()
         test_roundtrip_all_command_types()
@@ -292,6 +355,7 @@ if __name__ == "__main__":
         print("=" * 60)
         print("\nThe 'magic' type guessing issue has been fixed!")
         print("Commands now use explicit schemas for type-safe encoding.")
+        print("List/tuple inputs are supported for performance optimization.")
         
     except AssertionError as e:
         print(f"\n✗ TEST FAILED: {e}")

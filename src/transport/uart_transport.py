@@ -102,13 +102,15 @@ def _decode_command(cmd_byte, command_reverse_map):
 
 
 def _encode_payload(payload_str, cmd_schema=None, encoding_constants=None):
-    """Encode payload string to bytes with explicit type handling.
+    """Encode payload string/list/tuple to bytes with explicit type handling.
     
     This function eliminates the fragility of "magic" type guessing by using
     command-specific schemas that explicitly define expected data types.
     
     Parameters:
-        payload_str (str): Payload string to encode
+        payload_str (str, list, or tuple): Payload to encode. Can be:
+            - str: Comma-separated values or text
+            - list/tuple: Direct numeric values (avoids string parsing overhead)
         cmd_schema (dict, optional): Schema defining payload structure
         encoding_constants (dict, optional): Dictionary with ENCODING_* constants
         
@@ -118,6 +120,62 @@ def _encode_payload(payload_str, cmd_schema=None, encoding_constants=None):
     if not payload_str:
         return b''
     
+    # Handle list/tuple inputs directly without string conversion
+    if isinstance(payload_str, (list, tuple)):
+        if cmd_schema and encoding_constants:
+            encoding_type = cmd_schema.get('type')
+            expected_count = cmd_schema.get('count')
+            
+            # Validate count if specified
+            if expected_count is not None and len(payload_str) != expected_count:
+                raise ValueError(
+                    f"Schema expects {expected_count} values but got {len(payload_str)}"
+                )
+            
+            # Byte encoding (0-255 range)
+            if encoding_type == encoding_constants.get('ENCODING_NUMERIC_BYTES'):
+                output = bytearray()
+                for numeric_val in payload_str:
+                    numeric_val = int(numeric_val)
+                    if not (0 <= numeric_val <= 255):
+                        raise ValueError(f"Byte value {numeric_val} outside 0-255 range")
+                    output.append(numeric_val)
+                return bytes(output)
+            
+            # Word encoding (16-bit signed integers)
+            elif encoding_type == encoding_constants.get('ENCODING_NUMERIC_WORDS'):
+                output = bytearray()
+                for numeric_val in payload_str:
+                    numeric_val = int(numeric_val)
+                    output.extend(struct.pack('<h', numeric_val))
+                return bytes(output)
+            
+            # Float encoding (IEEE 754 single precision)
+            elif encoding_type == encoding_constants.get('ENCODING_FLOATS'):
+                output = bytearray()
+                for float_val in payload_str:
+                    float_val = float(float_val)
+                    output.extend(struct.pack('<f', float_val))
+                return bytes(output)
+        
+        # No schema - use heuristic encoding
+        output = bytearray()
+        for val in payload_str:
+            if isinstance(val, float):
+                output.extend(struct.pack('<f', val))
+            elif isinstance(val, int):
+                if -128 <= val <= 255:
+                    output.append(val & 0xFF)
+                elif -32768 <= val <= 32767:
+                    output.extend(struct.pack('<h', val))
+                else:
+                    output.extend(struct.pack('<i', val))
+            else:
+                # Try to convert to float
+                output.extend(struct.pack('<f', float(val)))
+        return bytes(output)
+    
+    # String input - use existing logic
     # Use schema if provided to avoid ambiguous type interpretation
     if cmd_schema and encoding_constants:
         encoding_type = cmd_schema.get('type')
