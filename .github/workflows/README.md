@@ -106,6 +106,26 @@ else:
     print("File verification failed!")
 ```
 
+### Example Script
+
+A complete example script for downloading and verifying MPY files is available at:
+[`examples/download_mpy_files.py`](../../examples/download_mpy_files.py)
+
+This script can:
+- Verify all files against the manifest
+- Copy files to a CircuitPython device
+- Report any integrity issues
+
+Usage:
+```bash
+# Download artifacts from GitHub Actions
+# Then verify them:
+python examples/download_mpy_files.py --verify --output-dir ./mpy
+
+# Copy to CircuitPython device:
+python examples/download_mpy_files.py --copy-to-circuitpy /media/CIRCUITPY
+```
+
 ## Benefits of MPY Files
 
 MPY (MicroPython bytecode) files offer several advantages:
