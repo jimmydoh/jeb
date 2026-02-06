@@ -193,6 +193,9 @@ class CoreManager:
         sub_task = asyncio.create_task(mode_instance.execute())
 
         while not sub_task.done():
+            # Feed the watchdog to prevent system reset during long-running modes
+            microcontroller.watchdog.feed()
+            
             # E-Stop engaged
             if self.meltdown:
                 sub_task.cancel()
