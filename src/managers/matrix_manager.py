@@ -51,8 +51,8 @@ class MatrixManager(BasePixelManager):
         if brightness == 1.0:
             return base_color
         
-        # Convert brightness to integer (0-100) for faster hashing
-        brightness_int = int(brightness * 100)
+        # Convert brightness to integer (0-100) with rounding for better precision
+        brightness_int = round(brightness * 100)
         
         # Create cache key with integer brightness
         cache_key = (base_color, brightness_int)
@@ -60,6 +60,9 @@ class MatrixManager(BasePixelManager):
         # Check cache
         if cache_key not in self._brightness_cache:
             # Safety valve: clear cache if it grows too large
+            # Note: This causes a brief performance dip when cache clears, but ensures
+            # bounded memory. For typical icon usage (palette colors at common brightness
+            # levels), the cache rarely fills. LRU eviction would be smoother but more complex.
             if len(self._brightness_cache) >= self._CACHE_SIZE_LIMIT:
                 self._brightness_cache.clear()
             

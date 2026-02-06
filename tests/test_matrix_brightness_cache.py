@@ -94,8 +94,8 @@ class MatrixManager(BasePixelManager):
         if brightness == 1.0:
             return base_color
         
-        # Convert brightness to integer (0-100) for faster hashing
-        brightness_int = int(brightness * 100)
+        # Convert brightness to integer (0-100) with rounding for better precision
+        brightness_int = round(brightness * 100)
         
         # Create cache key with integer brightness
         cache_key = (base_color, brightness_int)
@@ -134,11 +134,11 @@ def test_get_dimmed_color_basic():
     mock_pixels = MockPixelObject()
     manager = MatrixManager(mock_pixels)
     
-    # Test with brightness = 1.0 (should return original color)
+    # Test with brightness = 1.0 (should return original color, no cache)
     base_color = (200, 100, 50)
     result = manager._get_dimmed_color(base_color, 1.0)
     assert result == base_color, f"Brightness 1.0 should return original color, got {result}"
-    assert len(manager._brightness_cache) == 0, "Cache should remain empty for brightness 1.0"
+    assert len(manager._brightness_cache) == 0, "Cache should remain empty for brightness 1.0 (fast path)"
     
     # Test with brightness = 0.5
     result = manager._get_dimmed_color(base_color, 0.5)
@@ -146,11 +146,11 @@ def test_get_dimmed_color_basic():
     assert result == expected, f"Expected {expected}, got {result}"
     assert len(manager._brightness_cache) == 1, "Cache should have 1 entry"
     
-    # Test with brightness = 0.0
+    # Test with brightness = 0.0 (should return black, no cache)
     result = manager._get_dimmed_color(base_color, 0.0)
     expected = (0, 0, 0)
     assert result == expected, f"Expected {expected}, got {result}"
-    assert len(manager._brightness_cache) == 1, "Cache should remain 1 entry (0.0 returns black directly)"
+    assert len(manager._brightness_cache) == 1, "Cache should remain 1 entry (0.0 uses fast path)"
     
     print("✓ _get_dimmed_color basic functionality test passed")
 

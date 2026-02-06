@@ -42,7 +42,7 @@ def test_with_cache(num_iterations=10000):
             return (0, 0, 0)
         if brightness == 1.0:
             return base_color
-        brightness_int = int(brightness * 100)
+        brightness_int = round(brightness * 100)
         cache_key = (base_color, brightness_int)
         if cache_key not in cache:
             if len(cache) >= cache_limit:
