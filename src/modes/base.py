@@ -2,10 +2,38 @@
 import asyncio
 
 class BaseMode:
-    """Base class for all modes."""
+    """
+    Base class for all modes.
+
+    Subclasses should define a METADATA class attribute:
+    METADATA = {
+        "id": "UNIQUE_ID",          # Used for state switching
+        "name": "Display Name",     # Shown in Menu
+        "icon": "ICON_KEY",         # Icon from Icon Library
+        "requires": ["CORE"],       # "CORE", "INDUSTRIAL", etc.
+        "settings": [               # Optional Settings
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY", "NORMAL"],
+                "default": "NORMAL"
+            }
+        ]
+    }
+    """
+
+    # Default Metadata
+    METADATA = {
+        "id": "UNKNOWN",
+        "name": "Unknown Mode",
+        "icon": "DEFAULT",
+        "requires": ["CORE"],
+        "settings": []
+    }
+
     def __init__(self, core, name="MODE", description=""):
         self.core = core
-        self.name = name
+        self.name = name if name else self.METADATA["name"]
         self.description = description
         self.variant = "DEFAULT"
 

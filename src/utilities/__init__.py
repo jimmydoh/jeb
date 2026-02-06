@@ -2,6 +2,7 @@
 """Utility modules for JEB."""
 
 from .cobs import cobs_encode, cobs_decode
+from .context import HardwareContext
 from .crc import calculate_crc8, verify_crc8
 from .icons import Icons
 from .jeb_pixel import JEBPixel
@@ -29,4 +30,5 @@ __all__ = [
     'Waveforms',
     'Envelopes',
     'Patches',
+    'HardwareContext',
     ]

@@ -9,65 +9,44 @@ from .utility_mode import UtilityMode
 
 class MainMenu(UtilityMode):
     """Main Menu for selecting modes."""
-
+    METADATA = {
+        "id": "MAIN_MENU",
+        "name": "MAIN MENU",
+        "icon": "DEFAULT",
+        "requires": ["CORE"],
+        "settings": []
+    }
     def __init__(self, core):
         super().__init__(core, name="MAIN MENU", description="Select a mode to begin", timeout=10)
         self.state = "DASHBOARD"
 
-        # --- GAME METADATA REGISTRY ---
-        # Defines available settings for each game
-        self.game_registry = {
-            "JEBRIS": {
-                "name": "JEBRIS",
-                "icon": "JEBRIS",
-                "settings": [
-                    {
-                        "key": "difficulty",
-                        "label": "SPEED",
-                        "options": ["EASY","NORMAL", "HARD", "INSANE"],
-                        "default": "NORMAL"
-                    },
-                    {
-                        "key": "music",
-                        "label": "MUSIC",
-                        "options": ["ON", "OFF"],
-                        "default": "ON"
-                    }
-                ],
-                "requires": ["CORE"] # Always Available
-            },
-            "SIMON": {
-                "name": "SIMON",
-                "icon": "SIMON",
-                "settings": [
-                    {
-                        "key": "mode",
-                        "label": "MODE",
-                        "options": ["CLASSIC", "REVERSE", "BLIND"],
-                        "default": "CLASSIC"
-                    },
-                    {
-                        "key": "difficulty",
-                        "label": "DIFF",
-                        "options": ["EASY","NORMAL", "HARD", "INSANE"],
-                        "default": "NORMAL"
-                    }
-                ],
-                "requires": ["CORE"] # Always Available
-            },
-            "SAFE": {
-                "name": "SAFE CRACKER",
-                "icon": "SAFE",
-                "settings": [],  # No settings for Safe Cracker yet
-                "requires": ["CORE"] # Always Available
-            },
-            "IND": {
-                "name": "INDUSTRIAL",
-                "icon": "IND",
-                "settings": [],
-                "requires": ["INDUSTRIAL"] # Only show if Industrial Satellite is connected
-            }
-        }
+    def _build_menu_items(self):
+        """Dynamically build menu based on AVAILABLE_MODES and connected hardware."""
+        items = []
+
+        # Sort by name or predefined order if you wish
+        for mode_id, mode_class in self.core.modes.items():
+            meta = mode_class.METADATA
+
+            # Skip system modes (like Main Menu itself, or Debug if not needed)
+            if mode_id in ["MAIN_MENU", "DASHBOARD"]:
+                continue
+
+            # Check requirements
+            requirements_met = True
+            for req in meta.get("requires", []):
+                if req == "CORE":
+                    continue
+                # Check for specific satellite type presence
+                has_sat = any(s.sat_type == req for s in self.core.satellites.values())
+                if not has_sat:
+                    requirements_met = False
+                    break
+
+            if requirements_met:
+                items.append((mode_id, meta))
+
+        return items
 
     def _set_state(self, new_state):
         """Helper to switch states and update UI accordingly."""
@@ -98,7 +77,7 @@ class MainMenu(UtilityMode):
         self._set_state("DASHBOARD")
 
         # Menu Logic Variables
-        menu_items = []
+        menu_items = self._build_menu_items()
         selected_game_idx = 0
         focus_mode = "GAME" # "GAME" (Matrix Select) or "SETTINGS" (OLED Select)
         selected_setting_idx = 0
@@ -130,18 +109,9 @@ class MainMenu(UtilityMode):
                 self.core.led.off_led(-1)
 
                 if curr_pos != last_pos or self.core.hid.dial_pressed:
+                    menu_items = self._build_menu_items()
                     self._set_state("MENU")
                     last_pos = curr_pos
-                    # Re-build available games list based on registry and connected satellites
-                    menu_items = []
-                    for key, meta in self.game_registry.items():
-                        # Add all requires=CORE modes first
-                        if "CORE" in meta["requires"]:
-                            menu_items.append((key, meta))
-                        # Then add any modes that have their requirements met by connected satellites
-                        if all(req in self.core.satellites for req in meta["requires"]):
-                            menu_items.append((key, meta))
-
                     self.core.audio.play(
                         "audio/menu/open.wav",
                         self.core.audio.CH_SFX,
@@ -165,23 +135,19 @@ class MainMenu(UtilityMode):
                     speed=2.0
                 )
 
-                game_key = menu_items[selected_game_idx]
-                meta = self.game_registry.get(
-                    game_key,
-                    {"name": game_key, "icon": "DEFAULT", "settings": []}
-                )
+                meta = menu_items[selected_game_idx]
 
                 # --- UPDATE DISPLAY ---
                 display_settings = []
                 for s in meta["settings"]:
-                    current_value = self.core.data.get_setting(game_key, s["key"], s["default"])
+                    current_value = self.core.data.get_setting(meta["id"], s["key"], s["default"])
                     display_settings.append({
                         "label": s["label"],
                         "value": str(current_value)
                     })
 
                 # Get High Score
-                high_score = self.core.data.get_score(game_key)
+                high_score = self.core.data.get_score(meta["id"])
 
                 self.core.display.update_game_menu(
                     title=meta["name"],
@@ -212,11 +178,9 @@ class MainMenu(UtilityMode):
                         )
 
                         # Update Icon
-                        new_key = menu_items[selected_game_idx]
-                        new_meta = self.game_registry.get(new_key, {"icon": "DEFAULT"})
                         asyncio.create_task(
                             self.core.matrix.show_icon(
-                                new_meta["icon"],
+                                menu_items[selected_game_idx]["icon"],
                                 anim="SLIDE_LEFT",
                                 speed=2.0
                             )
@@ -242,7 +206,7 @@ class MainMenu(UtilityMode):
                             self.core.audio.CH_SFX,
                             level=0.8
                         )
-                        return game_key
+                        return meta["id"]
 
                     elif focus_mode == "SETTINGS":
                         # TOGGLE SETTING OPTION
@@ -256,7 +220,7 @@ class MainMenu(UtilityMode):
                         if len(meta["settings"]) > 0:
                             setting = meta["settings"][selected_setting_idx]
                             current_value = self.core.data.get_setting(
-                                game_key,
+                                meta["id"],
                                 setting["key"],
                                 setting["default"]
                             )
@@ -269,7 +233,7 @@ class MainMenu(UtilityMode):
                             new_value = setting["options"][new_idx]
 
                             # Save immediately
-                            self.core.data.set_setting(game_key, setting["key"], new_value)
+                            self.core.data.set_setting(meta["id"], setting["key"], new_value)
 
                 # 'D' BUTTON to toggle focus
                 if self.core.hid.is_pressed(3, action="tap"):

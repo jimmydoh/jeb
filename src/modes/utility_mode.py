@@ -6,6 +6,15 @@ from .base import BaseMode
 
 class UtilityMode(BaseMode):
     """Base class for utility modes with timeout handling."""
+
+    METADATA = {
+        "id": "UNKNOWN_UTILITY",
+        "name": "Unknown Utility",
+        "icon": "DEFAULT",
+        "requires": ["CORE"],
+        "settings": []
+    }
+
     def __init__(self, core, name, description="", timeout=10):
         super().__init__(core, name, description=description)
         self.timeout_ms = timeout * 1000 if timeout else None

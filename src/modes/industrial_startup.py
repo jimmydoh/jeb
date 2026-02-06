@@ -14,14 +14,27 @@ class IndustrialStartup(GameMode):
     A multi-phase startup sequence requiring various inputs
     from both the Core and Industrial Satellite box.
     """
-    def __init__(self, core, sat):
+
+    METADATA = {
+        "id": "IND",
+        "name": "INDUSTRIAL",
+        "icon": "IND",
+        "requires": ["INDUSTRIAL"], # Explicit dependency
+        "settings": []
+    }
+
+    def __init__(self, core):
         super().__init__(
             core,
             "INDUSTRIAL STARTUP",
             "Industrial Satellite Startup Sequence",
             total_steps=5
         )
-        self.sat = sat
+        self.sat = None
+        for sat in self.core.satellites.values():
+            if sat.sat_type == "INDUSTRIAL":
+                self.sat = sat
+                break
 
     async def game_over(self):
         """Industrial Startup Fail Sequence."""

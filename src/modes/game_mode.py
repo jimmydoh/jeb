@@ -6,6 +6,15 @@ from .base import BaseMode
 
 class GameMode(BaseMode):
     """Base class for all game modes."""
+
+    METADATA = {
+        "id": "UNKNOWN_GAME",
+        "name": "Unknown Game",
+        "icon": "DEFAULT",
+        "requires": ["CORE"],
+        "settings": []
+    }
+
     def __init__(self, core, name, description, total_steps=1):
         super().__init__(core, name, description)
         self.score = 0

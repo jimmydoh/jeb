@@ -18,6 +18,28 @@ class Simon(GameMode):
     Sequence length: 6‐13, tone duration 0.32 seconds, pause between tones 0.05 seconds
     Sequence length: 14‐31, tone duration 0.22 seconds, pause between tones 0.05 seconds
     """
+
+    METADATA = {
+        "id": "SIMON",
+        "name": "SIMON",
+        "icon": "SIMON",
+        "settings": [
+            {
+                "key": "mode",
+                "label": "MODE",
+                "options": ["CLASSIC", "REVERSE", "BLIND"],
+                "default": "CLASSIC"
+            },
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY","NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ],
+        "requires": ["CORE"] # Always Available
+    }
+
     def __init__(self, core):
         super().__init__(core, "SIMON", "Classic Simon Memory Game")
         # Map 0-3 inputs to colors
