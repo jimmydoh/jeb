@@ -777,6 +777,8 @@ class HIDManager:
         Optimized for high-frequency telemetry (10Hz-60Hz) to reduce GC pressure.
 
         :param order: A list of strings identifying which data to include and in what order.
+                    Valid field identifiers: 'buttons', 'toggles', 'momentary', 'keypads',
+                    'encoders', 'encoder_btns', 'estop'
                     If None, defaults to all fields in standard order.
         :return: bytes object containing the status data with newline terminator
         """
@@ -826,6 +828,8 @@ class HIDManager:
         For high-frequency telemetry, prefer get_status_bytes() to avoid string allocation.
 
         :param order: A list of strings identifying which data to include and in what order.
+                    Valid field identifiers: 'buttons', 'toggles', 'momentary', 'keypads',
+                    'encoders', 'encoder_btns', 'estop'
                     If None, defaults to all fields in standard order.
         :return: str containing the status data with newline terminator
         """
