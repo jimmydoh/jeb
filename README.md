@@ -416,8 +416,12 @@ The repository includes a GitHub Action workflow that automatically compiles Pyt
 
 - Compiles all Python files in `src/` using `mpy-cross`
 - Generates a `manifest.json` with file paths and SHA256 hashes
+- Generates a lightweight `version.json` for quick version checks
+- Automatically determines version from VERSION file, git tags, or git history
 - Uploads compiled files as GitHub Actions artifacts
 - Creates release archives when tags are pushed
+
+**Version Management:** Update the `VERSION` file in the repository root to specify the build version, or use git tags for releases.
 
 For details, see [.github/workflows/README.md](.github/workflows/README.md).
 

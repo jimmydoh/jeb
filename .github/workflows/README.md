@@ -17,6 +17,33 @@ The workflow runs on:
 - Pull requests (when `src/**/*.py` files change)
 - Manual trigger via `workflow_dispatch`
 
+## Version Specification
+
+The workflow automatically determines the build version using the following priority order:
+
+1. **VERSION file** - Create a `VERSION` file in the repository root with the version number (e.g., `1.0.0`)
+2. **version.txt file** - Alternative to VERSION file
+3. **Git tag** - If the commit is tagged (e.g., `v1.2.3`), uses the tag as version
+4. **Git describe** - Uses `git describe` to generate version from commits (e.g., `v1.0.0-5-g1234abc`)
+5. **Date-based fallback** - If none of the above exist, uses format `0.0.0-YYYYMMDD.HHMMSS`
+
+### Recommended Approach
+
+**For releases:** Create a git tag and push it:
+```bash
+git tag -a v1.0.0 -m "Release version 1.0.0"
+git push origin v1.0.0
+```
+
+**For development:** Commit a VERSION file with your code changes:
+```bash
+echo "1.1.0-dev" > VERSION
+git add VERSION
+git commit -m "Bump version to 1.1.0-dev"
+```
+
+This allows version changes to be tracked in git history and reviewed in pull requests.
+
 ## Outputs
 
 ### 1. MPY Files Artifact

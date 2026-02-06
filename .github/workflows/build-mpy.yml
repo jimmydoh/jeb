@@ -31,9 +31,58 @@ jobs:
         run: |
           pip install mpy-cross
       
+      - name: Determine version
+        id: version
+        run: |
+          # Try multiple methods to determine version, in order of preference:
+          
+          # 1. Check for VERSION file in repository
+          if [ -f "VERSION" ]; then
+            VERSION=$(cat VERSION | tr -d '\n\r' | xargs)
+            echo "Version from VERSION file: $VERSION"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "source=VERSION file" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # 2. Check for version.txt file
+          if [ -f "version.txt" ]; then
+            VERSION=$(cat version.txt | tr -d '\n\r' | xargs)
+            echo "Version from version.txt: $VERSION"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "source=version.txt file" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # 3. Check if we're on a git tag
+          if git describe --exact-match --tags HEAD 2>/dev/null; then
+            VERSION=$(git describe --exact-match --tags HEAD)
+            echo "Version from git tag: $VERSION"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "source=git tag" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # 4. Use git describe to generate a version from commits
+          if git describe --tags --always --dirty 2>/dev/null; then
+            VERSION=$(git describe --tags --always --dirty)
+            echo "Version from git describe: $VERSION"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "source=git describe" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # 5. Fallback: use date-based version
+          VERSION="0.0.0-$(date -u +%Y%m%d.%H%M%S)"
+          echo "Version (fallback date-based): $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "source=date-based fallback" >> $GITHUB_OUTPUT
+      
       - name: Create output directory
         run: |
           mkdir -p build/mpy
+          echo "Build version: ${{ steps.version.outputs.version }}"
+          echo "Version source: ${{ steps.version.outputs.source }}"
       
       - name: Compile Python files to MPY
         run: |
@@ -91,9 +140,10 @@ jobs:
               return sha256_hash.hexdigest()
           
           build_timestamp = os.popen('date -u +"%Y-%m-%dT%H:%M:%SZ"').read().strip()
+          version = os.environ.get('BUILD_VERSION', '0.0.0-unknown')
           
           manifest = {
-              "version": "1.0.0",
+              "version": version,
               "build_timestamp": build_timestamp,
               "files": []
           }
@@ -129,7 +179,7 @@ jobs:
           
           # Generate lightweight version.json
           version_info = {
-              "version": "1.0.0",
+              "version": version,
               "build_timestamp": build_timestamp,
               "file_count": len(manifest["files"]),
               "total_size": total_size
@@ -140,6 +190,8 @@ jobs:
           
           print(f"Generated version.json ({os.path.getsize('build/version.json')} bytes)")
           EOF
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
       
       - name: Display manifest and version
         run: |
