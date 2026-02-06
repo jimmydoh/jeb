@@ -21,11 +21,23 @@ class MainMenu(UtilityMode):
         self.state = "DASHBOARD"
 
     def _build_menu_items(self):
-        """Dynamically build menu based on AVAILABLE_MODES and connected hardware."""
+        """Dynamically build menu based on AVAILABLE_MODES and connected hardware.
+        
+        This method accesses self.core.modes which is a Dict[str, Type[BaseMode]]
+        mapping mode IDs to mode classes. Each mode class has a METADATA attribute
+        describing its requirements and configuration.
+        
+        Returns:
+            List[Tuple[str, dict]]: List of (mode_id, metadata) tuples for modes
+                                     that have their requirements met.
+        """
         items = []
 
         # Sort by name or predefined order if you wish
+        # self.core.modes is Dict[mode_id: str, mode_class: Type[BaseMode]]
         for mode_id, mode_class in self.core.modes.items():
+            # Access the mode's METADATA class attribute
+            # Expected structure documented in BaseMode class
             meta = mode_class.METADATA
 
             # Skip system modes (like Main Menu itself, or Debug if not needed)
@@ -33,11 +45,14 @@ class MainMenu(UtilityMode):
                 continue
 
             # Check requirements
+            # meta["requires"] is List[str] of hardware dependencies
             requirements_met = True
             for req in meta.get("requires", []):
                 if req == "CORE":
                     continue
                 # Check for specific satellite type presence
+                # self.core.satellites is Dict[slot_id: int, Satellite]
+                # Each Satellite has: sat_type (str), is_active (bool), slot_id (int)
                 has_sat = any(s.sat_type == req for s in self.core.satellites.values())
                 if not has_sat:
                     requirements_met = False

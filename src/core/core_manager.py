@@ -38,7 +38,31 @@ from utilities import (
 )
 
 class CoreManager:
-    """Class to hold global state for the master controller."""
+    """Class to hold global state for the master controller.
+    
+    This class manages the core system state including:
+    - Hardware managers (display, audio, LED, etc.)
+    - Mode registry and active mode state
+    - Satellite network connections
+    - Power management and safety monitoring
+    
+    Public Interface:
+        modes: Dict[str, Type[BaseMode]] - Registry of available modes by mode ID
+            Each mode class has a METADATA dict with the following structure:
+            {
+                "id": str,              # Unique mode identifier
+                "name": str,            # Display name
+                "icon": str,            # Icon key from icon library
+                "requires": List[str],  # Required hardware ["CORE", "INDUSTRIAL", etc.]
+                "settings": List[dict]  # Optional settings configuration
+            }
+        
+        satellites: Dict[int, Satellite] - Registry of connected satellites by slot ID
+            Each satellite has properties:
+            - sat_type: str (e.g., "INDUSTRIAL", "AUDIO")
+            - is_active: bool
+            - slot_id: int
+    """
     def __init__(self, root_data_dir="/", debug_mode=False):
 
         self.debug_mode = debug_mode
@@ -128,7 +152,18 @@ class CoreManager:
 
         # System State
         self._mode_registry = {}
-        # Map Mode IDs to Classes for O(1) lookup
+        
+        # modes: Dict[str, Type[BaseMode]]
+        # Public registry mapping mode IDs to mode classes for O(1) lookup.
+        # Each mode class must have a METADATA class attribute with structure:
+        # {
+        #     "id": str,              # Unique identifier for the mode
+        #     "name": str,            # Human-readable display name
+        #     "icon": str,            # Icon key from the icon library
+        #     "requires": List[str],  # Hardware dependencies (e.g., ["CORE", "INDUSTRIAL"])
+        #     "settings": List[dict]  # Optional configuration settings
+        # }
+        # Access pattern: self.core.modes[mode_id] to get mode class
         self.modes = {}
         for mode_class in AVAILABLE_MODES:
             # Store by class name for registry access
@@ -163,7 +198,22 @@ class CoreManager:
     # Satellite Network Delegation Properties
     @property
     def satellites(self):
-        """Access the satellite registry from SatelliteNetworkManager."""
+        """Access the satellite registry from SatelliteNetworkManager.
+        
+        Returns a dictionary mapping slot IDs to Satellite objects:
+            Dict[int, Satellite]
+        
+        Each Satellite object provides:
+            - sat_type (str): Type identifier (e.g., "INDUSTRIAL", "AUDIO")
+            - is_active (bool): Whether the satellite is currently connected
+            - slot_id (int): Physical slot position in the daisy chain
+        
+        Example usage:
+            for sat_id, satellite in self.core.satellites.items():
+                if satellite.sat_type == "INDUSTRIAL" and satellite.is_active:
+                    # Use the satellite
+                    pass
+        """
         return self.sat_network.satellites
     
     @property
@@ -341,8 +391,10 @@ class CoreManager:
                 await asyncio.sleep(0.1)
 
             # --- GENERIC MODE RUNNER ---
+            # Check if the mode is in self.modes (Dict[mode_id: str, mode_class: Type[BaseMode]])
             if self.mode in self.modes:
                 mode_class = self.modes[self.mode]
+                # Access the mode's METADATA class attribute (documented in BaseMode)
                 meta = mode_class.METADATA
 
                 # Check Dependencies
@@ -353,6 +405,7 @@ class CoreManager:
                     if req == "CORE":
                         continue
                     found = False
+                    # Check self.satellites: Dict[slot_id: int, Satellite]
                     for sat in self.satellites.values():
                         if sat.sat_type == req and sat.is_active:
                             found = True
