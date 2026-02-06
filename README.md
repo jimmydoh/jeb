@@ -63,7 +63,7 @@
   - Dual 14-segment LED displays
   - 4x3 matrix keypad
   - 4x latching toggle switches
-  - 6x NeoPixel indicators
+  - 5x NeoPixel indicators
   - Rotary encoder with button
 - **Smart Power Management**:
   - Brownout detection with automatic LED dimming
@@ -165,10 +165,10 @@ The system uses an **asynchronous event-driven architecture** built on CircuitPy
 
 #### User Interface
 - **Displays**: Dual HT16K33 14-segment LED displays (I2C addresses 0x70, 0x71)
-- **Keypad**: 4x3 matrix (rows GP7-10, cols GP11-13)
+- **Keypad**: 4x3 matrix (rows GP16-18, cols GP19-21)
 - **Switches**: 4x latching toggles + 1x (On-Off-On) momentary
 - **Encoder**: Incremental rotary encoder with push button
-- **LEDs**: 6x NeoPixels with async animation engine
+- **LEDs**: 5x NeoPixels with async animation engine
 
 #### Communication
 - **Dual UART**: 
