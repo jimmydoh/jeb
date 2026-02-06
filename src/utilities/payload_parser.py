@@ -4,15 +4,15 @@
 import struct
 
 
-def parse_values(payload_str):
-    """Parse comma-separated payload string into typed values.
+def parse_values(payload):
+    """Parse payload into typed values, handling both string and bytes.
     
-    This is a compatibility function that works with both text-based
-    and binary protocols. It parses strings like "100,200,50" into
-    a list of integers/floats.
+    This function works with both text-based and binary protocols:
+    - For strings: Parses comma-separated values like "100,200,50"
+    - For bytes: Unpacks binary data as unsigned bytes
     
     Parameters:
-        payload_str (str): Comma-separated values or empty string
+        payload (str or bytes): Comma-separated values, empty string, or binary data
         
     Returns:
         list: List of parsed values (int or float)
@@ -20,16 +20,22 @@ def parse_values(payload_str):
     Example:
         >>> parse_values("100,200,50")
         [100, 200, 50]
-        >>> parse_values("1.5,2.0")
-        [1.5, 2.0]
+        >>> parse_values(b'\\x64\\xc8\\x32')  # bytes: 100, 200, 50
+        [100, 200, 50]
         >>> parse_values("")
         []
     """
-    if not payload_str:
+    if not payload:
         return []
     
+    # Handle binary payloads
+    if isinstance(payload, bytes):
+        # Unpack as unsigned bytes (each byte becomes an integer 0-255)
+        return list(payload)
+    
+    # Handle string payloads
     values = []
-    for part in payload_str.split(','):
+    for part in payload.split(','):
         part = part.strip()
         if not part:
             continue
@@ -52,6 +58,44 @@ def parse_values(payload_str):
         values.append(part)
     
     return values
+
+
+def unpack_bytes(payload_bytes, format_string='B'):
+    """Unpack binary payload using struct format string for high-speed decoding.
+    
+    This provides direct struct.unpack access for maximum performance when
+    dealing with binary payloads.
+    
+    Parameters:
+        payload_bytes (bytes): Binary payload data
+        format_string (str): struct format string (default: 'B' for unsigned bytes)
+            Common formats:
+            - 'B': unsigned byte (0-255)
+            - 'b': signed byte (-128-127)
+            - '<H': little-endian unsigned short (0-65535)
+            - '<h': little-endian signed short (-32768-32767)
+            - '<I': little-endian unsigned int (0-4294967295)
+            - '<i': little-endian signed int
+            - '<f': little-endian float (IEEE 754)
+            
+    Returns:
+        tuple: Unpacked values
+        
+    Example:
+        >>> unpack_bytes(b'\\x64\\xc8', 'BB')
+        (100, 200)
+        >>> unpack_bytes(b'\\x00\\x01\\x00\\x02', '<HH')
+        (256, 512)
+    """
+    if not payload_bytes:
+        return ()
+    
+    try:
+        return struct.unpack(format_string, payload_bytes)
+    except struct.error as e:
+        # If unpack fails, return empty tuple
+        print(f"Warning: Binary unpack failed ({e}), returning empty")
+        return ()
 
 
 def get_int(values, index, default=0):

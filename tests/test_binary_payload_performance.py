@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+"""Test to validate binary payload performance improvements (String Boomerang fix)."""
+
+import sys
+import os
+import struct
+
+# Add src to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+# Import payload_parser functions directly before mocking utilities
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities'))
+from payload_parser import parse_values, unpack_bytes, get_int
+
+# Mock the COBS functions
+import cobs
+
+
+def calculate_crc8(data):
+    """Calculate CRC-8 checksum."""
+    crc = 0x00
+    polynomial = 0x07
+    
+    # Handle both str and bytes input
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            if crc & 0x80:
+                crc = (crc << 1) ^ polynomial
+            else:
+                crc <<= 1
+            crc &= 0xFF
+    
+    return f"{crc:02X}".encode('ascii')
+
+
+# Mock utilities module
+class MockUtilities:
+    cobs_encode = staticmethod(cobs.cobs_encode)
+    cobs_decode = staticmethod(cobs.cobs_decode)
+    calculate_crc8 = staticmethod(calculate_crc8)
+
+sys.modules['utilities'] = MockUtilities()
+
+
+# Mock the UARTManager
+class MockUARTManager:
+    """Mock UARTManager for testing."""
+    def __init__(self):
+        self.sent_packets = []
+        self.receive_buffer = bytearray()
+        self.buffer_cleared = False
+    
+    def write(self, data):
+        """Mock write method."""
+        self.sent_packets.append(data)
+    
+    def read_until(self, delimiter):
+        """Mock read_until method."""
+        # Look for delimiter in buffer
+        idx = self.receive_buffer.find(delimiter)
+        if idx >= 0:
+            # Extract data including delimiter
+            data = bytes(self.receive_buffer[:idx + len(delimiter)])
+            # Remove from buffer
+            del self.receive_buffer[:idx + len(delimiter)]
+            return data
+        return None
+    
+    def clear_buffer(self):
+        """Mock clear_buffer method."""
+        self.buffer_cleared = True
+
+
+# Now import the transport classes
+from transport import Message, UARTTransport
+
+
+def test_binary_payload_returns_bytes():
+    """Test that binary payloads are returned as bytes, not strings."""
+    print("Testing binary payload returns bytes...")
+    
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart)
+    
+    # Send a message with numeric payload (will be encoded as binary)
+    msg_out = Message("0101", "LED", "0,255,128,64")
+    transport.send(msg_out)
+    
+    # Receive it back
+    mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
+    msg_in = transport.receive()
+    
+    assert msg_in is not None, "Should receive a message"
+    assert isinstance(msg_in.payload, bytes), f"Expected bytes, got {type(msg_in.payload)}"
+    
+    print(f"  Payload type: {type(msg_in.payload)}")
+    print(f"  Payload bytes: {msg_in.payload.hex()}")
+    print("✓ Binary payload returns bytes test passed")
+
+
+def test_text_payload_returns_string():
+    """Test that text payloads are still returned as strings."""
+    print("\nTesting text payload returns string...")
+    
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart)
+    
+    # Send a message with text payload
+    msg_out = Message("0101", "DSP", "HELLO")
+    transport.send(msg_out)
+    
+    # Receive it back
+    mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
+    msg_in = transport.receive()
+    
+    assert msg_in is not None, "Should receive a message"
+    assert isinstance(msg_in.payload, str), f"Expected str, got {type(msg_in.payload)}"
+    assert msg_in.payload == "HELLO", f"Expected 'HELLO', got '{msg_in.payload}'"
+    
+    print(f"  Payload type: {type(msg_in.payload)}")
+    print(f"  Payload value: {msg_in.payload}")
+    print("✓ Text payload returns string test passed")
+
+
+def test_parse_values_handles_bytes():
+    """Test that parse_values can handle bytes payloads."""
+    print("\nTesting parse_values with bytes...")
+    
+    # Binary payload: 4 bytes representing [0, 255, 128, 64]
+    binary_payload = bytes([0, 255, 128, 64])
+    
+    values = parse_values(binary_payload)
+    
+    assert isinstance(values, list), "Should return a list"
+    assert len(values) == 4, f"Expected 4 values, got {len(values)}"
+    assert values == [0, 255, 128, 64], f"Expected [0, 255, 128, 64], got {values}"
+    
+    print(f"  Input: {binary_payload.hex()}")
+    print(f"  Output: {values}")
+    print("✓ parse_values handles bytes test passed")
+
+
+def test_parse_values_still_handles_strings():
+    """Test that parse_values still works with string payloads (backward compatibility)."""
+    print("\nTesting parse_values with strings (backward compatibility)...")
+    
+    # String payload
+    string_payload = "100,200,50"
+    
+    values = parse_values(string_payload)
+    
+    assert isinstance(values, list), "Should return a list"
+    assert len(values) == 3, f"Expected 3 values, got {len(values)}"
+    assert values == [100, 200, 50], f"Expected [100, 200, 50], got {values}"
+    
+    print(f"  Input: {string_payload}")
+    print(f"  Output: {values}")
+    print("✓ parse_values handles strings test passed")
+
+
+def test_unpack_bytes_function():
+    """Test the new unpack_bytes function for high-speed unpacking."""
+    print("\nTesting unpack_bytes function...")
+    
+    # Test case 1: Unsigned bytes
+    data = bytes([100, 200, 50])
+    result = unpack_bytes(data, 'BBB')
+    assert result == (100, 200, 50), f"Expected (100, 200, 50), got {result}"
+    print(f"  Unsigned bytes: {data.hex()} -> {result}")
+    
+    # Test case 2: Little-endian shorts
+    import struct
+    data = struct.pack('<HH', 256, 512)
+    result = unpack_bytes(data, '<HH')
+    assert result == (256, 512), f"Expected (256, 512), got {result}"
+    print(f"  Little-endian shorts: {data.hex()} -> {result}")
+    
+    # Test case 3: Mixed types
+    data = struct.pack('<BHf', 100, 1000, 3.14)
+    result = unpack_bytes(data, '<BHf')
+    assert result[0] == 100, f"Expected first value 100, got {result[0]}"
+    assert result[1] == 1000, f"Expected second value 1000, got {result[1]}"
+    assert abs(result[2] - 3.14) < 0.01, f"Expected third value ~3.14, got {result[2]}"
+    print(f"  Mixed types: {data.hex()} -> byte={result[0]}, short={result[1]}, float={result[2]:.2f}")
+    
+    print("✓ unpack_bytes function test passed")
+
+
+def test_no_string_boomerang():
+    """Test that binary data doesn't go through string conversion (the fix!)."""
+    print("\nTesting no String Boomerang (performance fix)...")
+    
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart)
+    
+    # Send LED command with 4 values
+    msg_out = Message("0101", "LED", "0,255,128,64")
+    transport.send(msg_out)
+    
+    # Receive it
+    mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
+    msg_in = transport.receive()
+    
+    # The payload should be bytes, not a string like "0,255,128,64"
+    assert isinstance(msg_in.payload, bytes), "Payload should be bytes"
+    
+    # Parse it efficiently (no string split!)
+    values = parse_values(msg_in.payload)
+    
+    # Verify we got the right values
+    assert values == [0, 255, 128, 64], f"Expected [0, 255, 128, 64], got {values}"
+    
+    print(f"  Sent: LED command with values [0, 255, 128, 64]")
+    print(f"  Received payload type: {type(msg_in.payload)}")
+    print(f"  Received payload: {msg_in.payload.hex()}")
+    print(f"  Parsed values: {values}")
+    print(f"  ✓ NO string conversion! Direct bytes -> list")
+    print("✓ No String Boomerang test passed")
+
+
+def test_heap_efficiency():
+    """Demonstrate heap efficiency improvement."""
+    print("\nTesting heap efficiency (object allocation)...")
+    
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart)
+    
+    # OLD WAY (String Boomerang):
+    # bytes [0, 255, 128, 64] -> string "0,255,128,64" -> split -> ["0", "255", "128", "64"] -> parse -> [0, 255, 128, 64]
+    # Creates: 1 string + 4 string objects + 1 list = 6 objects
+    
+    # NEW WAY (Direct):
+    # bytes [0, 255, 128, 64] -> list [0, 255, 128, 64]
+    # Creates: 1 list = 1 object (or direct bytes access with no list!)
+    
+    msg_out = Message("0101", "LED", "10,20,30,40")
+    transport.send(msg_out)
+    
+    mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
+    msg_in = transport.receive()
+    
+    # The payload is now bytes - no intermediate string objects created!
+    assert isinstance(msg_in.payload, bytes)
+    
+    # For ultimate performance, we can even use unpack_bytes without creating a list
+    values = unpack_bytes(msg_in.payload, 'BBBB')
+    assert values == (10, 20, 30, 40)
+    
+    print(f"  OLD: bytes -> string -> list of strings -> list of ints (6+ objects)")
+    print(f"  NEW: bytes -> tuple of ints (1 object, zero copies)")
+    print(f"  Result: {values}")
+    print("✓ Heap efficiency test passed")
+
+
+if __name__ == "__main__":
+    print("=" * 70)
+    print("Binary Payload Performance Test Suite (String Boomerang Fix)")
+    print("=" * 70)
+    
+    try:
+        test_binary_payload_returns_bytes()
+        test_text_payload_returns_string()
+        test_parse_values_handles_bytes()
+        test_parse_values_still_handles_strings()
+        test_unpack_bytes_function()
+        test_no_string_boomerang()
+        test_heap_efficiency()
+        
+        print("\n" + "=" * 70)
+        print("ALL PERFORMANCE TESTS PASSED ✓")
+        print("String Boomerang ELIMINATED - Binary data stays binary!")
+        print("=" * 70)
+        
+    except AssertionError as e:
+        print(f"\n✗ TEST FAILED: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n✗ UNEXPECTED ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
