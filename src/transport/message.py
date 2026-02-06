@@ -7,10 +7,14 @@ class Message:
     A Message contains the logical components of communication:
     - destination: Target ID (e.g., "ALL", "0101")
     - command: Command type (e.g., "STATUS", "LED", "ID_ASSIGN")
-    - payload: Command-specific data (e.g., "0100", "0000,C,N,0,0")
+    - payload: Command-specific data (str or bytes)
     
     The Message class is transport-agnostic and doesn't know about
     CRC, framing, or physical layer details.
+    
+    The payload can be either:
+    - str: Text data or text-encoded values (e.g., "0100", "HELLO")
+    - bytes: Binary packed data (e.g., struct-packed values for performance)
     """
     
     def __init__(self, destination, command, payload):
@@ -19,7 +23,7 @@ class Message:
         Parameters:
             destination (str): Target ID or "ALL" for broadcast.
             command (str): Command type.
-            payload (str): Command payload data.
+            payload (str or bytes): Command payload data.
         """
         self.destination = destination
         self.command = command
@@ -27,7 +31,8 @@ class Message:
     
     def __repr__(self):
         """String representation for debugging."""
-        return f"Message(dest={self.destination}, cmd={self.command}, payload={self.payload})"
+        payload_repr = self.payload if isinstance(self.payload, str) else f"<bytes:{len(self.payload)}>"
+        return f"Message(dest={self.destination}, cmd={self.command}, payload={payload_repr})"
     
     def __eq__(self, other):
         """Check equality based on message contents."""

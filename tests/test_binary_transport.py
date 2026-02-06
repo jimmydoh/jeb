@@ -30,7 +30,7 @@ def calculate_crc8(data):
                 crc <<= 1
             crc &= 0xFF
     
-    return f"{crc:02X}".encode('ascii')
+    return crc
 
 
 # Mock utilities module
@@ -267,8 +267,8 @@ def test_binary_vs_text_overhead():
     
     # Text protocol: "0101|STATUS|100,200,50|CRC\n"
     text_msg = "0101|STATUS|100,200,50|"
-    text_crc = calculate_crc8(text_msg).decode('ascii')
-    text_packet = (text_msg + text_crc + "\n").encode()
+    text_crc = calculate_crc8(text_msg)
+    text_packet = (text_msg + f"{text_crc:02X}" + "\n").encode()
     text_size = len(text_packet)
     
     # Binary protocol

@@ -336,7 +336,7 @@ class UARTTransport:
         
         # Calculate CRC on raw packet
         crc = calculate_crc8(raw_packet)
-        crc_byte = bytes([int(crc.decode('ascii'), 16)])
+        crc_byte = bytes([crc])
         
         # Add CRC to packet
         packet_with_crc = raw_packet + crc_byte
@@ -390,10 +390,9 @@ class UARTTransport:
         
         # Verify CRC
         calculated_crc = calculate_crc8(data)
-        calculated_crc_int = int(calculated_crc.decode('ascii'), 16)
         
-        if crc_byte != calculated_crc_int:
-            print(f"CRC check failed: expected 0x{calculated_crc_int:02X}, got 0x{crc_byte:02X}")
+        if crc_byte != calculated_crc:
+            print(f"CRC check failed: expected 0x{calculated_crc:02X}, got 0x{crc_byte:02X}")
             return None
         
         # Parse destination

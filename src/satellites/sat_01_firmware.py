@@ -110,10 +110,17 @@ class IndustrialSatelliteFirmware(Satellite):
 
     async def process_local_cmd(self, cmd, val):
         """Process commands addressed to this satellite.
+        
+        Handles both text and binary payloads efficiently.
+        Binary payloads are processed using parse_values() which now
+        avoids the "String Boomerang" issue.
 
         TODO Adjust async logic for LED and Segment tasks - will be handled by manager classes
         """
         if cmd == "ID_ASSIGN":
+            # ID_ASSIGN uses text format, ensure val is string
+            if isinstance(val, bytes):
+                val = val.decode('utf-8')
             type_prefix = val[:2]
             current_index = int(val[2:])
             if type_prefix == self.sat_type_id:
@@ -134,12 +141,14 @@ class IndustrialSatelliteFirmware(Satellite):
 
         elif cmd == "SETENC":
             # Set the encoder position to a specific value
+            # parse_values now handles both bytes and strings efficiently!
             if len(val) > 0:
                 values = parse_values(val)
                 self.hid.reset_encoder(get_int(values, 0))
 
         elif cmd == "LED" or cmd == "LEDFLASH" or cmd == "LEDBREATH":
             # Parse payload once for all LED types
+            # parse_values now handles bytes without String Boomerang!
             values = parse_values(val)
             idx_raw = get_str(values, 0)
             target_indices = range(6) if idx_raw == "ALL" else [get_int(values, 0)]

@@ -42,7 +42,7 @@ def calculate_crc8(data):
         data (str or bytes): The data to calculate CRC for (e.g., b"ID|CMD|VAL" or "ID|CMD|VAL").
         
     Returns:
-        bytes: Two-byte hexadecimal CRC value (e.g., b"A3").
+        int: CRC-8 value as integer (e.g., 0xA3).
     """
     crc = 0x00
     
@@ -53,7 +53,7 @@ def calculate_crc8(data):
     for byte in data:
         crc = _CRC_TABLE[crc ^ byte]
     
-    return f"{crc:02X}".encode('ascii')
+    return crc
 
 
 def verify_crc8(packet):
@@ -80,7 +80,8 @@ def verify_crc8(packet):
     
     # Compare CRCs (handle type mismatch)
     if isinstance(received_crc, str):
-        # Decode bytes CRC for comparison with string CRC
-        calculated_crc = calculated_crc.decode('ascii')
+        # Convert integer CRC to hex string for comparison
+        calculated_crc_str = f"{calculated_crc:02X}"
+        return calculated_crc_str == received_crc, data
     
     return calculated_crc == received_crc, data
