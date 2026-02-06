@@ -11,34 +11,42 @@ full module import to avoid CircuitPython dependencies.
 import sys
 import os
 import re
+import pytest
 
 
-def test_file_exists():
-    """Test that SatelliteNetworkManager file exists."""
-    print("Testing SatelliteNetworkManager file exists...")
-    
+@pytest.fixture
+def file_path():
+    """Fixture providing the path to satellite_network_manager.py."""
     file_path = os.path.join(
         os.path.dirname(__file__), '..', 'src', 'managers', 'satellite_network_manager.py'
     )
-    
     assert os.path.exists(file_path), "satellite_network_manager.py should exist"
-    print(f"  ✓ File exists at {file_path}")
-    print("✓ File existence test passed")
     return file_path
 
 
-def test_class_definition(file_path):
+@pytest.fixture
+def content(file_path):
+    """Fixture providing the content of satellite_network_manager.py."""
+    with open(file_path, 'r') as f:
+        return f.read()
+
+
+def test_file_exists(file_path):
+    """Test that SatelliteNetworkManager file exists."""
+    print("Testing SatelliteNetworkManager file exists...")
+    assert os.path.exists(file_path), "satellite_network_manager.py should exist"
+    print(f"  ✓ File exists at {file_path}")
+    print("✓ File existence test passed")
+
+
+def test_class_definition(content):
     """Test that SatelliteNetworkManager class is defined."""
     print("\nTesting SatelliteNetworkManager class definition...")
-    
-    with open(file_path, 'r') as f:
-        content = f.read()
     
     # Check class definition
     assert 'class SatelliteNetworkManager:' in content, "Class should be defined"
     print("  ✓ SatelliteNetworkManager class is defined")
     print("✓ Class definition test passed")
-    return content
 
 
 def test_required_methods(content):
@@ -204,43 +212,8 @@ def test_core_manager_integration():
 
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("SatelliteNetworkManager Test Suite")
-    print("Testing refactored satellite network manager")
-    print("=" * 60)
-    
-    try:
-        file_path = test_file_exists()
-        content = test_class_definition(file_path)
-        test_required_methods(content)
-        test_satellite_logic_extracted(content)
-        test_manager_initialization(content)
-        test_docstrings(content)
-        test_managers_package_export()
-        test_core_manager_integration()
-        
-        print("\n" + "=" * 60)
-        print("ALL TESTS PASSED ✓")
-        print("=" * 60)
-        print()
-        print("The SatelliteNetworkManager successfully:")
-        print("  • Has been extracted from CoreManager")
-        print("  • Contains satellite discovery logic")
-        print("  • Contains satellite health monitoring logic")
-        print("  • Contains message handling logic")
-        print("  • Provides clean interface for CoreManager")
-        print("  • Reduces CoreManager's responsibilities")
-        print("  • Is properly integrated with CoreManager")
-    except AssertionError as e:
-        print(f"\n✗ Test failed: {e}")
-        print("\n" + "=" * 60)
-        print("TESTS FAILED ✗")
-        print("=" * 60)
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n✗ Unexpected error: {e}")
-        print("\n" + "=" * 60)
-        print("TESTS FAILED ✗")
-        print("=" * 60)
-        sys.exit(1)
+    # Run tests with pytest when executed as a script
+    import subprocess
+    result = subprocess.run([sys.executable, "-m", "pytest", __file__, "-v"])
+    sys.exit(result.returncode)
 
