@@ -76,20 +76,26 @@ def test_core_manager_updated():
     assert "from modes import IndustrialStartup, JEBris, MainMenu, SafeCracker, Simon" not in content, \
         "Old direct import still present in CoreManager"
     
-    # NEW: Check that modes are accessed via _mode_registry, not extracted to module-level variables
+    # Check that modes are accessed via _mode_registry or _get_mode, not extracted to module-level variables
     assert 'IndustrialStartup = _mode_registry["IndustrialStartup"]' not in content, \
-        "Mode extraction found - modes should be accessed dynamically via _mode_registry"
+        "Mode extraction found - modes should be accessed dynamically via _mode_registry or _get_mode"
     assert 'JEBris = _mode_registry["JEBris"]' not in content, \
-        "Mode extraction found - modes should be accessed dynamically via _mode_registry"
+        "Mode extraction found - modes should be accessed dynamically via _mode_registry or _get_mode"
     assert 'MainMenu = _mode_registry["MainMenu"]' not in content, \
-        "Mode extraction found - modes should be accessed dynamically via _mode_registry"
+        "Mode extraction found - modes should be accessed dynamically via _mode_registry or _get_mode"
     
-    # NEW: Verify modes are accessed dynamically
-    assert '_mode_registry["MainMenu"]' in content, "MainMenu should be accessed via _mode_registry"
-    assert '_mode_registry["JEBris"]' in content, "JEBris should be accessed via _mode_registry"
-    assert '_mode_registry["Simon"]' in content, "Simon should be accessed via _mode_registry"
-    assert '_mode_registry["SafeCracker"]' in content, "SafeCracker should be accessed via _mode_registry"
-    assert '_mode_registry["IndustrialStartup"]' in content, "IndustrialStartup should be accessed via _mode_registry"
+    # Verify modes are accessed dynamically (either via _mode_registry or _get_mode)
+    mainmenu_found = '_mode_registry["MainMenu"]' in content or '_get_mode("MainMenu")' in content
+    jebris_found = '_mode_registry["JEBris"]' in content or '_get_mode("JEBris")' in content
+    simon_found = '_mode_registry["Simon"]' in content or '_get_mode("Simon")' in content
+    safe_found = '_mode_registry["SafeCracker"]' in content or '_get_mode("SafeCracker")' in content
+    industrial_found = '_mode_registry["IndustrialStartup"]' in content or '_get_mode("IndustrialStartup")' in content
+    
+    assert mainmenu_found, "MainMenu should be accessed dynamically"
+    assert jebris_found, "JEBris should be accessed dynamically"
+    assert simon_found, "Simon should be accessed dynamically"
+    assert safe_found, "SafeCracker should be accessed dynamically"
+    assert industrial_found, "IndustrialStartup should be accessed dynamically"
     
     print("✓ CoreManager updated correctly")
     return True
