@@ -33,20 +33,24 @@ _CRC_TABLE = _build_crc_table()
 
 
 def calculate_crc8(data):
-    """Calculate CRC-8 checksum for a given string using lookup table.
+    """Calculate CRC-8 checksum for given data using lookup table.
     
     Uses CRC-8-CCITT polynomial (0x07) for error detection in UART packets.
     Optimized with pre-calculated lookup table for ~10x performance improvement.
     
     Parameters:
-        data (str): The data string to calculate CRC for (e.g., "ID|CMD|VAL").
+        data (str|bytes|bytearray): The data to calculate CRC for (e.g., "ID|CMD|VAL" or b"ID|CMD|VAL").
         
     Returns:
         str: Two-character hexadecimal CRC value (e.g., "A3").
     """
     crc = 0x00
     
-    for byte in data.encode('utf-8'):
+    # Handle both string and bytes/bytearray inputs
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    
+    for byte in data:
         crc = _CRC_TABLE[crc ^ byte]
     
     return f"{crc:02X}"

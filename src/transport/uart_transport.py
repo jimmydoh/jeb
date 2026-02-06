@@ -33,17 +33,32 @@ class UARTTransport:
         Parameters:
             message (Message): The message to send.
         """
-        # Format data without CRC
-        data = f"{message.destination}|{message.command}|{message.payload}"
+        # Build packet efficiently, handling bytes payload without decoding
+        payload = message.payload
         
-        # Calculate CRC
-        crc = calculate_crc8(data)
-        
-        # Format complete packet with CRC and newline
-        packet = f"{data}|{crc}\n"
+        # If payload is already bytes, build packet in bytes to avoid decode/encode cycle
+        if isinstance(payload, (bytes, bytearray)):
+            # Build data portion as bytes
+            dest_bytes = message.destination.encode('utf-8')
+            cmd_bytes = message.command.encode('utf-8')
+            pipe = b'|'
+            
+            # Construct data without creating intermediate strings
+            data = dest_bytes + pipe + cmd_bytes + pipe + bytes(payload)
+            
+            # Calculate CRC on bytes
+            crc = calculate_crc8(data)
+            
+            # Format complete packet
+            packet = data + pipe + crc.encode('utf-8') + b'\n'
+        else:
+            # String payload - use original string-based approach
+            data = f"{message.destination}|{message.command}|{payload}"
+            crc = calculate_crc8(data)
+            packet = f"{data}|{crc}\n".encode('utf-8')
         
         # Send via UART
-        self.uart_manager.write(packet.encode())
+        self.uart_manager.write(packet)
     
     def receive(self):
         """Receive a message from UART if available.

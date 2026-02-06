@@ -19,7 +19,7 @@ class Message:
         Parameters:
             destination (str): Target ID or "ALL" for broadcast.
             command (str): Command type.
-            payload (str): Command payload data.
+            payload (str|bytes|bytearray): Command payload data. Can be string or bytes.
         """
         self.destination = destination
         self.command = command
@@ -33,6 +33,16 @@ class Message:
         """Check equality based on message contents."""
         if not isinstance(other, Message):
             return False
+        
+        # Normalize payloads for comparison (bytes to str if needed)
+        self_payload = self.payload
+        other_payload = other.payload
+        
+        if isinstance(self_payload, (bytes, bytearray)):
+            self_payload = self_payload.decode('utf-8')
+        if isinstance(other_payload, (bytes, bytearray)):
+            other_payload = other_payload.decode('utf-8')
+        
         return (self.destination == other.destination and
                 self.command == other.command and
-                self.payload == other.payload)
+                self_payload == other_payload)

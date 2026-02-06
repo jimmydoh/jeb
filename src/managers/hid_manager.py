@@ -775,6 +775,7 @@ class HIDManager:
 
         :param order: A list of strings identifying which data to include and in what order.
                     If None, defaults to all fields in standard order.
+        :return: bytes object containing the status data (not decoded to string for efficiency)
         """
         # 1. Map string keys to the actual buffer-writing methods
         sources = {
@@ -806,11 +807,7 @@ class HIDManager:
                 # Execute the buffer-writing method
                 offset = sources[key](self._status_buffer, offset)
 
-        # 4. Add newline and convert used portion of buffer to string
-        self._status_buffer[offset] = ord('\n')
-        offset += 1
-        
-        # Return only the used portion of the buffer as a string
-        # bytearray.decode() avoids creating intermediate bytes object
-        return self._status_buffer[:offset].decode('utf-8')
+        # 4. Return used portion of buffer as bytes
+        # This avoids the decode/encode cycle in the transport layer
+        return bytes(self._status_buffer[:offset])
     #endregion

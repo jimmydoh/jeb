@@ -35,7 +35,11 @@ def calculate_crc8(data):
     crc = 0x00
     polynomial = 0x07
     
-    for byte in data.encode('utf-8'):
+    # Handle both string and bytes/bytearray inputs
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    
+    for byte in data:
         crc ^= byte
         for _ in range(8):
             if crc & 0x80:
@@ -251,6 +255,59 @@ def test_transport_abstraction():
     print("✓ Transport abstraction test passed")
 
 
+def test_bytes_payload_optimization():
+    """Test that bytes payload avoids decode/encode cycle."""
+    print("\nTesting bytes payload optimization...")
+    
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart)
+    
+    # Create message with bytes payload (simulating HID manager, without trailing newline in payload)
+    status_bytes = b"0000,C,N,0,0"
+    msg = Message("0101", "STATUS", status_bytes)
+    
+    # Send the message
+    transport.send(msg)
+    
+    # Verify packet was sent correctly
+    assert len(mock_uart.sent_packets) == 1
+    packet = mock_uart.sent_packets[0].decode()
+    
+    print(f"  Sent packet: {packet.strip()}")
+    
+    # Verify packet format
+    assert packet.endswith("\n"), "Packet should end with newline"
+    packet_no_newline = packet.strip()
+    parts = packet_no_newline.split("|")
+    assert len(parts) == 4, f"Packet should have 4 parts, got {len(parts)}"
+    assert parts[0] == "0101"
+    assert parts[1] == "STATUS"
+    assert parts[2] == "0000,C,N,0,0"
+    
+    # Verify CRC is correct
+    data = "|".join(parts[:3])
+    expected_crc = calculate_crc8(data)
+    assert parts[3] == expected_crc, f"CRC mismatch: expected {expected_crc}, got {parts[3]}"
+    
+    print("✓ Bytes payload optimization test passed")
+
+
+def test_message_equality_with_bytes():
+    """Test that Message equality works with mixed string/bytes payloads."""
+    print("\nTesting Message equality with bytes...")
+    
+    # Create messages with string and bytes payloads
+    msg_str = Message("0101", "STATUS", "0000,C,N,0,0")
+    msg_bytes = Message("0101", "STATUS", b"0000,C,N,0,0")
+    msg_different = Message("0101", "STATUS", "different")
+    
+    # They should be equal when content is the same
+    assert msg_str == msg_bytes, "String and bytes payloads with same content should be equal"
+    assert msg_str != msg_different, "Different payloads should not be equal"
+    
+    print("✓ Message equality with bytes test passed")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("Transport Layer Test Suite")
@@ -266,6 +323,8 @@ if __name__ == "__main__":
         test_uart_transport_receive_empty()
         test_uart_transport_clear_buffer()
         test_transport_abstraction()
+        test_bytes_payload_optimization()
+        test_message_equality_with_bytes()
         
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")
