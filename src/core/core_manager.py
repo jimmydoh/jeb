@@ -11,7 +11,7 @@ from modes import IndustrialStartup, JEBris, MainMenu, SafeCracker, Simon
 
 from satellites import IndustrialSatelliteDriver
 
-from utilities import JEBPixel, Pins
+from utilities import JEBPixel, Pins, parse_values, get_float
 
 from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
@@ -228,11 +228,11 @@ class CoreManager:
                         )
                     )
             elif cmd == "POWER":
-                v_data = payload.split(",")
+                v_data = parse_values(payload)
                 self.sat_telemetry[sid] = {
-                    "in": float(v_data[0]),
-                    "bus": float(v_data[1]),
-                    "log": float(v_data[2])
+                    "in": get_float(v_data, 0),
+                    "bus": get_float(v_data, 1),
+                    "log": get_float(v_data, 2)
                 }
             elif cmd == "ERROR":
                 asyncio.create_task(
