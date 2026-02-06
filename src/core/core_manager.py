@@ -20,13 +20,12 @@ from managers import (
     LEDManager,
     MatrixManager,
     PowerManager,
+    SatelliteNetworkManager,
     SynthManager,
     UARTManager,
 )
 from modes import AVAILABLE_MODES, BaseMode
-from satellites import IndustrialSatelliteDriver
 from transport import (
-    Message,
     UARTTransport,
     COMMAND_MAP,
     DEST_MAP,
@@ -36,8 +35,6 @@ from transport import (
 from utilities import (
     JEBPixel,
     Pins,
-    parse_values,
-    get_float
 )
 
 class CoreManager:
@@ -123,10 +120,13 @@ class CoreManager:
         self.transport = UARTTransport(
             uart_manager, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
         )
+        
+        # Initialize Satellite Network Manager
+        self.sat_network = SatelliteNetworkManager(self.transport, self.display, self.audio)
+        if debug_mode:
+            self.sat_network.set_debug_mode(True)
 
         # System State
-        self.satellites = {}
-        self.sat_telemetry = {}
         self._mode_registry = {}
         # Map Mode IDs to Classes for O(1) lookup
         self.modes = {}
@@ -140,7 +140,6 @@ class CoreManager:
         self.mode = "DASHBOARD"
         self.meltdown = False
         self.sat_active = False
-        self.last_message_debug = ""
 
     def _get_mode(self, mode_name):
         """Get a mode class from the registry with helpful error message.
@@ -160,27 +159,22 @@ class CoreManager:
                 f"Mode '{mode_name}' not found in registry. Available modes: {available}"
             )
         return self._mode_registry[mode_name]
-
-    async def discover_satellites(self):
-        """Triggers the ID assignment chain."""
-        await self.display.update_status("SCANNING BUS...", "ASSIGNING IDs")
-        # Reset local registry
-        self.satellites = {}
-
-        # Broadcast to Industrial type (01) starting at index 00
-        message = Message("ALL", "ID_ASSIGN", "0100")
-        self.transport.send(message)
-        await asyncio.sleep(0.5)
-
-    def get_sat(self, sid):
-        """Retrieve a satellite by its ID."""
-        return self.satellites.get(sid)
-
-    # TODO Check if this can be removed in favor of direct transport.send() targeting ALL
-    def send_all(self, cmd, val):
-        """Broadcast a command to all connected satellites."""
-        for sid in self.satellites:
-            self.get_sat(sid).send_cmd(cmd, val)
+    
+    # Satellite Network Delegation Properties
+    @property
+    def satellites(self):
+        """Access the satellite registry from SatelliteNetworkManager."""
+        return self.sat_network.satellites
+    
+    @property
+    def sat_telemetry(self):
+        """Access satellite telemetry from SatelliteNetworkManager."""
+        return self.sat_network.sat_telemetry
+    
+    @property
+    def last_message_debug(self):
+        """Access last debug message from SatelliteNetworkManager."""
+        return self.sat_network.last_message_debug
 
     async def cleanup_task(self, task):
         """Gracefully awaits the cancellation of a task."""
@@ -225,108 +219,7 @@ class CoreManager:
             await asyncio.sleep(0.1)
         return "SUCCESS"
 
-    def handle_message(self, message):
-        """Processes incoming messages and updates satellite states."""
-        # Store message representation for debugging
-        if self.debug_mode:
-            self.last_message_debug = str(message)
-
-        try:
-            sid = message.destination
-            cmd = message.command
-            payload = message.payload
-
-            # Command Processing
-            if cmd == "STATUS":
-                if sid in self.satellites:
-                    if not self.satellites[sid].is_active:
-                        self.satellites[sid].is_active = True
-                        asyncio.create_task(
-                            self.display.update_status("SAT RECONNECTED", f"ID: {sid}")
-                        )
-                        if self.satellites[sid].sat_type == "INDUSTRIAL":
-                            self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
-                            asyncio.create_task(
-                                self.audio.play(
-                                    "link_restored.wav", channel=self.audio.CH_SFX
-                                )
-                            )
-                    self.satellites[sid].update_from_packet(payload)
-                else:
-                    asyncio.create_task(
-                        self.display.update_status("UNKNOWN SAT", f"{sid} sent STATUS.")
-                    )
-            elif cmd == "POWER":
-                v_data = parse_values(payload)
-                self.sat_telemetry[sid] = {
-                    "in": get_float(v_data, 0),
-                    "bus": get_float(v_data, 1),
-                    "log": get_float(v_data, 2),
-                }
-            elif cmd == "ERROR":
-                asyncio.create_task(
-                    self.display.update_status("SAT ERROR", f"ID: {sid} ERR: {payload}")
-                )
-                asyncio.create_task(
-                    self.audio.play("alarm_klaxon.wav", channel=self.audio.CH_SFX)
-                )
-            elif cmd == "HELLO":
-                if sid in self.satellites:
-                    self.satellites[sid].update_heartbeat()
-                else:
-                    if payload == "INDUSTRIAL":
-                        self.satellites[sid] = IndustrialSatelliteDriver(
-                            sid, self.transport
-                        )
-                    asyncio.create_task(
-                        self.display.update_status("NEW SAT", f"{sid} sent HELLO.")
-                    )
-            elif cmd == "NEW_SAT":
-                asyncio.create_task(
-                    self.display.update_status("SAT CONNECTED", f"TYPE {payload} FOUND")
-                )
-                msg_out = Message("ALL", "ID_ASSIGN", f"{payload}00")
-                self.transport.send(msg_out)
-            else:
-                asyncio.create_task(
-                    self.display.update_status("UNKNOWN COMMAND", f"{sid} sent {cmd}")
-                )
-        except (ValueError, IndexError) as e:
-            print(f"Error handling message: {e}")
-
     # --- Background Tasks ---
-    async def monitor_sats(self):
-        """Background task to monitor inbound messages from satellite boxes."""
-        while True:
-            # Message Handling via transport layer
-            if self.power.satbus_powered:
-                try:
-                    # Receive message via transport (non-blocking)
-                    message = self.transport.receive()
-                    if message:
-                        self.handle_message(message)
-                except ValueError as e:
-                    # Buffer overflow or other error
-                    print(f"Transport Error: {e}")
-
-            # Link Watchdog
-            now = ticks_ms()
-            for sid, sat in self.satellites.items():
-                if ticks_diff(now, sat.last_seen) > 5000:
-                    if sat.is_active:
-                        sat.is_active = False
-                        asyncio.create_task(
-                            self.display.update_status("LINK LOST", f"ID: {sid}")
-                        )
-                else:
-                    if not sat.is_active:
-                        sat.is_active = True
-                        asyncio.create_task(
-                            self.display.update_status("LINK RESTORED", f"ID: {sid}")
-                        )
-
-            await asyncio.sleep(0.01)
-
     async def monitor_estop(self):
         """Background task to monitor the E-Stop button (gameplay interaction).
 
@@ -337,7 +230,7 @@ class CoreManager:
         while True:
             if not self.hid.estop and not self.meltdown:
                 self.meltdown = True
-                self.send_all("LED", "ALL,0,0,0")  # Kill all LEDs
+                self.sat_network.send_all("LED", "ALL,0,0,0")  # Kill all LEDs
 
                 # Audio Alarms
                 await self.audio.play(
@@ -402,7 +295,7 @@ class CoreManager:
                         "link_restored.wav", channel=self.audio.CH_SFX
                     )
                     # Power is stable, trigger the ID assignment chain
-                    await self.discover_satellites()
+                    await self.sat_network.discover_satellites()
                 else:
                     await self.display.update_status("PWR ERROR", error)
                     await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
@@ -424,7 +317,7 @@ class CoreManager:
     async def start(self):
         """Main async loop for the Master Controller."""
         # Start background infrastructure tasks
-        asyncio.create_task(self.monitor_sats())  # UART Comms
+        asyncio.create_task(self.sat_network.monitor_satellites())  # Satellite Network Management
         asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
         asyncio.create_task(self.monitor_power())  # Analog Power Monitoring
         asyncio.create_task(self.monitor_connection())  # RJ45 Link Detection
