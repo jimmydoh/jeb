@@ -44,6 +44,25 @@ class MatrixManager(BasePixelManager):
 
     # TODO draw_line, draw_rect, draw_circle, draw_text, etc.
 
+    async def _animate_slide_left(self, icon_data, color, brightness):
+        """
+        Internal method to perform SLIDE_LEFT animation.
+        Runs as a background task to avoid blocking the caller.
+        """
+        for offset in range(8, -1, -1):  # Slide from right to left
+            self.fill(Palette.OFF, show=False)
+            for y in range(8):
+                for x in range(8):
+                    target_x = x - offset
+                    if 0 <= target_x < 8:
+                        pixel_value = icon_data[y * 8 + x]
+                        if pixel_value != 0:
+                            base = color if color else self.palette[pixel_value]
+                            px_color = tuple(int(c * brightness) for c in base)
+                            self.draw_pixel(target_x, y, px_color)
+            self.pixels.show()
+            await asyncio.sleep(0.05)
+
     async def show_icon(
             self,
             icon_name,
@@ -56,28 +75,16 @@ class MatrixManager(BasePixelManager):
         """
         Displays a predefined icon on the matrix with optional animation.
         anim_mode: None, "PULSE", "BLINK" are non-blocking via the animate_loop.
-        anim_mode: "SLIDE_LEFT" is blocking (transition).
+        anim_mode: "SLIDE_LEFT" is non-blocking (spawned as background task).
         """
         if clear:
             self.clear()
 
         icon_data = self.icons.get(icon_name, self.icons["DEFAULT"])
 
-        # Handle Blocking Animations First
+        # Handle SLIDE_LEFT Animation - Spawn as background task
         if anim_mode == "SLIDE_LEFT":
-            for offset in range(8, -1, -1):  # Slide from right to left
-                self.fill(Palette.OFF, show=False)
-                for y in range(8):
-                    for x in range(8):
-                        target_x = x - offset
-                        if 0 <= target_x < 8:
-                            pixel_value = icon_data[y * 8 + x]
-                            if pixel_value != 0:
-                                base = color if color else self.palette[pixel_value]
-                                px_color = tuple(int(c * brightness) for c in base)
-                                self.draw_pixel(target_x, y, px_color)
-                self.pixels.show()
-                await asyncio.sleep(0.05)
+            asyncio.create_task(self._animate_slide_left(icon_data, color, brightness))
             return
 
         for y in range(8):
