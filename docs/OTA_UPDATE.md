@@ -166,9 +166,11 @@ trigger_update()
 │ 5. Verify files │
 │ 6. Download to  │
 │    /sd/update/  │
-│ 7. Write        │
+│ 7. Install from │
+│    SD to flash  │
+│ 8. Write        │
 │    version.json │
-│ 8. Reboot       │
+│ 9. Reboot       │
 └─────────────────┘
 ```
 
@@ -182,17 +184,18 @@ The updater first downloads a tiny `version.json` (~200 bytes) to check if an up
 
 ### 5. File Download and Staging
 
-Files are downloaded to SD card staging area:
+Files are downloaded to SD card staging area then installed to flash:
 
 1. Download to `/sd/update/{path}`
 2. Verify SHA256 hash
-3. On next boot, files can be copied from staging to final location
+3. Copy from `/sd/update/{path}` to `/{path}` (internal flash)
+4. Verify SHA256 hash again after installation
+5. Create subdirectories as needed (e.g., `lib/`, `managers/`)
 
-**Note**: Current implementation stages files to SD card. A future enhancement could copy files from staging to internal flash on boot.
+**Important**: Files are now automatically installed from SD staging to internal flash during the update process. The flash is writable because `boot.py` has already unlocked it in update mode.
 
 ### 6. File Verification
 
-The updater compares local files against the manifest:
 
 1. Calculate SHA256 of local file
 2. Compare with manifest hash
@@ -376,7 +379,16 @@ Required CircuitPython libraries:
 
 ```python
 from updater import Updater
-from boot import SD_MOUNTED  # Check if SD card is mounted
+import os
+
+# Check if SD card is mounted (do not import boot.py)
+def is_sd_mounted():
+    try:
+        return 'sd' in os.listdir('/')
+    except OSError:
+        return False
+
+SD_MOUNTED = is_sd_mounted()
 
 config = {
     "wifi_ssid": "MyNetwork",
@@ -392,17 +404,20 @@ if success:
     updater.reboot()
 ```
 
+**Important**: Do not import `boot.py` in your code as it will cause re-execution. Instead, check the filesystem state directly using `os.listdir('/')`.
+
 ### Update Process Methods
 
 ```python
 # Step-by-step update process
-updater.connect_wifi()              # Connect to Wi-Fi
-updater.fetch_remote_version()      # Fetch version.json (small file)
-updater.fetch_manifest()            # Fetch full manifest if needed
-files_to_update, _ = updater.verify_files()  # Compare with local
-updater.update_files(files_to_update)        # Download to /sd/update/
-updater.write_version_info()        # Write version.json
-updater.reboot()                    # Reboot to apply
+updater.connect_wifi()                        # Connect to Wi-Fi
+updater.fetch_remote_version()                # Fetch version.json (small file)
+updater.fetch_manifest()                      # Fetch full manifest if needed
+files_to_update, _ = updater.verify_files()   # Compare with local
+updater.update_files(files_to_update)         # Download to /sd/update/
+updater.install_files(files_to_update)        # Install from SD to flash
+updater.write_version_info()                  # Write version.json
+updater.reboot()                              # Reboot to apply
 ```
 
 ### Helper Functions
