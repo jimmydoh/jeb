@@ -77,11 +77,12 @@ def test_power_command_with_empty_payload():
     # Parse with helper functions (same as CoreManager does)
     v_data = payload_parser.parse_values(empty_payload)
     
-    # Extract power values with defaults (same as CoreManager does)
+    # Extract power values (same as CoreManager does - no explicit defaults needed)
+    # get_float has a default of 0.0 built-in
     telemetry = {
-        "in": payload_parser.get_float(v_data, 0, default=0.0),
-        "bus": payload_parser.get_float(v_data, 1, default=0.0),
-        "log": payload_parser.get_float(v_data, 2, default=0.0)
+        "in": payload_parser.get_float(v_data, 0),
+        "bus": payload_parser.get_float(v_data, 1),
+        "log": payload_parser.get_float(v_data, 2)
     }
     
     # Verify defaults are used
