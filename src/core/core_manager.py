@@ -7,54 +7,41 @@ import microcontroller
 import neopixel
 from adafruit_ticks import ticks_ms, ticks_diff
 
+from managers import (
+    AudioManager,
+    BuzzerManager,
+    DataManager,
+    DisplayManager,
+    HIDManager,
+    LEDManager,
+    MatrixManager,
+    PowerManager,
+    SynthManager,
+    UARTManager,
+)
 from modes import AVAILABLE_MODES
-
-# Build mode registry from the manifest for dynamic mode access
-# This creates a mode registry without tight coupling to specific imports
-# Modes are accessed via _mode_registry["ModeName"] throughout this module
-_mode_registry = {}
-for mode_class in AVAILABLE_MODES:
-    _mode_registry[mode_class.__name__] = mode_class
-
-def _get_mode(mode_name):
-    """Get a mode class from the registry with helpful error message.
-    
-    Args:
-        mode_name: Name of the mode class to retrieve
-        
-    Returns:
-        The mode class
-        
-    Raises:
-        KeyError: If the mode is not found in the registry
-    """
-    if mode_name not in _mode_registry:
-        available = ", ".join(sorted(_mode_registry.keys()))
-        raise KeyError(f"Mode '{mode_name}' not found in registry. Available modes: {available}")
-    return _mode_registry[mode_name]
-
 from satellites import IndustrialSatelliteDriver
-
-from utilities import JEBPixel, Pins, parse_values, get_float
-
-from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
-
-from managers import AudioManager
-from managers import BuzzerManager
-from managers import DataManager
-from managers import DisplayManager
-from managers import HIDManager
-from managers import LEDManager
-from managers import MatrixManager
-from managers import PowerManager
-from managers import SynthManager
-from managers import UARTManager
+from transport import (
+    Message,
+    UARTTransport,
+    COMMAND_MAP,
+    DEST_MAP,
+    MAX_INDEX_VALUE,
+    PAYLOAD_SCHEMAS,
+)
+from utilities import (
+    JEBPixel,
+    Pins,
+    parse_values,
+    get_float
+)
 
 class CoreManager:
     """Class to hold global state for the master controller."""
 
-    def __init__(self, root_data_dir="/"):
+    def __init__(self, root_data_dir="/", debug_mode=False):
 
+        self.debug_mode = debug_mode
         self.root_data_dir = root_data_dir
 
         # Init Data Manager for persistent storage of scores and settings
@@ -68,7 +55,7 @@ class CoreManager:
             Pins.SENSE_PINS,
             ["input", "satbus", "main", "led"],
             Pins.MOSFET_CONTROL,
-            Pins.SATBUS_DETECT
+            Pins.SATBUS_DETECT,
         )
 
         # TODO Check power state
@@ -78,59 +65,44 @@ class CoreManager:
         self.buzzer.play_song("POWER_UP")
 
         # Init I2C bus
-        self.i2c = busio.I2C(
-            Pins.I2C_SCL,
-            Pins.I2C_SDA
-        )
+        self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
 
         # Init other managers
         self.audio = AudioManager(
-            Pins.I2S_SCK,
-            Pins.I2S_WS,
-            Pins.I2S_SD,
-            root_data_dir=self.root_data_dir
+            Pins.I2S_SCK, Pins.I2S_WS, Pins.I2S_SD, root_data_dir=self.root_data_dir
         )
 
         self.synth = SynthManager()
-        self.audio.attach_synth(self.synth.source) # Connect synth to audio mixer
-        
+        self.audio.attach_synth(self.synth.source)  # Connect synth to audio mixer
+
         self.display = DisplayManager(self.i2c)
         self.hid = HIDManager(
             encoders=Pins.ENCODERS,
             mcp_i2c=self.i2c,
             mcp_int_pin=Pins.EXPANDER_INT,
-            expanded_buttons=Pins.EXPANDER_BUTTONS
+            expanded_buttons=Pins.EXPANDER_BUTTONS,
         )
 
         # Init LEDs
         self.root_pixels = neopixel.NeoPixel(
-            Pins.LED_CONTROL,
-            68,
-            brightness=0.3,
-            auto_write=False
+            Pins.LED_CONTROL, 68, brightness=0.3, auto_write=False
         )
 
         # LED Matrix Manager (first 64 pixels)
-        self.matrix_jeb_pixel = JEBPixel(
-            self.root_pixels,
-            start_idx=0,
-            num_pixels=64
-        )
+        self.matrix_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=64)
         self.matrix = MatrixManager(self.matrix_jeb_pixel)
 
         # Button LED Manager (last 4 pixels)
-        self.led_jeb_pixel = JEBPixel(
-            self.root_pixels,
-            start_idx=64,
-            num_pixels=4
-        )
+        self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=64, num_pixels=4)
         self.leds = LEDManager(self.led_jeb_pixel)
 
         # Preload Common UI Sounds
-        self.audio.preload([
-            "audio/menu_tick.wav",
-            "audio/menu_select.wav",
-        ])
+        self.audio.preload(
+            [
+                "audio/menu_tick.wav",
+                "audio/menu_select.wav",
+            ]
+        )
 
         # UART for satellite communication
         uart_hw = busio.UART(
@@ -138,22 +110,46 @@ class CoreManager:
             Pins.UART_RX,
             baudrate=115200,
             receiver_buffer_size=512,
-            timeout=0.01
-            )
+            timeout=0.01,
+        )
 
         # Wrap UART with buffering manager
         uart_manager = UARTManager(uart_hw)
 
         # Wrap with transport layer for protocol handling
-        self.transport = UARTTransport(uart_manager, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+        self.transport = UARTTransport(
+            uart_manager, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+        )
 
         # System State
         self.satellites = {}
         self.sat_telemetry = {}
+        self._mode_registry = {}
+        for mode_class in AVAILABLE_MODES:
+            self._mode_registry[mode_class.__name__] = mode_class
         self.mode = "DASHBOARD"
         self.meltdown = False
         self.sat_active = False
         self.last_message_debug = ""
+
+    def _get_mode(self, mode_name):
+        """Get a mode class from the registry with helpful error message.
+
+        Args:
+            mode_name: Name of the mode class to retrieve
+
+        Returns:
+            The mode class
+
+        Raises:
+            KeyError: If the mode is not found in the registry
+        """
+        if mode_name not in self._mode_registry:
+            available = ", ".join(sorted(self._mode_registry.keys()))
+            raise KeyError(
+                f"Mode '{mode_name}' not found in registry. Available modes: {available}"
+            )
+        return self._mode_registry[mode_name]
 
     async def discover_satellites(self):
         """Triggers the ID assignment chain."""
@@ -170,6 +166,7 @@ class CoreManager:
         """Retrieve a satellite by its ID."""
         return self.satellites.get(sid)
 
+    # TODO Check if this can be removed in favor of direct transport.send() targeting ALL
     def send_all(self, cmd, val):
         """Broadcast a command to all connected satellites."""
         for sid in self.satellites:
@@ -218,7 +215,9 @@ class CoreManager:
     def handle_message(self, message):
         """Processes incoming messages and updates satellite states."""
         # Store message representation for debugging
-        self.last_message_debug = str(message)
+        if self.debug_mode:
+            self.last_message_debug = str(message)
+
         try:
             sid = message.destination
             cmd = message.command
@@ -230,73 +229,59 @@ class CoreManager:
                     if not self.satellites[sid].is_active:
                         self.satellites[sid].is_active = True
                         asyncio.create_task(
-                            self.display.update_status(
-                                "SAT RECONNECTED",
-                                f"ID: {sid}"
-                            )
+                            self.display.update_status("SAT RECONNECTED", f"ID: {sid}")
                         )
                         if self.satellites[sid].sat_type == "INDUSTRIAL":
                             self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
                             asyncio.create_task(
                                 self.audio.play(
-                                    "link_restored.wav",
-                                    channel=self.audio.CH_SFX
+                                    "link_restored.wav", channel=self.audio.CH_SFX
                                 )
                             )
                     self.satellites[sid].update_from_packet(payload)
                 else:
                     asyncio.create_task(
-                        self.display.update_status(
-                            "UNKNOWN SAT",
-                            f"{sid} sent STATUS."
-                        )
+                        self.display.update_status("UNKNOWN SAT", f"{sid} sent STATUS.")
                     )
             elif cmd == "POWER":
                 v_data = parse_values(payload)
                 self.sat_telemetry[sid] = {
                     "in": get_float(v_data, 0),
                     "bus": get_float(v_data, 1),
-                    "log": get_float(v_data, 2)
+                    "log": get_float(v_data, 2),
                 }
             elif cmd == "ERROR":
                 asyncio.create_task(
-                    self.display.update_status(
-                        "SAT ERROR",
-                        f"ID: {sid} ERR: {payload}"
-                    )
+                    self.display.update_status("SAT ERROR", f"ID: {sid} ERR: {payload}")
                 )
-                asyncio.create_task(self.audio.play("alarm_klaxon.wav", channel=self.audio.CH_SFX))
+                asyncio.create_task(
+                    self.audio.play("alarm_klaxon.wav", channel=self.audio.CH_SFX)
+                )
             elif cmd == "HELLO":
                 if sid in self.satellites:
                     self.satellites[sid].update_heartbeat()
                 else:
                     if payload == "INDUSTRIAL":
-                        self.satellites[sid] = IndustrialSatelliteDriver(sid, self.transport)
-                    asyncio.create_task(
-                        self.display.update_status(
-                            "NEW SAT",
-                            f"{sid} sent HELLO."
+                        self.satellites[sid] = IndustrialSatelliteDriver(
+                            sid, self.transport
                         )
+                    asyncio.create_task(
+                        self.display.update_status("NEW SAT", f"{sid} sent HELLO.")
                     )
             elif cmd == "NEW_SAT":
                 asyncio.create_task(
-                    self.display.update_status(
-                        "SAT CONNECTED",
-                        f"TYPE {payload} FOUND"
-                    )
+                    self.display.update_status("SAT CONNECTED", f"TYPE {payload} FOUND")
                 )
                 msg_out = Message("ALL", "ID_ASSIGN", f"{payload}00")
                 self.transport.send(msg_out)
             else:
                 asyncio.create_task(
-                    self.display.update_status(
-                        "UNKNOWN COMMAND",
-                        f"{sid} sent {cmd}"
-                    )
+                    self.display.update_status("UNKNOWN COMMAND", f"{sid} sent {cmd}")
                 )
-        except Exception as e:
+        except (ValueError, IndexError) as e:
             print(f"Error handling message: {e}")
 
+    # --- Background Tasks ---
     async def monitor_sats(self):
         """Background task to monitor inbound messages from satellite boxes."""
         while True:
@@ -310,8 +295,6 @@ class CoreManager:
                 except ValueError as e:
                     # Buffer overflow or other error
                     print(f"Transport Error: {e}")
-                except Exception as e:
-                    print(f"Transport Unexpected Error: {e}")
 
             # Link Watchdog
             now = ticks_ms()
@@ -319,15 +302,14 @@ class CoreManager:
                 if ticks_diff(now, sat.last_seen) > 5000:
                     if sat.is_active:
                         sat.is_active = False
-                        asyncio.create_task(self.display.update_status("LINK LOST", f"ID: {sid}"))
+                        asyncio.create_task(
+                            self.display.update_status("LINK LOST", f"ID: {sid}")
+                        )
                 else:
                     if not sat.is_active:
                         sat.is_active = True
                         asyncio.create_task(
-                            self.display.update_status(
-                                "LINK RESTORED",
-                                f"ID: {sid}"
-                            )
+                            self.display.update_status("LINK RESTORED", f"ID: {sid}")
                         )
 
             await asyncio.sleep(0.01)
@@ -342,31 +324,25 @@ class CoreManager:
         while True:
             if not self.hid.estop and not self.meltdown:
                 self.meltdown = True
-                self.send_all("LED", "ALL,0,0,0") # Kill all LEDs
+                self.send_all("LED", "ALL,0,0,0")  # Kill all LEDs
 
                 # Audio Alarms
                 await self.audio.play(
-                    "background_winddown.wav",
-                    channel=self.audio.CH_ATMO,
-                    loop=False
+                    "background_winddown.wav", channel=self.audio.CH_ATMO, loop=False
                 )
                 await self.audio.set_level(self.audio.CH_ATMO, 0.2)
                 await self.audio.play(
-                    "alarm_klaxon.wav",
-                    channel=self.audio.CH_SFX,
-                    loop=True
+                    "alarm_klaxon.wav", channel=self.audio.CH_SFX, loop=True
                 )
                 await self.audio.play(
-                    "voice_meltdown.wav",
-                    channel=self.audio.CH_VOICE,
-                    loop=True
+                    "voice_meltdown.wav", channel=self.audio.CH_VOICE, loop=True
                 )
 
                 # High Contrast Warning on OLED
                 self.display.update_status("!!! EMERGENCY STOP !!!", "PULL UP TO RESET")
 
                 # Strobe the neobar and satellite LEDs
-                while not self.hid.estop: # While button is still latched down
+                while not self.hid.estop:  # While button is still latched down
                     # TODO Implement alarm LED strobing
                     await asyncio.sleep(0.2)
 
@@ -383,7 +359,7 @@ class CoreManager:
             v = self.power.status
 
             if self.mode == "DASHBOARD":
-                #self.display.update_telemetry(v["bus"], v["log"])
+                # self.display.update_telemetry(v["bus"], v["log"])
                 # TODO Implement telemetry display
                 print(f"Power Rail - BUS: {v['bus']:.2f}V | LOGIC: {v['log']:.2f}V")
 
@@ -396,7 +372,7 @@ class CoreManager:
             # Scenario: Logic rail is sagging (Audio Amp drawing too much?)
             if v["log"] < 4.7:
                 await self.display.update_status("LOGIC BROWNOUT", "REDUCING VOLUME")
-                await self.audio.set_level(self.audio.CH_SFX, 0.5) # Lower SFX volume
+                await self.audio.set_level(self.audio.CH_SFX, 0.5)  # Lower SFX volume
 
             await asyncio.sleep(0.5)
 
@@ -409,7 +385,9 @@ class CoreManager:
                 success, error = await self.power.soft_start_satellites()
 
                 if success:
-                    await self.audio.play("link_restored.wav", channel=self.audio.CH_SFX)
+                    await self.audio.play(
+                        "link_restored.wav", channel=self.audio.CH_SFX
+                    )
                     # Power is stable, trigger the ID assignment chain
                     await self.discover_satellites()
                 else:
@@ -422,7 +400,7 @@ class CoreManager:
                 await self.display.update_status("SAT LINK LOST", "BUS OFFLINE")
                 await self.audio.play("link_lost.wav", channel=self.audio.CH_SFX)
 
-            await asyncio.sleep(0.5) # Poll twice per second to save CPU
+            await asyncio.sleep(0.5)  # Poll twice per second to save CPU
 
     async def monitor_hw_hid(self):
         """Background task to poll hardware inputs."""
@@ -433,18 +411,19 @@ class CoreManager:
     async def start(self):
         """Main async loop for the Master Controller."""
         # Start background infrastructure tasks
-        asyncio.create_task(self.monitor_sats())        # UART Comms
-        asyncio.create_task(self.monitor_estop())       # E-Stop Button (Gameplay)
-        asyncio.create_task(self.monitor_power())       # Analog Power Monitoring
+        asyncio.create_task(self.monitor_sats())  # UART Comms
+        asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
+        asyncio.create_task(self.monitor_power())  # Analog Power Monitoring
         asyncio.create_task(self.monitor_connection())  # RJ45 Link Detection
-        asyncio.create_task(self.monitor_hw_hid())      # Local Hardware Input Polling
-        asyncio.create_task(self.leds.animate_loop())   # Button LED Animations
-        asyncio.create_task(self.matrix.animate_loop()) # Matrix LED Animations
-        asyncio.create_task(self.synth.start_generative_drone()) # Background Music Drone
+        asyncio.create_task(self.monitor_hw_hid())  # Local Hardware Input Polling
+        asyncio.create_task(self.leds.animate_loop())  # Button LED Animations
+        asyncio.create_task(self.matrix.animate_loop())  # Matrix LED Animations
+        asyncio.create_task(
+            self.synth.start_generative_drone()
+        )  # Background Music Drone
 
         # Fancy bootup sequence
-        #TODO Add boot animation
-        self.audio.play("voice/os_online.wav", channel=self.audio.CH_VOICE)
+        # TODO Add boot animation and audio
 
         while True:
             # Feed the hardware watchdog timer to prevent system reset
@@ -457,7 +436,7 @@ class CoreManager:
 
             # MAIN MENU
             # Display the main menu and get selected mode
-            self.mode = await self.run_mode_with_safety(_get_mode("MainMenu")(self))
+            self.mode = await self.run_mode_with_safety(self._get_mode("MainMenu")(self))
 
             # Handle e-stops first
             if self.mode == "ESTOP_ABORT":
@@ -467,11 +446,11 @@ class CoreManager:
             # Otherwise run the selected mode
             # Core Box Games
             elif self.mode == "JEBRIS":
-                await self.run_mode_with_safety(_get_mode("JEBris")(self))
+                await self.run_mode_with_safety(self._get_mode("JEBris")(self))
             elif self.mode == "SIMON":
-                await self.run_mode_with_safety(_get_mode("Simon")(self, 0.5, 3000))
+                await self.run_mode_with_safety(self._get_mode("Simon")(self, 0.5, 3000))
             elif self.mode == "SAFE":
-                await self.run_mode_with_safety(_get_mode("SafeCracker")(self))
+                await self.run_mode_with_safety(self._get_mode("SafeCracker")(self))
 
             # Industrial Satellite Games
             elif self.mode == "IND":
@@ -480,16 +459,19 @@ class CoreManager:
                     None,
                 )
                 if sat:
-                    mode_instance = _get_mode("IndustrialStartup")(self, sat)
+                    mode_instance = self._get_mode("IndustrialStartup")(self, sat)
                     run_ind = True
                     while run_ind:
-                        result = await self.run_mode_with_safety(mode_instance, target_sat=sat)
+                        result = await self.run_mode_with_safety(
+                            mode_instance, target_sat=sat
+                        )
                         if result == "LINK_LOST":
-                            await self.display.update_status("LINK LOST", "RECONNECT IN 60s")
+                            await self.display.update_status(
+                                "LINK LOST", "RECONNECT IN 60s"
+                            )
                             asyncio.create_task(
                                 self.audio.play(
-                                    "link_lost.wav",
-                                    channel=self.audio.CH_SFX
+                                    "link_lost.wav", channel=self.audio.CH_SFX
                                 )
                             )
                             await asyncio.sleep(1)
@@ -502,16 +484,16 @@ class CoreManager:
                                     continue
                                 secs_left = 60 - (elapsed // 1000)
                                 await self.display.update_status(
-                                    "LINK LOST",
-                                    f"ABORT IN: {secs_left}s"
+                                    "LINK LOST", f"ABORT IN: {secs_left}s"
                                 )
                                 await asyncio.sleep(0.1)
                             if sat.is_active and run_ind:
-                                await self.display.update_status("LINK RESTORED", "RESUMING...")
+                                await self.display.update_status(
+                                    "LINK RESTORED", "RESUMING..."
+                                )
                                 asyncio.create_task(
                                     self.audio.play(
-                                        "link_restored.wav",
-                                        channel=self.audio.CH_SFX
+                                        "link_restored.wav", channel=self.audio.CH_SFX
                                     )
                                 )
                                 await asyncio.sleep(1)
