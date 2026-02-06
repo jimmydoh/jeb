@@ -15,12 +15,16 @@ _mode_registry = {}
 for mode_class in AVAILABLE_MODES:
     _mode_registry[mode_class.__name__] = mode_class
 
-# Get mode classes from registry
-IndustrialStartup = _mode_registry.get("IndustrialStartup")
-JEBris = _mode_registry.get("JEBris")
-MainMenu = _mode_registry.get("MainMenu")
-SafeCracker = _mode_registry.get("SafeCracker")
-Simon = _mode_registry.get("Simon")
+# Get mode classes from registry with validation
+# Using dictionary access to fail fast with KeyError if a mode is missing
+try:
+    IndustrialStartup = _mode_registry["IndustrialStartup"]
+    JEBris = _mode_registry["JEBris"]
+    MainMenu = _mode_registry["MainMenu"]
+    SafeCracker = _mode_registry["SafeCracker"]
+    Simon = _mode_registry["Simon"]
+except KeyError as e:
+    raise ImportError(f"Required mode class {e} not found in AVAILABLE_MODES manifest") from e
 
 from satellites import IndustrialSatelliteDriver
 
