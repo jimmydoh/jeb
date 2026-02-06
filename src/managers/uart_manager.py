@@ -75,6 +75,7 @@ class UARTManager:
                 except ValueError:
                     # Buffer overflow - clear and raise error
                     self.buffer.clear()
+                    print("WARNING: UART buffer overflow - dropped packets. Buffer cleared.")
                     raise ValueError("UART buffer overflow - clearing buffer")
         
         # Check if we have a complete line
@@ -120,6 +121,7 @@ class UARTManager:
                 except ValueError:
                     # Buffer overflow - clear and raise error
                     self.buffer.clear()
+                    print("WARNING: UART buffer overflow - dropped packets. Buffer cleared.")
                     raise ValueError("UART buffer overflow - clearing buffer")
         
         # Check if we have the delimiter

@@ -58,7 +58,7 @@ class RingBuffer:
         self._size += data_len
     
     def find(self, pattern):
-        """Find the first occurrence of pattern in the buffer.
+        """Find pattern using native C-speed optimizations.
         
         Parameters:
             pattern: Bytes pattern to search for.
@@ -69,28 +69,22 @@ class RingBuffer:
         if self._size == 0 or len(pattern) == 0:
             return -1
         
-        pattern_len = len(pattern)
-        if pattern_len > self._size:
+        if len(pattern) > self._size:
             return -1
         
-        # For single-byte patterns, optimize with direct search
-        if pattern_len == 1:
-            target = pattern[0]
-            for i in range(self._size):
-                if self._get_byte_at(i) == target:
-                    return i
-            return -1
+        # Search the first physical chunk (from tail to end of buffer or head)
+        first_chunk_end = min(self._capacity, self._tail + self._size)
+        res = self._buffer.find(pattern, self._tail, first_chunk_end)
+        if res != -1:
+            return res - self._tail
         
-        # For multi-byte patterns, search through the logical buffer
-        max_start = self._size - pattern_len + 1
-        for i in range(max_start):
-            match = True
-            for j, byte in enumerate(pattern):
-                if self._get_byte_at(i + j) != byte:
-                    match = False
-                    break
-            if match:
-                return i
+        # If wrapped, search the second chunk (from index 0 to head)
+        if self._tail + self._size > self._capacity:
+            second_chunk_end = (self._tail + self._size) % self._capacity
+            res = self._buffer.find(pattern, 0, second_chunk_end)
+            if res != -1:
+                return (self._capacity - self._tail) + res
+        
         return -1
     
     def _get_byte_at(self, index):
@@ -119,10 +113,19 @@ class RingBuffer:
             if step != 1:
                 raise NotImplementedError("Step values other than 1 are not supported")
             
-            result = bytearray()
-            for i in range(start, stop):
-                result.append(self._get_byte_at(i))
-            return result
+            # Map logical start to physical start
+            phys_start = (self._tail + start) % self._capacity
+            length = stop - start
+            
+            # Check if this slice wraps around
+            if phys_start + length <= self._capacity:
+                # Contiguous: fast copy using slice
+                return self._buffer[phys_start:phys_start + length]
+            else:
+                # Wrapped: Two copies joined
+                part1 = self._buffer[phys_start:self._capacity]
+                part2 = self._buffer[0:length - len(part1)]
+                return part1 + part2
         elif isinstance(key, int):
             if key < 0:
                 key = self._size + key
