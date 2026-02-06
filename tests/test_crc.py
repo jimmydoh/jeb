@@ -5,12 +5,15 @@ import sys
 
 
 def calculate_crc8(data):
-    """Calculate CRC-8 checksum for a given string.
+    """Calculate CRC-8 checksum for a given string or bytes.
 
     Uses CRC-8-CCITT polynomial (0x07) for error detection in UART packets.
+    
+    Note: This test implementation returns strings for simplicity.
+    The actual implementation in src/utilities/crc.py returns bytes.
 
     Parameters:
-        data (str): The data string to calculate CRC for (e.g., "ID|CMD|VAL").
+        data (str or bytes): The data to calculate CRC for (e.g., "ID|CMD|VAL" or b"ID|CMD|VAL").
 
     Returns:
         str: Two-character hexadecimal CRC value (e.g., "A3").
@@ -18,7 +21,11 @@ def calculate_crc8(data):
     crc = 0x00
     polynomial = 0x07
 
-    for byte in data.encode('utf-8'):
+    # Handle both str and bytes input
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+
+    for byte in data:
         crc ^= byte
         for _ in range(8):
             if crc & 0x80:
@@ -34,17 +41,27 @@ def verify_crc8(packet):
     """Verify CRC-8 checksum of a received packet.
 
     Parameters:
-        packet (str): Complete packet with CRC (e.g., "ID|CMD|VAL|A3").
+        packet (str or bytes): Complete packet with CRC (e.g., "ID|CMD|VAL|A3" or b"ID|CMD|VAL|A3").
 
     Returns:
-        tuple: (is_valid: bool, data: str) where data is the packet without CRC.
+        tuple: (is_valid: bool, data: str or bytes) where data is the packet without CRC.
     """
-    parts = packet.rsplit("|", 1)
+    # Handle both str and bytes input
+    if isinstance(packet, str):
+        separator = "|"
+    else:
+        separator = b"|"
+    
+    parts = packet.rsplit(separator, 1)
     if len(parts) != 2:
         return False, None
 
     data, received_crc = parts
     calculated_crc = calculate_crc8(data)
+    
+    # Handle type mismatch for comparison
+    if isinstance(received_crc, bytes):
+        calculated_crc = calculated_crc.encode('ascii')
 
     return calculated_crc == received_crc, data
 
@@ -174,6 +191,41 @@ def test_error_detection():
     print("✓ Error detection tests passed")
 
 
+def test_bytes_input():
+    """Test that CRC functions handle bytes input correctly."""
+    print("\nTesting bytes input handling...")
+    
+    # Test calculate_crc8 with bytes
+    data_bytes = b"ALL|ID_ASSIGN|0100"
+    crc_from_bytes = calculate_crc8(data_bytes)
+    print(f"  CRC from bytes: {crc_from_bytes}")
+    assert isinstance(crc_from_bytes, str), "CRC should be string in test implementation"
+    
+    # Test calculate_crc8 with string (should give same result)
+    data_str = "ALL|ID_ASSIGN|0100"
+    crc_from_str = calculate_crc8(data_str)
+    print(f"  CRC from string: {crc_from_str}")
+    assert crc_from_bytes == crc_from_str, "CRC from bytes and string should match"
+    
+    # Test verify_crc8 with bytes packet
+    packet_bytes = b"ALL|ID_ASSIGN|0100|BC"
+    is_valid, data = verify_crc8(packet_bytes)
+    print(f"  Bytes packet verified: {is_valid}, data type: {type(data)}")
+    assert is_valid, "Bytes packet should be valid"
+    assert isinstance(data, bytes), "Data should be bytes when input is bytes"
+    assert data == b"ALL|ID_ASSIGN|0100", "Extracted data should match"
+    
+    # Test verify_crc8 with string packet
+    packet_str = "ALL|ID_ASSIGN|0100|BC"
+    is_valid, data = verify_crc8(packet_str)
+    print(f"  String packet verified: {is_valid}, data type: {type(data)}")
+    assert is_valid, "String packet should be valid"
+    assert isinstance(data, str), "Data should be string when input is string"
+    assert data == "ALL|ID_ASSIGN|0100", "Extracted data should match"
+    
+    print("✓ Bytes input handling tests passed")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("CRC-8 UART Integrity Test Suite")
@@ -184,6 +236,7 @@ if __name__ == "__main__":
         test_verify_crc8()
         test_protocol_examples()
         test_error_detection()
+        test_bytes_input()
 
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")

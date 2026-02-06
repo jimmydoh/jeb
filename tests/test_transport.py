@@ -35,7 +35,11 @@ def calculate_crc8(data):
     crc = 0x00
     polynomial = 0x07
     
-    for byte in data.encode('utf-8'):
+    # Handle both str and bytes input
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    
+    for byte in data:
         crc ^= byte
         for _ in range(8):
             if crc & 0x80:
@@ -44,17 +48,28 @@ def calculate_crc8(data):
                 crc <<= 1
             crc &= 0xFF
     
-    return f"{crc:02X}"
+    return f"{crc:02X}".encode('ascii')
 
 
 def verify_crc8(packet):
     """Verify CRC-8 checksum of a received packet."""
-    parts = packet.rsplit("|", 1)
+    # Handle both str and bytes input
+    if isinstance(packet, str):
+        separator = "|"
+    else:
+        separator = b"|"
+    
+    parts = packet.rsplit(separator, 1)
     if len(parts) != 2:
         return False, None
     
     data, received_crc = parts
     calculated_crc = calculate_crc8(data)
+    
+    # Compare CRCs (handle type mismatch)
+    if isinstance(received_crc, str):
+        # Decode bytes CRC for comparison with string CRC
+        calculated_crc = calculated_crc.decode('ascii')
     
     return calculated_crc == received_crc, data
 
@@ -126,7 +141,7 @@ def test_uart_transport_send():
     
     # Verify CRC is correct
     data = "|".join(parts[:3])
-    expected_crc = calculate_crc8(data)
+    expected_crc = calculate_crc8(data).decode('ascii')
     assert parts[3] == expected_crc, f"CRC mismatch: expected {expected_crc}, got {parts[3]}"
     
     print("✓ UARTTransport send test passed")
@@ -141,7 +156,7 @@ def test_uart_transport_receive():
     
     # Queue a valid packet
     data = "0101|STATUS|0000,C,N,0,0"
-    crc = calculate_crc8(data)
+    crc = calculate_crc8(data).decode('ascii')
     packet = f"{data}|{crc}"
     mock_uart.receive_queue.append(packet)
     
@@ -185,7 +200,7 @@ def test_uart_transport_receive_malformed():
     transport = UARTTransport(mock_uart)
     
     # Queue a malformed packet (not enough fields)
-    crc = calculate_crc8("INCOMPLETE")
+    crc = calculate_crc8("INCOMPLETE").decode('ascii')
     packet = f"INCOMPLETE|{crc}"
     mock_uart.receive_queue.append(packet)
     
