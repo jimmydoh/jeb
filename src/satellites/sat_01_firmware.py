@@ -6,10 +6,10 @@ on the actual satellite hardware. This class manages physical hardware
 including neopixels, segment displays, encoders, and power management.
 """
 
-import asyncio
-import microcontroller
 import time
 
+import asyncio
+import microcontroller
 import busio
 import neopixel
 
@@ -27,7 +27,7 @@ TYPE_NAME = "INDUSTRIAL"
 
 class IndustrialSatelliteFirmware(Satellite):
     """Satellite-side firmware for Industrial Satellite.
-    
+
     Handles hardware I/O, power management, and local command processing.
     Runs on the physical satellite hardware and manages all peripherals.
     """
@@ -65,7 +65,7 @@ class IndustrialSatelliteFirmware(Satellite):
             baudrate=115200,
             timeout=0.01
         )
-        
+
         # Wrap UARTs with buffering managers
         uart_up_mgr = UARTManager(uart_up_hw)
         uart_down_mgr = UARTManager(uart_down_hw)
