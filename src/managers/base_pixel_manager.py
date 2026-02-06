@@ -8,6 +8,33 @@ import random
 
 from utilities import Palette
 
+class AnimationSlot:
+    """Reusable animation slot to avoid object churn."""
+    __slots__ = ('active', 'type', 'color', 'speed', 'start', 'duration', 'priority')
+    
+    def __init__(self):
+        self.active = False
+        self.type = None
+        self.color = None
+        self.speed = 1.0
+        self.start = 0.0
+        self.duration = None
+        self.priority = 0
+    
+    def set(self, anim_type, color, speed, start, duration, priority):
+        """Update slot properties in place."""
+        self.active = True
+        self.type = anim_type
+        self.color = color
+        self.speed = speed
+        self.start = start
+        self.duration = duration
+        self.priority = priority
+    
+    def clear(self):
+        """Mark slot as inactive without deallocating."""
+        self.active = False
+
 class BasePixelManager:
     """
     Base class for managing NeoPixel animations via a non-blocking loop.
@@ -18,18 +45,39 @@ class BasePixelManager:
         self.num_pixels = self.pixels.n
 
         # Fixed-size list for animations (one slot per pixel)
-        # Each slot: None or { type, color, speed, start, duration, priority }
-        self.active_animations = [None] * self.num_pixels
+        # Each slot is a reusable AnimationSlot object
+        self.active_animations = [AnimationSlot() for _ in range(self.num_pixels)]
         
         # Track active animation count to avoid O(n) checks
         self._active_count = 0
 
     def clear(self):
         """Stops all animations and clears LEDs."""
-        self.active_animations = [None] * self.num_pixels
+        for slot in self.active_animations:
+            slot.clear()
         self._active_count = 0
         self.pixels.fill((0, 0, 0))
         self.pixels.show()
+
+    def clear_animation(self, idx, priority=0):
+        """
+        Clears the animation for a specific pixel index.
+        Respects priority: Only clears if priority is >= current animation priority.
+        Returns True if cleared, False otherwise.
+        """
+        # Validate index bounds
+        if idx < 0 or idx >= self.num_pixels:
+            return False
+        
+        slot = self.active_animations[idx]
+        if slot.active:
+            # Only clear if priority is sufficient
+            if priority < slot.priority:
+                return False
+            slot.clear()
+            self._active_count -= 1
+            return True
+        return False
 
     def set_animation(self, idx, anim_type, color, speed=1.0, duration=None, priority=0):
         """
@@ -41,45 +89,31 @@ class BasePixelManager:
             return
         
         # Check priority lock
-        current = self.active_animations[idx]
-        if current is not None:
+        slot = self.active_animations[idx]
+        if slot.active:
             # If new priority is lower than current running priority, ignore request
-            if priority < current.get("priority", 0):
+            if priority < slot.priority:
                 return
         else:
             # Adding a new animation
             self._active_count += 1
 
-        self.active_animations[idx] = {
-            "type": anim_type,
-            "color": color,
-            "speed": speed,
-            "start": time.monotonic(),
-            "duration": duration,
-            "priority": priority
-        }
+        slot.set(anim_type, color, speed, time.monotonic(), duration, priority)
 
     def fill_animation(self, anim_type, color, speed=1.0, duration=None, priority=0):
         """Applies an animation to ALL pixels."""
         start_t = time.monotonic()
         for i in range(self.num_pixels):
-            # We construct dict manually to sync start_time perfectly
-            current = self.active_animations[i]
-            if current is not None:
-                if priority < current.get("priority", 0):
+            # Check priority before updating slot
+            slot = self.active_animations[i]
+            if slot.active:
+                if priority < slot.priority:
                     continue
             else:
                 # Increment counter when adding to empty slot
                 self._active_count += 1
 
-            self.active_animations[i] = {
-                "type": anim_type,
-                "color": color,
-                "speed": speed,
-                "start": start_t,
-                "duration": duration,
-                "priority": priority
-            }
+            slot.set(anim_type, color, speed, start_t, duration, priority)
 
     async def animate_loop(self):
         """Unified background task to handle all pixel animations."""
@@ -93,68 +127,68 @@ class BasePixelManager:
             dirty = False
 
             for idx in range(self.num_pixels):
-                anim = self.active_animations[idx]
-                if anim is None:
+                slot = self.active_animations[idx]
+                if not slot.active:
                     continue
 
                 # 1. Duration Check
-                if anim["duration"]:
-                    elapsed = now - anim["start"]
-                    if elapsed >= anim["duration"]:
+                if slot.duration:
+                    elapsed = now - slot.start
+                    if elapsed >= slot.duration:
                         self.pixels[idx] = (0, 0, 0)
-                        self.active_animations[idx] = None
+                        slot.clear()
                         self._active_count -= 1
                         dirty = True
                         continue
 
                 # 2. Animation Logic
-                elapsed = now - anim["start"]
+                elapsed = now - slot.start
 
                 # --- SOLID ---
-                if anim["type"] == "SOLID":
-                    self.pixels[idx] = anim["color"]
+                if slot.type == "SOLID":
+                    self.pixels[idx] = slot.color
                     dirty = True
 
                 # --- BLINK ---
-                elif anim["type"] == "BLINK":
-                    period = 1.0 / anim["speed"]
+                elif slot.type == "BLINK":
+                    period = 1.0 / slot.speed
                     phase = elapsed % period
                     if phase < (period / 2):
-                        self.pixels[idx] = anim["color"]
+                        self.pixels[idx] = slot.color
                     else:
                         self.pixels[idx] = (0, 0, 0)
                     dirty = True
 
                 # --- PULSE (Breathing) ---
-                elif anim["type"] == "PULSE":
-                    t = elapsed * anim["speed"]
+                elif slot.type == "PULSE":
+                    t = elapsed * slot.speed
                     factor = 0.5 + 0.5 * math.sin(t * 2 * math.pi)
                     factor = max(0.1, factor)
-                    base = anim["color"]
+                    base = slot.color
                     self.pixels[idx] = tuple(int(c * factor) for c in base)
                     dirty = True
 
                 # --- RAINBOW ---
-                elif anim["type"] == "RAINBOW":
-                    hue = (elapsed * anim["speed"] + (idx * 0.05)) % 1.0
+                elif slot.type == "RAINBOW":
+                    hue = (elapsed * slot.speed + (idx * 0.05)) % 1.0
                     self.pixels[idx] = Palette.hsv_to_rgb(hue, 1.0, 1.0)
                     dirty = True
 
                 # --- GLITCH ---
-                elif anim["type"] == "GLITCH":
+                elif slot.type == "GLITCH":
                     if random.random() > 0.9:
                         if random.random() > 0.5:
                              self.pixels[idx] = (255, 255, 255)
                         else:
                              self.pixels[idx] = (0, 0, 0)
                     else:
-                        self.pixels[idx] = anim["color"]
+                        self.pixels[idx] = slot.color
                     dirty = True
 
                 # --- SCANNER (Cylon) ---
-                elif anim["type"] == "SCANNER":
+                elif slot.type == "SCANNER":
                     # Moves back and forth across the strip
-                    cycle = (elapsed * anim["speed"]) % 2.0
+                    cycle = (elapsed * slot.speed) % 2.0
                     if cycle < 1.0:
                         pos = cycle * (self.num_pixels - 1)
                     else:
@@ -162,34 +196,34 @@ class BasePixelManager:
 
                     dist = abs(idx - pos)
                     brightness = max(0, 1.0 - dist) # Tail length of 1.0
-                    base = anim["color"]
+                    base = slot.color
                     self.pixels[idx] = tuple(int(c * brightness) for c in base)
                     dirty = True
 
                 # --- CHASER (Centrifuge) ---
-                elif anim["type"] == "CHASER":
+                elif slot.type == "CHASER":
                     # Spins in one direction
-                    pos = (elapsed * anim["speed"] * self.num_pixels) % self.num_pixels
+                    pos = (elapsed * slot.speed * self.num_pixels) % self.num_pixels
                     # Calculate circular distance
                     dist = (idx - pos) % self.num_pixels
                     if dist > (self.num_pixels / 2): dist -= self.num_pixels
                     dist = abs(dist)
 
                     brightness = max(0, 1.0 - (dist / 2.0)) # Broader tail
-                    base = anim["color"]
+                    base = slot.color
                     self.pixels[idx] = tuple(int(c * brightness) for c in base)
                     dirty = True
 
                 # --- DECAY ---
-                elif anim["type"] == "DECAY":
-                    duration = 1.0 / anim["speed"]
+                elif slot.type == "DECAY":
+                    duration = 1.0 / slot.speed
                     if elapsed >= duration:
                         self.pixels[idx] = (0, 0, 0)
-                        self.active_animations[idx] = None
+                        slot.clear()
                         self._active_count -= 1
                     else:
                         factor = 1.0 - (elapsed / duration)
-                        base = anim["color"]
+                        base = slot.color
                         self.pixels[idx] = tuple(int(c * factor) for c in base)
                     dirty = True
 
