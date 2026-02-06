@@ -768,13 +768,19 @@ class HIDManager:
         if estop:
             self._sw_set_estop(estop)
 
-    def get_status_string(self, order=None):
+    def get_status_bytes(self, order=None):
         """
-        Read inputs and format status packet with custom ordering and selection.
+        Read inputs and format status packet as bytes with custom ordering and selection.
         Uses pre-allocated buffer to minimize heap fragmentation.
+        
+        Returns bytes directly to avoid string allocation overhead.
+        Optimized for high-frequency telemetry (10Hz-60Hz) to reduce GC pressure.
 
         :param order: A list of strings identifying which data to include and in what order.
+                    Valid field identifiers: 'buttons', 'toggles', 'momentary', 'keypads',
+                    'encoders', 'encoder_btns', 'estop'
                     If None, defaults to all fields in standard order.
+        :return: bytes object containing the status data with newline terminator
         """
         # 1. Map string keys to the actual buffer-writing methods
         sources = {
@@ -806,11 +812,28 @@ class HIDManager:
                 # Execute the buffer-writing method
                 offset = sources[key](self._status_buffer, offset)
 
-        # 4. Add newline and convert used portion of buffer to string
+        # 4. Add newline
         self._status_buffer[offset] = ord('\n')
         offset += 1
         
-        # Return only the used portion of the buffer as a string
-        # bytearray.decode() avoids creating intermediate bytes object
-        return self._status_buffer[:offset].decode('utf-8')
+        # Return only the used portion of the buffer as bytes
+        # This avoids the string allocation that occurs with decode()
+        return bytes(self._status_buffer[:offset])
+
+    def get_status_string(self, order=None):
+        """
+        Read inputs and format status packet with custom ordering and selection.
+        Uses pre-allocated buffer to minimize heap fragmentation.
+        
+        For high-frequency telemetry, prefer get_status_bytes() to avoid string allocation.
+
+        :param order: A list of strings identifying which data to include and in what order.
+                    Valid field identifiers: 'buttons', 'toggles', 'momentary', 'keypads',
+                    'encoders', 'encoder_btns', 'estop'
+                    If None, defaults to all fields in standard order.
+        :return: str containing the status data with newline terminator
+        """
+        # Use get_status_bytes() and decode to string
+        # This ensures consistent behavior between both methods
+        return self.get_status_bytes(order).decode('utf-8')
     #endregion

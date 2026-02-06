@@ -400,7 +400,9 @@ class IndustrialSatelliteFirmware(Satellite):
                                        priority=1)
             else: # Normal Operation
                 if time.monotonic() - self.last_tx > 0.1:
-                    msg_out = Message(self.id, "STATUS", self.hid.get_status_string())
+                    # Use get_status_bytes() to avoid string allocation overhead
+                    # Message class supports both str and bytes payloads
+                    msg_out = Message(self.id, "STATUS", self.hid.get_status_bytes())
                     self.transport_up.send(msg_out)
                     self.last_tx = time.monotonic()
 
