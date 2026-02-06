@@ -214,6 +214,6 @@ def test_core_manager_integration():
 if __name__ == "__main__":
     # Run tests with pytest when executed as a script
     import subprocess
-    result = subprocess.run([sys.executable, "-m", "pytest", __file__, "-v"], cwd=os.path.dirname(os.path.dirname(__file__)))
+    result = subprocess.run([sys.executable, "-m", "pytest", __file__, "-v"])
     sys.exit(result.returncode)
 
