@@ -52,7 +52,7 @@ class Waveforms:
             b[i] = int(val * Waveforms.MAX_AMP)
         return b
 
-    # Lazy-loaded singletons
+    # Pre-generated waveform singletons
     SINE = _generate_sine()
     SQUARE = _generate_square()
     SAW = _generate_saw()
