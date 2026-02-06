@@ -49,6 +49,49 @@ DEST_REVERSE_MAP = {v: k for k, v in DEST_MAP.items()}
 MAX_INDEX_VALUE = 100
 
 
+# Payload encoding type constants
+ENCODING_RAW_TEXT = 'text'
+ENCODING_NUMERIC_BYTES = 'bytes'
+ENCODING_NUMERIC_WORDS = 'words'
+ENCODING_FLOATS = 'floats'
+
+# Command-specific payload schemas
+# This eliminates ambiguity in type interpretation
+# 
+# Schema fields:
+#   'type': One of the ENCODING_* constants above
+#   'desc': Human-readable description
+#   'count': (optional) Expected number of values for validation
+PAYLOAD_SCHEMAS = {
+    # Core commands - these use text IDs that must not be interpreted as numbers
+    "ID_ASSIGN": {'type': ENCODING_RAW_TEXT, 'desc': 'Device ID string like "0100"'},
+    "NEW_SAT": {'type': ENCODING_RAW_TEXT, 'desc': 'Satellite type ID like "01"'},
+    "ERROR": {'type': ENCODING_RAW_TEXT, 'desc': 'Error description text'},
+    "LOG": {'type': ENCODING_RAW_TEXT, 'desc': 'Log message text'},
+    
+    # LED commands - RGB values plus parameters (variable count OK)
+    "LED": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness bytes'},
+    "LEDFLASH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
+    "LEDBREATH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
+    "LEDCYLON": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
+    "LEDCENTRI": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
+    "LEDRAINBOW": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'speed,brightness'},
+    "LEDGLITCH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'intensity,brightness'},
+    
+    # Display commands
+    "DSP": {'type': ENCODING_RAW_TEXT, 'desc': 'Display message text'},
+    "DSPCORRUPT": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'level,duration'},
+    "DSPMATRIX": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'speed,density'},
+    
+    # Power and status - use floats for voltage/current measurements
+    "POWER": {'type': ENCODING_FLOATS, 'desc': 'voltage1,voltage2,current'},
+    "STATUS": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'status bytes (variable length)'},
+    
+    # Encoder
+    "SETENC": {'type': ENCODING_NUMERIC_WORDS, 'desc': 'encoder position'},
+}
+
+
 def _encode_destination(dest_str):
     """Encode destination string to byte(s).
     
@@ -135,14 +178,15 @@ def _decode_command(cmd_byte):
     raise ValueError(f"Unknown command byte: 0x{cmd_byte:02X}")
 
 
-def _encode_payload(payload_str):
-    """Encode payload string to bytes.
+def _encode_payload(payload_str, cmd_schema=None):
+    """Encode payload string to bytes with explicit type handling.
     
-    For comma-separated numeric values, encode as packed bytes.
-    For text strings, encode as UTF-8.
+    This function eliminates the fragility of "magic" type guessing by using
+    command-specific schemas that explicitly define expected data types.
     
     Parameters:
-        payload_str (str): Payload string
+        payload_str (str): Payload string to encode
+        cmd_schema (dict, optional): Schema defining payload structure
         
     Returns:
         bytes: Encoded payload
@@ -150,46 +194,92 @@ def _encode_payload(payload_str):
     if not payload_str:
         return b''
     
-    # Try to parse as comma-separated values
-    parts = payload_str.split(',')
+    # Use schema if provided to avoid ambiguous type interpretation
+    if cmd_schema:
+        encoding_type = cmd_schema.get('type')
+        
+        # Text encoding - preserve the string exactly as-is
+        if encoding_type == ENCODING_RAW_TEXT:
+            return payload_str.encode('utf-8')
+        
+        # Parse comma-separated values for numeric encodings
+        value_list = [v.strip() for v in payload_str.split(',')]
+        expected_count = cmd_schema.get('count')
+        
+        # Validate count only if specified in schema
+        if expected_count is not None and len(value_list) != expected_count:
+            raise ValueError(
+                f"Schema expects {expected_count} values but got {len(value_list)} in '{payload_str}'"
+            )
+        
+        # Byte encoding (0-255 range)
+        if encoding_type == ENCODING_NUMERIC_BYTES:
+            output = bytearray()
+            for val_str in value_list:
+                numeric_val = int(val_str)
+                if not (0 <= numeric_val <= 255):
+                    raise ValueError(f"Byte value {numeric_val} outside 0-255 range")
+                output.append(numeric_val)
+            return bytes(output)
+        
+        # Word encoding (16-bit signed integers)
+        elif encoding_type == ENCODING_NUMERIC_WORDS:
+            output = bytearray()
+            for val_str in value_list:
+                numeric_val = int(val_str)
+                output.extend(struct.pack('<h', numeric_val))
+            return bytes(output)
+        
+        # Float encoding (IEEE 754 single precision)
+        elif encoding_type == ENCODING_FLOATS:
+            output = bytearray()
+            for val_str in value_list:
+                float_val = float(val_str)
+                output.extend(struct.pack('<f', float_val))
+            return bytes(output)
     
-    # Check if all parts are numeric
+    # Backward compatibility: heuristic encoding for commands without schemas
+    # NOTE: This fallback still has the "magic" type guessing issue where
+    # numeric-looking strings like "01" will be encoded as integer 1.
+    # Commands should be migrated to use explicit schemas to avoid this.
+    value_list = payload_str.split(',')
+    
     try:
-        values = []
-        for part in parts:
-            # Try integer
-            if part.isdigit() or (part.startswith('-') and part[1:].isdigit()):
-                val = int(part)
-                values.append(val)
+        parsed_values = []
+        for item in value_list:
+            # Integer check
+            if item.isdigit() or (item.startswith('-') and item[1:].isdigit()):
+                parsed_values.append(int(item))
             else:
-                # Try float
-                val = float(part)
-                # Encode float as 4-byte IEEE 754
-                values.append(struct.pack('<f', val))
+                # Float check
+                parsed_values.append(float(item))
         
-        # Pack integers as bytes (use appropriate size)
-        result = bytearray()
-        for val in values:
-            if isinstance(val, bytes):
-                result.extend(val)
+        # Pack the parsed values
+        output = bytearray()
+        for val in parsed_values:
+            if isinstance(val, float):
+                output.extend(struct.pack('<f', val))
             elif -128 <= val <= 255:
-                result.append(val & 0xFF)
+                output.append(val & 0xFF)
             elif -32768 <= val <= 32767:
-                result.extend(struct.pack('<h', val))
+                output.extend(struct.pack('<h', val))
             else:
-                result.extend(struct.pack('<i', val))
+                output.extend(struct.pack('<i', val))
         
-        return bytes(result)
+        return bytes(output)
     except (ValueError, OverflowError):
-        # Not all numeric - encode as UTF-8 string
+        # Not numeric - treat as text
         return payload_str.encode('utf-8')
 
 
-def _decode_payload(payload_bytes):
-    """Decode payload bytes, returning raw bytes for binary data or string for text.
+def _decode_payload(payload_bytes, cmd_schema=None):
+    """Decode payload bytes to string with explicit type handling.
+    
+    Uses command-specific schemas to properly interpret binary data.
     
     Parameters:
-        payload_bytes (bytes): Raw payload data
+        payload_bytes (bytes): Raw binary payload data
+        cmd_schema (dict, optional): Schema defining payload structure
         
     Returns:
         bytes or str: Raw bytes for binary data, decoded string for text data
@@ -197,12 +287,45 @@ def _decode_payload(payload_bytes):
     if not payload_bytes:
         return ""
     
-    # Try to decode as UTF-8 text first
+    # Use schema if provided
+    if cmd_schema:
+        encoding_type = cmd_schema.get('type')
+        
+        # Text decoding
+        if encoding_type == ENCODING_RAW_TEXT:
+            return payload_bytes.decode('utf-8')
+        
+        # Byte decoding (0-255 values)
+        if encoding_type == ENCODING_NUMERIC_BYTES:
+            return ','.join(str(b) for b in payload_bytes)
+        
+        # Word decoding (16-bit signed)
+        elif encoding_type == ENCODING_NUMERIC_WORDS:
+            decoded_vals = []
+            byte_offset = 0
+            while byte_offset + 2 <= len(payload_bytes):
+                word_val = struct.unpack('<h', payload_bytes[byte_offset:byte_offset+2])[0]
+                decoded_vals.append(str(word_val))
+                byte_offset += 2
+            return ','.join(decoded_vals)
+        
+        # Float decoding (IEEE 754)
+        elif encoding_type == ENCODING_FLOATS:
+            decoded_vals = []
+            byte_offset = 0
+            while byte_offset + 4 <= len(payload_bytes):
+                float_val = struct.unpack('<f', payload_bytes[byte_offset:byte_offset+4])[0]
+                decoded_vals.append(str(float_val))
+                byte_offset += 4
+            return ','.join(decoded_vals)
+    
+    # Backward compatibility: heuristic decoding
+    # Try UTF-8 text interpretation first
     try:
-        text = payload_bytes.decode('utf-8')
-        # Check if it's printable ASCII-ish
-        if all(32 <= ord(c) <= 126 or c in '\n\r\t' for c in text):
-            return text
+        decoded_text = payload_bytes.decode('utf-8')
+        # Verify it's printable
+        if all(32 <= ord(ch) <= 126 or ch in '\n\r\t' for ch in decoded_text):
+            return decoded_text
     except UnicodeDecodeError:
         pass
     
@@ -251,8 +374,11 @@ class UARTTransport:
         # Encode command
         cmd_byte = bytes([_encode_command(message.command)])
         
-        # Encode payload
-        payload_bytes = _encode_payload(message.payload)
+        # Look up schema for this command to ensure proper type handling
+        cmd_schema = PAYLOAD_SCHEMAS.get(message.command)
+        
+        # Encode payload with schema (prevents "magic" type guessing)
+        payload_bytes = _encode_payload(message.payload, cmd_schema)
         
         # Build raw packet (before COBS)
         raw_packet = dest_bytes + cmd_byte + payload_bytes
@@ -339,9 +465,12 @@ class UARTTransport:
         
         offset += 1
         
-        # Parse payload
+        # Look up schema for this command to ensure proper type handling
+        cmd_schema = PAYLOAD_SCHEMAS.get(command)
+        
+        # Parse payload with schema (avoids ambiguous type interpretation)
         payload_bytes = data[offset:]
-        payload = _decode_payload(payload_bytes)
+        payload = _decode_payload(payload_bytes, cmd_schema)
         
         return Message(destination, command, payload)
     
