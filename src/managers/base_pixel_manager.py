@@ -59,6 +59,26 @@ class BasePixelManager:
         self.pixels.fill((0, 0, 0))
         self.pixels.show()
 
+    def clear_animation(self, idx, priority=0):
+        """
+        Clears the animation for a specific pixel index.
+        Respects priority: Only clears if priority is >= current animation priority.
+        Returns True if cleared, False otherwise.
+        """
+        # Validate index bounds
+        if idx < 0 or idx >= self.num_pixels:
+            return False
+        
+        slot = self.active_animations[idx]
+        if slot.active:
+            # Only clear if priority is sufficient
+            if priority < slot.priority:
+                return False
+            slot.clear()
+            self._active_count -= 1
+            return True
+        return False
+
     def set_animation(self, idx, anim_type, color, speed=1.0, duration=None, priority=0):
         """
         Registers an animation for a specific pixel index.

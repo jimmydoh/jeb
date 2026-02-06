@@ -33,6 +33,40 @@ class AnimationSlot:
         self.active = False
 
 
+# Mock BasePixelManager for testing clear_animation
+class MockPixelObject:
+    def __init__(self, n):
+        self.n = n
+
+class MockBasePixelManager:
+    """Minimal mock of BasePixelManager to test clear_animation."""
+    def __init__(self, num_pixels):
+        self.num_pixels = num_pixels
+        self.active_animations = [AnimationSlot() for _ in range(num_pixels)]
+        self._active_count = 0
+    
+    def clear_animation(self, idx, priority=0):
+        """Clear animation for a specific pixel."""
+        if idx < 0 or idx >= self.num_pixels:
+            return False
+        
+        slot = self.active_animations[idx]
+        if slot.active:
+            if priority < slot.priority:
+                return False
+            slot.clear()
+            self._active_count -= 1
+            return True
+        return False
+    
+    def set_animation_for_test(self, idx, anim_type, priority):
+        """Helper to set up animation for testing."""
+        slot = self.active_animations[idx]
+        if not slot.active:
+            self._active_count += 1
+        slot.set(anim_type, (255, 0, 0), 1.0, 0.0, None, priority)
+
+
 def test_animation_slot_initialization():
     """Test that AnimationSlot initializes correctly."""
     print("Testing AnimationSlot initialization...")
@@ -133,6 +167,48 @@ def test_no_dict_allocation():
     print("✓ Memory optimization test passed")
 
 
+def test_clear_animation_abstraction():
+    """Test that clear_animation properly abstracts slot manipulation."""
+    print("\nTesting clear_animation abstraction...")
+    
+    manager = MockBasePixelManager(5)
+    
+    # Test 1: Clear animation that doesn't exist returns False
+    result = manager.clear_animation(0, priority=1)
+    assert result == False, "Clearing inactive slot should return False"
+    assert manager._active_count == 0, "Active count should be 0"
+    
+    # Test 2: Set and clear animation successfully
+    manager.set_animation_for_test(0, "BLINK", priority=2)
+    assert manager._active_count == 1, "Active count should be 1"
+    result = manager.clear_animation(0, priority=2)
+    assert result == True, "Clearing active slot with sufficient priority should return True"
+    assert not manager.active_animations[0].active, "Slot should be inactive"
+    assert manager._active_count == 0, "Active count should be decremented"
+    
+    # Test 3: Priority check - cannot clear higher priority animation
+    manager.set_animation_for_test(1, "PULSE", priority=5)
+    assert manager._active_count == 1, "Active count should be 1"
+    result = manager.clear_animation(1, priority=3)
+    assert result == False, "Clearing with insufficient priority should return False"
+    assert manager.active_animations[1].active, "Slot should still be active"
+    assert manager._active_count == 1, "Active count should remain 1"
+    
+    # Test 4: Clear with higher priority succeeds
+    result = manager.clear_animation(1, priority=6)
+    assert result == True, "Clearing with higher priority should succeed"
+    assert not manager.active_animations[1].active, "Slot should be inactive"
+    assert manager._active_count == 0, "Active count should be 0"
+    
+    # Test 5: Bounds checking
+    result = manager.clear_animation(-1, priority=99)
+    assert result == False, "Out of bounds index should return False"
+    result = manager.clear_animation(10, priority=99)
+    assert result == False, "Out of bounds index should return False"
+    
+    print("✓ clear_animation abstraction test passed")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("BasePixelManager Animation Slot Test Suite")
@@ -144,6 +220,7 @@ if __name__ == "__main__":
         test_animation_slot_reuse()
         test_animation_slot_clear()
         test_no_dict_allocation()
+        test_clear_animation_abstraction()
         
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")
