@@ -25,7 +25,7 @@ def calculate_crc8(data):
             else:
                 crc <<= 1
             crc &= 0xFF
-    return f"{crc:02X}".encode('ascii')
+    return crc
 
 class MockUtilities:
     cobs_encode = staticmethod(cobs.cobs_encode)
