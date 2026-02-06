@@ -13,7 +13,9 @@ import time
 import busio
 import neopixel
 
-from utilities import JEBPixel, Palette, Pins, calculate_crc8, verify_crc8
+from utilities import JEBPixel, Palette, Pins
+
+from transport import Message, UARTTransport
 
 from managers import HIDManager, LEDManager, PowerManager, SegmentManager, UARTManager
 
@@ -32,8 +34,8 @@ class IndustrialSatelliteFirmware(Satellite):
     
     def __init__(self, uart=None):
         """Initialize the Industrial Satellite Firmware."""
-        super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, uart=uart)
-
+        # Note: uart parameter is for backwards compatibility but not used
+        
         # State Variables
         self.last_tx = 0
 
@@ -67,8 +69,19 @@ class IndustrialSatelliteFirmware(Satellite):
         )
         
         # Wrap UARTs with buffering managers
-        self.uart_up = UARTManager(uart_up_hw)
-        self.uart_down = UARTManager(uart_down_hw)
+        uart_up_mgr = UARTManager(uart_up_hw)
+        uart_down_mgr = UARTManager(uart_down_hw)
+        
+        # Wrap with transport layer
+        self.transport_up = UARTTransport(uart_up_mgr)
+        self.transport_down = UARTTransport(uart_down_mgr)
+        
+        # Store the raw UART managers for relay functionality
+        self.uart_up_mgr = uart_up_mgr
+        self.uart_down_mgr = uart_down_mgr
+        
+        # Initialize base class with upstream transport
+        super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, transport=self.transport_up)
 
         # Init I2C bus
         self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
@@ -114,14 +127,12 @@ class IndustrialSatelliteFirmware(Satellite):
                 self.segment.start_message(f"ID {self.id}", loop=False)
 
                 # Pass the NEW index downstream for the next box
-                data = f"ALL|ID_ASSIGN|{self.id}"
-                crc = calculate_crc8(data)
-                self.uart_down.write(f"{data}|{crc}\n".encode())
+                msg_out = Message("ALL", "ID_ASSIGN", self.id)
+                self.transport_down.send(msg_out)
             else:
                 # Not our type? Pass it along unchanged
-                data = f"ALL|ID_ASSIGN|{val}"
-                crc = calculate_crc8(data)
-                self.uart_down.write(f"{data}|{crc}\n".encode())
+                msg_out = Message("ALL", "ID_ASSIGN", val)
+                self.transport_down.send(msg_out)
 
         elif cmd == "SETENC":
             # Set the encoder position to a specific value
@@ -270,10 +281,10 @@ class IndustrialSatelliteFirmware(Satellite):
         # Pre-allocate a buffer to avoid memory fragmentation
         buf = bytearray(64)
         while True:
-            if self.uart_down.in_waiting > 0:
+            if self.uart_down_mgr.in_waiting > 0:
                 # Read whatever is available and immediately fire it upstream
-                num_read = self.uart_down.readinto(buf)
-                self.uart_up.write(buf[:num_read])
+                num_read = self.uart_down_mgr.readinto(buf)
+                self.uart_up_mgr.write(buf[:num_read])
             await asyncio.sleep(0) # Yield control immediately to other tasks
 
     async def monitor_power(self):
@@ -286,25 +297,22 @@ class IndustrialSatelliteFirmware(Satellite):
 
             # Send periodic voltage reports upstream every 5 seconds
             if now - last_broadcast > 5.0:
-                data = f"{self.id}|POWER|{v['in']},{v['bus']},{v['log']}"
-                crc = calculate_crc8(data)
-                self.uart_up.write(f"{data}|{crc}\n".encode())
+                msg_out = Message(self.id, "POWER", f"{v['in']},{v['bus']},{v['log']}")
+                self.transport_up.send(msg_out)
                 last_broadcast = now
 
             # Safety Check: Logic rail sagging (Potential Buck Converter or Audio overload)
             if v["log"] < 4.7:
                 # Local warning: Dim LEDs to reduce current draw
                 self.leds.pixels.brightness = 0.05
-                data = f"{self.id}|ERROR|LOGIC_BROWNOUT:{v['log']}V"
-                crc = calculate_crc8(data)
-                self.uart_up.write(f"{data}|{crc}\n".encode())
+                msg_out = Message(self.id, "ERROR", f"LOGIC_BROWNOUT:{v['log']}V")
+                self.transport_up.send(msg_out)
 
             # Safety Check: Downstream Bus Failure
             if self.power.sat_pwr.value and v["bus"] < 17.0:
                 self.power.emergency_kill() # Instant cut-off
-                data = f"{self.id}|ERROR|BUS_SHUTDOWN:LOW_V"
-                crc = calculate_crc8(data)
-                self.uart_up.write(f"{data}|{crc}\n".encode())
+                msg_out = Message(self.id, "ERROR", "BUS_SHUTDOWN:LOW_V")
+                self.transport_up.send(msg_out)
 
             await asyncio.sleep(0.5)
 
@@ -313,27 +321,23 @@ class IndustrialSatelliteFirmware(Satellite):
         while True:
             # Scenario: Physical link detected but power is currently OFF
             if self.power.satbus_connected and not self.power.sat_pwr.value:
-                data = f"{self.id}|LOG|LINK_DETECTED:INIT_PWR"
-                crc = calculate_crc8(data)
-                self.uart_up.write(f"{data}|{crc}\n".encode())
+                msg_out = Message(self.id, "LOG", "LINK_DETECTED:INIT_PWR")
+                self.transport_up.send(msg_out)
                 # Perform soft-start to protect the bus
                 success, error = await self.power.soft_start_satellites()
                 if success:
-                    data = f"{self.id}|LOG|LINK_ACTIVE"
-                    crc = calculate_crc8(data)
-                    self.uart_up.write(f"{data}|{crc}\n".encode())
+                    msg_out = Message(self.id, "LOG", "LINK_ACTIVE")
+                    self.transport_up.send(msg_out)
                 else:
-                    data = f"{self.id}|ERROR|PWR_FAILED:{error}"
-                    crc = calculate_crc8(data)
-                    self.uart_up.write(f"{data}|{crc}\n".encode())
+                    msg_out = Message(self.id, "ERROR", f"PWR_FAILED:{error}")
+                    self.transport_up.send(msg_out)
                     self.leds.pixels.fill((255, 0, 0))
 
             # Scenario: Physical link lost while power is ON
             elif not self.power.satbus_connected and self.power.sat_pwr.value:
                 self.power.emergency_kill() # Immediate hardware cut-off
-                data = f"{self.id}|ERROR|LINK_LOST"
-                crc = calculate_crc8(data)
-                self.uart_up.write(f"{data}|{crc}\n".encode())
+                msg_out = Message(self.id, "ERROR", "LINK_LOST")
+                self.transport_up.send(msg_out)
                 self.leds.pixels.fill((0, 0, 0))
 
             await asyncio.sleep(0.5)
@@ -355,9 +359,8 @@ class IndustrialSatelliteFirmware(Satellite):
             # TX TO UPSTREAM
             if not self.id: # Initial Discovery Phase
                 if time.monotonic() - self.last_tx > 3.0:
-                    data = f"SAT|NEW_SAT|{self.sat_type_id}"
-                    crc = calculate_crc8(data)
-                    self.uart_up.write(f"{data}|{crc}\n".encode())
+                    msg_out = Message("SAT", "NEW_SAT", self.sat_type_id)
+                    self.transport_up.send(msg_out)
                     self.last_tx = time.monotonic()
                     self.leds.flash_led(-1,
                                        Palette.AMBER,
@@ -366,32 +369,24 @@ class IndustrialSatelliteFirmware(Satellite):
                                        priority=1)
             else: # Normal Operation
                 if time.monotonic() - self.last_tx > 0.1:
-                    data = f"{self.id}|STATUS|{self.hid.get_status_string()}"
-                    crc = calculate_crc8(data)
-                    self.uart_up.write(f"{data}|{crc}\n".encode())
+                    msg_out = Message(self.id, "STATUS", self.hid.get_status_string())
+                    self.transport_up.send(msg_out)
                     self.last_tx = time.monotonic()
 
             # RX FROM UPSTREAM -> CMD PROCESSING & TX TO DOWNSTREAM
             try:
-                # Use buffered read_line - non-blocking
-                line = self.uart_up.read_line()
-                if line and "|" in line:
-                    # Verify CRC
-                    is_valid, data = verify_crc8(line)
-                    if not is_valid:
-                        # Discard corrupted packet
-                        print(f"CRC check failed, discarding packet: {line}")
-                        continue
-                    
-                    parts = data.split("|")
-                    if len(parts) >= 3 and (parts[0] == self.id or parts[0] == "ALL"):
-                        await self.process_local_cmd(parts[1], parts[2])
-                    # Forward packet downstream with original CRC
-                    self.uart_down.write((line + "\n").encode())
+                # Receive message via transport (non-blocking)
+                message = self.transport_up.receive()
+                if message:
+                    # Process if addressed to us or broadcast
+                    if message.destination == self.id or message.destination == "ALL":
+                        await self.process_local_cmd(message.command, message.payload)
+                    # Forward message downstream
+                    self.transport_down.send(message)
             except ValueError as e:
                 # Buffer overflow or other error
-                print(f"UART Error: {e}")
+                print(f"Transport Error: {e}")
             except Exception as e:
-                print(f"UART Unexpected Error: {e}")
+                print(f"Transport Unexpected Error: {e}")
 
             await asyncio.sleep(0.01)
