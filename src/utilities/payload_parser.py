@@ -68,7 +68,10 @@ def unpack_bytes(payload_bytes, format_string='B'):
     
     Parameters:
         payload_bytes (bytes): Binary payload data
-        format_string (str): struct format string (default: 'B' for unsigned bytes)
+        format_string (str): struct format string (default: 'B' for a single unsigned byte)
+            Note: Default 'B' unpacks only ONE byte. For multiple bytes, specify the
+            complete format (e.g., 'BBB' for 3 bytes, '<HH' for 2 shorts, etc.)
+            
             Common formats:
             - 'B': unsigned byte (0-255)
             - 'b': signed byte (-128-127)
@@ -85,9 +88,11 @@ def unpack_bytes(payload_bytes, format_string='B'):
         struct.error: If the format string doesn't match the data size
         
     Example:
-        >>> unpack_bytes(b'\\x64\\xc8', 'BB')
+        >>> unpack_bytes(b'\\x64', 'B')  # Single byte
+        (100,)
+        >>> unpack_bytes(b'\\x64\\xc8', 'BB')  # Two bytes
         (100, 200)
-        >>> unpack_bytes(b'\\x00\\x01\\x00\\x02', '<HH')
+        >>> unpack_bytes(b'\\x00\\x01\\x00\\x02', '<HH')  # Two little-endian shorts
         (256, 512)
     """
     if not payload_bytes:
