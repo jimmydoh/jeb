@@ -11,7 +11,9 @@ from modes import IndustrialStartup, JEBris, MainMenu, SafeCracker, Simon
 
 from satellites import IndustrialSatelliteDriver
 
-from utilities import JEBPixel, Pins, calculate_crc8, verify_crc8
+from utilities import JEBPixel, Pins
+
+from transport import Message, UARTTransport
 
 from managers import AudioManager
 from managers import BuzzerManager
@@ -111,7 +113,10 @@ class CoreManager:
             )
         
         # Wrap UART with buffering manager
-        self.uart = UARTManager(uart_hw)
+        uart_manager = UARTManager(uart_hw)
+        
+        # Wrap with transport layer for protocol handling
+        self.transport = UARTTransport(uart_manager)
 
         # System State
         self.satellites = {}
@@ -128,9 +133,8 @@ class CoreManager:
         self.satellites = {}
 
         # Broadcast to Industrial type (01) starting at index 00
-        data = "ALL|ID_ASSIGN|0100"
-        crc = calculate_crc8(data)
-        self.uart.write(f"{data}|{crc}\n".encode())
+        message = Message("ALL", "ID_ASSIGN", "0100")
+        self.transport.send(message)
         await asyncio.sleep(0.5)
 
     def get_sat(self, sid):
@@ -182,22 +186,14 @@ class CoreManager:
             await asyncio.sleep(0.1)
         return "SUCCESS"
 
-    def handle_packet(self, line):
-        """Parses incoming UART packets and updates satellite states."""
-        self.last_raw_uart = line
+    def handle_message(self, message):
+        """Processes incoming messages and updates satellite states."""
+        # Store raw representation for debugging
+        self.last_raw_uart = str(message)
         try:
-            # Verify CRC first
-            is_valid, data = verify_crc8(line)
-            if not is_valid:
-                # Discard corrupted packet
-                print(f"CRC check failed, discarding packet: {line}")
-                return
-            
-            parts = data.split("|", 2)
-            if len(parts) < 3:
-                return  # Malformed packet
-
-            sid, cmd, payload = parts[0], parts[1], parts[2]
+            sid = message.destination
+            cmd = message.command
+            payload = message.payload
 
             # Command Processing
             if cmd == "STATUS":
@@ -246,7 +242,7 @@ class CoreManager:
                     self.satellites[sid].update_heartbeat()
                 else:
                     if payload == "INDUSTRIAL":
-                        self.satellites[sid] = IndustrialSatelliteDriver(sid, self.uart)
+                        self.satellites[sid] = IndustrialSatelliteDriver(sid, self.transport)
                     asyncio.create_task(
                         self.display.update_status(
                             "NEW SAT",
@@ -260,9 +256,8 @@ class CoreManager:
                         f"TYPE {payload} FOUND"
                     )
                 )
-                data_out = f"ALL|ID_ASSIGN|{payload}00"
-                crc = calculate_crc8(data_out)
-                self.uart.write(f"{data_out}|{crc}\n".encode())
+                msg_out = Message("ALL", "ID_ASSIGN", f"{payload}00")
+                self.transport.send(msg_out)
             else:
                 asyncio.create_task(
                     self.display.update_status(
@@ -271,23 +266,23 @@ class CoreManager:
                     )
                 )
         except Exception as e:
-            print(f"Error handling packet: {e}")
+            print(f"Error handling message: {e}")
 
     async def monitor_sats(self):
         """Background task to monitor inbound messages from satellite boxes."""
         while True:
-            # UART Packet Handling with buffering
+            # Message Handling via transport layer
             if self.power.satbus_powered:
                 try:
-                    # Use buffered read_line - non-blocking
-                    line = self.uart.read_line()
-                    if line:
-                        self.handle_packet(line)
+                    # Receive message via transport (non-blocking)
+                    message = self.transport.receive()
+                    if message:
+                        self.handle_message(message)
                 except ValueError as e:
                     # Buffer overflow or other error
-                    print(f"UART Error: {e}")
+                    print(f"Transport Error: {e}")
                 except Exception as e:
-                    print(f"UART Unexpected Error: {e}")
+                    print(f"Transport Unexpected Error: {e}")
 
             # Link Watchdog
             now = ticks_ms()
