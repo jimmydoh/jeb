@@ -312,7 +312,7 @@ class Updater:
         
         try:
             # Create directory if needed
-            dir_path = local_path.rsplit("/", 1)[0] if "/" in local_path else ""
+            dir_path = os.path.dirname(local_path) if "/" in local_path else ""
             if dir_path:
                 try:
                     os.makedirs(dir_path)
@@ -404,7 +404,7 @@ class Updater:
         
         try:
             # Ensure destination directory exists
-            dest_dir = dest_path.rsplit("/", 1)[0] if "/" in dest_path else ""
+            dest_dir = os.path.dirname(dest_path) if "/" in dest_path else ""
             if dest_dir and dest_dir != "/":
                 try:
                     os.makedirs(dest_dir)

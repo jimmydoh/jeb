@@ -196,6 +196,7 @@ Files are downloaded to SD card staging area then installed to flash:
 
 ### 6. File Verification
 
+The updater compares local files against the manifest:
 
 1. Calculate SHA256 of local file
 2. Compare with manifest hash
