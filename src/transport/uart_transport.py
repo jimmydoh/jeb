@@ -57,6 +57,11 @@ ENCODING_FLOATS = 'floats'
 
 # Command-specific payload schemas
 # This eliminates ambiguity in type interpretation
+# 
+# Schema fields:
+#   'type': One of the ENCODING_* constants above
+#   'desc': Human-readable description
+#   'count': (optional) Expected number of values for validation
 PAYLOAD_SCHEMAS = {
     # Core commands - these use text IDs that must not be interpreted as numbers
     "ID_ASSIGN": {'type': ENCODING_RAW_TEXT, 'desc': 'Device ID string like "0100"'},
@@ -234,7 +239,9 @@ def _encode_payload(payload_str, cmd_schema=None):
             return bytes(output)
     
     # Backward compatibility: heuristic encoding for commands without schemas
-    # This maintains existing behavior but is being phased out
+    # NOTE: This fallback still has the "magic" type guessing issue where
+    # numeric-looking strings like "01" will be encoded as integer 1.
+    # Commands should be migrated to use explicit schemas to avoid this.
     value_list = payload_str.split(',')
     
     try:

@@ -12,6 +12,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Mock COBS functions
+# Note: This relies on sys.path.insert above to locate src/utilities/cobs
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities'))
 import cobs
 
