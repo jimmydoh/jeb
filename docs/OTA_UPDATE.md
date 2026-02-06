@@ -191,8 +191,6 @@ Files are downloaded to SD card staging area:
 **Note**: Current implementation stages files to SD card. A future enhancement could copy files from staging to internal flash on boot.
 
 ### 6. File Verification
-         │
-### 6. File Verification
 
 The updater compares local files against the manifest:
 
