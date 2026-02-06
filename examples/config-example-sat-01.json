@@ -7,5 +7,5 @@
     "test_mode": false,
     "wifi_ssid": "YOUR_WIFI_SSID",
     "wifi_password": "YOUR_WIFI_PASSWORD",
-    "update_url": "http://your-server.com/manifest.json"
+    "update_url": "https://your-server.com/manifest.json"
 }

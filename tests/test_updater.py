@@ -21,38 +21,41 @@ class MockRadio:
     def connect(self, ssid, password, timeout=30):
         self.connected = True
 
-class MockWiFiModule:
-    """Mock wifi module with radio attribute."""
-    radio = MockRadio()
+# Create mock modules
+import types
 
+wifi_module = types.ModuleType('wifi')
+wifi_module.radio = MockRadio()
+sys.modules['wifi'] = wifi_module
+
+socketpool_module = types.ModuleType('socketpool')
 class MockSocketPool:
     def __init__(self, radio):
         pass
+socketpool_module.SocketPool = MockSocketPool
+sys.modules['socketpool'] = socketpool_module
 
-class MockSSL:
-    @staticmethod
-    def create_default_context():
-        return None
+ssl_module = types.ModuleType('ssl')
+def create_default_context():
+    return None
+ssl_module.create_default_context = create_default_context
+sys.modules['ssl'] = ssl_module
 
-class MockRequests:
-    class Session:
-        def __init__(self, pool, context):
-            pass
-        
-        def get(self, url, timeout=10):
-            pass
-
-class MockMicrocontroller:
-    @staticmethod
-    def reset():
+adafruit_requests_module = types.ModuleType('adafruit_requests')
+class MockSession:
+    def __init__(self, pool, context):
         pass
+    
+    def get(self, url, timeout=10):
+        pass
+adafruit_requests_module.Session = MockSession
+sys.modules['adafruit_requests'] = adafruit_requests_module
 
-# Install mocks as modules
-sys.modules['wifi'] = MockWiFiModule
-sys.modules['socketpool'] = MockSocketPool
-sys.modules['ssl'] = MockSSL
-sys.modules['adafruit_requests'] = MockRequests
-sys.modules['microcontroller'] = MockMicrocontroller
+microcontroller_module = types.ModuleType('microcontroller')
+def mock_reset():
+    pass
+microcontroller_module.reset = mock_reset
+sys.modules['microcontroller'] = microcontroller_module
 
 # Now import updater
 import updater
