@@ -1,6 +1,8 @@
 # File: src/managers/uart_manager.py
 """UART Manager with robust buffering for handling fragmented packets."""
 
+from .ring_buffer import RingBuffer
+
 
 class UARTManager:
     """Manages UART communication with non-blocking buffering.
@@ -18,7 +20,7 @@ class UARTManager:
             max_buffer_size: Maximum buffer size in bytes (default: 1024).
         """
         self.uart = uart
-        self.buffer = bytearray()
+        self.buffer = RingBuffer(capacity=max_buffer_size)
         self.max_buffer_size = max_buffer_size
     
     def write(self, data):
@@ -68,11 +70,10 @@ class UARTManager:
         if self.uart.in_waiting > 0:
             available_bytes = self.uart.read(self.uart.in_waiting)
             if available_bytes:
-                self.buffer.extend(available_bytes)
-                
-                # Check for buffer overflow (potential malformed packet)
-                if len(self.buffer) > self.max_buffer_size:
-                    # Clear buffer and raise error
+                try:
+                    self.buffer.extend(available_bytes)
+                except ValueError:
+                    # Buffer overflow - clear and raise error
                     self.buffer.clear()
                     raise ValueError("UART buffer overflow - clearing buffer")
         
@@ -81,7 +82,7 @@ class UARTManager:
         if newline_idx >= 0:
             # Extract the line (including \n)
             line_bytes = bytes(self.buffer[:newline_idx + 1])
-            # Remove the extracted line from buffer in-place
+            # Remove the extracted line from buffer in O(1) time
             del self.buffer[:newline_idx + 1]
             
             # Decode and return the line (without \n)
@@ -114,10 +115,10 @@ class UARTManager:
         if self.uart.in_waiting > 0:
             available_bytes = self.uart.read(self.uart.in_waiting)
             if available_bytes:
-                self.buffer.extend(available_bytes)
-                
-                # Check for buffer overflow
-                if len(self.buffer) > self.max_buffer_size:
+                try:
+                    self.buffer.extend(available_bytes)
+                except ValueError:
+                    # Buffer overflow - clear and raise error
                     self.buffer.clear()
                     raise ValueError("UART buffer overflow - clearing buffer")
         
@@ -126,7 +127,7 @@ class UARTManager:
         if delim_idx >= 0:
             # Extract data including delimiter
             data = bytes(self.buffer[:delim_idx + len(delimiter)])
-            # Remove from buffer
+            # Remove from buffer in O(1) time
             del self.buffer[:delim_idx + len(delimiter)]
             return data
         
