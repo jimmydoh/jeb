@@ -220,6 +220,7 @@ async def test_show_icon_non_blocking_slide_left():
     
     # The method should return almost immediately (< 50ms)
     # The animation takes ~450ms (9 frames * 50ms), but should not block
+    # Using 100ms threshold to account for system overhead and scheduling delays
     assert elapsed < 0.1, \
         f"show_icon with SLIDE_LEFT should return immediately, took {elapsed:.3f}s"
     

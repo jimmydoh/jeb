@@ -63,8 +63,12 @@ class MatrixManager(BasePixelManager):
                                 self.draw_pixel(target_x, y, px_color)
                 self.pixels.show()
                 await asyncio.sleep(0.05)
+        except asyncio.CancelledError:
+            # Task was cancelled - clean up and exit gracefully
+            raise
         except Exception as e:
             # Log error but don't crash - animation is non-critical
+            # Note: print() is standard for CircuitPython/embedded systems
             print(f"Error in SLIDE_LEFT animation: {e}")
 
     async def show_icon(
