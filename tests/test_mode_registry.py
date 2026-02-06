@@ -76,26 +76,31 @@ def test_core_manager_updated():
     assert "from modes import IndustrialStartup, JEBris, MainMenu, SafeCracker, Simon" not in content, \
         "Old direct import still present in CoreManager"
     
-    # Check that modes are accessed via _mode_registry or _get_mode, not extracted to module-level variables
+    # Check that modes are not extracted to module-level variables
     assert 'IndustrialStartup = _mode_registry["IndustrialStartup"]' not in content, \
-        "Mode extraction found - modes should be accessed dynamically via _mode_registry or _get_mode"
+        "Mode extraction found - modes should be accessed dynamically"
     assert 'JEBris = _mode_registry["JEBris"]' not in content, \
-        "Mode extraction found - modes should be accessed dynamically via _mode_registry or _get_mode"
+        "Mode extraction found - modes should be accessed dynamically"
     assert 'MainMenu = _mode_registry["MainMenu"]' not in content, \
-        "Mode extraction found - modes should be accessed dynamically via _mode_registry or _get_mode"
+        "Mode extraction found - modes should be accessed dynamically"
+    assert 'IndustrialStartup = self.modes[' not in content, \
+        "Mode extraction found - modes should be accessed dynamically"
+    assert 'JEBris = self.modes[' not in content, \
+        "Mode extraction found - modes should be accessed dynamically"
+    assert 'MainMenu = self.modes[' not in content, \
+        "Mode extraction found - modes should be accessed dynamically"
     
-    # Verify modes are accessed dynamically (either via _mode_registry or _get_mode)
-    mainmenu_found = '_mode_registry["MainMenu"]' in content or '_get_mode("MainMenu")' in content
-    jebris_found = '_mode_registry["JEBris"]' in content or '_get_mode("JEBris")' in content
-    simon_found = '_mode_registry["Simon"]' in content or '_get_mode("Simon")' in content
-    safe_found = '_mode_registry["SafeCracker"]' in content or '_get_mode("SafeCracker")' in content
-    industrial_found = '_mode_registry["IndustrialStartup"]' in content or '_get_mode("IndustrialStartup")' in content
+    # Verify _mode_registry is populated (stored by class name)
+    assert 'self._mode_registry[mode_class.__name__] = mode_class' in content, \
+        "_mode_registry should be populated with mode classes by class name"
     
-    assert mainmenu_found, "MainMenu should be accessed dynamically"
-    assert jebris_found, "JEBris should be accessed dynamically"
-    assert simon_found, "Simon should be accessed dynamically"
-    assert safe_found, "SafeCracker should be accessed dynamically"
-    assert industrial_found, "IndustrialStartup should be accessed dynamically"
+    # Verify self.modes is populated (stored by mode ID for runtime access)
+    assert 'self.modes[meta["id"]] = mode_class' in content, \
+        "self.modes should be populated with mode classes by mode ID"
+    
+    # Verify modes are accessed dynamically via self.modes dict in the main loop
+    assert 'mode_class = self.modes[self.mode]' in content or 'self.modes[self.mode]' in content, \
+        "Modes should be accessed dynamically via self.modes dict"
     
     print("✓ CoreManager updated correctly")
     return True

@@ -127,6 +127,9 @@ class CoreManager:
         # Map Mode IDs to Classes for O(1) lookup
         self.modes = {}
         for mode_class in AVAILABLE_MODES:
+            # Store by class name for registry access
+            self._mode_registry[mode_class.__name__] = mode_class
+            # Store by mode ID for efficient lookup in main loop
             # Safely access METADATA, defaulting if missing
             meta = getattr(mode_class, "METADATA", BaseMode.METADATA)
             self.modes[meta["id"]] = mode_class
