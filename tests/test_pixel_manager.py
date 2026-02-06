@@ -175,14 +175,14 @@ def test_clear_animation_abstraction():
     
     # Test 1: Clear animation that doesn't exist returns False
     result = manager.clear_animation(0, priority=1)
-    assert result == False, "Clearing inactive slot should return False"
+    assert result is False, "Clearing inactive slot should return False"
     assert manager._active_count == 0, "Active count should be 0"
     
     # Test 2: Set and clear animation successfully
     manager.set_animation_for_test(0, "BLINK", priority=2)
     assert manager._active_count == 1, "Active count should be 1"
     result = manager.clear_animation(0, priority=2)
-    assert result == True, "Clearing active slot with sufficient priority should return True"
+    assert result is True, "Clearing active slot with sufficient priority should return True"
     assert not manager.active_animations[0].active, "Slot should be inactive"
     assert manager._active_count == 0, "Active count should be decremented"
     
@@ -190,21 +190,21 @@ def test_clear_animation_abstraction():
     manager.set_animation_for_test(1, "PULSE", priority=5)
     assert manager._active_count == 1, "Active count should be 1"
     result = manager.clear_animation(1, priority=3)
-    assert result == False, "Clearing with insufficient priority should return False"
+    assert result is False, "Clearing with insufficient priority should return False"
     assert manager.active_animations[1].active, "Slot should still be active"
     assert manager._active_count == 1, "Active count should remain 1"
     
     # Test 4: Clear with higher priority succeeds
     result = manager.clear_animation(1, priority=6)
-    assert result == True, "Clearing with higher priority should succeed"
+    assert result is True, "Clearing with higher priority should succeed"
     assert not manager.active_animations[1].active, "Slot should be inactive"
     assert manager._active_count == 0, "Active count should be 0"
     
     # Test 5: Bounds checking
     result = manager.clear_animation(-1, priority=99)
-    assert result == False, "Out of bounds index should return False"
+    assert result is False, "Out of bounds index should return False"
     result = manager.clear_animation(10, priority=99)
-    assert result == False, "Out of bounds index should return False"
+    assert result is False, "Out of bounds index should return False"
     
     print("✓ clear_animation abstraction test passed")
 
