@@ -14,12 +14,45 @@ class MatrixManager(BasePixelManager):
 
         self.palette = Palette.PALETTE_LIBRARY
         self.icons = Icons.ICON_LIBRARY
+        
+        # Pre-calculated brightness cache to avoid tuple allocation
+        # Key: (base_color_tuple, brightness_rounded), Value: dimmed_color_tuple
+        self._brightness_cache = {}
 
     def _get_idx(self, x, y):
         """Maps 2D (0-7) to Serpentine 1D index."""
         if y % 2 == 0:
             return (y * 8) + x
         return (y * 8) + (7 - x)
+    
+    def _get_dimmed_color(self, base_color, brightness):
+        """
+        Get brightness-adjusted color with caching to avoid repeated tuple allocation.
+        
+        Args:
+            base_color: Tuple of (r, g, b) values
+            brightness: Float from 0.0 to 1.0
+            
+        Returns:
+            Tuple of brightness-adjusted (r, g, b) values
+        """
+        # Fast path: brightness is 1.0, return original color
+        if brightness == 1.0:
+            return base_color
+        
+        # Round brightness to 2 decimal places for cache efficiency
+        # This gives us 101 possible brightness levels (0.00 to 1.00)
+        brightness_key = round(brightness, 2)
+        
+        # Create cache key
+        cache_key = (base_color, brightness_key)
+        
+        # Check cache
+        if cache_key not in self._brightness_cache:
+            # Calculate and cache the dimmed color
+            self._brightness_cache[cache_key] = tuple(int(c * brightness_key) for c in base_color)
+        
+        return self._brightness_cache[cache_key]
 
     def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None):
         """Sets a specific pixel on the matrix."""
@@ -74,7 +107,7 @@ class MatrixManager(BasePixelManager):
                             pixel_value = icon_data[y * 8 + x]
                             if pixel_value != 0:
                                 base = color if color else self.palette[pixel_value]
-                                px_color = tuple(int(c * brightness) for c in base)
+                                px_color = self._get_dimmed_color(base, brightness)
                                 self.draw_pixel(target_x, y, px_color)
                 self.pixels.show()
                 await asyncio.sleep(0.05)
@@ -87,7 +120,7 @@ class MatrixManager(BasePixelManager):
 
                 if pixel_value != 0:
                     base = color if color else self.palette[pixel_value]
-                    px_color = tuple(int(c * brightness) for c in base)
+                    px_color = self._get_dimmed_color(base, brightness)
 
                     if anim_mode:
                         self.set_animation(idx, anim_mode, px_color, speed)
