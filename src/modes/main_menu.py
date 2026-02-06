@@ -38,7 +38,7 @@ class MainMenu(UtilityMode):
                 if req == "CORE":
                     continue
                 # Check for specific satellite type presence
-                has_sat = any(s.sat_type == req for s in self.core.satellites.values())
+                has_sat = any(s.sat_type_name == req for s in self.core.satellites.values())
                 if not has_sat:
                     requirements_met = False
                     break

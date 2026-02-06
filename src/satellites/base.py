@@ -9,7 +9,7 @@ class Satellite:
 
     Attributes:
         id (str): Satellite ID.
-        sat_type (str): Satellite type.
+        sat_type_name (str): Satellite type name.
         last_seen (int): Timestamp of last heartbeat.
         is_active (bool): Satellite box active status.
     """
@@ -30,11 +30,6 @@ class Satellite:
         self.last_seen = 0
         self.is_active = True
     
-    @property
-    def sat_type(self):
-        """Alias for sat_type_name for backward compatibility."""
-        return self.sat_type_name
-
     def update_heartbeat(self):
         """Update the last seen timestamp."""
         self.last_seen = ticks_ms()

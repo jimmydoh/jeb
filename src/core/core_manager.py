@@ -354,7 +354,7 @@ class CoreManager:
                         continue
                     found = False
                     for sat in self.satellites.values():
-                        if sat.sat_type == req and sat.is_active:
+                        if sat.sat_type_name == req and sat.is_active:
                             found = True
                             target_sat = sat  # Set target satellite for monitoring
                             break
