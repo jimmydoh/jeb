@@ -30,7 +30,11 @@ class Message:
         return f"Message(dest={self.destination}, cmd={self.command}, payload={self.payload})"
     
     def __eq__(self, other):
-        """Check equality based on message contents."""
+        """Check equality based on message contents.
+        
+        Note: Payloads are normalized for comparison - bytes are decoded to UTF-8 strings.
+        If byte payloads contain invalid UTF-8, the comparison will return False.
+        """
         if not isinstance(other, Message):
             return False
         
@@ -38,10 +42,14 @@ class Message:
         self_payload = self.payload
         other_payload = other.payload
         
-        if isinstance(self_payload, (bytes, bytearray)):
-            self_payload = self_payload.decode('utf-8')
-        if isinstance(other_payload, (bytes, bytearray)):
-            other_payload = other_payload.decode('utf-8')
+        try:
+            if isinstance(self_payload, (bytes, bytearray)):
+                self_payload = self_payload.decode('utf-8')
+            if isinstance(other_payload, (bytes, bytearray)):
+                other_payload = other_payload.decode('utf-8')
+        except UnicodeDecodeError:
+            # If decoding fails, payloads are not equal
+            return False
         
         return (self.destination == other.destination and
                 self.command == other.command and

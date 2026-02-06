@@ -773,9 +773,12 @@ class HIDManager:
         Read inputs and format status packet with custom ordering and selection.
         Uses pre-allocated buffer to minimize heap fragmentation.
 
+        Note: Despite the name, this method returns bytes (not str) for efficiency.
+        This avoids a decode/encode cycle in the transport layer.
+
         :param order: A list of strings identifying which data to include and in what order.
                     If None, defaults to all fields in standard order.
-        :return: bytes object containing the status data (not decoded to string for efficiency)
+        :return: bytes object containing the status data (UTF-8 encoded)
         """
         # 1. Map string keys to the actual buffer-writing methods
         sources = {
