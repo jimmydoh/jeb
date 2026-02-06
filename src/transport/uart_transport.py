@@ -186,13 +186,13 @@ def _encode_payload(payload_str):
 
 
 def _decode_payload(payload_bytes):
-    """Decode payload bytes to string.
+    """Decode payload bytes, returning raw bytes for binary data or string for text.
     
     Parameters:
         payload_bytes (bytes): Raw payload data
         
     Returns:
-        str: Decoded payload string
+        bytes or str: Raw bytes for binary data, decoded string for text data
     """
     if not payload_bytes:
         return ""
@@ -206,9 +206,9 @@ def _decode_payload(payload_bytes):
     except UnicodeDecodeError:
         pass
     
-    # Otherwise, treat as comma-separated integers
-    values = [str(b) for b in payload_bytes]
-    return ','.join(values)
+    # Return raw bytes for binary data - let the application layer decide how to decode
+    # This avoids the "String Boomerang" problem where we convert bytes -> string -> bytes
+    return payload_bytes
 
 
 class UARTTransport:

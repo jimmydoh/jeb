@@ -7,7 +7,7 @@ from .icons import Icons
 from .jeb_pixel import JEBPixel
 from .mcp_keys import MCPKeys
 from .palette import Palette
-from .payload_parser import parse_values, get_int, get_float, get_str
+from .payload_parser import parse_values, unpack_bytes, get_int, get_float, get_str
 from .pins import Pins
 
 __all__ = [
@@ -20,6 +20,7 @@ __all__ = [
     'MCPKeys',
     'Palette',
     'parse_values',
+    'unpack_bytes',
     'get_int',
     'get_float',
     'get_str',
