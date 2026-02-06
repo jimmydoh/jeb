@@ -1,0 +1,157 @@
+name: Build MPY Files
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/**/*.py'
+  pull_request:
+    paths:
+      - 'src/**/*.py'
+  workflow_dispatch:
+
+jobs:
+  build-mpy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install mpy-cross
+        run: |
+          pip install mpy-cross
+      
+      - name: Create output directory
+        run: |
+          mkdir -p build/mpy
+      
+      - name: Compile Python files to MPY
+        run: |
+          # Find all .py files in src directory and compile them
+          # Track compilation results
+          success_count=0
+          fail_count=0
+          failed_files=""
+          
+          while IFS= read -r pyfile; do
+            # Get the relative path from src
+            relpath="${pyfile#src/}"
+            # Create directory structure in build/mpy
+            mkdir -p "build/mpy/$(dirname "$relpath")"
+            # Compile to .mpy
+            echo "Compiling $pyfile..."
+            if mpy-cross "$pyfile" -o "build/mpy/${relpath%.py}.mpy" 2>&1; then
+              echo "  ✓ Success: build/mpy/${relpath%.py}.mpy"
+              ((success_count++))
+            else
+              echo "  ✗ Failed: $pyfile"
+              if [ -z "$failed_files" ]; then
+                failed_files="$pyfile"
+              else
+                failed_files="$failed_files"$'\n'"$pyfile"
+              fi
+              ((fail_count++))
+            fi
+          done < <(find src -name "*.py" -type f)
+          
+          echo ""
+          echo "=== Compilation Summary ==="
+          echo "Successfully compiled: $success_count files"
+          echo "Failed to compile: $fail_count files"
+          
+          if [ -n "$failed_files" ]; then
+            echo ""
+            echo "Failed files:"
+            echo "$failed_files"
+          fi
+      
+      - name: Generate manifest.json
+        run: |
+          python3 << 'EOF'
+          import os
+          import json
+          import hashlib
+          
+          def calculate_sha256(filepath):
+              """Calculate SHA256 hash of a file."""
+              sha256_hash = hashlib.sha256()
+              with open(filepath, "rb") as f:
+                  for byte_block in iter(lambda: f.read(4096), b""):
+                      sha256_hash.update(byte_block)
+              return sha256_hash.hexdigest()
+          
+          manifest = {
+              "version": "1.0.0",
+              "build_timestamp": os.popen('date -u +"%Y-%m-%dT%H:%M:%SZ"').read().strip(),
+              "files": []
+          }
+          
+          # Walk through build/mpy directory
+          for root, dirs, files in os.walk("build/mpy"):
+              for file in files:
+                  if file.endswith(".mpy"):
+                      filepath = os.path.join(root, file)
+                      # Get relative path from build/mpy
+                      relpath = os.path.relpath(filepath, "build/mpy")
+                      
+                      file_info = {
+                          "path": relpath,
+                          "download_path": f"mpy/{relpath}",
+                          "sha256": calculate_sha256(filepath),
+                          "size": os.path.getsize(filepath)
+                      }
+                      manifest["files"].append(file_info)
+          
+          # Sort files by path for consistent output
+          manifest["files"].sort(key=lambda x: x["path"])
+          
+          # Write manifest.json to build directory
+          with open("build/manifest.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+          
+          print(f"Generated manifest.json with {len(manifest['files'])} files")
+          EOF
+      
+      - name: Display manifest
+        run: |
+          echo "=== Generated Manifest ==="
+          cat build/manifest.json
+      
+      - name: Upload MPY files
+        uses: actions/upload-artifact@v4
+        with:
+          name: mpy-files
+          path: build/mpy/
+          retention-days: 90
+      
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest
+          path: build/manifest.json
+          retention-days: 90
+      
+      - name: Create release artifacts (on tag push)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cd build
+          tar -czf mpy-files.tar.gz mpy/
+          zip -r mpy-files.zip mpy/
+      
+      - name: Upload release artifacts (on tag push)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-archives
+          path: |
+            build/mpy-files.tar.gz
+            build/mpy-files.zip
+          retention-days: 90
