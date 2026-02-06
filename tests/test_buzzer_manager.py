@@ -4,6 +4,7 @@
 import sys
 import os
 import asyncio
+import pytest
 
 # Mock CircuitPython modules BEFORE any imports
 class MockModule:
@@ -148,6 +149,7 @@ def test_buzzer_stop():
     print("✓ Buzzer stop test passed")
 
 
+@pytest.mark.asyncio
 async def test_buzzer_tone_logic():
     """Test internal tone playing logic."""
     print("\nTesting buzzer tone logic...")
@@ -170,6 +172,7 @@ async def test_buzzer_tone_logic():
     print("✓ Buzzer tone logic test passed")
 
 
+@pytest.mark.asyncio
 async def test_buzzer_sequence_logic():
     """Test internal sequence playing logic."""
     print("\nTesting buzzer sequence logic...")
@@ -186,6 +189,7 @@ async def test_buzzer_sequence_logic():
     print("✓ Buzzer sequence logic test passed")
 
 
+@pytest.mark.asyncio
 async def test_buzzer_sequence_with_rest():
     """Test sequence with rest notes (frequency = 0)."""
     print("\nTesting sequence with rest notes...")

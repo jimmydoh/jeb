@@ -4,6 +4,7 @@
 import sys
 import os
 import asyncio
+import pytest
 
 # Add src to path for direct module import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -78,6 +79,7 @@ def test_basemode_default_variant():
     print("✓ Default variant test passed")
 
 
+@pytest.mark.asyncio
 async def test_basemode_enter():
     """Test BaseMode enter method."""
     print("\nTesting BaseMode enter...")
@@ -97,6 +99,7 @@ async def test_basemode_enter():
     print("✓ BaseMode enter test passed")
 
 
+@pytest.mark.asyncio
 async def test_basemode_exit():
     """Test BaseMode exit method."""
     print("\nTesting BaseMode exit...")
@@ -117,6 +120,7 @@ async def test_basemode_exit():
     print("✓ BaseMode exit test passed")
 
 
+@pytest.mark.asyncio
 async def test_basemode_run_not_implemented():
     """Test that run method raises NotImplementedError."""
     print("\nTesting BaseMode run raises NotImplementedError...")
@@ -133,6 +137,7 @@ async def test_basemode_run_not_implemented():
     print("✓ run() NotImplementedError test passed")
 
 
+@pytest.mark.asyncio
 async def test_basemode_execute():
     """Test BaseMode execute wrapper."""
     print("\nTesting BaseMode execute wrapper...")
@@ -170,6 +175,7 @@ async def test_basemode_execute():
     print("✓ execute() wrapper test passed")
 
 
+@pytest.mark.asyncio
 async def test_basemode_execute_ensures_exit():
     """Test that execute always calls exit, even on exception."""
     print("\nTesting BaseMode execute ensures exit on exception...")
@@ -202,6 +208,7 @@ async def test_basemode_execute_ensures_exit():
     print("✓ execute() ensures exit test passed")
 
 
+@pytest.mark.asyncio
 async def test_basemode_subclass_implementation():
     """Test that subclasses can properly implement run."""
     print("\nTesting BaseMode subclass implementation...")
@@ -229,6 +236,7 @@ async def test_basemode_subclass_implementation():
     print("✓ Subclass implementation test passed")
 
 
+@pytest.mark.asyncio
 async def test_basemode_execute_return_none():
     """Test that execute handles run methods that return None."""
     print("\nTesting BaseMode execute with None return...")
