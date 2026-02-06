@@ -75,7 +75,7 @@ jobs:
             echo "$failed_files"
           fi
       
-      - name: Generate manifest.json
+      - name: Generate manifest.json and version.json
         run: |
           python3 << 'EOF'
           import os
@@ -90,13 +90,16 @@ jobs:
                       sha256_hash.update(byte_block)
               return sha256_hash.hexdigest()
           
+          build_timestamp = os.popen('date -u +"%Y-%m-%dT%H:%M:%SZ"').read().strip()
+          
           manifest = {
               "version": "1.0.0",
-              "build_timestamp": os.popen('date -u +"%Y-%m-%dT%H:%M:%SZ"').read().strip(),
+              "build_timestamp": build_timestamp,
               "files": []
           }
           
           # Walk through build/mpy directory
+          total_size = 0
           for root, dirs, files in os.walk("build/mpy"):
               for file in files:
                   if file.endswith(".mpy"):
@@ -104,11 +107,14 @@ jobs:
                       # Get relative path from build/mpy
                       relpath = os.path.relpath(filepath, "build/mpy")
                       
+                      file_size = os.path.getsize(filepath)
+                      total_size += file_size
+                      
                       file_info = {
                           "path": relpath,
                           "download_path": f"mpy/{relpath}",
                           "sha256": calculate_sha256(filepath),
-                          "size": os.path.getsize(filepath)
+                          "size": file_size
                       }
                       manifest["files"].append(file_info)
           
@@ -120,12 +126,28 @@ jobs:
               json.dump(manifest, f, indent=2)
           
           print(f"Generated manifest.json with {len(manifest['files'])} files")
+          
+          # Generate lightweight version.json
+          version_info = {
+              "version": "1.0.0",
+              "build_timestamp": build_timestamp,
+              "file_count": len(manifest["files"]),
+              "total_size": total_size
+          }
+          
+          with open("build/version.json", "w") as f:
+              json.dump(version_info, f, indent=2)
+          
+          print(f"Generated version.json ({os.path.getsize('build/version.json')} bytes)")
           EOF
       
-      - name: Display manifest
+      - name: Display manifest and version
         run: |
           echo "=== Generated Manifest ==="
           cat build/manifest.json
+          echo ""
+          echo "=== Generated Version ==="
+          cat build/version.json
       
       - name: Upload MPY files
         uses: actions/upload-artifact@v4
@@ -134,11 +156,13 @@ jobs:
           path: build/mpy/
           retention-days: 90
       
-      - name: Upload manifest
+      - name: Upload manifest and version
         uses: actions/upload-artifact@v4
         with:
           name: manifest
-          path: build/manifest.json
+          path: |
+            build/manifest.json
+            build/version.json
           retention-days: 90
       
       - name: Create release artifacts (on tag push)

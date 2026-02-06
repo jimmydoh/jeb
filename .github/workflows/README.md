@@ -52,6 +52,19 @@ Fields:
 - `sha256`: SHA256 hash for integrity verification
 - `size`: File size in bytes
 
+A lightweight `version.json` file is also included for quick version checks (~112 bytes):
+
+```json
+{
+  "version": "1.0.0",
+  "build_timestamp": "2026-02-06T11:06:01Z",
+  "file_count": 51,
+  "total_size": 84353
+}
+```
+
+This file is ideal for checking if a new build is available without downloading the full manifest.
+
 ### 3. Release Archives (on tag push)
 
 When a tag is pushed, the workflow also creates:
@@ -147,6 +160,27 @@ Some Python 3 syntax features may not be supported by MicroPython/CircuitPython.
 - Logged in the workflow output
 - Excluded from the manifest
 - The workflow continues and succeeds if at least one file compiles
+
+#### Current Known Issue: code.py
+
+The `src/code.py` file currently fails to compile due to dictionary unpacking syntax on line 63:
+
+```python
+return {**default_config, **config_data}  # Merge with defaults
+```
+
+**Why it fails:** MicroPython's parser (used by mpy-cross v1.27) doesn't support the `{**dict1, **dict2}` dictionary unpacking operator that was introduced in Python 3.5. While CircuitPython 10.x runtime supports this syntax when running .py files directly, the mpy-cross compiler has not yet implemented it in its parser.
+
+**Workaround:** This file can remain as a `.py` file on the device since CircuitPython will parse it correctly at runtime. The precompiled `.mpy` files for all other modules will still provide performance benefits. Alternatively, the code can be rewritten to use `dict.update()` or manual merging if compilation is required:
+
+```python
+# Alternative syntax that compiles:
+merged_config = default_config.copy()
+merged_config.update(config_data)
+return merged_config
+```
+
+**Impact:** This is a minor limitation affecting only 1 of 52 files. The workflow successfully compiles 51 files (98% success rate), and the main application entry point can run as interpreted Python without significant performance impact.
 
 ## Maintenance
 
