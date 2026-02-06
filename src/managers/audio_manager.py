@@ -12,7 +12,7 @@ MAX_PRELOAD_SIZE_BYTES = 20 * 1024  # 20KB
 
 class AudioManager:
     """Manages audio playback and mixing."""
-    def __init__(self, sck, ws, sd, voice_count=3, root_data_dir="/"):
+    def __init__(self, sck, ws, sd, voice_count=4, root_data_dir="/"):
         self.root_data_dir = root_data_dir
         self.audio = audiobusio.I2SOut(sck, ws, sd)
         self.mixer = audiomixer.Mixer(
@@ -28,65 +28,48 @@ class AudioManager:
         self.CH_ATMO = 0
         self.CH_SFX  = 1
         self.CH_VOICE = 2
+        self.CH_SYNTH = 3
 
         # Cache for frequently used small sound files
         # Format: {"filename": RawSampleObject}
         self._cache = {}
+
+    def attach_synth(self, synth_source):
+        """Attach a synth source (e.g., SynthManager) to the mixer."""
+        self.mixer.voice[self.CH_SYNTH].play(synth_source)
 
     def preload(self, files):
         """
         Loads small WAV files into memory permanently.
         Call this during boot for UI sounds (ticks, clicks, beeps).
         Decodes the audio into RAM and closes file handles immediately.
-        
+
         Files larger than 20KB are skipped and will be streamed from disk instead.
         This prevents MemoryError on RP2350 with limited RAM (520KB).
         """
         import os
-        
+
         for filename in files:
             try:
                 filepath = self.root_data_dir + filename
-                
+
                 # Check file size before attempting to load
                 try:
                     file_size = os.stat(filepath).st_size
                 except OSError:
                     print(f"Audio Error: Could not stat {filename}")
                     continue
-                
+
                 # Only preload files smaller than 20KB
                 if file_size > MAX_PRELOAD_SIZE_BYTES:
                     print(f"Audio Info: Skipping preload of {filename} ({file_size} bytes > {MAX_PRELOAD_SIZE_BYTES} bytes). Will stream from disk.")
                     continue
-                
-                # Open the file, read it completely, then close it
+
+                # Open the file and create a RawSample object
                 f = open(filepath, "rb")
                 try:
-                    wav = audiocore.WaveFile(f, bytearray(256))
-                    
-                    # Extract audio properties
-                    sample_rate = wav.sample_rate
-                    channel_count = wav.channel_count
-                    bits_per_sample = wav.bits_per_sample
-                    
-                    # Read all audio data into memory
-                    audio_data = bytearray()
-                    while True:
-                        samples = bytearray(1024)
-                        num_read = wav.readinto(samples)
-                        if num_read == 0:
-                            break
-                        audio_data.extend(samples[:num_read])
-                    
-                    # Create RawSample from the decoded data
-                    raw_sample = audiocore.RawSample(
-                        audio_data,
-                        channel_count=channel_count,
-                        sample_rate=sample_rate,
-                        bits_per_sample=bits_per_sample
-                    )
-                    
+                    # WaveFile will read and decode the WAV file
+                    raw_sample = audiocore.RawSample(f)
                     self._cache[filepath] = raw_sample
                     print(f"Audio Info: Preloaded {filename} ({file_size} bytes)")
                 finally:

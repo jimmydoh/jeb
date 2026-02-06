@@ -12,6 +12,7 @@ from .led_manager import LEDManager
 from .matrix_manager import MatrixManager
 from .power_manager import PowerManager
 from .segment_manager import SegmentManager
+from .synth_manager import SynthManager
 from .uart_manager import UARTManager
 
 __all__ = [
@@ -26,5 +27,6 @@ __all__ = [
     "MatrixManager",
     "PowerManager",
     "SegmentManager",
+    "SynthManager",
     "UARTManager",
 ]
