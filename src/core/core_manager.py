@@ -13,7 +13,7 @@ from satellites import IndustrialSatelliteDriver
 
 from utilities import JEBPixel, Pins
 
-from transport import Message, UARTTransport
+from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
 from managers import AudioManager
 from managers import BuzzerManager
@@ -116,7 +116,7 @@ class CoreManager:
         uart_manager = UARTManager(uart_hw)
         
         # Wrap with transport layer for protocol handling
-        self.transport = UARTTransport(uart_manager)
+        self.transport = UARTTransport(uart_manager, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
         # System State
         self.satellites = {}

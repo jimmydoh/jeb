@@ -5,104 +5,19 @@ from utilities import cobs_encode, cobs_decode, calculate_crc8
 from .message import Message
 
 
-# Command string to byte mapping
-COMMAND_MAP = {
-    # Core commands
-    "STATUS": 0x01,
-    "ID_ASSIGN": 0x02,
-    "NEW_SAT": 0x03,
-    "ERROR": 0x04,
-    "LOG": 0x05,
-    "POWER": 0x06,
-    
-    # LED commands
-    "LED": 0x10,
-    "LEDFLASH": 0x11,
-    "LEDBREATH": 0x12,
-    "LEDCYLON": 0x13,
-    "LEDCENTRI": 0x14,
-    "LEDRAINBOW": 0x15,
-    "LEDGLITCH": 0x16,
-    
-    # Display commands
-    "DSP": 0x20,
-    "DSPCORRUPT": 0x21,
-    "DSPMATRIX": 0x22,
-    
-    # Encoder commands
-    "SETENC": 0x30,
-}
-
-# Reverse mapping for decoding
-COMMAND_REVERSE_MAP = {v: k for k, v in COMMAND_MAP.items()}
-
-
-# Special destination IDs
-DEST_MAP = {
-    "ALL": 0xFF,
-    "SAT": 0xFE,
-}
-
-DEST_REVERSE_MAP = {v: k for k, v in DEST_MAP.items()}
-
-# Maximum value for single-byte index (used to distinguish 1-byte vs 2-byte dest IDs)
-MAX_INDEX_VALUE = 100
-
-
-# Payload encoding type constants
-ENCODING_RAW_TEXT = 'text'
-ENCODING_NUMERIC_BYTES = 'bytes'
-ENCODING_NUMERIC_WORDS = 'words'
-ENCODING_FLOATS = 'floats'
-
-# Command-specific payload schemas
-# This eliminates ambiguity in type interpretation
-# 
-# Schema fields:
-#   'type': One of the ENCODING_* constants above
-#   'desc': Human-readable description
-#   'count': (optional) Expected number of values for validation
-PAYLOAD_SCHEMAS = {
-    # Core commands - these use text IDs that must not be interpreted as numbers
-    "ID_ASSIGN": {'type': ENCODING_RAW_TEXT, 'desc': 'Device ID string like "0100"'},
-    "NEW_SAT": {'type': ENCODING_RAW_TEXT, 'desc': 'Satellite type ID like "01"'},
-    "ERROR": {'type': ENCODING_RAW_TEXT, 'desc': 'Error description text'},
-    "LOG": {'type': ENCODING_RAW_TEXT, 'desc': 'Log message text'},
-    
-    # LED commands - RGB values plus parameters (variable count OK)
-    "LED": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness bytes'},
-    "LEDFLASH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
-    "LEDBREATH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
-    "LEDCYLON": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
-    "LEDCENTRI": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
-    "LEDRAINBOW": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'speed,brightness'},
-    "LEDGLITCH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'intensity,brightness'},
-    
-    # Display commands
-    "DSP": {'type': ENCODING_RAW_TEXT, 'desc': 'Display message text'},
-    "DSPCORRUPT": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'level,duration'},
-    "DSPMATRIX": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'speed,density'},
-    
-    # Power and status - use floats for voltage/current measurements
-    "POWER": {'type': ENCODING_FLOATS, 'desc': 'voltage1,voltage2,current'},
-    "STATUS": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'status bytes (variable length)'},
-    
-    # Encoder
-    "SETENC": {'type': ENCODING_NUMERIC_WORDS, 'desc': 'encoder position'},
-}
-
-
-def _encode_destination(dest_str):
+def _encode_destination(dest_str, dest_map, max_index_value):
     """Encode destination string to byte(s).
     
     Parameters:
         dest_str (str): Destination like "ALL", "SAT", or "0101"
+        dest_map (dict): Mapping of special destination strings to byte values
+        max_index_value (int): Maximum value for single-byte index
         
     Returns:
         bytes: Encoded destination (1-2 bytes)
     """
-    if dest_str in DEST_MAP:
-        return bytes([DEST_MAP[dest_str]])
+    if dest_str in dest_map:
+        return bytes([dest_map[dest_str]])
     
     # Parse numeric ID like "0101" -> type=01, index=01
     if len(dest_str) == 4 and dest_str.isdigit():
@@ -115,15 +30,21 @@ def _encode_destination(dest_str):
         type_id = int(dest_str)
         return bytes([type_id])
     
-    raise ValueError(f"Invalid destination format: {dest_str}")
+    raise ValueError(
+        f"Invalid destination format: {dest_str}. "
+        f"Expected 4-digit numeric ID (e.g., '0101'), mapped destination string, "
+        f"or single type ID."
+    )
 
 
-def _decode_destination(data, offset):
+def _decode_destination(data, offset, dest_reverse_map, max_index_value):
     """Decode destination from bytes.
     
     Parameters:
         data (bytes): Raw packet data
         offset (int): Starting offset for destination
+        dest_reverse_map (dict): Reverse mapping of byte values to destination strings
+        max_index_value (int): Maximum value for single-byte index
         
     Returns:
         tuple: (dest_str, bytes_consumed)
@@ -134,11 +55,11 @@ def _decode_destination(data, offset):
     dest_byte = data[offset]
     
     # Check for special destinations
-    if dest_byte in DEST_REVERSE_MAP:
-        return DEST_REVERSE_MAP[dest_byte], 1
+    if dest_byte in dest_reverse_map:
+        return dest_reverse_map[dest_byte], 1
     
     # Check if next byte is part of ID (indices are typically < MAX_INDEX_VALUE)
-    if offset + 1 < len(data) and data[offset + 1] < MAX_INDEX_VALUE:
+    if offset + 1 < len(data) and data[offset + 1] < max_index_value:
         # Two-byte ID: type + index
         type_id = dest_byte
         index = data[offset + 1]
@@ -148,37 +69,39 @@ def _decode_destination(data, offset):
     return f"{dest_byte:02d}", 1
 
 
-def _encode_command(cmd_str):
+def _encode_command(cmd_str, command_map):
     """Encode command string to byte.
     
     Parameters:
         cmd_str (str): Command string like "LED"
+        command_map (dict): Mapping of command strings to byte values
         
     Returns:
         int: Command byte
     """
-    if cmd_str in COMMAND_MAP:
-        return COMMAND_MAP[cmd_str]
+    if cmd_str in command_map:
+        return command_map[cmd_str]
     
     raise ValueError(f"Unknown command: {cmd_str}")
 
 
-def _decode_command(cmd_byte):
+def _decode_command(cmd_byte, command_reverse_map):
     """Decode command byte to string.
     
     Parameters:
         cmd_byte (int): Command byte
+        command_reverse_map (dict): Reverse mapping of byte values to command strings
         
     Returns:
         str: Command string
     """
-    if cmd_byte in COMMAND_REVERSE_MAP:
-        return COMMAND_REVERSE_MAP[cmd_byte]
+    if cmd_byte in command_reverse_map:
+        return command_reverse_map[cmd_byte]
     
     raise ValueError(f"Unknown command byte: 0x{cmd_byte:02X}")
 
 
-def _encode_payload(payload_str, cmd_schema=None):
+def _encode_payload(payload_str, cmd_schema=None, encoding_constants=None):
     """Encode payload string to bytes with explicit type handling.
     
     This function eliminates the fragility of "magic" type guessing by using
@@ -187,6 +110,7 @@ def _encode_payload(payload_str, cmd_schema=None):
     Parameters:
         payload_str (str): Payload string to encode
         cmd_schema (dict, optional): Schema defining payload structure
+        encoding_constants (dict, optional): Dictionary with ENCODING_* constants
         
     Returns:
         bytes: Encoded payload
@@ -195,11 +119,11 @@ def _encode_payload(payload_str, cmd_schema=None):
         return b''
     
     # Use schema if provided to avoid ambiguous type interpretation
-    if cmd_schema:
+    if cmd_schema and encoding_constants:
         encoding_type = cmd_schema.get('type')
         
         # Text encoding - preserve the string exactly as-is
-        if encoding_type == ENCODING_RAW_TEXT:
+        if encoding_type == encoding_constants.get('ENCODING_RAW_TEXT'):
             return payload_str.encode('utf-8')
         
         # Parse comma-separated values for numeric encodings
@@ -213,7 +137,7 @@ def _encode_payload(payload_str, cmd_schema=None):
             )
         
         # Byte encoding (0-255 range)
-        if encoding_type == ENCODING_NUMERIC_BYTES:
+        if encoding_type == encoding_constants.get('ENCODING_NUMERIC_BYTES'):
             output = bytearray()
             for val_str in value_list:
                 numeric_val = int(val_str)
@@ -223,7 +147,7 @@ def _encode_payload(payload_str, cmd_schema=None):
             return bytes(output)
         
         # Word encoding (16-bit signed integers)
-        elif encoding_type == ENCODING_NUMERIC_WORDS:
+        elif encoding_type == encoding_constants.get('ENCODING_NUMERIC_WORDS'):
             output = bytearray()
             for val_str in value_list:
                 numeric_val = int(val_str)
@@ -231,7 +155,7 @@ def _encode_payload(payload_str, cmd_schema=None):
             return bytes(output)
         
         # Float encoding (IEEE 754 single precision)
-        elif encoding_type == ENCODING_FLOATS:
+        elif encoding_type == encoding_constants.get('ENCODING_FLOATS'):
             output = bytearray()
             for val_str in value_list:
                 float_val = float(val_str)
@@ -272,7 +196,7 @@ def _encode_payload(payload_str, cmd_schema=None):
         return payload_str.encode('utf-8')
 
 
-def _decode_payload(payload_bytes, cmd_schema=None):
+def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
     """Decode payload bytes to string with explicit type handling.
     
     Uses command-specific schemas to properly interpret binary data.
@@ -280,6 +204,7 @@ def _decode_payload(payload_bytes, cmd_schema=None):
     Parameters:
         payload_bytes (bytes): Raw binary payload data
         cmd_schema (dict, optional): Schema defining payload structure
+        encoding_constants (dict, optional): Dictionary with ENCODING_* constants
         
     Returns:
         bytes or str: Raw bytes for binary data, decoded string for text data
@@ -288,19 +213,19 @@ def _decode_payload(payload_bytes, cmd_schema=None):
         return ""
     
     # Use schema if provided
-    if cmd_schema:
+    if cmd_schema and encoding_constants:
         encoding_type = cmd_schema.get('type')
         
         # Text decoding
-        if encoding_type == ENCODING_RAW_TEXT:
+        if encoding_type == encoding_constants.get('ENCODING_RAW_TEXT'):
             return payload_bytes.decode('utf-8')
         
         # Byte decoding (0-255 values)
-        if encoding_type == ENCODING_NUMERIC_BYTES:
+        if encoding_type == encoding_constants.get('ENCODING_NUMERIC_BYTES'):
             return ','.join(str(b) for b in payload_bytes)
         
         # Word decoding (16-bit signed)
-        elif encoding_type == ENCODING_NUMERIC_WORDS:
+        elif encoding_type == encoding_constants.get('ENCODING_NUMERIC_WORDS'):
             decoded_vals = []
             byte_offset = 0
             while byte_offset + 2 <= len(payload_bytes):
@@ -310,7 +235,7 @@ def _decode_payload(payload_bytes, cmd_schema=None):
             return ','.join(decoded_vals)
         
         # Float decoding (IEEE 754)
-        elif encoding_type == ENCODING_FLOATS:
+        elif encoding_type == encoding_constants.get('ENCODING_FLOATS'):
             decoded_vals = []
             byte_offset = 0
             while byte_offset + 4 <= len(payload_bytes):
@@ -354,13 +279,39 @@ class UARTTransport:
     - New: [DEST][CMD][PAYLOAD][CRC] + COBS (zero parsing, direct byte access)
     """
     
-    def __init__(self, uart_manager):
+    def __init__(self, uart_manager, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None):
         """Initialize UART transport.
         
         Parameters:
             uart_manager (UARTManager): The UART manager for physical I/O.
+            command_map (dict, optional): Command string to byte mapping. 
+                If None, an empty map is used (transport won't encode/decode commands).
+            dest_map (dict, optional): Special destination string to byte mapping.
+                If None, an empty map is used (only numeric IDs supported).
+            max_index_value (int, optional): Maximum value for single-byte index.
+                Defaults to 100.
+            payload_schemas (dict, optional): Command-specific payload schemas defining
+                encoding/decoding types. If None, uses heuristic encoding.
         """
         self.uart_manager = uart_manager
+        
+        # Store the maps for encoding/decoding
+        self.command_map = command_map if command_map is not None else {}
+        self.command_reverse_map = {v: k for k, v in self.command_map.items()}
+        
+        self.dest_map = dest_map if dest_map is not None else {}
+        self.dest_reverse_map = {v: k for k, v in self.dest_map.items()}
+        
+        self.max_index_value = max_index_value
+        self.payload_schemas = payload_schemas if payload_schemas is not None else {}
+        
+        # Create encoding constants dictionary for payload functions
+        self.encoding_constants = {
+            'ENCODING_RAW_TEXT': 'text',
+            'ENCODING_NUMERIC_BYTES': 'bytes',
+            'ENCODING_NUMERIC_WORDS': 'words',
+            'ENCODING_FLOATS': 'floats'
+        }
     
     def send(self, message):
         """Send a message over UART using binary protocol with COBS framing.
@@ -369,16 +320,16 @@ class UARTTransport:
             message (Message): The message to send.
         """
         # Encode destination
-        dest_bytes = _encode_destination(message.destination)
+        dest_bytes = _encode_destination(message.destination, self.dest_map, self.max_index_value)
         
         # Encode command
-        cmd_byte = bytes([_encode_command(message.command)])
+        cmd_byte = bytes([_encode_command(message.command, self.command_map)])
         
         # Look up schema for this command to ensure proper type handling
-        cmd_schema = PAYLOAD_SCHEMAS.get(message.command)
+        cmd_schema = self.payload_schemas.get(message.command)
         
         # Encode payload with schema (prevents "magic" type guessing)
-        payload_bytes = _encode_payload(message.payload, cmd_schema)
+        payload_bytes = _encode_payload(message.payload, cmd_schema, self.encoding_constants)
         
         # Build raw packet (before COBS)
         raw_packet = dest_bytes + cmd_byte + payload_bytes
@@ -446,7 +397,7 @@ class UARTTransport:
         
         # Parse destination
         try:
-            destination, dest_len = _decode_destination(data, 0)
+            destination, dest_len = _decode_destination(data, 0, self.dest_reverse_map, self.max_index_value)
         except ValueError as e:
             print(f"Destination decode error: {e}")
             return None
@@ -458,7 +409,7 @@ class UARTTransport:
             return None
         
         try:
-            command = _decode_command(data[offset])
+            command = _decode_command(data[offset], self.command_reverse_map)
         except ValueError as e:
             print(f"Command decode error: {e}")
             return None
@@ -466,11 +417,11 @@ class UARTTransport:
         offset += 1
         
         # Look up schema for this command to ensure proper type handling
-        cmd_schema = PAYLOAD_SCHEMAS.get(command)
+        cmd_schema = self.payload_schemas.get(command)
         
         # Parse payload with schema (avoids ambiguous type interpretation)
         payload_bytes = data[offset:]
-        payload = _decode_payload(payload_bytes, cmd_schema)
+        payload = _decode_payload(payload_bytes, cmd_schema, self.encoding_constants)
         
         return Message(destination, command, payload)
     
