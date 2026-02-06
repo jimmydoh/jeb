@@ -153,17 +153,8 @@ class CoreManager:
         # System State
         self._mode_registry = {}
         
-        # modes: Dict[str, Type[BaseMode]]
-        # Public registry mapping mode IDs to mode classes for O(1) lookup.
-        # Each mode class must have a METADATA class attribute with structure:
-        # {
-        #     "id": str,              # Unique identifier for the mode
-        #     "name": str,            # Human-readable display name
-        #     "icon": str,            # Icon key from the icon library
-        #     "requires": List[str],  # Hardware dependencies (e.g., ["CORE", "INDUSTRIAL"])
-        #     "settings": List[dict]  # Optional configuration settings
-        # }
-        # Access pattern: self.core.modes[mode_id] to get mode class
+        # modes: Public registry mapping mode IDs to mode classes
+        # See class docstring for detailed structure documentation
         self.modes = {}
         for mode_class in AVAILABLE_MODES:
             # Store by class name for registry access
