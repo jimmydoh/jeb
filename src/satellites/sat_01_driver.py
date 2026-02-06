@@ -6,6 +6,9 @@ when running on the Core. This class represents the Core's view of a remote
 Industrial Satellite and does not include hardware-specific code.
 """
 
+from managers import HIDManager
+from utilities import Pins
+
 from .base import Satellite
 
 TYPE_ID = "01"
@@ -14,41 +17,39 @@ TYPE_NAME = "INDUSTRIAL"
 
 class IndustrialSatelliteDriver(Satellite):
     """Core-side driver for Industrial Satellite.
-    
+
     Handles telemetry parsing and command serialization.
     Does not load hardware libraries or perform hardware I/O.
     """
-    
+
     def __init__(self, sid, uart):
         """Initialize the Industrial Satellite Driver.
-        
+
         Parameters:
             sid (str): Satellite ID assigned by the Core.
             uart: UART manager for communication.
         """
         super().__init__(sid=sid, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, uart=uart)
-        
+
         # Initialize HIDManager in monitor-only mode (no hardware)
-        from managers import HIDManager
-        from utilities import Pins
-        
+
         # Define PLACEHOLDERS for State Sizing
         # Toggle Pins
         latching_toggles = [0, 0, 0, 0]
-        
+
         # Momentary Toggle Pins
         momentary_toggles = [0]
-        
+
         # Encoders
         encoders = [0]
-        
+
         # Matrix Keypads
         matrix_keypads = [(
             Pins.KEYPAD_MAP_3x3,
             [],
             []
         )]
-        
+
         self.hid = HIDManager(
             latching_toggles=latching_toggles,
             momentary_toggles=momentary_toggles,
@@ -59,7 +60,7 @@ class IndustrialSatelliteDriver(Satellite):
 
     def update_from_packet(self, data_str):
         """Updates the attribute states in the HIDManager based on the received data string.
-        
+
         This method parses telemetry data from the satellite and updates local state.
 
         Example:

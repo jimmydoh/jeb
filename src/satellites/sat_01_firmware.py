@@ -6,10 +6,10 @@ on the actual satellite hardware. This class manages physical hardware
 including neopixels, segment displays, encoders, and power management.
 """
 
-import asyncio
-import microcontroller
 import time
 
+import asyncio
+import microcontroller
 import busio
 import neopixel
 
@@ -25,11 +25,11 @@ TYPE_NAME = "INDUSTRIAL"
 
 class IndustrialSatelliteFirmware(Satellite):
     """Satellite-side firmware for Industrial Satellite.
-    
+
     Handles hardware I/O, power management, and local command processing.
     Runs on the physical satellite hardware and manages all peripherals.
     """
-    
+
     def __init__(self, uart=None):
         """Initialize the Industrial Satellite Firmware."""
         super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, uart=uart)
@@ -65,7 +65,7 @@ class IndustrialSatelliteFirmware(Satellite):
             baudrate=115200,
             timeout=0.01
         )
-        
+
         # Wrap UARTs with buffering managers
         self.uart_up = UARTManager(uart_up_hw)
         self.uart_down = UARTManager(uart_down_hw)
@@ -382,7 +382,7 @@ class IndustrialSatelliteFirmware(Satellite):
                         # Discard corrupted packet
                         print(f"CRC check failed, discarding packet: {line}")
                         continue
-                    
+
                     parts = data.split("|")
                     if len(parts) >= 3 and (parts[0] == self.id or parts[0] == "ALL"):
                         await self.process_local_cmd(parts[1], parts[2])
