@@ -8,6 +8,9 @@ def calculate_crc8(data):
     """Calculate CRC-8 checksum for a given string or bytes.
 
     Uses CRC-8-CCITT polynomial (0x07) for error detection in UART packets.
+    
+    Note: This test implementation returns strings for simplicity.
+    The actual implementation in src/utilities/crc.py returns bytes.
 
     Parameters:
         data (str or bytes): The data to calculate CRC for (e.g., "ID|CMD|VAL" or b"ID|CMD|VAL").

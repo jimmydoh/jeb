@@ -40,7 +40,7 @@ class UARTTransport:
         crc = calculate_crc8(data)
         
         # Format complete packet with CRC and newline
-        packet = f"{data}|".encode() + crc + b"\n"
+        packet = data.encode() + b"|" + crc + b"\n"
         
         # Send via UART
         self.uart_manager.write(packet)
