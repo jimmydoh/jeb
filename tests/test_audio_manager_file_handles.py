@@ -290,37 +290,42 @@ def test_multiple_channels():
     print("\nTesting independent channel management...")
     
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create multiple files
-        file1 = create_test_file(tmpdir, "stream1.wav", 30720)
-        file2 = create_test_file(tmpdir, "stream2.wav", 30720)
-        file3 = create_test_file(tmpdir, "stream3.wav", 30720)
-        
-        # Create AudioManager
-        manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
-        
-        # Play different files on different channels
-        asyncio.run(manager.play("stream1.wav", channel=0))
-        asyncio.run(manager.play("stream2.wav", channel=1))
-        asyncio.run(manager.play("stream3.wav", channel=2))
-        
-        handle1 = manager._stream_files[0]
-        handle2 = manager._stream_files[1]
-        handle3 = manager._stream_files[2]
-        
-        # Stop channel 1
-        manager.stop(1)
-        
-        # Verify only channel 1 was closed
-        assert not handle1.closed, "Channel 0 should still be open"
-        assert handle2.closed, "Channel 1 should be closed"
-        assert not handle3.closed, "Channel 2 should still be open"
-        
-        assert 0 in manager._stream_files, "Channel 0 should still be tracked"
-        assert 1 not in manager._stream_files, "Channel 1 should not be tracked"
-        assert 2 in manager._stream_files, "Channel 2 should still be tracked"
-        
-        print("  ✓ File handles managed independently per channel")
-        print("  ✓ Stopping one channel doesn't affect others")
+        manager = None
+        try:
+            # Create multiple files
+            file1 = create_test_file(tmpdir, "stream1.wav", 30720)
+            file2 = create_test_file(tmpdir, "stream2.wav", 30720)
+            file3 = create_test_file(tmpdir, "stream3.wav", 30720)
+            
+            # Create AudioManager
+            manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
+            
+            # Play different files on different channels
+            asyncio.run(manager.play("stream1.wav", channel=0))
+            asyncio.run(manager.play("stream2.wav", channel=1))
+            asyncio.run(manager.play("stream3.wav", channel=2))
+            
+            handle1 = manager._stream_files[0]
+            handle2 = manager._stream_files[1]
+            handle3 = manager._stream_files[2]
+            
+            # Stop channel 1
+            manager.stop(1)
+            
+            # Verify only channel 1 was closed
+            assert not handle1.closed, "Channel 0 should still be open"
+            assert handle2.closed, "Channel 1 should be closed"
+            assert not handle3.closed, "Channel 2 should still be open"
+            
+            assert 0 in manager._stream_files, "Channel 0 should still be tracked"
+            assert 1 not in manager._stream_files, "Channel 1 should not be tracked"
+            assert 2 in manager._stream_files, "Channel 2 should still be tracked"
+            
+            print("  ✓ File handles managed independently per channel")
+            print("  ✓ Stopping one channel doesn't affect others")
+        finally:
+            if manager is not None:
+                manager.stop_all()
     
     print("✓ Multiple channels test passed")
 
