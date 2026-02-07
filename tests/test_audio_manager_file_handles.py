@@ -234,7 +234,7 @@ def test_cached_vs_streamed():
     
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create a small file (will be cached) and a large file (will be streamed)
-        small_file = create_test_file(tmpdir, "small.wav", 10240)
+        create_test_file(tmpdir, "small.wav", 10240)
         large_file = create_test_file(tmpdir, "large.wav", 30720)
         
         # Create AudioManager and preload small file
