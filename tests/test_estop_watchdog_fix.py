@@ -5,7 +5,7 @@ This test validates that the fix for the E-Stop watchdog reset issue has been
 applied correctly by checking that the watchdog flag is updated inside the
 nested wait loop when the E-Stop button is pressed.
 
-Issue: The system performs a hard reset 8 seconds after the E-Stop is engaged 
+Issue: The system performs a hard reset 8 seconds after the E-Stop is engaged
 because the watchdog flag is not updated during the wait loop.
 
 Fix: Update self.watchdog_flags["estop"] = True inside the nested wait loop.
