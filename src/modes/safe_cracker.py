@@ -59,8 +59,7 @@ class SafeCracker(GameMode):
             speed=2.0
         )
 
-        # Push to display
-        self.core.matrix.pixels.show()
+        # Note: Hardware write is now centralized in CoreManager.render_loop()
 
     async def run(self):
         """Play the Safe Cracker game."""

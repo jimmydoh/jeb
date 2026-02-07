@@ -27,6 +27,11 @@ class JEBPixel:
             self.parent[i] = color
 
     def show(self):
-        """Pushes data for this segment only."""
-        # Pushes data for the ENTIRE strip (Matrix + Buttons)
-        self.parent.show()
+        """Updates the segment's buffer memory only.
+        
+        Note: Hardware write is now centralized in CoreManager.render_loop().
+        This method is kept for API compatibility but no longer triggers hardware writes.
+        """
+        # Memory buffer is already updated via __setitem__ and fill()
+        # No hardware write needed - render loop handles that
+        pass

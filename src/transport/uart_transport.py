@@ -255,9 +255,11 @@ def _encode_payload(payload_str, cmd_schema=None, encoding_constants=None):
 
 
 def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
-    """Decode payload bytes to string with explicit type handling.
+    """Decode payload bytes to appropriate type with explicit type handling.
     
     Uses command-specific schemas to properly interpret binary data.
+    Optimization: Returns tuples for numeric data instead of comma-separated strings
+    to reduce string allocations and GC pressure.
     
     Parameters:
         payload_bytes (bytes): Raw binary payload data
@@ -265,7 +267,10 @@ def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
         encoding_constants (dict, optional): Dictionary with ENCODING_* constants
         
     Returns:
-        bytes or str: Raw bytes for binary data, decoded string for text data
+        tuple, str, or bytes: 
+            - tuple of int/float for numeric encodings (ENCODING_NUMERIC_*, ENCODING_FLOATS)
+            - str for text encodings (ENCODING_RAW_TEXT) or printable UTF-8
+            - bytes for unknown binary data (fallback)
     """
     if not payload_bytes:
         return ""
@@ -278,29 +283,29 @@ def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
         if encoding_type == encoding_constants.get('ENCODING_RAW_TEXT'):
             return payload_bytes.decode('utf-8')
         
-        # Byte decoding (0-255 values)
+        # Byte decoding (0-255 values) - return tuple instead of string
         if encoding_type == encoding_constants.get('ENCODING_NUMERIC_BYTES'):
-            return ','.join(str(b) for b in payload_bytes)
+            return tuple(payload_bytes)
         
-        # Word decoding (16-bit signed)
+        # Word decoding (16-bit signed) - return tuple instead of string
         elif encoding_type == encoding_constants.get('ENCODING_NUMERIC_WORDS'):
             decoded_vals = []
             byte_offset = 0
             while byte_offset + 2 <= len(payload_bytes):
                 word_val = struct.unpack('<h', payload_bytes[byte_offset:byte_offset+2])[0]
-                decoded_vals.append(str(word_val))
+                decoded_vals.append(word_val)
                 byte_offset += 2
-            return ','.join(decoded_vals)
+            return tuple(decoded_vals)
         
-        # Float decoding (IEEE 754)
+        # Float decoding (IEEE 754) - return tuple instead of string
         elif encoding_type == encoding_constants.get('ENCODING_FLOATS'):
             decoded_vals = []
             byte_offset = 0
             while byte_offset + 4 <= len(payload_bytes):
                 float_val = struct.unpack('<f', payload_bytes[byte_offset:byte_offset+4])[0]
-                decoded_vals.append(str(float_val))
+                decoded_vals.append(float_val)
                 byte_offset += 4
-            return ','.join(decoded_vals)
+            return tuple(decoded_vals)
     
     # Backward compatibility: heuristic decoding
     # Try UTF-8 text interpretation first
@@ -337,6 +342,9 @@ class UARTTransport:
     - New: [DEST][CMD][PAYLOAD][CRC] + COBS (zero parsing, direct byte access)
     """
     
+    # Maximum size for internal receive buffer to prevent unbounded growth
+    MAX_BUFFER_SIZE = 1024  # ample space for ~2-4 packets
+    
     def __init__(self, uart_manager, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None):
         """Initialize UART transport.
         
@@ -370,6 +378,9 @@ class UARTTransport:
             'ENCODING_NUMERIC_WORDS': 'words',
             'ENCODING_FLOATS': 'floats'
         }
+        
+        # Internal buffer for non-blocking receive
+        self._receive_buffer = bytearray()
     
     def send(self, message):
         """Send a message over UART using binary protocol with COBS framing.
@@ -411,28 +422,37 @@ class UARTTransport:
     def receive(self):
         """Receive a message from UART if available.
         
-        Reads COBS-framed packets, decodes, verifies CRC, and parses into Message.
+        Non-blocking stateful receive that reads available bytes and buffers them
+        internally. Returns a complete message when found, or None otherwise.
+        
+        This implementation eliminates blocking read_until() calls that can stall
+        the event loop when processing garbage data without delimiters.
         
         Returns:
             Message or None: Received message if available and valid, None otherwise.
-            
-        Raises:
-            ValueError: If buffer overflow occurs (propagated from UARTManager).
         """
-        # Check if bytes are available before attempting to read
-        # This prevents blocking I/O in async loops
-        if self.uart_manager.in_waiting == 0 and self.uart_manager.buffer_size == 0:
+        # Read available bytes from UART (non-blocking)
+        available_bytes = self.uart_manager.read_available()
+        if available_bytes:
+            self._receive_buffer.extend(available_bytes)
+            
+            # SAFETY: Prevent buffer explosion from noise
+            if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
+                print("⚠️ UART Buffer Overflow - Clearing Garbage")
+                self._receive_buffer.clear()
+                return None
+        
+        # Check if we have a complete packet (terminated by 0x00)
+        delimiter_idx = self._receive_buffer.find(b'\x00')
+        if delimiter_idx < 0:
+            # No complete packet yet - return immediately
             return None
         
-        # Read until we find a 0x00 terminator
-        packet = self.uart_manager.read_until(b'\x00')
+        # Extract packet (without terminator)
+        packet = bytes(self._receive_buffer[:delimiter_idx])
         
-        if not packet:
-            return None
-        
-        # Remove terminator
-        if packet.endswith(b'\x00'):
-            packet = packet[:-1]
+        # Remove extracted packet and delimiter from buffer
+        del self._receive_buffer[:delimiter_idx + 1]
         
         if not packet:
             return None
@@ -489,5 +509,6 @@ class UARTTransport:
         return Message(destination, command, payload)
     
     def clear_buffer(self):
-        """Clear the UART buffer."""
+        """Clear the UART buffer and internal receive buffer."""
         self.uart_manager.clear_buffer()
+        self._receive_buffer.clear()

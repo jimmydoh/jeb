@@ -156,7 +156,7 @@ def test_jeb_pixel_fill():
 
 
 def test_jeb_pixel_show():
-    """Test that show() calls parent's show()."""
+    """Test that show() no longer calls parent's show()."""
     print("\nTesting JEBPixel show()...")
     
     parent = MockNeoPixel(68)
@@ -164,10 +164,12 @@ def test_jeb_pixel_show():
     
     assert parent.show_called == False, "Show should not be called initially"
     
-    # Call show on JEBPixel
+    # Call show on JEBPixel - should NOT trigger hardware write
     jeb.show()
     
-    assert parent.show_called == True, "Show should be called on parent"
+    # The new behavior: show() no longer calls parent.show()
+    # Hardware writes are centralized in CoreManager.render_loop()
+    assert parent.show_called == False, "Show should NOT be called on parent (hardware writes centralized)"
     
     print("✓ JEBPixel show() test passed")
 
@@ -225,9 +227,10 @@ def test_jeb_pixel_use_case_matrix_buttons():
     assert parent[64] == (100, 100, 0), "Button 1 correct"
     assert parent[67] == (0, 100, 100), "Button 4 correct"
     
-    # Show all
-    matrix.show()  # This updates entire strip
-    assert parent.show_called == True
+    # Show all - new behavior: does not trigger hardware write
+    # Hardware writes are now centralized in CoreManager.render_loop()
+    matrix.show()  # This updates memory buffer only
+    assert parent.show_called == False, "Hardware write is centralized, not called from JEBPixel"
     
     print("✓ Realistic use case test passed")
 

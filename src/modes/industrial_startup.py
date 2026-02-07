@@ -429,7 +429,7 @@ class IndustrialStartup(GameMode):
                                 show=False
                             )
 
-                    self.core.matrix.pixels.show()
+                    # Note: Hardware write is now centralized in CoreManager.render_loop()
 
                     if is_aligned:
                         if lock_start_time is None:

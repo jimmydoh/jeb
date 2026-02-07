@@ -63,6 +63,9 @@ class CoreManager:
             - is_active: bool
             - slot_id: int
     """
+    # Render loop configuration - runs at 60Hz for smooth LED updates
+    RENDER_FRAME_TIME = 1.0 / 60.0  # ~0.0167 seconds per frame
+    
     def __init__(self, root_data_dir="/", debug_mode=False):
 
         self.debug_mode = debug_mode
@@ -154,6 +157,7 @@ class CoreManager:
             "power": False,
             "connection": False,
             "hw_hid": False,
+            "render": False,
         }
         
         # Initialize Satellite Network Manager
@@ -397,9 +401,26 @@ class CoreManager:
             self.hid.hw_update()
             await asyncio.sleep(0.01)
 
+    async def render_loop(self):
+        """Centralized hardware write task for NeoPixel strip.
+        
+        This is the ONLY place where self.root_pixels.show() should be called.
+        Runs at 60Hz to provide smooth, flicker-free LED updates while preventing
+        race conditions from multiple async tasks writing to the hardware simultaneously.
+        """
+        while True:
+            # Set watchdog flag to indicate this task is alive
+            self.watchdog_flags["render"] = True
+            
+            # Write the current buffer state to hardware
+            self.root_pixels.show()
+            # Run at configured frame rate (default 60Hz)
+            await asyncio.sleep(self.RENDER_FRAME_TIME)
+
     async def start(self):
         """Main async loop for the Master Controller."""
         # Start background infrastructure tasks
+        asyncio.create_task(self.render_loop())  # Centralized LED Hardware Write
         asyncio.create_task(self.sat_network.monitor_satellites())  # Satellite Network Management
         asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
         asyncio.create_task(self.monitor_power())  # Analog Power Monitoring

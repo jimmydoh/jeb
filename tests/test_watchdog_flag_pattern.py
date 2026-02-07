@@ -41,7 +41,7 @@ def test_watchdog_flags_dict_exists():
     print("  ✓ Found 'self.watchdog_flags' dictionary initialization")
     
     # Check for required flag keys
-    required_flags = ["sat_network", "estop", "power", "connection", "hw_hid"]
+    required_flags = ["sat_network", "estop", "power", "connection", "hw_hid", "render"]
     for flag in required_flags:
         if f'"{flag}"' not in content:
             print(f"  ✗ Flag '{flag}' not found in watchdog_flags")
@@ -130,6 +130,7 @@ def test_monitor_tasks_set_flags():
         ("monitor_power", "power"),
         ("monitor_connection", "connection"),
         ("monitor_hw_hid", "hw_hid"),
+        ("render_loop", "render"),
     ]
     
     all_tasks_ok = True

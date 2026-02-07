@@ -40,6 +40,19 @@ class UARTManager:
         """
         return self.uart.in_waiting
     
+    def read_available(self):
+        """Read all available bytes from UART without blocking.
+        
+        This is a non-blocking read that returns immediately with whatever
+        bytes are available in the UART buffer.
+        
+        Returns:
+            bytes: Available bytes from UART, or empty bytes if none available.
+        """
+        if self.uart.in_waiting > 0:
+            return self.uart.read(self.uart.in_waiting)
+        return b''
+    
     def readinto(self, buf):
         """Read bytes directly into a buffer.
         

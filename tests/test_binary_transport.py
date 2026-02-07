@@ -43,6 +43,28 @@ sys.modules['utilities'] = MockUtilities()
 
 
 # Mock the UARTManager
+class MockUART:
+    """Mock UART object for testing."""
+    def __init__(self, uart_manager):
+        self.uart_manager = uart_manager
+    
+    @property
+    def in_waiting(self):
+        """Mock in_waiting property."""
+        return self.uart_manager._in_waiting
+    
+    def read(self, n):
+        """Mock read method."""
+        # Read n bytes from the receive buffer
+        n = min(n, len(self.uart_manager.receive_buffer))
+        if n == 0:
+            return b''
+        data = bytes(self.uart_manager.receive_buffer[:n])
+        del self.uart_manager.receive_buffer[:n]
+        self.uart_manager._in_waiting = len(self.uart_manager.receive_buffer)
+        return data
+
+
 class MockUARTManager:
     """Mock UARTManager for testing."""
     def __init__(self):
@@ -50,6 +72,7 @@ class MockUARTManager:
         self.receive_buffer = bytearray()
         self.buffer_cleared = False
         self._in_waiting = 0
+        self.uart = MockUART(self)
     
     def write(self, data):
         """Mock write method."""
@@ -59,6 +82,13 @@ class MockUARTManager:
     def in_waiting(self):
         """Mock in_waiting property."""
         return self._in_waiting
+    
+    def read_available(self):
+        """Mock read_available method."""
+        if self._in_waiting > 0:
+            data = self.uart.read(self._in_waiting)
+            return data
+        return b''
     
     @property
     def buffer_size(self):
@@ -165,6 +195,7 @@ def test_binary_transport_receive_simple():
     
     # Put the packet into receive buffer
     mock_uart.receive_buffer.extend(sent_packet)
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     
     # Receive the message
     msg_in = transport.receive()
@@ -203,6 +234,7 @@ def test_binary_transport_roundtrip():
         
         # Receive
         mock_uart.receive_buffer.extend(sent_packet)
+        mock_uart._in_waiting = len(mock_uart.receive_buffer)
         msg_in = transport.receive()
         
         assert msg_in is not None, f"Failed to receive message: {msg_out}"
@@ -235,6 +267,7 @@ def test_binary_transport_invalid_crc():
     
     # Try to receive corrupted packet
     mock_uart.receive_buffer.extend(bytes(corrupted))
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = transport.receive()
     
     assert msg_in is None, "Should reject message with corrupted data"
@@ -316,6 +349,7 @@ def test_special_destinations():
         
         # Receive back
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
+        mock_uart._in_waiting = len(mock_uart.receive_buffer)
         msg_in = transport.receive()
         
         assert msg_in is not None
