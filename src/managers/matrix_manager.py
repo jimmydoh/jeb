@@ -50,25 +50,31 @@ class MatrixManager(BasePixelManager):
         )
 
     def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None):
-        """Sets a specific pixel on the matrix."""
+        """Sets a specific pixel on the matrix.
+        
+        Note: The 'show' parameter is deprecated and ignored.
+        Hardware writes are now centralized in CoreManager.render_loop().
+        """
         if 0 <= x < 8 and 0 <= y < 8:
             idx = self._get_idx(x, y)
 
             anim_mode = anim_mode if anim_mode else "SOLID"
             self.set_animation(idx, anim_mode, color, speed, duration)
 
-        if show:
-            self.pixels.show()
+        # Note: 'show' parameter is ignored - render loop handles hardware writes
 
     def fill(self, color, show=True, anim_mode=None, speed=1.0, duration=None):
-        """Fills the entire matrix with a single color or simple animation."""
+        """Fills the entire matrix with a single color or simple animation.
+        
+        Note: The 'show' parameter is deprecated and ignored.
+        Hardware writes are now centralized in CoreManager.render_loop().
+        """
         if anim_mode:
             self.fill_animation(anim_mode, color, speed, duration)
         else:
             self.clear()
             self.pixels.fill(color)
-        if show:
-            self.pixels.show()
+        # Note: 'show' parameter is ignored - render loop handles hardware writes
 
     # TODO draw_line, draw_rect, draw_circle, draw_text, etc.
 
@@ -76,6 +82,8 @@ class MatrixManager(BasePixelManager):
         """
         Internal method to perform SLIDE_LEFT animation.
         Runs as a background task to avoid blocking the caller.
+        
+        Note: Hardware writes are now centralized in CoreManager.render_loop().
         """
         try:
             for offset in range(8, -1, -1):  # Slide from right to left
@@ -89,7 +97,7 @@ class MatrixManager(BasePixelManager):
                                 base = color if color else self.palette[pixel_value]
                                 px_color = self._get_dimmed_color(base, brightness)
                                 self.draw_pixel(target_x, y, px_color)
-                self.pixels.show()
+                # Note: Hardware write is now handled by CoreManager.render_loop()
                 await asyncio.sleep(0.05)
         except asyncio.CancelledError:
             # Task was cancelled - clean up and exit gracefully
@@ -137,7 +145,7 @@ class MatrixManager(BasePixelManager):
                     else:
                         self.draw_pixel(x, y, px_color)
 
-        self.pixels.show()
+        # Note: Hardware write is now handled by CoreManager.render_loop()
 
     # TODO Refactor progress grid to use animations
     async def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):
@@ -147,7 +155,7 @@ class MatrixManager(BasePixelManager):
         fill_limit = int((iterations / total) * 64)
         for i in range(fill_limit):
             self.draw_pixel(i % 8, 7 - (i // 8), color, show=False)
-        self.pixels.show()
+        # Note: Hardware write is now handled by CoreManager.render_loop()
 
     async def draw_quadrant(self, quad_idx, color, anim_mode=None, speed=1.0, duration=None):
         """Fills one of four 4x4 quadrants: 0=TopLeft, 1=TopRight, 2=BottomLeft, 3=BottomRight."""
@@ -158,4 +166,4 @@ class MatrixManager(BasePixelManager):
         for y in range(4):
             for x in range(4):
                 self.draw_pixel(ox + x, oy + y, color, show=False, anim_mode=anim_mode, speed=speed, duration=duration)
-        self.pixels.show()
+        # Note: Hardware write is now handled by CoreManager.render_loop()

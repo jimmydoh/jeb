@@ -397,9 +397,23 @@ class CoreManager:
             self.hid.hw_update()
             await asyncio.sleep(0.01)
 
+    async def render_loop(self):
+        """Centralized hardware write task for NeoPixel strip.
+        
+        This is the ONLY place where self.root_pixels.show() should be called.
+        Runs at ~60Hz to provide smooth, flicker-free LED updates while preventing
+        race conditions from multiple async tasks writing to the hardware simultaneously.
+        """
+        while True:
+            # Write the current buffer state to hardware
+            self.root_pixels.show()
+            # Run at ~60Hz (16.67ms per frame)
+            await asyncio.sleep(0.0167)
+
     async def start(self):
         """Main async loop for the Master Controller."""
         # Start background infrastructure tasks
+        asyncio.create_task(self.render_loop())  # Centralized LED Hardware Write
         asyncio.create_task(self.sat_network.monitor_satellites())  # Satellite Network Management
         asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
         asyncio.create_task(self.monitor_power())  # Analog Power Monitoring
