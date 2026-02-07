@@ -52,8 +52,8 @@ class MainMenu(UtilityMode):
                     continue
                 # Check for specific satellite type presence
                 # self.core.satellites is Dict[slot_id: int, Satellite]
-                # Each Satellite has: sat_type (str), is_active (bool), slot_id (int)
-                has_sat = any(s.sat_type == req for s in self.core.satellites.values())
+                # Each Satellite has: sat_type_name (str), is_active (bool), slot_id (int)
+                has_sat = any(s.sat_type_name == req for s in self.core.satellites.values())
                 if not has_sat:
                     requirements_met = False
                     break

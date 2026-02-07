@@ -59,7 +59,7 @@ class CoreManager:
         
         satellites: Dict[int, Satellite] - Registry of connected satellites by slot ID
             Each satellite has properties:
-            - sat_type: str (e.g., "INDUSTRIAL", "AUDIO")
+            - sat_type_name: str (e.g., "INDUSTRIAL", "AUDIO")
             - is_active: bool
             - slot_id: int
     """
@@ -208,13 +208,13 @@ class CoreManager:
             Dict[int, Satellite]
         
         Each Satellite object provides:
-            - sat_type (str): Type identifier (e.g., "INDUSTRIAL", "AUDIO")
+            - sat_type_name (str): Type identifier (e.g., "INDUSTRIAL", "AUDIO")
             - is_active (bool): Whether the satellite is currently connected
             - slot_id (int): Physical slot position in the daisy chain
         
         Example usage:
             for sat_id, satellite in self.core.satellites.items():
-                if satellite.sat_type == "INDUSTRIAL" and satellite.is_active:
+                if satellite.sat_type_name == "INDUSTRIAL" and satellite.is_active:
                     # Use the satellite
                     pass
         """
@@ -440,7 +440,7 @@ class CoreManager:
                     found = False
                     # Check self.satellites: Dict[slot_id: int, Satellite]
                     for sat in self.satellites.values():
-                        if sat.sat_type == req and sat.is_active:
+                        if sat.sat_type_name == req and sat.is_active:
                             found = True
                             target_sat = sat  # Set target satellite for monitoring
                             break

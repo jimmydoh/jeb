@@ -32,9 +32,9 @@ class IndustrialStartup(GameMode):
         )
         self.sat = None
         # Iterate through self.core.satellites: Dict[slot_id: int, Satellite]
-        # Each Satellite has properties: sat_type (str), is_active (bool), slot_id (int)
+        # Each Satellite has properties: sat_type_name (str), is_active (bool), slot_id (int)
         for sat in self.core.satellites.values():
-            if sat.sat_type == "INDUSTRIAL":
+            if sat.sat_type_name == "INDUSTRIAL":
                 self.sat = sat
                 break
 
