@@ -421,6 +421,11 @@ class Updater:
         # Source: SD card staging area
         # Strip leading slash from path to ensure proper path joining
         path_normalized = path.lstrip('/')
+        # Reject empty or invalid paths that would cause us to write to dest_root itself
+        if not path_normalized:
+            raise UpdaterError(
+                f"Invalid file path in manifest (empty or only slashes): {repr(path)}"
+            )
         src_path = os.path.join(self.download_dir, path_normalized)
         # Destination: Configurable root (default to "/" for production)
         dest_path = os.path.join(dest_root, path_normalized)
