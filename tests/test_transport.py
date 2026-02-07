@@ -499,6 +499,9 @@ def test_buffer_overflow_preserves_valid_packets():
     mock_uart = MockUARTManager()
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
+    # Test threshold: intentionally exceed MAX_BUFFER_SIZE by 20%
+    OVERFLOW_TEST_THRESHOLD = 1.2
+    
     # Create multiple valid packets
     messages = [
         Message("0101", "STATUS", f"{i}") for i in range(100, 200)
@@ -516,7 +519,7 @@ def test_buffer_overflow_preserves_valid_packets():
     for packet in valid_packets:
         mock_uart.receive_buffer.extend(packet)
         total_size += len(packet)
-        if total_size > transport.MAX_BUFFER_SIZE * 1.2:
+        if total_size > transport.MAX_BUFFER_SIZE * OVERFLOW_TEST_THRESHOLD:
             break
     
     print(f"  Added {total_size} bytes to buffer (MAX={transport.MAX_BUFFER_SIZE})")

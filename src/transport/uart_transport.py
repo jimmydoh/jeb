@@ -345,6 +345,12 @@ class UARTTransport:
     # Maximum size for internal receive buffer to prevent unbounded growth
     MAX_BUFFER_SIZE = 1024  # ample space for ~2-4 packets
     
+    # Overflow handling thresholds
+    # When overflow occurs after extracting a packet, use these to manage remaining data
+    MAX_DELIMITER_DISTANCE_THRESHOLD = MAX_BUFFER_SIZE // 2  # If next packet is beyond this, likely garbage
+    OVERFLOW_REMOVAL_SIZE = MAX_BUFFER_SIZE // 4  # Amount of old data to remove when distant delimiter found
+    PARTIAL_PACKET_BUFFER_SIZE = MAX_BUFFER_SIZE // 2  # Amount of recent data to keep when no delimiters
+    
     def __init__(self, uart_manager, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None):
         """Initialize UART transport.
         
@@ -460,16 +466,15 @@ class UARTTransport:
             next_delimiter_idx = self._receive_buffer.find(b'\x00')
             if next_delimiter_idx >= 0:
                 # There are more packets - keep from beginning
-                # Remove only if still oversized after keeping one more potential packet
-                if next_delimiter_idx > self.MAX_BUFFER_SIZE // 2:
-                    # Next packet is very far - might be garbage, remove old data
-                    del self._receive_buffer[:self.MAX_BUFFER_SIZE // 4]
+                # Remove old data only if next packet is unreasonably far (likely preceded by garbage)
+                if next_delimiter_idx > self.MAX_DELIMITER_DISTANCE_THRESHOLD:
+                    # Next packet is very far - remove old garbage before it
+                    del self._receive_buffer[:self.OVERFLOW_REMOVAL_SIZE]
             else:
                 # No more packet delimiters - likely garbage after valid packet
                 # Keep only recent data that might be start of new packet
-                bytes_to_keep = self.MAX_BUFFER_SIZE // 2
-                if len(self._receive_buffer) > bytes_to_keep:
-                    del self._receive_buffer[:-bytes_to_keep]
+                if len(self._receive_buffer) > self.PARTIAL_PACKET_BUFFER_SIZE:
+                    del self._receive_buffer[:-self.PARTIAL_PACKET_BUFFER_SIZE]
         
         if not packet:
             return None
