@@ -157,6 +157,7 @@ class CoreManager:
             "power": False,
             "connection": False,
             "hw_hid": False,
+            "render": False,
         }
         
         # Initialize Satellite Network Manager
@@ -408,6 +409,9 @@ class CoreManager:
         race conditions from multiple async tasks writing to the hardware simultaneously.
         """
         while True:
+            # Set watchdog flag to indicate this task is alive
+            self.watchdog_flags["render"] = True
+            
             # Write the current buffer state to hardware
             self.root_pixels.show()
             # Run at configured frame rate (default 60Hz)
