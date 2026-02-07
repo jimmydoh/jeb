@@ -219,11 +219,11 @@ Only files that are missing or changed are downloaded, reducing:
 - **Version Tracking**: `version.json` records successful updates
 - **SD Card Required**: Updates require SD card for staging (flash is read-only)
 - **Update Flag Persistence**: Failed updates preserve flag for automatic retry on next boot
-- **Zombie Prevention**: Only clears update flag on successful completion to prevent bricked devices
+- **Zombie Prevention**: Only clears update flag on successful completion (prevents devices with partially updated firmware from becoming unrecoverable)
 
 ### 9. Update Flag and Retry Logic
 
-The system uses an intelligent flag management strategy to prevent "zombie" (bricked) devices:
+The system uses an intelligent flag management strategy to prevent devices from becoming unrecoverable after partial updates:
 
 **Flag Cleared (No Retry):**
 - Update completed successfully
@@ -240,15 +240,16 @@ The system uses an intelligent flag management strategy to prevent "zombie" (bri
 ```
 1. Update starts, downloads 5 of 10 files
 2. Power loss occurs during file installation
-3. Device reboots with partial/corrupted firmware
+3. Device reboots with mix of old and new firmware files
 4. boot.py detects preserved update flag
 5. Mounts filesystem as writable
 6. Updater automatically retries the full update
-7. Update completes successfully, flag cleared
-8. Device reboots into working firmware
+7. All files are re-downloaded and installed (overwrites partial state)
+8. Update completes successfully, flag cleared
+9. Device reboots into consistent new firmware
 ```
 
-This prevents the "zombie" scenario where a device reports a new version but runs corrupted code with no way to self-heal.
+This prevents the scenario where a device has inconsistent firmware (mix of old and new files) with no way to self-heal.
 
 ## Version Tracking
 

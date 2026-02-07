@@ -108,7 +108,7 @@ try:
                 if update_success:
                     # Only clear flag on successful update
                     clear_update_flag()
-                    print("\n✓ Update successful - rebooting...")
+                    print("\n✓ Update complete and installed - rebooting...")
                     updater.reboot()
                 else:
                     # Do NOT clear flag - preserve for retry on next boot
