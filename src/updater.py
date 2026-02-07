@@ -27,9 +27,6 @@ try:
     WIFI_AVAILABLE = True
 except ImportError:
     WIFI_AVAILABLE = False
-    print("⚠️ Wi-Fi libraries not available - updater will not function")
-
-
 class UpdaterError(Exception):
     """Custom exception for updater errors."""
     pass
