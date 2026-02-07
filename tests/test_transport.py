@@ -467,12 +467,13 @@ def test_receive_buffer_overflow_protection():
     mock_uart.receive_buffer.extend(garbage_data)
     mock_uart._in_waiting = len(garbage_data)
     
-    # First receive should detect overflow and clear the buffer
+    # First receive should detect overflow
     msg = transport.receive()
     assert msg is None, "Should return None when buffer overflows"
     
-    # Internal buffer should be cleared
-    assert len(transport._receive_buffer) == 0, "Internal buffer should be cleared after overflow"
+    # When there's no null terminator in the garbage, buffer gets cleared
+    # This is expected behavior since there's no valid packet to preserve
+    assert len(transport._receive_buffer) == 0, "Internal buffer should be cleared when full of garbage with no terminators"
     
     # Now send a valid packet - system should recover
     msg_valid = Message("0101", "STATUS", "100")
@@ -489,6 +490,57 @@ def test_receive_buffer_overflow_protection():
     assert received.command == "STATUS"
     
     print("✓ Buffer overflow protection test passed")
+
+
+def test_buffer_overflow_preserves_valid_packets():
+    """Test that valid packets are preserved when overflow occurs between packets."""
+    print("\nTesting buffer overflow preserves valid packets...")
+    
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+    
+    # Test threshold: intentionally exceed MAX_BUFFER_SIZE by 20%
+    OVERFLOW_TEST_THRESHOLD = 1.2
+    
+    # Create multiple valid packets
+    messages = [
+        Message("0101", "STATUS", f"{i}") for i in range(100, 200)
+    ]
+    
+    # Send all messages to get valid packets
+    for msg in messages:
+        transport.send(msg)
+    
+    valid_packets = mock_uart.sent_packets[:]
+    mock_uart.sent_packets.clear()
+    
+    # Add enough packets to buffer to exceed MAX_BUFFER_SIZE
+    total_size = 0
+    for packet in valid_packets:
+        mock_uart.receive_buffer.extend(packet)
+        total_size += len(packet)
+        if total_size > transport.MAX_BUFFER_SIZE * OVERFLOW_TEST_THRESHOLD:
+            break
+    
+    print(f"  Added {total_size} bytes to buffer (MAX={transport.MAX_BUFFER_SIZE})")
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
+    
+    # Receive messages - should be able to process many of them despite overflow
+    received_count = 0
+    while True:
+        msg = transport.receive()
+        if msg is None:
+            break
+        received_count += 1
+        # Stop after getting a reasonable number to avoid infinite loop
+        if received_count > len(valid_packets):
+            break
+    
+    # We should receive at least some valid packets before/after overflow handling
+    assert received_count > 0, "Should receive at least some valid packets"
+    print(f"  Successfully received {received_count} packets despite overflow")
+    
+    print("✓ Buffer overflow preserves valid packets test passed")
 
 
 if __name__ == "__main__":
@@ -510,6 +562,7 @@ if __name__ == "__main__":
         test_receive_assembles_fragmented_packets()
         test_multiple_packets_in_buffer()
         test_receive_buffer_overflow_protection()
+        test_buffer_overflow_preserves_valid_packets()
         
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")
