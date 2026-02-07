@@ -408,7 +408,8 @@ def test_receive_assembles_fragmented_packets():
     assert msg is not None, "Should receive complete message after all fragments"
     assert msg.destination == "0101"
     assert msg.command == "LED"
-    assert msg.payload == "255,128,64,32"
+    # LED uses ENCODING_NUMERIC_BYTES, so received payload will be a tuple
+    assert msg.payload == (255, 128, 64, 32), f"Expected payload (255, 128, 64, 32), got {msg.payload!r}"
     
     print("✓ Receive assembles fragmented packets test passed")
 
