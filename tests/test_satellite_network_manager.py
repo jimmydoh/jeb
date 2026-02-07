@@ -105,7 +105,10 @@ def test_manager_initialization(content):
     print("\nTesting manager initialization...")
     
     # Check __init__ signature (allow optional parameters)
-    init_pattern = r'def __init__\(self, transport, display, audio'
+    init_pattern = (
+        r'def __init__\(\s*self\s*,\s*transport\s*,\s*display\s*,\s*audio'
+        r'(?:\s*:[^,)]*)?\s*(?:,|\))'
+    )
     assert re.search(init_pattern, content), "__init__ should accept transport, display, audio"
     print("  ✓ __init__ accepts transport, display, audio parameters")
     
