@@ -114,7 +114,7 @@ def test_stream_file_tracking():
     
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create a large file that will be streamed (not cached)
-        large_file = create_test_file(tmpdir, "stream.wav", 30720)
+        create_test_file(tmpdir, "stream.wav", 30720)
         
         # Create AudioManager
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
