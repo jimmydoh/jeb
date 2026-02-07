@@ -41,7 +41,7 @@ class LEDManager(BasePixelManager):
         for i in targets:
             self.set_animation(i, "SOLID", tuple(int(c * brightness) for c in color), duration=duration, priority=priority)
 
-    async def flash_led(self, index, color, brightness=0.2, duration=None, priority=2, speed=0.1, off_speed=None):
+    async def flash_led(self, index, color, brightness=0.2, duration=None, priority=2, speed=0.1):
         """Flashes a specific LED (or all LEDs) for a duration."""
         targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
         for i in targets:

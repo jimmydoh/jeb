@@ -5,13 +5,12 @@ from utilities import cobs_encode, cobs_decode, calculate_crc8
 from .message import Message
 
 
-def _encode_destination(dest_str, dest_map, max_index_value):
+def _encode_destination(dest_str, dest_map):
     """Encode destination string to byte(s).
     
     Parameters:
         dest_str (str): Destination like "ALL", "SAT", or "0101"
         dest_map (dict): Mapping of special destination strings to byte values
-        max_index_value (int): Maximum value for single-byte index
         
     Returns:
         bytes: Encoded destination (1-2 bytes)
@@ -383,7 +382,7 @@ class UARTTransport:
             message (Message): The message to send.
         """
         # Encode destination
-        dest_bytes = _encode_destination(message.destination, self.dest_map, self.max_index_value)
+        dest_bytes = _encode_destination(message.destination, self.dest_map)
         
         # Encode command
         cmd_byte = bytes([_encode_command(message.command, self.command_map)])
