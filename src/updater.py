@@ -551,7 +551,7 @@ class Updater:
             self.fetch_manifest()
             
             # Step 4: Verify files
-            files_to_update, files_ok = self.verify_files()
+            files_to_update, _ = self.verify_files()
             
             # Step 5: Download files to SD card staging area
             if not self.update_files(files_to_update):

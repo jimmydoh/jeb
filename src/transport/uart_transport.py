@@ -5,16 +5,17 @@ from utilities import cobs_encode, cobs_decode, calculate_crc8
 from .message import Message
 
 
-def _encode_destination(dest_str, dest_map, max_index_value):
+def _encode_destination(dest_str, dest_map):
     """Encode destination string to byte(s).
     
     Parameters:
         dest_str (str): Destination like "ALL", "SAT", or "0101"
         dest_map (dict): Mapping of special destination strings to byte values
-        max_index_value (int): Maximum value for single-byte index
         
     Returns:
-        bytes: Encoded destination (1-2 bytes)
+        bytes: Encoded destination (1 or 2 bytes depending on format):
+            - 1 byte for special destinations (e.g., "ALL", "SAT") 
+            - 2 bytes for full device IDs with 4 digits (e.g., "0101" -> type=01, index=01)
     """
     if dest_str in dest_map:
         return bytes([dest_map[dest_str]])
@@ -25,15 +26,9 @@ def _encode_destination(dest_str, dest_map, max_index_value):
         index = int(dest_str[2:])
         return bytes([type_id, index])
     
-    # Default: treat as type-only (backward compat)
-    if dest_str.isdigit():
-        type_id = int(dest_str)
-        return bytes([type_id])
-    
     raise ValueError(
         f"Invalid destination format: {dest_str}. "
-        f"Expected 4-digit numeric ID (e.g., '0101'), mapped destination string, "
-        f"or single type ID."
+        f"Expected 4-digit numeric ID (e.g., '0101') or mapped destination string (e.g., 'ALL', 'SAT')."
     )
 
 
@@ -383,7 +378,7 @@ class UARTTransport:
             message (Message): The message to send.
         """
         # Encode destination
-        dest_bytes = _encode_destination(message.destination, self.dest_map, self.max_index_value)
+        dest_bytes = _encode_destination(message.destination, self.dest_map)
         
         # Encode command
         cmd_byte = bytes([_encode_command(message.command, self.command_map)])
