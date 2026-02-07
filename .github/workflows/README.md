@@ -126,7 +126,7 @@ The workflow provides:
 ### Test Requirements
 
 Most tests are standalone and don't require external dependencies, but some tests use:
-- **pytest**: For async testing and fixtures (installed by workflow)
+- **pytest**: For shared test helpers (fixtures), markers, and tests that invoke pytest directly (installed by workflow)
 - **Standard library**: No CircuitPython-specific dependencies
 
 Tests are designed to:
