@@ -269,8 +269,8 @@ def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
     Returns:
         tuple, str, or bytes: 
             - tuple of int/float for numeric encodings (ENCODING_NUMERIC_*, ENCODING_FLOATS)
-            - str for text encodings (ENCODING_RAW_TEXT)
-            - bytes for unknown binary data (backward compatibility)
+            - str for text encodings (ENCODING_RAW_TEXT) or printable UTF-8
+            - bytes for unknown binary data (fallback)
     """
     if not payload_bytes:
         return ""
