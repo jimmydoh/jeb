@@ -427,7 +427,12 @@ def test_write_version_info():
 
 
 def test_install_file():
-    """Test installing a file from SD staging to flash."""
+    """Test installing a file from SD staging to flash.
+    
+    This test exercises the real Updater.install_file() method with an
+    injectable dest_root parameter to verify path handling, directory
+    creation, and error handling work correctly.
+    """
     print("\nTesting install_file...")
     
     temp_dir = tempfile.mkdtemp()
@@ -464,51 +469,12 @@ def test_install_file():
             "size": len(test_content)
         }
         
-        # Create destination directory
-        os.makedirs("lib", exist_ok=True)
-        
-        # Temporarily modify the install_file to use relative paths
-        # Save original calculate_sha256
-        original_calculate = updater.Updater.calculate_sha256
-        
-        # Mock to use relative paths
-        def mock_install(file_info):
-            path = file_info["path"]
-            expected_hash = file_info["sha256"]
-            src_path = f"{updater_instance.download_dir}/{path}"
-            dest_path = path  # Relative path in temp dir
-            
-            # Ensure destination directory exists
-            dest_dir = dest_path.rsplit("/", 1)[0] if "/" in dest_path else ""
-            if dest_dir:
-                try:
-                    os.makedirs(dest_dir)
-                except OSError:
-                    # Ignore directory creation errors in this test context (e.g., already exists)
-                    pass
-            
-            # Copy file
-            with open(src_path, "rb") as src_file:
-                file_content = src_file.read()
-            
-            with open(dest_path, "wb") as dest_file:
-                dest_file.write(file_content)
-            
-            # Verify hash
-            actual_hash = original_calculate(dest_path)
-            if actual_hash != expected_hash:
-                raise updater.UpdaterError(
-                    f"Hash mismatch after install for {path}"
-                )
-            
-            return True
-        
-        # Install the file using our mock
-        result = mock_install(file_info)
+        # Install the file using the real install_file method with temp_dir as dest_root
+        result = updater_instance.install_file(file_info, dest_root=temp_dir)
         assert result, "install_file should return True"
         
         # Check destination file was created
-        dest_file = "lib/test.mpy"
+        dest_file = os.path.join(temp_dir, "lib/test.mpy")
         assert os.path.exists(dest_file), "Destination file should exist"
         
         # Verify content
@@ -518,10 +484,36 @@ def test_install_file():
         assert dest_content == test_content, "Installed content should match"
         
         # Verify hash
-        actual_hash = original_calculate(dest_file)
+        actual_hash = updater.Updater.calculate_sha256(dest_file)
         assert actual_hash == test_hash, "Installed file hash should match"
         
         print("  ✓ File installed and verified correctly")
+        
+        # Test with absolute path (should be handled correctly)
+        os.makedirs("sd/update/modules", exist_ok=True)
+        test_content_2 = b"Another test file"
+        test_hash_2 = hashlib.sha256(test_content_2).hexdigest()
+        staging_file_2 = "sd/update/modules/core.mpy"
+        with open(staging_file_2, "wb") as f:
+            f.write(test_content_2)
+        
+        file_info_2 = {
+            "path": "/modules/core.mpy",  # Absolute path with leading slash
+            "sha256": test_hash_2,
+            "size": len(test_content_2)
+        }
+        
+        result_2 = updater_instance.install_file(file_info_2, dest_root=temp_dir)
+        assert result_2, "install_file should return True for absolute path"
+        
+        dest_file_2 = os.path.join(temp_dir, "modules/core.mpy")
+        assert os.path.exists(dest_file_2), "File with absolute path should be installed correctly"
+        
+        with open(dest_file_2, "rb") as f:
+            dest_content_2 = f.read()
+        assert dest_content_2 == test_content_2, "Content should match for absolute path"
+        
+        print("  ✓ Absolute path handling verified correctly")
         
         os.chdir(original_dir)
         
