@@ -400,12 +400,14 @@ class Updater:
         print(f"\n✓ Successfully downloaded {success_count}/{total} files")
         return success_count == total
     
-    def install_file(self, file_info):
+    def install_file(self, file_info, dest_root="/"):
         """
         Install a single file from SD card staging to internal flash.
         
         Args:
             file_info (dict): File information from manifest
+            dest_root (str): Destination root directory (default: "/" for CircuitPython)
+                            Allows injection for testing purposes
             
         Returns:
             bool: True if successful
@@ -418,8 +420,8 @@ class Updater:
         
         # Source: SD card staging area
         src_path = f"{self.download_dir}/{path}"
-        # Destination: Internal flash root
-        dest_path = f"/{path}"
+        # Destination: Configurable root (default to "/" for production)
+        dest_path = os.path.join(dest_root, path)
         
         print(f"Installing: {path}")
         print(f"  From: {src_path}")
