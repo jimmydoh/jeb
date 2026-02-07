@@ -154,6 +154,10 @@ class Updater:
             # Parse JSON
             self.remote_version = response.json()
             
+            # Close response immediately after parsing since we don't need the connection anymore
+            response.close()
+            response = None
+            
             # Validate version structure
             if "version" not in self.remote_version:
                 raise UpdaterError("Invalid version.json structure")
@@ -196,6 +200,10 @@ class Updater:
             
             # Parse JSON
             self.manifest = response.json()
+            
+            # Close response immediately after parsing since we don't need the connection anymore
+            response.close()
+            response = None
             
             # Validate manifest structure
             if "version" not in self.manifest or "files" not in self.manifest:
@@ -340,6 +348,10 @@ class Updater:
                         continue
                     f.write(chunk)
                     hasher.update(chunk)
+            
+            # Close response immediately after download completes
+            response.close()
+            response = None
             
             # Verify hash
             actual_hash = hasher.hexdigest()
