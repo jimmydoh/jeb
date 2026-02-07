@@ -53,6 +53,9 @@ class SatelliteNetworkManager:
         Only creates a new task if no status task is currently running, preventing
         memory issues from task flooding during satellite malfunctions.
         
+        Note: This method is called sequentially from the event loop, so no locking
+        is needed. handle_message is always called synchronously from monitor_satellites.
+        
         Args:
             coro: Coroutine to execute for status update
         """
@@ -64,6 +67,9 @@ class SatelliteNetworkManager:
         
         Only creates a new task if no audio task is currently running, preventing
         memory issues from task flooding during satellite malfunctions.
+        
+        Note: This method is called sequentially from the event loop, so no locking
+        is needed. handle_message is always called synchronously from monitor_satellites.
         
         Args:
             coro: Coroutine to execute for audio playback
