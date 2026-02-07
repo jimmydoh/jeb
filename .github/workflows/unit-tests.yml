@@ -28,11 +28,20 @@ jobs:
       
       - name: Install dependencies
         run: |
+          # Install pytest for tests that use pytest fixtures/decorators
+          # Note: Most tests are designed to run standalone with python3,
+          # but some use pytest.mark decorators for test categorization
           pip install pytest
       
       - name: Run unit tests
         run: |
           # Run pure unit tests (excluding performance and integration tests)
+          # Note: Tests are run with python3 directly rather than pytest because:
+          # 1. Tests are designed with standalone runners (if __name__ == "__main__")
+          # 2. Tests handle async/await with asyncio.run() internally
+          # 3. Tests provide custom formatted output
+          # 4. Running with pytest would require pytest-asyncio for async tests
+          
           # Track test results
           success_count=0
           fail_count=0
