@@ -689,6 +689,27 @@ def test_fetch_manifest_socket_cleanup_on_error():
         assert close_called, "response.close() should be called even on HTTP error"
         print("  ✓ Socket cleanup verified for HTTP error path")
         
+        # Test JSON parsing error path
+        class MockSessionJSONError:
+            def __init__(self, pool, context):
+                pass
+            
+            def get(self, url, timeout=10):
+                return MockResponse(status_code=200, json_data={"error": True})
+        
+        adafruit_requests_module.Session = MockSessionJSONError
+        updater_instance.http_session = MockSessionJSONError(None, None)
+        
+        close_called = False
+        try:
+            updater_instance.fetch_manifest()
+            assert False, "Should have raised UpdaterError for JSON parse error"
+        except updater.UpdaterError:
+            pass
+        
+        assert close_called, "response.close() should be called even on JSON error"
+        print("  ✓ Socket cleanup verified for JSON error path")
+        
         # Test validation error path
         class MockSessionValidation:
             def __init__(self, pool, context):
