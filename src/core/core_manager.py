@@ -77,6 +77,7 @@ class CoreManager:
             config = {}
         
         self.debug_mode = config.get("debug_mode", False)
+        debug_mode = self.debug_mode
         self.root_data_dir = config.get("root_data_dir", "/")
         uart_baudrate = config.get("uart_baudrate", 115200)
 
