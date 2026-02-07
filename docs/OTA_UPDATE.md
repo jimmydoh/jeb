@@ -112,6 +112,28 @@ Files are downloaded from: `{update_url}/{version}/{download_path}`
 
 Example: `https://your-server.com/0.1.0/mpy/boot.mpy`
 
+## Filesystem Permissions
+
+The OTA system uses CircuitPython's filesystem permissions to safely manage updates:
+
+### Normal Mode (Default)
+- **Code Access**: Read-only (`storage.remount("/", readonly=True)`)
+  - Running CircuitPython code cannot write to the filesystem
+  - Prevents accidental file modifications by application code
+- **USB Access**: Writable (USB mass storage enabled)
+  - Host computer can read and write files via USB
+  - Users can manually edit `config.json` or create `.update_flag`
+  
+**Important**: In CircuitPython, `readonly=True` only restricts code access, not USB access. This is by design and allows manual file management while protecting against code errors.
+
+### Update Mode
+- **Code Access**: Writable (`storage.remount("/", readonly=False)`)
+  - Updater can download and install firmware files
+  - Can write `version.json` and clear `.update_flag`
+- **USB Access**: Disabled (`storage.disable_usb_drive()`)
+  - Prevents host computer from interfering during update
+  - Ensures atomic updates without USB interference
+
 ## Update Process
 
 ### 1. First Boot Detection

@@ -98,8 +98,12 @@ if update_mode:
 else:
     print("boot.py: 🔒 NORMAL MODE - Filesystem read-only")
     print("boot.py: USB mass storage ENABLED")
-    # Normal boot: filesystem read-only, USB mass storage enabled
-    # This is the default, but we make it explicit
+    # Normal boot: filesystem read-only for code, writable via USB mass storage
+    # In CircuitPython, readonly=True means:
+    #   - Running CircuitPython code CANNOT write to filesystem
+    #   - USB mass storage (host computer) CAN still write to filesystem
+    # This allows users to manually edit config.json or create .update_flag via USB
+    # while preventing the running code from accidentally modifying files
     storage.remount("/", readonly=True)
     # USB mass storage is enabled by default
 
