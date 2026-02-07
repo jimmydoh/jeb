@@ -28,14 +28,21 @@ import os
 import time
 
 import board
-import busio
-import digitalio
 import microcontroller
-import sdcardio
-import storage
 import supervisor
 
-ROOT_DATA_DIR = "/"
+# Check if SD card was mounted in boot.py
+# Note: We cannot import boot.py as it will re-execute the script
+# Instead, check if /sd directory exists in the filesystem
+def is_sd_mounted():
+    """Check if SD card is mounted by checking for /sd directory."""
+    try:
+        return 'sd' in os.listdir('/')
+    except OSError:
+        return False
+
+SD_MOUNTED = is_sd_mounted()
+ROOT_DATA_DIR = "/sd" if SD_MOUNTED else "/"
 
 def file_exists(filename):
     """Check if a file exists on the filesystem."""
@@ -72,55 +79,56 @@ def load_config():
         print("Using default configuration.")
         return default_config
 
-def initialize_sd_card():
-    """Initialize the SD card and mount it."""
-    # SD Card Setup
-    # SPI Pin Setup for Pico 2
-    # SCK=GP18, MOSI=GP19, MISO=GP16, CS=GP17
-    try:
-        print("Initializing SPI interface", end="")
-        spi_clock = getattr(board, "GP18")
-        spi_mosi = getattr(board, "GP19")
-        spi_miso = getattr(board, "GP16")
-        sdcard_cs = getattr(board, "GP17")
-        spi = busio.SPI(clock=spi_clock, MOSI=spi_mosi, MISO=spi_miso)
-        print(" - ✅")
-    except Exception as e:
-        print(" - ❌")
-        print(f"SPI initialization failed: {e}")
-        return False
-
-    try:
-        print("Initializing SD card", end="")
-        sdcard = sdcardio.SDCard(spi, digitalio.DigitalInOut(sdcard_cs))
-        print(" - ✅")
-    except Exception as e:
-        print(" - ❌")
-        print(f"SD Card initialization failed: {e}")
-        return False
-
-    try:
-        print("Mounting SD card", end="")
-        vfs = storage.VfsFat(sdcard)
-        storage.mount(vfs, "/sd")
-        print(" - ✅")
-    except Exception as e:
-        print(" - ❌")
-        print(f"SD Card mounting failed: {e}")
-        return False
-
-    return True
-
 # --- ENTRY POINT ---
 
 print("*** BOOTING JEB SYSTEM ***")
+print(f"SD Card mounted: {SD_MOUNTED}")
 config = load_config()
 
-if config.get("mount_sd_card"):
-    if initialize_sd_card():
-        ROOT_DATA_DIR = "/sd"
-    else:
-        ROOT_DATA_DIR = "/"
+# --- OTA UPDATE CHECK ---
+# Check if we need to run the updater before starting the main application
+try:
+    from updater import should_check_for_updates, Updater, clear_update_flag
+    
+    if should_check_for_updates():
+        print("\n" + "="*50)
+        print("   OTA UPDATE REQUIRED")
+        print("="*50 + "\n")
+        
+        # Check if Wi-Fi is configured and SD card is mounted
+        if not SD_MOUNTED:
+            print("⚠️ SD card not mounted - OTA updates require SD card")
+            print("Skipping update")
+            clear_update_flag()  # Clear flag since we can't proceed without SD
+        elif config.get("wifi_ssid") and config.get("update_url"):
+            try:
+                updater = Updater(config, sd_mounted=SD_MOUNTED)
+                update_success = updater.run_update()
+                
+                if update_success:
+                    # Only clear flag on successful update
+                    clear_update_flag()
+                    print("\n✓ Update complete and installed - rebooting...")
+                    updater.reboot()
+                else:
+                    # Do NOT clear flag - preserve for retry on next boot
+                    print("\n⚠️ Update failed - flag preserved for retry")
+                    print("Device will attempt update again on next boot")
+                    
+            except Exception as e:
+                # Do NOT clear flag on fatal error - preserve for retry
+                print(f"\n❌ Updater fatal error: {e}")
+                print("Flag preserved - device will retry update on next boot")
+                print("Continuing with existing firmware")
+        else:
+            print("⚠️ Wi-Fi not configured - skipping update")
+            print("Configure wifi_ssid and update_url in config.json")
+            clear_update_flag()  # Clear flag since config is missing
+        
+        print()
+        
+except ImportError:
+    print("⚠️ Updater module not available")
 
 app = None
 

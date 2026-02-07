@@ -43,6 +43,7 @@
 ### Core System
 - **Robust Power Distribution**: USB-C PD 20V input with separate 5V/2.5A logic and 5V/5A LED buck converters
 - **Advanced Sensing**: Four-channel ADC monitoring for voltage rails (20V raw/bus, 5V logic/LED)
+- **Over-The-Air Updates**: Wi-Fi-based firmware updates via manifest synchronization (Pico 2W)
 - **Rich I/O**: 
   - 128x64 OLED display (I2C)
   - 8x8 NeoPixel matrix (GlowBit 64)
@@ -489,6 +490,7 @@ Detailed hardware and implementation documentation is available in the `docs/` d
 
 - **[hardware-core.md](docs/hardware-core.md)**: Complete CORE unit specifications, GPIO mapping, and schematics
 - **[hardware-sat-01.md](docs/hardware-sat-01.md)**: Industrial Satellite specifications and pinout
+- **[OTA_UPDATE.md](docs/OTA_UPDATE.md)**: Over-The-Air firmware update system (Pico 2W)
 - **[BINARY_PROTOCOL.md](docs/BINARY_PROTOCOL.md)**: Binary protocol specification and message format
 - **[CRC_IMPLEMENTATION.md](docs/CRC_IMPLEMENTATION.md)**: CRC implementation and validation details
 - **[PAYLOAD_ENCODING.md](docs/PAYLOAD_ENCODING.md)**: Payload encoding and decoding documentation

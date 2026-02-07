@@ -4,5 +4,8 @@
     "type_name": "INDUSTRIAL",
     "mount_sd_card": false,
     "debug_mode": false,
-    "test_mode": false
+    "test_mode": false,
+    "wifi_ssid": "YOUR_WIFI_SSID",
+    "wifi_password": "YOUR_WIFI_PASSWORD",
+    "update_url": "https://your-server.com"
 }
