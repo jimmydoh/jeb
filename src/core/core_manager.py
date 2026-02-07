@@ -81,7 +81,7 @@ class CoreManager:
         uart_baudrate = config.get("uart_baudrate", 115200)
 
         # Init Data Manager for persistent storage of scores and settings
-        self.data = DataManager(root_dir=root_data_dir)
+        self.data = DataManager(root_dir=self.root_data_dir)
 
         # Init Pins
         Pins.initialize(profile="CORE", type_id="00")
