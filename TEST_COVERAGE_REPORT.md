@@ -111,7 +111,7 @@ This document provides a comprehensive analysis of unit test coverage for the JE
 ### Utilities
 - ✅ cobs.py → test_cobs.py
 - ✅ crc.py → test_crc.py
-- ✅ payload_parser.py → test_payload_parser.py (NEW - added in this PR), test_payload_encoding.py
+- ✅ payload_parser.py → test_payload_encoding.py, test_payload_parser.py (NEW - added in this PR)
 - ✅ context.py → test_context.py (NEW - added in this PR)
 - ✅ palette.py → test_palette.py
 - ✅ icons.py → test_icons.py
@@ -202,9 +202,9 @@ This document provides a comprehensive analysis of unit test coverage for the JE
 |----------|------------|------------|
 | Protocol | 1 | 14 |
 | Utilities | 9 | 87 |
-| Managers | 6 | 37+ |
+| Managers | 6 | 37 |
 | Transport | 3 | 19 |
-| Modes | 2 | 10+ |
+| Modes | 2 | 10 |
 | Performance | 3+ | N/A |
 | Integration | 2+ | N/A |
 | **TOTAL** | **38** | **158+** |
@@ -284,7 +284,7 @@ Key achievements:
 Coverage Progress:
 - **Before**: 78.3% (36/46 modules)
 - **After**: 82.6% (38/46 modules)
-- **Improvement**: +4.3 percentage points, +2 modules tested
+- **Improvement**: +4.35 percentage points, +2 modules tested
 
 The remaining 8 untested modules (17.4%) primarily include:
 - Core manager and satellite firmware (require hardware mocking)
