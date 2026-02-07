@@ -142,6 +142,7 @@ class Updater:
         version_url = f"{self.update_url}/version.json"
         print(f"Fetching version info from: {version_url}")
         
+        response = None
         try:
             response = self.http_session.get(version_url, timeout=10)
             
@@ -152,7 +153,6 @@ class Updater:
             
             # Parse JSON
             self.remote_version = response.json()
-            response.close()
             
             # Validate version structure
             if "version" not in self.remote_version:
@@ -164,6 +164,9 @@ class Updater:
             
         except Exception as e:
             raise UpdaterError(f"Failed to fetch version: {e}")
+        finally:
+            if response is not None:
+                response.close()
     
     def fetch_manifest(self):
         """
@@ -182,6 +185,7 @@ class Updater:
         manifest_url = f"{self.update_url}/manifest.json"
         print(f"Fetching manifest from: {manifest_url}")
         
+        response = None
         try:
             response = self.http_session.get(manifest_url, timeout=10)
             
@@ -192,7 +196,6 @@ class Updater:
             
             # Parse JSON
             self.manifest = response.json()
-            response.close()
             
             # Validate manifest structure
             if "version" not in self.manifest or "files" not in self.manifest:
@@ -205,6 +208,9 @@ class Updater:
             
         except Exception as e:
             raise UpdaterError(f"Failed to fetch manifest: {e}")
+        finally:
+            if response is not None:
+                response.close()
     
     @staticmethod
     def calculate_sha256(filepath):
@@ -307,6 +313,7 @@ class Updater:
         print(f"  From: {file_url}")
         print(f"  To: {local_path}")
         
+        response = None
         try:
             # Create directory if needed
             dir_path = os.path.dirname(local_path) if "/" in local_path else ""
@@ -334,8 +341,6 @@ class Updater:
                     f.write(chunk)
                     hasher.update(chunk)
             
-            response.close()
-            
             # Verify hash
             actual_hash = hasher.hexdigest()
             if actual_hash != expected_hash:
@@ -348,6 +353,9 @@ class Updater:
             
         except Exception as e:
             raise UpdaterError(f"Failed to download {path}: {e}")
+        finally:
+            if response is not None:
+                response.close()
     
     def update_files(self, files_to_update):
         """
