@@ -8,10 +8,7 @@ The key benefit is not necessarily total memory usage, but the reduction in:
 3. String formatting (str(b) for each byte)
 """
 
-import sys
 import time
-
-
 def old_decode_bytes(payload_bytes):
     """Old implementation: creates comma-separated string."""
     return ','.join(str(b) for b in payload_bytes)
