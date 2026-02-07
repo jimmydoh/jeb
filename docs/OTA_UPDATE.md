@@ -402,7 +402,7 @@ Test coverage includes:
 
 1. **Use HTTPS**: Prevents man-in-the-middle attacks
 2. **Verify Hashes**: SHA256 ensures file integrity
-3. **Atomic Updates**: Partial updates are rejected
+3. **Update Consistency**: Uses integrity checks and retry/self-healing; partial installs may temporarily exist if a failure occurs
 4. **Access Control**: Secure your update server
 5. **Certificate Validation**: Ensure SSL certificates are valid
 6. **Network Segmentation**: Consider separate network for updates
