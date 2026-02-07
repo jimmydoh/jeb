@@ -333,9 +333,9 @@ def test_transport_abstraction():
     print("✓ Transport abstraction test passed")
 
 
-def test_non_blocking_receive():
-    """Test that receive() returns immediately when packet is incomplete."""
-    print("\nTesting non-blocking receive...")
+def test_receive_returns_none_for_incomplete_packet():
+    """Test that receive() returns None when packet is incomplete."""
+    print("\nTesting receive returns None for incomplete packet...")
     
     mock_uart = MockUARTManager()
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
@@ -364,12 +364,12 @@ def test_non_blocking_receive():
     assert msg.destination == "0101"
     assert msg.command == "STATUS"
     
-    print("✓ Non-blocking receive test passed")
+    print("✓ Receive returns None for incomplete packet test passed")
 
 
-def test_fragmented_packet_receive():
-    """Test that receive() handles packets arriving in fragments."""
-    print("\nTesting fragmented packet receive...")
+def test_receive_assembles_fragmented_packets():
+    """Test that receive() correctly assembles packets arriving in fragments."""
+    print("\nTesting receive assembles fragmented packets...")
     
     mock_uart = MockUARTManager()
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
@@ -408,7 +408,7 @@ def test_fragmented_packet_receive():
     assert msg.command == "LED"
     assert msg.payload == "255,128,64,32"
     
-    print("✓ Fragmented packet receive test passed")
+    print("✓ Receive assembles fragmented packets test passed")
 
 
 def test_multiple_packets_in_buffer():
@@ -468,8 +468,8 @@ if __name__ == "__main__":
         test_uart_transport_receive_empty()
         test_uart_transport_clear_buffer()
         test_transport_abstraction()
-        test_non_blocking_receive()
-        test_fragmented_packet_receive()
+        test_receive_returns_none_for_incomplete_packet()
+        test_receive_assembles_fragmented_packets()
         test_multiple_packets_in_buffer()
         
         print("\n" + "=" * 60)
