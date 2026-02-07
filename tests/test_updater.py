@@ -802,9 +802,8 @@ def test_download_file_socket_cleanup_on_error():
         assert close_called, "response.close() should be called even on hash mismatch"
         print("  ✓ Socket cleanup verified for hash mismatch path")
         
-        os.chdir(original_dir)
-        
     finally:
+        os.chdir(original_dir)
         shutil.rmtree(temp_dir)
         adafruit_requests_module.Session = original_session
     
