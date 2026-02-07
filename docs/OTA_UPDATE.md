@@ -218,6 +218,37 @@ Only files that are missing or changed are downloaded, reducing:
 - **USB Lockout**: USB mass storage disabled during update to prevent corruption
 - **Version Tracking**: `version.json` records successful updates
 - **SD Card Required**: Updates require SD card for staging (flash is read-only)
+- **Update Flag Persistence**: Failed updates preserve flag for automatic retry on next boot
+- **Zombie Prevention**: Only clears update flag on successful completion to prevent bricked devices
+
+### 9. Update Flag and Retry Logic
+
+The system uses an intelligent flag management strategy to prevent "zombie" (bricked) devices:
+
+**Flag Cleared (No Retry):**
+- Update completed successfully
+- SD card not mounted (cannot proceed)
+- Wi-Fi credentials missing (cannot proceed)
+
+**Flag Preserved (Automatic Retry):**
+- Update failed during download
+- Update failed during installation
+- Fatal error/exception occurred
+- Power loss or crash during update
+
+**Recovery Scenario:**
+```
+1. Update starts, downloads 5 of 10 files
+2. Power loss occurs during file installation
+3. Device reboots with partial/corrupted firmware
+4. boot.py detects preserved update flag
+5. Mounts filesystem as writable
+6. Updater automatically retries the full update
+7. Update completes successfully, flag cleared
+8. Device reboots into working firmware
+```
+
+This prevents the "zombie" scenario where a device reports a new version but runs corrupted code with no way to self-heal.
 
 ## Version Tracking
 
@@ -238,6 +269,7 @@ After a successful update, `version.json` is created/updated:
 
 If Wi-Fi connection fails:
 - Update aborts after 30-second timeout
+- **Update flag preserved** - automatic retry on next boot
 - Device continues with existing firmware
 - Error logged to console
 
@@ -245,6 +277,7 @@ If Wi-Fi connection fails:
 
 If manifest cannot be fetched:
 - Update aborts
+- **Update flag preserved** - automatic retry on next boot
 - Device continues with existing firmware
 - Check `update_url` configuration
 
@@ -252,15 +285,35 @@ If manifest cannot be fetched:
 
 If a file download fails:
 - Update aborts (doesn't proceed with partial update)
+- **Update flag preserved** - automatic retry on next boot
 - Device continues with existing firmware
-- Retry on next boot (update flag remains)
+- Next boot will retry the complete update
+
+### Installation Failures
+
+If file installation to flash fails:
+- Installation aborts immediately
+- **Update flag preserved** - automatic retry on next boot
+- Already-installed files remain on flash
+- Next boot will retry the complete update (overwrites partial files)
 
 ### Hash Mismatch
 
 If downloaded file hash doesn't match manifest:
 - File is rejected
 - Update aborts
-- Prevents corrupted firmware
+- **Update flag preserved** - automatic retry on next boot
+- Prevents corrupted firmware from being installed
+
+### Power Loss During Update
+
+If power is lost during update:
+- **Update flag preserved** automatically
+- On next boot, device detects flag and retries
+- Complete update process runs again
+- Device self-heals from partial/corrupted state
+
+**Note**: Only successful completion of the entire update process clears the flag and prevents retry.
 
 ## CI/CD Integration
 
