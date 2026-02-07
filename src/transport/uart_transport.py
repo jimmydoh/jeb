@@ -370,6 +370,9 @@ class UARTTransport:
             'ENCODING_NUMERIC_WORDS': 'words',
             'ENCODING_FLOATS': 'floats'
         }
+        
+        # Internal buffer for non-blocking receive
+        self._receive_buffer = bytearray()
     
     def send(self, message):
         """Send a message over UART using binary protocol with COBS framing.
@@ -411,28 +414,32 @@ class UARTTransport:
     def receive(self):
         """Receive a message from UART if available.
         
-        Reads COBS-framed packets, decodes, verifies CRC, and parses into Message.
+        Non-blocking stateful receive that reads available bytes and buffers them
+        internally. Returns a complete message when found, or None otherwise.
+        
+        This implementation eliminates blocking read_until() calls that can stall
+        the event loop when processing garbage data without delimiters.
         
         Returns:
             Message or None: Received message if available and valid, None otherwise.
-            
-        Raises:
-            ValueError: If buffer overflow occurs (propagated from UARTManager).
         """
-        # Check if bytes are available before attempting to read
-        # This prevents blocking I/O in async loops
-        if self.uart_manager.in_waiting == 0 and self.uart_manager.buffer_size == 0:
+        # Read available bytes directly from UART (non-blocking)
+        if self.uart_manager.in_waiting > 0:
+            available_bytes = self.uart_manager.uart.read(self.uart_manager.in_waiting)
+            if available_bytes:
+                self._receive_buffer.extend(available_bytes)
+        
+        # Check if we have a complete packet (terminated by 0x00)
+        delimiter_idx = self._receive_buffer.find(b'\x00')
+        if delimiter_idx < 0:
+            # No complete packet yet - return immediately
             return None
         
-        # Read until we find a 0x00 terminator
-        packet = self.uart_manager.read_until(b'\x00')
+        # Extract packet (without terminator)
+        packet = bytes(self._receive_buffer[:delimiter_idx])
         
-        if not packet:
-            return None
-        
-        # Remove terminator
-        if packet.endswith(b'\x00'):
-            packet = packet[:-1]
+        # Remove extracted packet and delimiter from buffer
+        del self._receive_buffer[:delimiter_idx + 1]
         
         if not packet:
             return None
@@ -489,5 +496,6 @@ class UARTTransport:
         return Message(destination, command, payload)
     
     def clear_buffer(self):
-        """Clear the UART buffer."""
+        """Clear the UART buffer and internal receive buffer."""
         self.uart_manager.clear_buffer()
+        self._receive_buffer.clear()
