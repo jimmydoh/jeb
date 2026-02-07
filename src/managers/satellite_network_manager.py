@@ -58,8 +58,9 @@ class SatelliteNetworkManager:
         
         Thread Safety: This method is called synchronously from the event loop in
         handle_message() (which is invoked by monitor_satellites()). Since asyncio
-        is single-threaded, no locking is needed. Do not call this method from
-        multiple threads or outside the main event loop context.
+        is single-threaded, no locking is needed for the task tracking. The method
+        itself executes synchronously but schedules asynchronous work via create_task().
+        Do not call this method from multiple threads or outside the main event loop context.
         
         Args:
             coro_func: Coroutine function to execute for status update
