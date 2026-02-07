@@ -77,16 +77,10 @@ def needs_update():
     
     Returns True if:
     - Update flag file exists (.update_flag)
-    - version.json is missing (first boot)
     """
     # Check for update flag
     if file_exists(".update_flag"):
         print("boot.py: Update flag detected")
-        return True
-    
-    # Check for missing version.json (first boot)
-    if not file_exists("version.json"):
-        print("boot.py: version.json missing - first boot detected")
         return True
     
     return False
