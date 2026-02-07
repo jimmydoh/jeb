@@ -337,6 +337,9 @@ class UARTTransport:
     - New: [DEST][CMD][PAYLOAD][CRC] + COBS (zero parsing, direct byte access)
     """
     
+    # Maximum size for internal receive buffer to prevent unbounded growth
+    MAX_BUFFER_SIZE = 1024  # ample space for ~2-4 packets
+    
     def __init__(self, uart_manager, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None):
         """Initialize UART transport.
         
@@ -429,8 +432,7 @@ class UARTTransport:
             self._receive_buffer.extend(available_bytes)
             
             # SAFETY: Prevent buffer explosion from noise
-            MAX_BUFFER_SIZE = 1024  # ample space for ~2-4 packets
-            if len(self._receive_buffer) > MAX_BUFFER_SIZE:
+            if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
                 print("⚠️ UART Buffer Overflow - Clearing Garbage")
                 self._receive_buffer.clear()
                 return None
