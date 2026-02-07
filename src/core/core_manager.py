@@ -66,10 +66,19 @@ class CoreManager:
     # Render loop configuration - runs at 60Hz for smooth LED updates
     RENDER_FRAME_TIME = 1.0 / 60.0  # ~0.0167 seconds per frame
     
-    def __init__(self, root_data_dir="/", debug_mode=False):
-
-        self.debug_mode = debug_mode
-        self.root_data_dir = root_data_dir
+    def __init__(self, config=None):
+        """Initialize CoreManager with configuration.
+        
+        Args:
+            config (dict, optional): Configuration dictionary. If None, uses defaults.
+        """
+        # Load config or use defaults
+        if config is None:
+            config = {}
+        
+        self.debug_mode = config.get("debug_mode", False)
+        self.root_data_dir = config.get("root_data_dir", "/")
+        uart_baudrate = config.get("uart_baudrate", 115200)
 
         # Init Data Manager for persistent storage of scores and settings
         self.data = DataManager(root_dir=root_data_dir)
@@ -135,7 +144,7 @@ class CoreManager:
         uart_hw = busio.UART(
             Pins.UART_TX,
             Pins.UART_RX,
-            baudrate=115200,
+            baudrate=uart_baudrate,
             receiver_buffer_size=512,
             timeout=0.01,
         )

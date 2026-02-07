@@ -139,6 +139,9 @@ test_mode = config.get("test_mode", False)
 
 print(f"ROLE: {role}, ID: {type_id}, NAME: {type_name}")
 
+# Add computed values to config for manager initialization
+config["root_data_dir"] = ROOT_DATA_DIR
+
 # Enable Hardware Watchdog Timer for system reliability
 # The watchdog will reset the system if it's not fed within the timeout period
 # This prevents indefinite hangs and ensures system recovery
@@ -157,7 +160,7 @@ if test_mode:
 else:
     if role == "CORE" and type_id == "00":
         from core.core_manager import CoreManager
-        app = CoreManager()
+        app = CoreManager(config=config)
 
     elif role == "SAT" and type_id == "01":
         from satellites import IndustrialSatelliteFirmware
