@@ -57,7 +57,7 @@ class BasePixelManager:
             slot.clear()
         self._active_count = 0
         self.pixels.fill((0, 0, 0))
-        self.pixels.show()
+        # Note: Hardware write is now handled by CoreManager.render_loop()
 
     def clear_animation(self, idx, priority=0):
         """
@@ -227,7 +227,7 @@ class BasePixelManager:
                         self.pixels[idx] = tuple(int(c * factor) for c in base)
                     dirty = True
 
-            if dirty:
-                self.pixels.show()
+            # Note: Hardware write is now handled by CoreManager.render_loop()
+            # We only update the memory buffer here
 
             await asyncio.sleep(0.05)
