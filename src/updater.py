@@ -419,9 +419,11 @@ class Updater:
         expected_hash = file_info["sha256"]
         
         # Source: SD card staging area
-        src_path = f"{self.download_dir}/{path}"
+        # Strip leading slash from path to ensure proper path joining
+        path_normalized = path.lstrip('/')
+        src_path = os.path.join(self.download_dir, path_normalized)
         # Destination: Configurable root (default to "/" for production)
-        dest_path = os.path.join(dest_root, path)
+        dest_path = os.path.join(dest_root, path_normalized)
         
         print(f"Installing: {path}")
         print(f"  From: {src_path}")

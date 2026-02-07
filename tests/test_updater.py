@@ -489,6 +489,32 @@ def test_install_file():
         
         print("  ✓ File installed and verified correctly")
         
+        # Test with absolute path (should be handled correctly)
+        os.makedirs("sd/update/modules", exist_ok=True)
+        test_content_2 = b"Another test file"
+        test_hash_2 = hashlib.sha256(test_content_2).hexdigest()
+        staging_file_2 = "sd/update/modules/core.mpy"
+        with open(staging_file_2, "wb") as f:
+            f.write(test_content_2)
+        
+        file_info_2 = {
+            "path": "/modules/core.mpy",  # Absolute path with leading slash
+            "sha256": test_hash_2,
+            "size": len(test_content_2)
+        }
+        
+        result_2 = updater_instance.install_file(file_info_2, dest_root=temp_dir)
+        assert result_2, "install_file should return True for absolute path"
+        
+        dest_file_2 = os.path.join(temp_dir, "modules/core.mpy")
+        assert os.path.exists(dest_file_2), "File with absolute path should be installed correctly"
+        
+        with open(dest_file_2, "rb") as f:
+            dest_content_2 = f.read()
+        assert dest_content_2 == test_content_2, "Content should match for absolute path"
+        
+        print("  ✓ Absolute path handling verified correctly")
+        
         os.chdir(original_dir)
         
     finally:
