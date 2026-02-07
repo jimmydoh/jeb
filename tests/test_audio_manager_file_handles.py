@@ -108,22 +108,6 @@ def create_test_file(directory, filename, size):
     return filepath
 
 
-def is_file_open(filepath):
-    """Check if a file has open file descriptors.
-    
-    This is a simplified check that attempts to detect if a file is open
-    by trying to remove it. On most systems, you can't remove an open file.
-    """
-    try:
-        # Try to open the file exclusively
-        with open(filepath, 'rb') as f:
-            # If we can read it, it's at least readable
-            pass
-        return False  # We could open it, so it's likely not held open elsewhere
-    except:
-        return True  # Can't access it, might be open
-
-
 def test_stream_file_tracking():
     """Test that streaming files are tracked in _stream_files."""
     print("Testing stream file tracking...")

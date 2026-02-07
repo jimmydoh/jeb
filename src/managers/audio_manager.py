@@ -115,7 +115,7 @@ class AudioManager:
             if channel in self._stream_files:
                 try:
                     self._stream_files[channel].close()
-                except:
+                except Exception:
                     pass
                 del self._stream_files[channel]
             voice.play(self._cache[file], loop=loop)
@@ -125,7 +125,7 @@ class AudioManager:
             if channel in self._stream_files:
                 try:
                     self._stream_files[channel].close()
-                except:
+                except Exception:
                     pass
                 del self._stream_files[channel]
             
@@ -145,7 +145,7 @@ class AudioManager:
         if channel in self._stream_files:
             try:
                 self._stream_files[channel].close()
-            except:
+            except Exception:
                 pass
             del self._stream_files[channel]
 
@@ -157,7 +157,7 @@ class AudioManager:
         for channel in list(self._stream_files.keys()):
             try:
                 self._stream_files[channel].close()
-            except:
+            except Exception:
                 pass
         self._stream_files.clear()
 
