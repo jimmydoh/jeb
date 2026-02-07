@@ -328,13 +328,19 @@ class Updater:
                 )
             
             # Write to file
+            # Stream response body to file and hash incrementally to avoid buffering in RAM
+            hasher = hashlib.sha256()
             with open(local_path, "wb") as f:
-                f.write(response.content)
+                for chunk in response.iter_content(1024):
+                    if not chunk:
+                        continue
+                    f.write(chunk)
+                    hasher.update(chunk)
             
             response.close()
             
             # Verify hash
-            actual_hash = self.calculate_sha256(local_path)
+            actual_hash = hasher.hexdigest()
             if actual_hash != expected_hash:
                 raise UpdaterError(
                     f"Hash mismatch for {path}: expected {expected_hash}, got {actual_hash}"
