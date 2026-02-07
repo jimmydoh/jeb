@@ -278,8 +278,8 @@ class JEBris(GameMode):
             # Flash lines white immediately (visual feedback)
             for y in self.lines_to_clear:
                 for x in range(self.width):
-                    self.core.matrix.set_pixel(x, y, Palette.WHITE)
-            self.core.matrix.show()
+                    self.core.matrix.draw_pixel(x, y, Palette.WHITE)
+            # Note: Hardware write is now centralized in CoreManager.render_loop()
 
     def finish_clear_lines(self):
         """Completes line clearing after animation finishes."""
@@ -310,9 +310,9 @@ class JEBris(GameMode):
             for x in range(self.width):
                 # If we're in clearing state, show white for lines being cleared
                 if self.game_state == self.STATE_CLEARING_LINES and y in self.lines_to_clear:
-                    self.core.matrix.set_pixel(x, y, Palette.WHITE)
+                    self.core.matrix.draw_pixel(x, y, Palette.WHITE)
                 elif self.grid[y][x] != Palette.OFF:
-                    self.core.matrix.set_pixel(x, y, self.grid[y][x])
+                    self.core.matrix.draw_pixel(x, y, self.grid[y][x])
 
         # 3. Draw Active Piece (only in PLAYING state)
         if self.game_state == self.STATE_PLAYING and self.current_piece:
@@ -320,10 +320,9 @@ class JEBris(GameMode):
                 nx = self.piece_x + x
                 ny = self.piece_y + y
                 if 0 <= nx < self.width and 0 <= ny < self.height:
-                    self.core.matrix.set_pixel(nx, ny, self.piece_color)
+                    self.core.matrix.draw_pixel(nx, ny, self.piece_color)
 
-        # 4. Push to Hardware
-        self.core.matrix.show()
+        # Note: Hardware write is now centralized in CoreManager.render_loop()
 
     async def pre_game_over(self):
         """Initial custom end game sequence before showing final score and high score."""
