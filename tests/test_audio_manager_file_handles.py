@@ -138,8 +138,8 @@ def test_close_on_new_stream():
     
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create two large files
-        file1 = create_test_file(tmpdir, "stream1.wav", 30720)
-        file2 = create_test_file(tmpdir, "stream2.wav", 30720)
+        create_test_file(tmpdir, "stream1.wav", 30720)
+        create_test_file(tmpdir, "stream2.wav", 30720)
         
         # Create AudioManager
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
