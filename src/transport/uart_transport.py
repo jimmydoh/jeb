@@ -435,24 +435,41 @@ class UARTTransport:
         available_bytes = self.uart_manager.read_available()
         if available_bytes:
             self._receive_buffer.extend(available_bytes)
-            
-            # SAFETY: Prevent buffer explosion from noise
-            if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
-                print("⚠️ UART Buffer Overflow - Clearing Garbage")
-                self._receive_buffer.clear()
-                return None
         
         # Check if we have a complete packet (terminated by 0x00)
         delimiter_idx = self._receive_buffer.find(b'\x00')
         if delimiter_idx < 0:
-            # No complete packet yet - return immediately
+            # No complete packet yet
+            # SAFETY: Prevent buffer explosion from noise when no valid packets present
+            if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
+                print("⚠️ UART Buffer Overflow - Clearing garbage (no packets found)")
+                self._receive_buffer.clear()
             return None
         
-        # Extract packet (without terminator)
+        # We have at least one complete packet - extract it
         packet = bytes(self._receive_buffer[:delimiter_idx])
         
         # Remove extracted packet and delimiter from buffer
         del self._receive_buffer[:delimiter_idx + 1]
+        
+        # SAFETY: After processing a packet, check if buffer still too large
+        # This handles case where buffer has valid packet(s) plus excess garbage
+        if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
+            print("⚠️ UART Buffer Overflow - Removing excess data")
+            # Find if there are more valid packets in the buffer
+            next_delimiter_idx = self._receive_buffer.find(b'\x00')
+            if next_delimiter_idx >= 0:
+                # There are more packets - keep from beginning
+                # Remove only if still oversized after keeping one more potential packet
+                if next_delimiter_idx > self.MAX_BUFFER_SIZE // 2:
+                    # Next packet is very far - might be garbage, remove old data
+                    del self._receive_buffer[:self.MAX_BUFFER_SIZE // 4]
+            else:
+                # No more packet delimiters - likely garbage after valid packet
+                # Keep only recent data that might be start of new packet
+                bytes_to_keep = self.MAX_BUFFER_SIZE // 2
+                if len(self._receive_buffer) > bytes_to_keep:
+                    del self._receive_buffer[:-bytes_to_keep]
         
         if not packet:
             return None
