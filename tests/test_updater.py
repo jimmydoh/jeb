@@ -484,6 +484,7 @@ def test_install_file():
                 try:
                     os.makedirs(dest_dir)
                 except OSError:
+                    # Ignore directory creation errors in this test context (e.g., already exists)
                     pass
             
             # Copy file
