@@ -241,17 +241,21 @@ def test_cached_vs_streamed():
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
         manager.preload(["small.wav"])
         
-        # Play cached file
-        asyncio.run(manager.play("small.wav", channel=1))
-        assert 1 not in manager._stream_files, "Cached file should not create stream file handle"
-        
-        # Play streamed file
-        asyncio.run(manager.play("large.wav", channel=1))
-        assert 1 in manager._stream_files, "Streamed file should create stream file handle"
-        assert not manager._stream_files[1].closed, "Streamed file handle should be open"
-        
-        print("  ✓ Cached file does not create stream file handle")
-        print("  ✓ Streamed file creates stream file handle")
+        try:
+            # Play cached file
+            asyncio.run(manager.play("small.wav", channel=1))
+            assert 1 not in manager._stream_files, "Cached file should not create stream file handle"
+            
+            # Play streamed file
+            asyncio.run(manager.play("large.wav", channel=1))
+            assert 1 in manager._stream_files, "Streamed file should create stream file handle"
+            assert not manager._stream_files[1].closed, "Streamed file handle should be open"
+            
+            print("  ✓ Cached file does not create stream file handle")
+            print("  ✓ Streamed file creates stream file handle")
+        finally:
+            # Ensure any open stream file handles are closed before temp dir cleanup
+            manager.stop_all()
     
     print("✓ Cached vs streamed test passed")
 
