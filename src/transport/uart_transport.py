@@ -423,11 +423,10 @@ class UARTTransport:
         Returns:
             Message or None: Received message if available and valid, None otherwise.
         """
-        # Read available bytes directly from UART (non-blocking)
-        if self.uart_manager.in_waiting > 0:
-            available_bytes = self.uart_manager.uart.read(self.uart_manager.in_waiting)
-            if available_bytes:
-                self._receive_buffer.extend(available_bytes)
+        # Read available bytes from UART (non-blocking)
+        available_bytes = self.uart_manager.read_available()
+        if available_bytes:
+            self._receive_buffer.extend(available_bytes)
         
         # Check if we have a complete packet (terminated by 0x00)
         delimiter_idx = self._receive_buffer.find(b'\x00')

@@ -108,6 +108,13 @@ class MockUARTManager:
         """Mock in_waiting property."""
         return self._in_waiting
     
+    def read_available(self):
+        """Mock read_available method."""
+        if self._in_waiting > 0:
+            data = self.uart.read(self._in_waiting)
+            return data
+        return b''
+    
     @property
     def buffer_size(self):
         """Mock buffer_size property."""
@@ -429,6 +436,9 @@ def test_multiple_packets_in_buffer():
     assert received1 is not None, "Should receive first packet"
     assert received1.destination == "0101"
     assert received1.command == "STATUS"
+    
+    # After first receive, UART buffer should be empty but transport's internal buffer has packet2
+    # (both packets were read from UART into internal buffer on first receive() call)
     
     # Second receive should get second packet (already in internal buffer)
     received2 = transport.receive()
