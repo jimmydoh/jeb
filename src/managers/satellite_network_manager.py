@@ -38,10 +38,38 @@ class SatelliteNetworkManager:
         # Debug state
         self.last_message_debug = ""
         self._debug_mode = False
+        
+        # Task throttling: Single slot for status updates to prevent unbounded task spawning
+        self._current_status_task = None
+        self._current_audio_task = None
     
     def set_debug_mode(self, debug_mode):
         """Enable or disable debug mode for message logging."""
         self._debug_mode = debug_mode
+    
+    def _spawn_status_task(self, coro):
+        """Spawn a status update task with throttling to prevent unbounded task creation.
+        
+        Only creates a new task if no status task is currently running, preventing
+        memory issues from task flooding during satellite malfunctions.
+        
+        Args:
+            coro: Coroutine to execute for status update
+        """
+        if self._current_status_task is None or self._current_status_task.done():
+            self._current_status_task = asyncio.create_task(coro)
+    
+    def _spawn_audio_task(self, coro):
+        """Spawn an audio task with throttling to prevent unbounded task creation.
+        
+        Only creates a new task if no audio task is currently running, preventing
+        memory issues from task flooding during satellite malfunctions.
+        
+        Args:
+            coro: Coroutine to execute for audio playback
+        """
+        if self._current_audio_task is None or self._current_audio_task.done():
+            self._current_audio_task = asyncio.create_task(coro)
     
     async def discover_satellites(self):
         """Triggers the ID assignment chain to discover satellites."""
@@ -98,19 +126,19 @@ class SatelliteNetworkManager:
                 if sid in self.satellites:
                     if not self.satellites[sid].is_active:
                         self.satellites[sid].is_active = True
-                        asyncio.create_task(
+                        self._spawn_status_task(
                             self.display.update_status("SAT RECONNECTED", f"ID: {sid}")
                         )
                         if self.satellites[sid].sat_type_name == "INDUSTRIAL":
                             self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
-                            asyncio.create_task(
+                            self._spawn_audio_task(
                                 self.audio.play(
                                     "link_restored.wav", channel=self.audio.CH_SFX
                                 )
                             )
                     self.satellites[sid].update_from_packet(payload)
                 else:
-                    asyncio.create_task(
+                    self._spawn_status_task(
                         self.display.update_status("UNKNOWN SAT", f"{sid} sent STATUS.")
                     )
             elif cmd == "POWER":
@@ -121,10 +149,10 @@ class SatelliteNetworkManager:
                     "log": get_float(v_data, 2),
                 }
             elif cmd == "ERROR":
-                asyncio.create_task(
+                self._spawn_status_task(
                     self.display.update_status("SAT ERROR", f"ID: {sid} ERR: {payload}")
                 )
-                asyncio.create_task(
+                self._spawn_audio_task(
                     self.audio.play("alarm_klaxon.wav", channel=self.audio.CH_SFX)
                 )
             elif cmd == "HELLO":
@@ -135,17 +163,17 @@ class SatelliteNetworkManager:
                         self.satellites[sid] = IndustrialSatelliteDriver(
                             sid, self.transport
                         )
-                    asyncio.create_task(
+                    self._spawn_status_task(
                         self.display.update_status("NEW SAT", f"{sid} sent HELLO.")
                     )
             elif cmd == "NEW_SAT":
-                asyncio.create_task(
+                self._spawn_status_task(
                     self.display.update_status("SAT CONNECTED", f"TYPE {payload} FOUND")
                 )
                 msg_out = Message("ALL", "ID_ASSIGN", f"{payload}00")
                 self.transport.send(msg_out)
             else:
-                asyncio.create_task(
+                self._spawn_status_task(
                     self.display.update_status("UNKNOWN COMMAND", f"{sid} sent {cmd}")
                 )
         except (ValueError, IndexError) as e:
@@ -179,13 +207,13 @@ class SatelliteNetworkManager:
                 if ticks_diff(now, sat.last_seen) > 5000:
                     if sat.is_active:
                         sat.is_active = False
-                        asyncio.create_task(
+                        self._spawn_status_task(
                             self.display.update_status("LINK LOST", f"ID: {sid}")
                         )
                 else:
                     if not sat.is_active:
                         sat.is_active = True
-                        asyncio.create_task(
+                        self._spawn_status_task(
                             self.display.update_status("LINK RESTORED", f"ID: {sid}")
                         )
             
