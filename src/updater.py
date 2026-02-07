@@ -411,24 +411,26 @@ class Updater:
                     print(f"  Created directory: {dest_dir}")
                 except OSError:
                     pass  # Directory already exists
-            
-            # Copy file from SD to flash
-            with open(src_path, "rb") as src_file:
-                file_content = src_file.read()
-            
-            with open(dest_path, "wb") as dest_file:
-                dest_file.write(file_content)
-            
-            # Verify hash of installed file
-            actual_hash = self.calculate_sha256(dest_path)
+
+            # Copy file from SD to flash in chunks and compute SHA256 during copy
+            hasher = hashlib.sha256()
+            with open(src_path, "rb") as src_file, open(dest_path, "wb") as dest_file:
+                while True:
+                    chunk = src_file.read(4096)
+                    if not chunk:
+                        break
+                    dest_file.write(chunk)
+                    hasher.update(chunk)
+
+            # Verify hash of installed file based on streamed data
+            actual_hash = hasher.hexdigest()
             if actual_hash != expected_hash:
                 raise UpdaterError(
                     f"Hash mismatch after install for {path}: expected {expected_hash}, got {actual_hash}"
                 )
-            
+
             print(f"  ✓ Installed and verified: {path}")
             return True
-            
         except Exception as e:
             raise UpdaterError(f"Failed to install {path}: {e}")
     
