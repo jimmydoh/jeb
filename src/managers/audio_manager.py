@@ -131,12 +131,22 @@ class AudioManager:
             
             try:
                 f = open(file, "rb")
-                wav = audiocore.WaveFile(f, bytearray(1024))
-                voice.play(wav, loop=loop)
-                # Track the file handle so we can close it later
-                self._stream_files[channel] = f
             except OSError:
                 print(f"Audio Error: File {file} not found")
+            else:
+                try:
+                    wav = audiocore.WaveFile(f, bytearray(1024))
+                    voice.play(wav, loop=loop)
+                except Exception:
+                    # Ensure the file handle is not leaked on failure
+                    try:
+                        f.close()
+                    except Exception:
+                        pass
+                    raise
+                else:
+                    # Track the file handle so we can close it later
+                    self._stream_files[channel] = f
 
     def stop(self, channel):
         """Stops playback on a specific channel."""
