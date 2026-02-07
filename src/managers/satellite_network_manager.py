@@ -41,7 +41,6 @@ class SatelliteNetworkManager:
         
         # Task throttling: Single slot for status updates to prevent unbounded task spawning
         self._current_status_task = None
-        self._current_audio_task = None
     
     def set_debug_mode(self, debug_mode):
         """Enable or disable debug mode for message logging."""
@@ -61,21 +60,6 @@ class SatelliteNetworkManager:
         """
         if self._current_status_task is None or self._current_status_task.done():
             self._current_status_task = asyncio.create_task(coro)
-    
-    def _spawn_audio_task(self, coro):
-        """Spawn an audio task with throttling to prevent unbounded task creation.
-        
-        Only creates a new task if no audio task is currently running, preventing
-        memory issues from task flooding during satellite malfunctions.
-        
-        Note: This method is called sequentially from the event loop, so no locking
-        is needed. handle_message is always called synchronously from monitor_satellites.
-        
-        Args:
-            coro: Coroutine to execute for audio playback
-        """
-        if self._current_audio_task is None or self._current_audio_task.done():
-            self._current_audio_task = asyncio.create_task(coro)
     
     async def discover_satellites(self):
         """Triggers the ID assignment chain to discover satellites."""
@@ -137,7 +121,7 @@ class SatelliteNetworkManager:
                         )
                         if self.satellites[sid].sat_type_name == "INDUSTRIAL":
                             self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
-                            self._spawn_audio_task(
+                            asyncio.create_task(
                                 self.audio.play(
                                     "link_restored.wav", channel=self.audio.CH_SFX
                                 )
@@ -158,7 +142,7 @@ class SatelliteNetworkManager:
                 self._spawn_status_task(
                     self.display.update_status("SAT ERROR", f"ID: {sid} ERR: {payload}")
                 )
-                self._spawn_audio_task(
+                asyncio.create_task(
                     self.audio.play("alarm_klaxon.wav", channel=self.audio.CH_SFX)
                 )
             elif cmd == "HELLO":
