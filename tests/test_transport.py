@@ -187,7 +187,8 @@ def test_uart_transport_receive():
     assert msg is not None, "Should receive a message"
     assert msg.destination == "0101"
     assert msg.command == "STATUS"
-    assert msg.payload == "100,200", f"Expected payload '100,200', got '{msg.payload}'"
+    # STATUS command uses ENCODING_NUMERIC_BYTES, so payload should be a tuple
+    assert msg.payload == (100, 200), f"Expected payload (100, 200), got {msg.payload!r}"
     
     print(f"  Received message: {msg}")
     print("✓ UARTTransport receive test passed")
@@ -292,7 +293,8 @@ def test_transport_abstraction():
     assert msg_in is not None, "Should receive a message"
     assert msg_out.destination == msg_in.destination, "Destinations should match"
     assert msg_out.command == msg_in.command, "Commands should match"
-    assert msg_out.payload == msg_in.payload, f"Payloads should match: '{msg_out.payload}' != '{msg_in.payload}'"
+    # LED uses ENCODING_NUMERIC_BYTES, so received payload will be a tuple
+    assert msg_in.payload == (255, 128, 64, 32), f"Payload should be tuple: got {msg_in.payload!r}"
     print(f"  Sent: {msg_out}")
     print(f"  Received: {msg_in}")
     

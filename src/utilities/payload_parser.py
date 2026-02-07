@@ -5,14 +5,15 @@ import struct
 
 
 def parse_values(payload):
-    """Parse payload into typed values, handling both string and bytes.
+    """Parse payload into typed values, handling multiple input formats.
     
     This function works with both text-based and binary protocols:
     - For strings: Parses comma-separated values like "100,200,50"
     - For bytes: Unpacks binary data as unsigned bytes
+    - For tuples/lists: Returns as-is (optimization from transport layer)
     
     Parameters:
-        payload (str or bytes): Comma-separated values, empty string, or binary data
+        payload (str, bytes, tuple, or list): Payload in various formats
         
     Returns:
         list: List of parsed values (int or float)
@@ -22,11 +23,17 @@ def parse_values(payload):
         [100, 200, 50]
         >>> parse_values(b'\\x64\\xc8\\x32')  # bytes: 100, 200, 50
         [100, 200, 50]
+        >>> parse_values((100, 200, 50))  # tuple from optimized transport
+        [100, 200, 50]
         >>> parse_values("")
         []
     """
     if not payload:
         return []
+    
+    # Handle tuple/list payloads (optimization: already parsed by transport layer)
+    if isinstance(payload, (tuple, list)):
+        return list(payload)
     
     # Handle binary payloads
     if isinstance(payload, bytes):

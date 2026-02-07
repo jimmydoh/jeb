@@ -255,9 +255,11 @@ def _encode_payload(payload_str, cmd_schema=None, encoding_constants=None):
 
 
 def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
-    """Decode payload bytes to string with explicit type handling.
+    """Decode payload bytes to appropriate type with explicit type handling.
     
     Uses command-specific schemas to properly interpret binary data.
+    Optimization: Returns tuples for numeric data instead of comma-separated strings
+    to reduce string allocations and GC pressure.
     
     Parameters:
         payload_bytes (bytes): Raw binary payload data
@@ -265,7 +267,10 @@ def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
         encoding_constants (dict, optional): Dictionary with ENCODING_* constants
         
     Returns:
-        bytes or str: Raw bytes for binary data, decoded string for text data
+        tuple, str, or bytes: 
+            - tuple of int/float for numeric encodings (ENCODING_NUMERIC_*, ENCODING_FLOATS)
+            - str for text encodings (ENCODING_RAW_TEXT) or printable UTF-8
+            - bytes for unknown binary data (fallback)
     """
     if not payload_bytes:
         return ""
@@ -278,29 +283,29 @@ def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
         if encoding_type == encoding_constants.get('ENCODING_RAW_TEXT'):
             return payload_bytes.decode('utf-8')
         
-        # Byte decoding (0-255 values)
+        # Byte decoding (0-255 values) - return tuple instead of string
         if encoding_type == encoding_constants.get('ENCODING_NUMERIC_BYTES'):
-            return ','.join(str(b) for b in payload_bytes)
+            return tuple(payload_bytes)
         
-        # Word decoding (16-bit signed)
+        # Word decoding (16-bit signed) - return tuple instead of string
         elif encoding_type == encoding_constants.get('ENCODING_NUMERIC_WORDS'):
             decoded_vals = []
             byte_offset = 0
             while byte_offset + 2 <= len(payload_bytes):
                 word_val = struct.unpack('<h', payload_bytes[byte_offset:byte_offset+2])[0]
-                decoded_vals.append(str(word_val))
+                decoded_vals.append(word_val)
                 byte_offset += 2
-            return ','.join(decoded_vals)
+            return tuple(decoded_vals)
         
-        # Float decoding (IEEE 754)
+        # Float decoding (IEEE 754) - return tuple instead of string
         elif encoding_type == encoding_constants.get('ENCODING_FLOATS'):
             decoded_vals = []
             byte_offset = 0
             while byte_offset + 4 <= len(payload_bytes):
                 float_val = struct.unpack('<f', payload_bytes[byte_offset:byte_offset+4])[0]
-                decoded_vals.append(str(float_val))
+                decoded_vals.append(float_val)
                 byte_offset += 4
-            return ','.join(decoded_vals)
+            return tuple(decoded_vals)
     
     # Backward compatibility: heuristic decoding
     # Try UTF-8 text interpretation first
