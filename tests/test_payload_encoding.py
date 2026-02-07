@@ -47,12 +47,35 @@ sys.modules['utilities'] = MockUtilities()
 
 
 # Mock UARTManager
+class MockUART:
+    """Mock UART object for testing."""
+    def __init__(self, uart_manager):
+        self.uart_manager = uart_manager
+    
+    @property
+    def in_waiting(self):
+        """Mock in_waiting property."""
+        return self.uart_manager._in_waiting
+    
+    def read(self, n):
+        """Mock read method."""
+        # Read n bytes from the receive buffer
+        n = min(n, len(self.uart_manager.receive_buffer))
+        if n == 0:
+            return b''
+        data = bytes(self.uart_manager.receive_buffer[:n])
+        del self.uart_manager.receive_buffer[:n]
+        self.uart_manager._in_waiting = len(self.uart_manager.receive_buffer)
+        return data
+
+
 class MockUARTManager:
     """Mock UARTManager for testing."""
     def __init__(self):
         self.sent_packets = []
         self.receive_buffer = bytearray()
         self._in_waiting = 0
+        self.uart = MockUART(self)
     
     def write(self, data):
         """Mock write method."""
@@ -107,6 +130,7 @@ def test_id_assign_preserves_leading_zeros():
         
         # Receive it back
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
+        mock_uart._in_waiting = len(mock_uart.receive_buffer)
         msg_in = transport.receive()
         
         assert msg_in is not None, f"Failed to receive message for {description}"
@@ -132,6 +156,7 @@ def test_new_sat_preserves_string_ids():
         transport.send(msg_out)
         
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
+        mock_uart._in_waiting = len(mock_uart.receive_buffer)
         msg_in = transport.receive()
         
         assert msg_in is not None
@@ -155,6 +180,7 @@ def test_led_commands_use_byte_encoding():
     transport.send(msg_out)
     
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = transport.receive()
     
     assert msg_in is not None
@@ -176,6 +202,7 @@ def test_power_commands_use_float_encoding():
     transport.send(msg_out)
     
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = transport.receive()
     
     assert msg_in is not None
@@ -203,6 +230,7 @@ def test_power_commands_accept_list_tuple():
     transport.send(msg_out)
     
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = transport.receive()
     
     assert msg_in is not None
@@ -223,6 +251,7 @@ def test_power_commands_accept_list_tuple():
     transport.send(msg_out)
     
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = transport.receive()
     
     assert msg_in is not None
@@ -271,6 +300,7 @@ def test_display_commands_preserve_text():
         transport.send(msg_out)
         
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
+        mock_uart._in_waiting = len(mock_uart.receive_buffer)
         msg_in = transport.receive()
         
         assert msg_in is not None
@@ -294,6 +324,7 @@ def test_backward_compatibility():
     transport.send(msg_out)
     
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = transport.receive()
     
     assert msg_in is not None
@@ -324,6 +355,7 @@ def test_roundtrip_all_command_types():
         
         transport.send(msg_out)
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
+        mock_uart._in_waiting = len(mock_uart.receive_buffer)
         msg_in = transport.receive()
         
         assert msg_in is not None, f"Failed to receive {msg_out.command}"
