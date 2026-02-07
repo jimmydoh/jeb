@@ -27,7 +27,6 @@ import json
 import os
 import time
 
-import board
 import microcontroller
 import supervisor
 

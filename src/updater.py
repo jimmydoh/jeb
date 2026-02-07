@@ -142,6 +142,7 @@ class Updater:
         version_url = f"{self.update_url}/version.json"
         print(f"Fetching version info from: {version_url}")
         
+        response = None
         try:
             response = self.http_session.get(version_url, timeout=10)
             
@@ -152,7 +153,10 @@ class Updater:
             
             # Parse JSON
             self.remote_version = response.json()
+            
+            # Close response immediately after parsing since we don't need the connection anymore
             response.close()
+            response = None
             
             # Validate version structure
             if "version" not in self.remote_version:
@@ -164,6 +168,9 @@ class Updater:
             
         except Exception as e:
             raise UpdaterError(f"Failed to fetch version: {e}")
+        finally:
+            if response is not None:
+                response.close()
     
     def fetch_manifest(self):
         """
@@ -182,6 +189,7 @@ class Updater:
         manifest_url = f"{self.update_url}/manifest.json"
         print(f"Fetching manifest from: {manifest_url}")
         
+        response = None
         try:
             response = self.http_session.get(manifest_url, timeout=10)
             
@@ -192,7 +200,10 @@ class Updater:
             
             # Parse JSON
             self.manifest = response.json()
+            
+            # Close response immediately after parsing since we don't need the connection anymore
             response.close()
+            response = None
             
             # Validate manifest structure
             if "version" not in self.manifest or "files" not in self.manifest:
@@ -205,6 +216,9 @@ class Updater:
             
         except Exception as e:
             raise UpdaterError(f"Failed to fetch manifest: {e}")
+        finally:
+            if response is not None:
+                response.close()
     
     @staticmethod
     def calculate_sha256(filepath):
@@ -307,6 +321,7 @@ class Updater:
         print(f"  From: {file_url}")
         print(f"  To: {local_path}")
         
+        response = None
         try:
             # Create directory if needed
             dir_path = os.path.dirname(local_path) if "/" in local_path else ""
@@ -334,7 +349,9 @@ class Updater:
                     f.write(chunk)
                     hasher.update(chunk)
             
+            # Close response immediately after download completes
             response.close()
+            response = None
             
             # Verify hash
             actual_hash = hasher.hexdigest()
@@ -348,6 +365,9 @@ class Updater:
             
         except Exception as e:
             raise UpdaterError(f"Failed to download {path}: {e}")
+        finally:
+            if response is not None:
+                response.close()
     
     def update_files(self, files_to_update):
         """
@@ -380,12 +400,14 @@ class Updater:
         print(f"\n✓ Successfully downloaded {success_count}/{total} files")
         return success_count == total
     
-    def install_file(self, file_info):
+    def install_file(self, file_info, dest_root="/"):
         """
         Install a single file from SD card staging to internal flash.
         
         Args:
             file_info (dict): File information from manifest
+            dest_root (str): Destination root directory (default: "/" for CircuitPython)
+                            Allows injection for testing purposes
             
         Returns:
             bool: True if successful
@@ -397,9 +419,16 @@ class Updater:
         expected_hash = file_info["sha256"]
         
         # Source: SD card staging area
-        src_path = f"{self.download_dir}/{path}"
-        # Destination: Internal flash root
-        dest_path = f"/{path}"
+        # Strip leading slash from path to ensure proper path joining
+        path_normalized = path.lstrip('/')
+        # Reject empty or invalid paths that would cause us to write to dest_root itself
+        if not path_normalized:
+            raise UpdaterError(
+                f"Invalid file path in manifest (empty or only slashes): {repr(path)}"
+            )
+        src_path = os.path.join(self.download_dir, path_normalized)
+        # Destination: Configurable root (default to "/" for production)
+        dest_path = os.path.join(dest_root, path_normalized)
         
         print(f"Installing: {path}")
         print(f"  From: {src_path}")
@@ -551,7 +580,7 @@ class Updater:
             self.fetch_manifest()
             
             # Step 4: Verify files
-            files_to_update, files_ok = self.verify_files()
+            files_to_update, _ = self.verify_files()
             
             # Step 5: Download files to SD card staging area
             if not self.update_files(files_to_update):

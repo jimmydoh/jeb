@@ -427,7 +427,12 @@ def test_write_version_info():
 
 
 def test_install_file():
-    """Test installing a file from SD staging to flash."""
+    """Test installing a file from SD staging to flash.
+    
+    This test exercises the real Updater.install_file() method with an
+    injectable dest_root parameter to verify path handling, directory
+    creation, and error handling work correctly.
+    """
     print("\nTesting install_file...")
     
     temp_dir = tempfile.mkdtemp()
@@ -464,51 +469,12 @@ def test_install_file():
             "size": len(test_content)
         }
         
-        # Create destination directory
-        os.makedirs("lib", exist_ok=True)
-        
-        # Temporarily modify the install_file to use relative paths
-        # Save original calculate_sha256
-        original_calculate = updater.Updater.calculate_sha256
-        
-        # Mock to use relative paths
-        def mock_install(file_info):
-            path = file_info["path"]
-            expected_hash = file_info["sha256"]
-            src_path = f"{updater_instance.download_dir}/{path}"
-            dest_path = path  # Relative path in temp dir
-            
-            # Ensure destination directory exists
-            dest_dir = dest_path.rsplit("/", 1)[0] if "/" in dest_path else ""
-            if dest_dir:
-                try:
-                    os.makedirs(dest_dir)
-                except OSError:
-                    # Ignore directory creation errors in this test context (e.g., already exists)
-                    pass
-            
-            # Copy file
-            with open(src_path, "rb") as src_file:
-                file_content = src_file.read()
-            
-            with open(dest_path, "wb") as dest_file:
-                dest_file.write(file_content)
-            
-            # Verify hash
-            actual_hash = original_calculate(dest_path)
-            if actual_hash != expected_hash:
-                raise updater.UpdaterError(
-                    f"Hash mismatch after install for {path}"
-                )
-            
-            return True
-        
-        # Install the file using our mock
-        result = mock_install(file_info)
+        # Install the file using the real install_file method with temp_dir as dest_root
+        result = updater_instance.install_file(file_info, dest_root=temp_dir)
         assert result, "install_file should return True"
         
         # Check destination file was created
-        dest_file = "lib/test.mpy"
+        dest_file = os.path.join(temp_dir, "lib/test.mpy")
         assert os.path.exists(dest_file), "Destination file should exist"
         
         # Verify content
@@ -518,10 +484,36 @@ def test_install_file():
         assert dest_content == test_content, "Installed content should match"
         
         # Verify hash
-        actual_hash = original_calculate(dest_file)
+        actual_hash = updater.Updater.calculate_sha256(dest_file)
         assert actual_hash == test_hash, "Installed file hash should match"
         
         print("  ✓ File installed and verified correctly")
+        
+        # Test with absolute path (should be handled correctly)
+        os.makedirs("sd/update/modules", exist_ok=True)
+        test_content_2 = b"Another test file"
+        test_hash_2 = hashlib.sha256(test_content_2).hexdigest()
+        staging_file_2 = "sd/update/modules/core.mpy"
+        with open(staging_file_2, "wb") as f:
+            f.write(test_content_2)
+        
+        file_info_2 = {
+            "path": "/modules/core.mpy",  # Absolute path with leading slash
+            "sha256": test_hash_2,
+            "size": len(test_content_2)
+        }
+        
+        result_2 = updater_instance.install_file(file_info_2, dest_root=temp_dir)
+        assert result_2, "install_file should return True for absolute path"
+        
+        dest_file_2 = os.path.join(temp_dir, "modules/core.mpy")
+        assert os.path.exists(dest_file_2), "File with absolute path should be installed correctly"
+        
+        with open(dest_file_2, "rb") as f:
+            dest_content_2 = f.read()
+        assert dest_content_2 == test_content_2, "Content should match for absolute path"
+        
+        print("  ✓ Absolute path handling verified correctly")
         
         os.chdir(original_dir)
         
@@ -529,6 +521,306 @@ def test_install_file():
         shutil.rmtree(temp_dir)
     
     print("✓ install_file test passed")
+
+
+def test_fetch_version_socket_cleanup_on_error():
+    """Test that response.close() is called even when errors occur in fetch_remote_version."""
+    print("\nTesting fetch_remote_version socket cleanup on error...")
+    
+    # Track if close() was called
+    close_called = False
+    
+    class MockResponse:
+        def __init__(self, status_code=200, json_data=None):
+            self.status_code = status_code
+            self._json_data = json_data or {}
+        
+        def json(self):
+            if self._json_data.get("error"):
+                raise ValueError("JSON parse error")
+            return self._json_data
+        
+        def close(self):
+            nonlocal close_called
+            close_called = True
+    
+    class MockSessionWithErrors:
+        def __init__(self, pool, context):
+            pass
+        
+        def get(self, url, timeout=10):
+            # Return response with bad status code
+            return MockResponse(status_code=404)
+    
+    # Save original session class
+    original_session = adafruit_requests_module.Session
+    
+    try:
+        # Mock session for HTTP error test
+        adafruit_requests_module.Session = MockSessionWithErrors
+        
+        config = {
+            "wifi_ssid": "test",
+            "wifi_password": "test",
+            "update_url": "http://test.com"
+        }
+        
+        updater_instance = updater.Updater(config, sd_mounted=True)
+        updater_instance.http_session = MockSessionWithErrors(None, None)
+        
+        # Test HTTP error path
+        close_called = False
+        try:
+            updater_instance.fetch_remote_version()
+            assert False, "Should have raised UpdaterError for HTTP 404"
+        except updater.UpdaterError:
+            pass
+        
+        assert close_called, "response.close() should be called even on HTTP error"
+        print("  ✓ Socket cleanup verified for HTTP error path")
+        
+        # Test JSON parsing error path
+        class MockSessionJSONError:
+            def __init__(self, pool, context):
+                pass
+            
+            def get(self, url, timeout=10):
+                return MockResponse(status_code=200, json_data={"error": True})
+        
+        adafruit_requests_module.Session = MockSessionJSONError
+        updater_instance.http_session = MockSessionJSONError(None, None)
+        
+        close_called = False
+        try:
+            updater_instance.fetch_remote_version()
+            assert False, "Should have raised UpdaterError for JSON parse error"
+        except updater.UpdaterError:
+            pass
+        
+        assert close_called, "response.close() should be called even on JSON error"
+        print("  ✓ Socket cleanup verified for JSON error path")
+        
+        # Test validation error path
+        class MockSessionValidation:
+            def __init__(self, pool, context):
+                pass
+            
+            def get(self, url, timeout=10):
+                return MockResponse(status_code=200, json_data={"no_version": "1.0.0"})
+        
+        adafruit_requests_module.Session = MockSessionValidation
+        updater_instance.http_session = MockSessionValidation(None, None)
+        
+        close_called = False
+        try:
+            updater_instance.fetch_remote_version()
+            assert False, "Should have raised UpdaterError for validation error"
+        except updater.UpdaterError:
+            pass
+        
+        assert close_called, "response.close() should be called even on validation error"
+        print("  ✓ Socket cleanup verified for validation error path")
+        
+    finally:
+        # Restore original session
+        adafruit_requests_module.Session = original_session
+    
+    print("✓ fetch_remote_version socket cleanup test passed")
+
+
+def test_fetch_manifest_socket_cleanup_on_error():
+    """Test that response.close() is called even when errors occur in fetch_manifest."""
+    print("\nTesting fetch_manifest socket cleanup on error...")
+    
+    close_called = False
+    
+    class MockResponse:
+        def __init__(self, status_code=200, json_data=None):
+            self.status_code = status_code
+            self._json_data = json_data or {}
+        
+        def json(self):
+            if self._json_data.get("error"):
+                raise ValueError("JSON parse error")
+            return self._json_data
+        
+        def close(self):
+            nonlocal close_called
+            close_called = True
+    
+    class MockSessionWithErrors:
+        def __init__(self, pool, context):
+            pass
+        
+        def get(self, url, timeout=10):
+            return MockResponse(status_code=500)
+    
+    original_session = adafruit_requests_module.Session
+    
+    try:
+        adafruit_requests_module.Session = MockSessionWithErrors
+        
+        config = {
+            "wifi_ssid": "test",
+            "wifi_password": "test",
+            "update_url": "http://test.com"
+        }
+        
+        updater_instance = updater.Updater(config, sd_mounted=True)
+        updater_instance.http_session = MockSessionWithErrors(None, None)
+        updater_instance.remote_version = {"version": "1.0.0"}
+        
+        # Test HTTP error path
+        close_called = False
+        try:
+            updater_instance.fetch_manifest()
+            assert False, "Should have raised UpdaterError for HTTP 500"
+        except updater.UpdaterError:
+            pass
+        
+        assert close_called, "response.close() should be called even on HTTP error"
+        print("  ✓ Socket cleanup verified for HTTP error path")
+        
+        # Test JSON parsing error path
+        class MockSessionJSONError:
+            def __init__(self, pool, context):
+                pass
+            
+            def get(self, url, timeout=10):
+                return MockResponse(status_code=200, json_data={"error": True})
+        
+        adafruit_requests_module.Session = MockSessionJSONError
+        updater_instance.http_session = MockSessionJSONError(None, None)
+        
+        close_called = False
+        try:
+            updater_instance.fetch_manifest()
+            assert False, "Should have raised UpdaterError for JSON parse error"
+        except updater.UpdaterError:
+            pass
+        
+        assert close_called, "response.close() should be called even on JSON error"
+        print("  ✓ Socket cleanup verified for JSON error path")
+        
+        # Test validation error path
+        class MockSessionValidation:
+            def __init__(self, pool, context):
+                pass
+            
+            def get(self, url, timeout=10):
+                return MockResponse(status_code=200, json_data={"version": "1.0.0"})  # Missing "files"
+        
+        adafruit_requests_module.Session = MockSessionValidation
+        updater_instance.http_session = MockSessionValidation(None, None)
+        
+        close_called = False
+        try:
+            updater_instance.fetch_manifest()
+            assert False, "Should have raised UpdaterError for validation error"
+        except updater.UpdaterError:
+            pass
+        
+        assert close_called, "response.close() should be called even on validation error"
+        print("  ✓ Socket cleanup verified for validation error path")
+        
+    finally:
+        adafruit_requests_module.Session = original_session
+    
+    print("✓ fetch_manifest socket cleanup test passed")
+
+
+def test_download_file_socket_cleanup_on_error():
+    """Test that response.close() is called even when errors occur in download_file."""
+    print("\nTesting download_file socket cleanup on error...")
+    
+    temp_dir = tempfile.mkdtemp()
+    original_dir = os.getcwd()
+    close_called = False
+    
+    class MockResponse:
+        def __init__(self, status_code=200, content=b"test"):
+            self.status_code = status_code
+            self._content = content
+        
+        def iter_content(self, chunk_size):
+            if self.status_code == 200:
+                yield self._content
+        
+        def close(self):
+            nonlocal close_called
+            close_called = True
+    
+    class MockSessionWithErrors:
+        def __init__(self, pool, context):
+            pass
+        
+        def get(self, url, timeout=10):
+            return MockResponse(status_code=403)
+    
+    original_session = adafruit_requests_module.Session
+    
+    try:
+        os.chdir(temp_dir)
+        os.makedirs("sd/update")
+        
+        adafruit_requests_module.Session = MockSessionWithErrors
+        
+        config = {
+            "wifi_ssid": "test",
+            "wifi_password": "test",
+            "update_url": "http://test.com"
+        }
+        
+        updater_instance = updater.Updater(config, sd_mounted=True)
+        updater_instance.http_session = MockSessionWithErrors(None, None)
+        updater_instance.remote_version = {"version": "1.0.0"}
+        updater_instance.download_dir = "sd/update"
+        
+        file_info = {
+            "path": "test.txt",
+            "download_path": "test.txt",
+            "sha256": "abc123",
+            "size": 100
+        }
+        
+        # Test HTTP error path
+        close_called = False
+        try:
+            updater_instance.download_file(file_info)
+            assert False, "Should have raised UpdaterError for HTTP 403"
+        except updater.UpdaterError:
+            pass
+        
+        assert close_called, "response.close() should be called even on HTTP error"
+        print("  ✓ Socket cleanup verified for HTTP error path")
+        
+        # Test hash mismatch path
+        class MockSessionHashMismatch:
+            def __init__(self, pool, context):
+                pass
+            
+            def get(self, url, timeout=10):
+                return MockResponse(status_code=200, content=b"test content")
+        
+        adafruit_requests_module.Session = MockSessionHashMismatch
+        updater_instance.http_session = MockSessionHashMismatch(None, None)
+        
+        close_called = False
+        try:
+            updater_instance.download_file(file_info)
+            assert False, "Should have raised UpdaterError for hash mismatch"
+        except updater.UpdaterError:
+            pass
+        
+        assert close_called, "response.close() should be called even on hash mismatch"
+        print("  ✓ Socket cleanup verified for hash mismatch path")
+        
+    finally:
+        os.chdir(original_dir)
+        shutil.rmtree(temp_dir)
+        adafruit_requests_module.Session = original_session
+    
+    print("✓ download_file socket cleanup test passed")
 
 
 def run_all_tests():
@@ -548,6 +840,9 @@ def run_all_tests():
         test_verify_files,
         test_write_version_info,
         test_install_file,
+        test_fetch_version_socket_cleanup_on_error,
+        test_fetch_manifest_socket_cleanup_on_error,
+        test_download_file_socket_cleanup_on_error,
     ]
     
     failed = 0
