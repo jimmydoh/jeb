@@ -462,19 +462,19 @@ class UARTTransport:
         # This handles case where buffer has valid packet(s) plus excess garbage
         if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
             print("⚠️ UART Buffer Overflow - Removing excess data")
-            # Find if there are more valid packets in the buffer
-            next_delimiter_idx = self._receive_buffer.find(b'\x00')
-            if next_delimiter_idx >= 0:
-                # There are more packets - keep from beginning
-                # Remove old data only if next packet is unreasonably far (likely preceded by garbage)
-                if next_delimiter_idx > self.MAX_DELIMITER_DISTANCE_THRESHOLD:
-                    # Next packet is very far - remove old garbage before it
-                    del self._receive_buffer[:self.OVERFLOW_REMOVAL_SIZE]
-            else:
-                # No more packet delimiters - likely garbage after valid packet
-                # Keep only recent data that might be start of new packet
-                if len(self._receive_buffer) > self.PARTIAL_PACKET_BUFFER_SIZE:
-                    del self._receive_buffer[:-self.PARTIAL_PACKET_BUFFER_SIZE]
+            # First, discard oldest complete packets until we are back under the cap
+            while len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
+                next_delimiter_idx = self._receive_buffer.find(b'\x00')
+                if next_delimiter_idx < 0:
+                    # No complete packets left to discard; stop and fall back to tail retention
+                    break
+                # Drop the oldest complete packet (up to and including its delimiter)
+                del self._receive_buffer[:next_delimiter_idx + 1]
+            # If still too large (e.g., only partial/garbage data remains), keep only a bounded tail
+            if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
+                keep_bytes = min(self.PARTIAL_PACKET_BUFFER_SIZE, self.MAX_BUFFER_SIZE)
+                if len(self._receive_buffer) > keep_bytes:
+                    del self._receive_buffer[:-keep_bytes]
         
         if not packet:
             return None
