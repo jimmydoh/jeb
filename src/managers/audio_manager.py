@@ -33,6 +33,10 @@ class AudioManager:
         # Cache for frequently used small sound files
         # Format: {"filename": RawSampleObject}
         self._cache = {}
+        
+        # Track open file handles for streaming audio (by channel)
+        # Format: {channel_number: file_handle}
+        self._stream_files = {}
 
     def attach_synth(self, synth_source):
         """Attach a synth source (e.g., SynthManager) to the mixer."""
@@ -107,24 +111,65 @@ class AudioManager:
 
         if file in self._cache:
             # Use pre-loaded object (Fast, no allocation)
+            # Close any existing stream for this channel before playing cached audio
+            if channel in self._stream_files:
+                try:
+                    self._stream_files[channel].close()
+                except Exception:
+                    pass
+                del self._stream_files[channel]
             voice.play(self._cache[file], loop=loop)
         else:
             # Stream from disk (For long narration/music)
+            # Close any existing stream for this channel before opening a new one
+            if channel in self._stream_files:
+                try:
+                    self._stream_files[channel].close()
+                except Exception:
+                    pass
+                del self._stream_files[channel]
+            
             try:
                 f = open(file, "rb")
-                wav = audiocore.WaveFile(f, bytearray(1024))
-                voice.play(wav, loop=loop)
             except OSError:
                 print(f"Audio Error: File {file} not found")
+            else:
+                try:
+                    wav = audiocore.WaveFile(f, bytearray(1024))
+                    voice.play(wav, loop=loop)
+                except Exception:
+                    # Ensure the file handle is not leaked on failure
+                    try:
+                        f.close()
+                    except Exception:
+                        pass
+                    raise
+                else:
+                    # Track the file handle so we can close it later
+                    self._stream_files[channel] = f
 
     def stop(self, channel):
         """Stops playback on a specific channel."""
         self.mixer.voice[channel].stop()
+        # Close any open file handle for this channel
+        if channel in self._stream_files:
+            try:
+                self._stream_files[channel].close()
+            except Exception:
+                pass
+            del self._stream_files[channel]
 
     def stop_all(self):
         """Stops playback on all channels."""
         for voice in self.mixer.voice:
             voice.stop()
+        # Close all open file handles
+        for channel in list(self._stream_files.keys()):
+            try:
+                self._stream_files[channel].close()
+            except Exception:
+                pass
+        self._stream_files.clear()
 
     def set_level(self, channel, level):
         """Set volume level for a specific channel."""
