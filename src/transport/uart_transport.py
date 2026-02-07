@@ -13,7 +13,10 @@ def _encode_destination(dest_str, dest_map):
         dest_map (dict): Mapping of special destination strings to byte values
         
     Returns:
-        bytes: Encoded destination (1-2 bytes)
+        bytes: Encoded destination (1 or 2 bytes depending on format):
+            - 1 byte for special destinations (e.g., "ALL", "SAT") 
+            - 2 bytes for full device IDs (e.g., "0101" -> type=01, index=01)
+            - 1 byte for type-only IDs (backward compat)
     """
     if dest_str in dest_map:
         return bytes([dest_map[dest_str]])
