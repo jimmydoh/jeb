@@ -327,6 +327,7 @@ class CoreManager:
 
                 # Strobe the neobar and satellite LEDs
                 while not self.hid.estop:  # While button is still latched down
+                    self.watchdog_flags["estop"] = True  # Signal that we are alive and waiting
                     # TODO Implement alarm LED strobing
                     await asyncio.sleep(0.2)
 
