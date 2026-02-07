@@ -1,6 +1,143 @@
-# Build MPY Files Workflow
+# GitHub Actions Workflows
 
-This GitHub Action workflow compiles Python source files from the `src/` directory into MicroPython bytecode (`.mpy` files) using `mpy-cross` and generates a manifest file with download paths and checksums.
+This directory contains GitHub Actions workflows for the JEB project.
+
+## Available Workflows
+
+### 1. Unit Tests Workflow (`unit-tests.yml`)
+
+Runs the pure unit tests (excluding performance and integration tests) to ensure code quality.
+
+### 2. Build MPY Files Workflow (`build-mpy.yml`)
+
+Compiles Python source files from the `src/` directory into MicroPython bytecode (`.mpy` files) using `mpy-cross` and generates a manifest file with download paths and checksums.
+
+---
+
+## Unit Tests Workflow
+
+This workflow runs the "purest" unit tests - specifically designed tests that don't require hardware or are performance/integration tests.
+
+### Overview
+
+The workflow:
+1. Sets up Python 3.11
+2. Installs pytest dependency
+3. Runs all pure unit tests (28 tests)
+4. Reports pass/fail status
+5. Fails the workflow if any test fails
+
+### Triggers
+
+The workflow runs on:
+- Push to `main` or `develop` branches
+- Pull requests to `main` or `develop`
+- Manual trigger via `workflow_dispatch`
+
+### Test Coverage
+
+The workflow runs 28 pure unit tests:
+
+**Utilities (7 tests):**
+- test_cobs.py - COBS encoding/decoding
+- test_crc.py - CRC calculations
+- test_icons.py - Icon library
+- test_jeb_pixel.py - Pixel wrapper class
+- test_palette.py - Color utilities
+- test_payload_encoding.py - Payload encoding
+- test_tones.py - Tone utilities
+
+**Managers (5 tests):**
+- test_audio_manager.py - Audio system management
+- test_buzzer_manager.py - Buzzer control
+- test_data_manager.py - Data persistence
+- test_pixel_manager.py - Pixel management
+- test_matrix_manager.py - Matrix operations
+
+**Transport (5 tests):**
+- test_base_transport.py - Transport abstraction
+- test_binary_transport.py - Binary transport with COBS
+- test_message.py - Message structures
+- test_transport.py - UART transport
+- test_transport_reusability.py - Transport reusability
+
+**Protocol (1 test):**
+- test_protocol.py - Protocol definitions
+
+**Modes (2 tests):**
+- test_mode_base.py - Base mode class
+- test_mode_registry.py - Mode registry
+
+**Other (8 tests):**
+- test_core_manager_power.py - Core manager power functions
+- test_hid_status_bytes.py - HID status bytes
+- test_matrix_brightness_cache.py - Matrix brightness cache
+- test_ring_buffer.py - Ring buffer implementation
+- test_satellite_network_manager.py - Satellite network management
+- test_uart_queue_race_condition.py - UART queue race conditions
+- test_watchdog_feed.py - Watchdog feeding
+- test_watchdog_flag_pattern.py - Watchdog flag patterns
+
+### Excluded Tests
+
+The following test types are excluded:
+- **Performance tests**: `performance_*.py` files - benchmark tests
+- **Integration tests**: `test_*_integration*.py` files - multi-component tests
+
+These can be run separately if needed but are not part of the core unit test suite.
+
+### Running Tests Locally
+
+To run the same tests locally:
+
+```bash
+# Install pytest
+pip install pytest
+
+# Run all pure unit tests
+for test in tests/test_*.py; do
+  # Skip performance and integration tests
+  if [[ "$test" == *"performance"* ]] || [[ "$test" == *"integration"* ]]; then
+    continue
+  fi
+  python3 "$test"
+done
+```
+
+Or run individual tests:
+```bash
+python3 tests/test_cobs.py
+python3 tests/test_protocol.py
+```
+
+### Understanding Test Failures
+
+When the workflow fails, check the workflow logs to see which test(s) failed:
+1. Go to the Actions tab in GitHub
+2. Click on the failed workflow run
+3. Expand the "Run unit tests" step
+4. Review the output to see which tests failed and why
+
+The workflow provides:
+- Clear pass/fail status for each test
+- Count of passed vs failed tests
+- List of failed tests at the end
+
+### Test Requirements
+
+Most tests are standalone and don't require external dependencies, but some tests use:
+- **pytest**: For shared test helpers (fixtures), markers, and tests that invoke pytest directly (installed by workflow)
+- **Standard library**: No CircuitPython-specific dependencies
+
+Tests are designed to:
+- Run without hardware
+- Use mock objects where needed
+- Provide clear error messages
+- Be fast and deterministic
+
+---
+
+## Build MPY Files Workflow
 
 ## Overview
 
