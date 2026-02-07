@@ -453,6 +453,42 @@ def test_multiple_packets_in_buffer():
     print("✓ Multiple packets in buffer test passed")
 
 
+def test_receive_buffer_overflow_protection():
+    """Test that receive() protects against buffer overflow from garbage data."""
+    print("\nTesting buffer overflow protection...")
+    
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+    
+    # Simulate flooding with 2000 bytes of garbage (no null terminator)
+    garbage_data = bytes(range(1, 256)) * 8  # 2040 bytes of non-zero data
+    mock_uart.receive_buffer.extend(garbage_data)
+    mock_uart._in_waiting = len(garbage_data)
+    
+    # First receive should detect overflow and clear the buffer
+    msg = transport.receive()
+    assert msg is None, "Should return None when buffer overflows"
+    
+    # Internal buffer should be cleared
+    assert len(transport._receive_buffer) == 0, "Internal buffer should be cleared after overflow"
+    
+    # Now send a valid packet - system should recover
+    msg_valid = Message("0101", "STATUS", "100")
+    transport.send(msg_valid)
+    valid_packet = mock_uart.sent_packets[0]
+    
+    mock_uart.receive_buffer.extend(valid_packet)
+    mock_uart._in_waiting = len(valid_packet)
+    
+    # Should be able to receive valid packet after recovery
+    received = transport.receive()
+    assert received is not None, "Should receive valid packet after overflow recovery"
+    assert received.destination == "0101"
+    assert received.command == "STATUS"
+    
+    print("✓ Buffer overflow protection test passed")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("Transport Layer Test Suite")
@@ -471,6 +507,7 @@ if __name__ == "__main__":
         test_receive_returns_none_for_incomplete_packet()
         test_receive_assembles_fragmented_packets()
         test_multiple_packets_in_buffer()
+        test_receive_buffer_overflow_protection()
         
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")

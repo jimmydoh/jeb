@@ -427,6 +427,13 @@ class UARTTransport:
         available_bytes = self.uart_manager.read_available()
         if available_bytes:
             self._receive_buffer.extend(available_bytes)
+            
+            # SAFETY: Prevent buffer explosion from noise
+            MAX_BUFFER_SIZE = 1024  # ample space for ~2-4 packets
+            if len(self._receive_buffer) > MAX_BUFFER_SIZE:
+                print("⚠️ UART Buffer Overflow - Clearing Garbage")
+                self._receive_buffer.clear()
+                return None
         
         # Check if we have a complete packet (terminated by 0x00)
         delimiter_idx = self._receive_buffer.find(b'\x00')
