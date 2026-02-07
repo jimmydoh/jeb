@@ -99,29 +99,31 @@ try:
         if not SD_MOUNTED:
             print("⚠️ SD card not mounted - OTA updates require SD card")
             print("Skipping update")
-            clear_update_flag()
+            clear_update_flag()  # Clear flag since we can't proceed without SD
         elif config.get("wifi_ssid") and config.get("update_url"):
             try:
                 updater = Updater(config, sd_mounted=SD_MOUNTED)
                 update_success = updater.run_update()
                 
-                # Clear update flag
-                clear_update_flag()
-                
                 if update_success:
-                    print("\n✓ Update downloaded to SD card - rebooting...")
+                    # Only clear flag on successful update
+                    clear_update_flag()
+                    print("\n✓ Update successful - rebooting...")
                     updater.reboot()
                 else:
-                    print("\n⚠️ Update failed - continuing with existing firmware")
+                    # Do NOT clear flag - preserve for retry on next boot
+                    print("\n⚠️ Update failed - flag preserved for retry")
+                    print("Device will attempt update again on next boot")
                     
             except Exception as e:
-                print(f"\n❌ Updater error: {e}")
+                # Do NOT clear flag on fatal error - preserve for retry
+                print(f"\n❌ Updater fatal error: {e}")
+                print("Flag preserved - device will retry update on next boot")
                 print("Continuing with existing firmware")
-                clear_update_flag()
         else:
             print("⚠️ Wi-Fi not configured - skipping update")
             print("Configure wifi_ssid and update_url in config.json")
-            clear_update_flag()
+            clear_update_flag()  # Clear flag since config is missing
         
         print()
         
