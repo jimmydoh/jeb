@@ -32,7 +32,7 @@ class LEDManager(BasePixelManager):
             if self.clear_animation(i, priority):
                 self.pixels[i] = Palette.OFF
 
-        self.pixels.show()
+        # Note: Hardware write is now handled by CoreManager.render_loop()
 
     # --- SIMPLE ANIMATION TRIGGERS ---
     async def solid_led(self, index, color, brightness=0.2, duration=None, priority=2):
