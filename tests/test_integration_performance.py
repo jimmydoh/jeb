@@ -86,10 +86,7 @@ class MockUARTManager:
     
     def read_available(self):
         """Mock read_available method."""
-        if self.in_waiting > 0:
-            data = self.uart.read(self.in_waiting)
-            return data
-        return b''
+        return self.uart.read(self.in_waiting)
     
     @property
     def buffer_size(self):
