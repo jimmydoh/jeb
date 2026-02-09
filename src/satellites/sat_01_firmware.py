@@ -68,6 +68,8 @@ class IndustrialSatelliteFirmware(Satellite):
     Handles hardware I/O, power management, and local command processing.
     Runs on the physical satellite hardware and manages all peripherals.
     """
+    # Render loop configuration - runs at 60Hz for smooth LED updates (matches CoreManager)
+    RENDER_FRAME_TIME = 1.0 / 60.0  # ~0.0167 seconds per frame
     
     def __init__(self):
         """Initialize the Industrial Satellite Firmware."""
@@ -151,6 +153,28 @@ class IndustrialSatelliteFirmware(Satellite):
         # Init LEDManager with JEBPixel wrapper for the 5 onboard LEDs
         self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=5)
         self.leds = LEDManager(self.led_jeb_pixel)
+        
+        # Frame sync state for coordinated animations with Core
+        self.frame_counter = 0
+        self.last_sync_frame = 0
+        self.time_offset = 0.0  # Estimated time difference from Core (in seconds)
+
+    async def render_loop(self):
+        """Centralized hardware write task for NeoPixel LEDs.
+        
+        This is the ONLY place where self.root_pixels.show() should be called.
+        Runs at 60Hz to provide smooth, flicker-free LED updates while preventing
+        race conditions from multiple async tasks writing to the hardware simultaneously.
+        
+        Matches the CoreManager.render_loop() implementation for consistency.
+        """
+        while True:
+            # Write the current buffer state to hardware
+            self.root_pixels.show()
+            # Increment local frame counter for sync tracking
+            self.frame_counter += 1
+            # Run at configured frame rate (default 60Hz, matches CoreManager)
+            await asyncio.sleep(self.RENDER_FRAME_TIME)
 
     async def process_local_cmd(self, cmd, val):
         """Process commands addressed to this satellite.
@@ -182,6 +206,19 @@ class IndustrialSatelliteFirmware(Satellite):
                 # Not our type? Pass it along unchanged
                 msg_out = Message("ALL", "ID_ASSIGN", val)
                 self.transport_down.send(msg_out)
+
+        elif cmd == "SYNC_FRAME":
+            # Frame sync command from Core for coordinated animations
+            # Payload: frame_number,core_time
+            values = parse_values(val)
+            core_frame = get_int(values, 0, 0)
+            core_time = get_float(values, 1, 0.0)
+            
+            # Update sync state
+            self.last_sync_frame = core_frame
+            # Calculate time offset (positive means satellite is ahead)
+            current_time = time.monotonic()
+            self.time_offset = current_time - core_time
 
         elif cmd == "SETENC":
             # Set the encoder position to a specific value
@@ -452,6 +489,9 @@ class IndustrialSatelliteFirmware(Satellite):
         asyncio.create_task(self.monitor_power())
         asyncio.create_task(self.monitor_connection())
         asyncio.create_task(self.relay_downstream_to_upstream())
+        # Start LED rendering and animation tasks
+        asyncio.create_task(self.render_loop())  # Centralized LED Hardware Write
+        asyncio.create_task(self.leds.animate_loop())  # LED Animations
 
         while True:
             # Feed the hardware watchdog timer to prevent system reset

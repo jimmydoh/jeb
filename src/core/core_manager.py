@@ -183,6 +183,10 @@ class CoreManager:
         self.mode = "DASHBOARD"
         self.meltdown = False
         self.sat_active = False
+        
+        # Frame sync state for coordinated LED animations with satellites
+        self.frame_counter = 0
+        self.last_sync_broadcast = 0.0
 
     def _get_mode(self, mode_name):
         """Get a mode class from the registry with helpful error message.
@@ -407,6 +411,8 @@ class CoreManager:
         This is the ONLY place where self.root_pixels.show() should be called.
         Runs at 60Hz to provide smooth, flicker-free LED updates while preventing
         race conditions from multiple async tasks writing to the hardware simultaneously.
+        
+        Additionally broadcasts frame sync to satellites periodically for coordinated animations.
         """
         while True:
             # Set watchdog flag to indicate this task is alive
@@ -414,6 +420,17 @@ class CoreManager:
             
             # Write the current buffer state to hardware
             self.root_pixels.show()
+            
+            # Increment frame counter for sync tracking
+            self.frame_counter += 1
+            
+            # Broadcast frame sync to satellites every 60 frames (~1 second at 60Hz)
+            # This is advisory sync - satellites can use it to align animations
+            current_time = ticks_ms() / 1000.0  # Convert to seconds
+            if current_time - self.last_sync_broadcast >= 1.0:
+                self.sat_network.send_all("SYNC_FRAME", f"{self.frame_counter},{current_time}")
+                self.last_sync_broadcast = current_time
+            
             # Run at configured frame rate (default 60Hz)
             await asyncio.sleep(self.RENDER_FRAME_TIME)
 
