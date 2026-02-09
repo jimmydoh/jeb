@@ -48,12 +48,33 @@ class MockUtilities:
 sys.modules['utilities'] = MockUtilities()
 
 # Mock the UARTManager
+class MockUART:
+    """Mock UART object for testing."""
+    def __init__(self, uart_manager):
+        self.uart_manager = uart_manager
+    
+    @property
+    def in_waiting(self):
+        """Mock in_waiting property."""
+        return len(self.uart_manager.receive_buffer)
+    
+    def read(self, n):
+        """Mock read method."""
+        # Read n bytes from the receive buffer
+        n = min(n, len(self.uart_manager.receive_buffer))
+        if n == 0:
+            return b''
+        data = bytes(self.uart_manager.receive_buffer[:n])
+        del self.uart_manager.receive_buffer[:n]
+        return data
+
+
 class MockUARTManager:
     """Mock UARTManager for testing."""
     def __init__(self):
         self.sent_packets = []
         self.receive_buffer = bytearray()
-        self._in_waiting = 0
+        self.uart = MockUART(self)
     
     def write(self, data):
         self.sent_packets.append(data)
@@ -61,7 +82,14 @@ class MockUARTManager:
     @property
     def in_waiting(self):
         """Mock in_waiting property."""
-        return self._in_waiting
+        return len(self.receive_buffer)
+    
+    def read_available(self):
+        """Mock read_available method."""
+        if self.in_waiting > 0:
+            data = self.uart.read(self.in_waiting)
+            return data
+        return b''
     
     @property
     def buffer_size(self):
