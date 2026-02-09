@@ -424,7 +424,7 @@ class CoreManager:
             # Increment frame counter for sync tracking
             self.frame_counter += 1
             
-            # Broadcast frame sync to satellites every 60 frames (~1 second at 60Hz)
+            # Broadcast frame sync to satellites every 1 second (time-based, not frame-based)
             # This is advisory sync - satellites can use it to align animations
             current_time = ticks_ms() / 1000.0  # Convert to seconds
             if current_time - self.last_sync_broadcast >= 1.0:
