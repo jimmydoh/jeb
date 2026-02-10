@@ -89,6 +89,8 @@ def test_estop_nested_loop_updates_watchdog_flag():
         print("  ⚠ Warning: Flag update appears after sleep")
     else:
         print("  ✓ Flag update is correctly positioned before sleep")
+    
+    return True
 
 
 def test_estop_outer_loop_still_updates_flag():
@@ -124,6 +126,8 @@ def test_estop_outer_loop_still_updates_flag():
     
     assert flag_count >= 1, f"Expected at least 1 flag update, found {flag_count}"
     print(f"  ✓ Found {flag_count} flag updates (outer loop + nested loop)")
+    
+    return True
 
 
 def test_comment_matches_proposed_fix():
@@ -157,6 +161,8 @@ def test_comment_matches_proposed_fix():
     
     # Test always passes - comment is nice to have but not required
     assert True, "Comment check completed"
+    
+    return True
 
 
 if __name__ == "__main__":

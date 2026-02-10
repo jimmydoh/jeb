@@ -43,6 +43,8 @@ def test_watchdog_flags_dict_exists():
     for flag in required_flags:
         assert f'"{flag}"' in content, f"Flag '{flag}' not found in watchdog_flags"
         print(f"  ✓ Found flag: {flag}")
+    
+    return True
 
 
 def test_safe_feed_watchdog_method_exists():
@@ -90,6 +92,8 @@ def test_safe_feed_watchdog_method_exists():
     assert 'self.watchdog_flags[key] = False' in method_body, "Method does not reset flags after feeding"
     
     print("  ✓ Method resets flags after feeding")
+    
+    return True
 
 
 def test_monitor_tasks_set_flags():
@@ -130,6 +134,8 @@ def test_monitor_tasks_set_flags():
         flag_set_pattern = f'self.watchdog_flags["{flag_name}"] = True'
         assert flag_set_pattern in method_body, f"{task_name} does not set watchdog flag '{flag_name}'"
         print(f"  ✓ {task_name} sets flag '{flag_name}'")
+    
+    return True
 
 
 def test_sat_network_sets_flag():
@@ -172,6 +178,8 @@ def test_sat_network_sets_flag():
         "monitor_satellites does not check if watchdog_flags is None"
     
     print("  ✓ monitor_satellites checks if watchdog_flags is not None")
+    
+    return True
 
 
 def test_main_loop_uses_safe_feed():
@@ -216,6 +224,8 @@ def test_main_loop_uses_safe_feed():
         print("  ⚠ Main loop should use safe_feed_watchdog() instead")
     else:
         print("  ✓ No direct watchdog.feed() calls in start() method")
+    
+    return True
 
 
 def test_run_mode_with_safety_uses_safe_feed():
@@ -255,6 +265,8 @@ def test_run_mode_with_safety_uses_safe_feed():
         print("  ⚠ Should use safe_feed_watchdog() instead")
     else:
         print("  ✓ No direct watchdog.feed() calls in run_mode_with_safety")
+    
+    return True
 
 
 def test_sat_network_receives_flags():
@@ -288,6 +300,8 @@ def test_sat_network_receives_flags():
     assert 'self.watchdog_flags' in init_args, "watchdog_flags not passed to SatelliteNetworkManager"
     
     print("  ✓ CoreManager passes watchdog_flags to SatelliteNetworkManager")
+    
+    return True
 
 
 if __name__ == "__main__":

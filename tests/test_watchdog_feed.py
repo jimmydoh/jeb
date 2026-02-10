@@ -71,6 +71,8 @@ def test_watchdog_feed_present_in_code():
         print("  ⚠ Warning: safe_feed_watchdog() appears after sleep, should be at top of loop")
     else:
         print("  ✓ safe_feed_watchdog() is positioned correctly (before sleep)")
+    
+    return True
 
 
 def test_watchdog_feed_in_main_loop():
@@ -106,6 +108,8 @@ def test_watchdog_feed_in_main_loop():
     # Count occurrences
     feed_count = start_body.count('self.safe_feed_watchdog()')
     print(f"  ✓ Found {feed_count} safe_feed_watchdog call(s) in start() method")
+    
+    return True
 
 
 def test_microcontroller_import():
@@ -128,6 +132,8 @@ def test_microcontroller_import():
     assert 'import microcontroller' in content, "'import microcontroller' not found"
     
     print("  ✓ Found 'import microcontroller'")
+    
+    return True
 
 
 if __name__ == "__main__":
