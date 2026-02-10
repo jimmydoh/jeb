@@ -83,12 +83,22 @@ class MockUARTManager:
         """Mock in_waiting property."""
         return self._in_waiting
     
+    def read(self, n):
+        """Mock read method - delegates to nested uart object."""
+        return self.uart.read(n)
+    
     def read_available(self):
         """Mock read_available method."""
         if self._in_waiting > 0:
             data = self.uart.read(self._in_waiting)
             return data
         return b''
+    
+    def reset_input_buffer(self):
+        """Mock reset_input_buffer method."""
+        self.receive_buffer.clear()
+        self._in_waiting = 0
+        self.buffer_cleared = True
     
     @property
     def buffer_size(self):
@@ -104,12 +114,13 @@ class MockUARTManager:
             data = bytes(self.receive_buffer[:idx + len(delimiter)])
             # Remove from buffer
             del self.receive_buffer[:idx + len(delimiter)]
+            self._in_waiting = len(self.receive_buffer)
             return data
         return None
     
     def clear_buffer(self):
-        """Mock clear_buffer method."""
-        self.buffer_cleared = True
+        """Mock clear_buffer method - old name for compatibility."""
+        self.reset_input_buffer()
 
 
 # Now import the transport classes
@@ -216,12 +227,12 @@ def test_binary_transport_roundtrip():
     print("\nTesting binary transport roundtrip...")
     
     test_cases = [
-        Message("ALL", "ID_ASSIGN", "0100"),
-        Message("0101", "STATUS", "100,200,50"),
-        Message("SAT", "NEW_SAT", "01"),
-        Message("0101", "LED", "0,255,0,0"),
-        Message("0101", "DSP", "HELLO"),
-        Message("0101", "POWER", "19.5,18.2,5.0"),
+        Message("ALL", "ID_ASSIGN", "0100"),  # Text encoding
+        Message("0101", "STATUS", (100, 200, 50)),  # Numeric bytes
+        Message("SAT", "NEW_SAT", "01"),  # Text encoding
+        Message("0101", "LED", (0, 255, 0, 0)),  # Numeric bytes
+        Message("0101", "DSP", "HELLO"),  # Text encoding
+        Message("0101", "POWER", (19.5, 18.2, 5.0)),  # Floats
     ]
     
     for msg_out in test_cases:
