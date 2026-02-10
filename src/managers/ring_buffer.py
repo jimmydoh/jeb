@@ -52,10 +52,10 @@ class RingBuffer:
         """Get item(s) from buffer using slice notation.
         
         Parameters:
-            key (slice): Slice specification.
+            key (int or slice): Index or slice specification.
             
         Returns:
-            bytes: Data at the specified slice.
+            bytes or int: Data at the specified slice (as bytes) or single index (as int).
         """
         if isinstance(key, slice):
             start, stop, step = key.indices(self._size)
@@ -78,7 +78,7 @@ class RingBuffer:
         """Delete item(s) from buffer using slice notation.
         
         Only supports deletion from the front (slice starting at 0).
-        This is O(1) operation - just moves the head pointer.
+        This is O(k) where k is the number of elements deleted - just moves the head pointer.
         
         Parameters:
             key (slice): Slice specification (must start at 0).

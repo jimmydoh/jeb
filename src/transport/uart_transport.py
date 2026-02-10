@@ -156,14 +156,20 @@ def _encode_payload(payload_str, cmd_schema=None, encoding_constants=None):
                 values = [int(x.strip()) for x in payload_str.split(',')]
             else:
                 values = [int(payload_str)]
+            # Validate signed 16-bit range
+            if not all(-32768 <= v <= 32767 for v in values):
+                raise ValueError(f'Word values must be in range -32768 to 32767')
             return b''.join([struct.pack('<h', v) for v in values])
         elif etype == encoding_constants.get('ENCODING_FLOATS'):
             # Parse comma-separated floats
-            if ',' in payload_str:
-                values = [float(x.strip()) for x in payload_str.split(',')]
-            else:
-                values = [float(payload_str)]
-            return b''.join([struct.pack('<f', v) for v in values])
+            try:
+                if ',' in payload_str:
+                    values = [float(x.strip()) for x in payload_str.split(',')]
+                else:
+                    values = [float(payload_str)]
+                return b''.join([struct.pack('<f', v) for v in values])
+            except ValueError as e:
+                raise ValueError(f'Invalid float format: {e}')
 
     # Fallback for comma-separated strings
     # Try to parse as comma-separated numeric values (backward compatibility)
