@@ -20,6 +20,7 @@ class RenderManager:
     Manages the centralized 60Hz render loop, frame sync, and hardware writes.
     """
     RENDER_FRAME_TIME = 1.0 / 60.0
+    DRIFT_ADJUSTMENT_FACTOR = 0.1  # 10% adjustment for gradual sync correction
 
     def __init__(self, pixel_object, watchdog_flags=None, sync_role="NONE", network_manager=None):
         """
@@ -58,10 +59,9 @@ class RenderManager:
                 self.frame_counter = estimated_core
             elif abs_drift == 1:
                 # Small drift: gradually adjust via sleep time modification
-                # +/- 10% of frame time to smoothly catch up
                 # If satellite is ahead (drift > 0), sleep MORE to slow down
                 # If satellite is behind (drift < 0), sleep LESS to speed up
-                adjustment = 0.1 * self.RENDER_FRAME_TIME if drift > 0 else -0.1 * self.RENDER_FRAME_TIME
+                adjustment = self.DRIFT_ADJUSTMENT_FACTOR * self.RENDER_FRAME_TIME if drift > 0 else -self.DRIFT_ADJUSTMENT_FACTOR * self.RENDER_FRAME_TIME
                 self.sleep_adjustment = adjustment
 
 
@@ -102,7 +102,7 @@ def test_sync_small_drift_nudge_ahead():
     assert renderer.frame_counter == 102, f"Expected frame_counter to remain 102, got {renderer.frame_counter}"
     
     # Should set positive adjustment (slow down by sleeping more)
-    expected_adjustment = 0.1 * renderer.RENDER_FRAME_TIME
+    expected_adjustment = renderer.DRIFT_ADJUSTMENT_FACTOR * renderer.RENDER_FRAME_TIME
     assert abs(renderer.sleep_adjustment - expected_adjustment) < 1e-9, \
         f"Expected sleep_adjustment to be {expected_adjustment}, got {renderer.sleep_adjustment}"
     
@@ -126,7 +126,7 @@ def test_sync_small_drift_nudge_behind():
     assert renderer.frame_counter == 100, f"Expected frame_counter to remain 100, got {renderer.frame_counter}"
     
     # Should set negative adjustment (speed up by sleeping less)
-    expected_adjustment = -0.1 * renderer.RENDER_FRAME_TIME
+    expected_adjustment = -renderer.DRIFT_ADJUSTMENT_FACTOR * renderer.RENDER_FRAME_TIME
     assert abs(renderer.sleep_adjustment - expected_adjustment) < 1e-9, \
         f"Expected sleep_adjustment to be {expected_adjustment}, got {renderer.sleep_adjustment}"
     
@@ -219,7 +219,7 @@ def test_adjustment_values():
     renderer = RenderManager(pixels, sync_role="SLAVE")
     
     frame_time = renderer.RENDER_FRAME_TIME
-    expected_magnitude = 0.1 * frame_time
+    expected_magnitude = renderer.DRIFT_ADJUSTMENT_FACTOR * frame_time
     
     # Test ahead (positive adjustment to slow down by sleeping more)
     renderer.frame_counter = 102
@@ -234,7 +234,7 @@ def test_adjustment_values():
     assert renderer.sleep_adjustment == -expected_magnitude, \
         f"Expected adjustment magnitude {-expected_magnitude}, got {renderer.sleep_adjustment}"
     
-    print(f"✓ Adjustment value test passed (10% of {frame_time:.6f}s = ±{expected_magnitude:.6f}s)")
+    print(f"✓ Adjustment value test passed ({int(renderer.DRIFT_ADJUSTMENT_FACTOR * 100)}% of {frame_time:.6f}s = ±{expected_magnitude:.6f}s)")
 
 
 def run_all_tests():

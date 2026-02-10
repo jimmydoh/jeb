@@ -8,6 +8,7 @@ class RenderManager:
     Manages the centralized 60Hz render loop, frame sync, and hardware writes.
     """
     RENDER_FRAME_TIME = 1.0 / 60.0
+    DRIFT_ADJUSTMENT_FACTOR = 0.1  # 10% adjustment for gradual sync correction
 
     def __init__(self, pixel_object, watchdog_flags=None, sync_role="NONE", network_manager=None):
         """
@@ -90,8 +91,7 @@ class RenderManager:
                 self.frame_counter = estimated_core
             elif abs_drift == 1:
                 # Small drift: gradually adjust via sleep time modification
-                # +/- 10% of frame time to smoothly catch up
                 # If satellite is ahead (drift > 0), sleep MORE to slow down
                 # If satellite is behind (drift < 0), sleep LESS to speed up
-                adjustment = 0.1 * self.RENDER_FRAME_TIME if drift > 0 else -0.1 * self.RENDER_FRAME_TIME
+                adjustment = self.DRIFT_ADJUSTMENT_FACTOR * self.RENDER_FRAME_TIME if drift > 0 else -self.DRIFT_ADJUSTMENT_FACTOR * self.RENDER_FRAME_TIME
                 self.sleep_adjustment = adjustment
