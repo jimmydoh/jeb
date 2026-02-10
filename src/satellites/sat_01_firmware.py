@@ -24,42 +24,6 @@ from .base import Satellite
 TYPE_ID = "01"
 TYPE_NAME = "INDUSTRIAL"
 
-class _QueuedUARTManager:
-    """Wrapper for UART manager that writes to a queue instead of hardware.
-
-    This prevents race conditions by ensuring all upstream UART writes
-    go through a single TX worker task that drains the queue.
-    """
-
-    def __init__(self, queue):
-        """Initialize the queued UART manager.
-
-        Parameters:
-            queue (asyncio.Queue): Queue to push data to.
-        """
-        self.queue = queue
-
-    def write(self, data):
-        """Queue data for writing instead of writing directly.
-
-        This is a synchronous wrapper around the async queue.put().
-        In CircuitPython's asyncio, we can use put_nowait() since
-        the queue is unbounded by default.
-
-        Parameters:
-            data (bytes): Data to queue for transmission.
-
-        Raises:
-            asyncio.QueueFull: If the queue is somehow bounded and full.
-        """
-        try:
-            # Use put_nowait for synchronous context
-            # This is safe because asyncio.Queue is unbounded by default
-            self.queue.put_nowait(data)
-        except Exception as e:
-            # In case of unexpected queue behavior, raise with context
-            raise RuntimeError(f"Failed to queue UART data: {e}") from e
-
 class IndustrialSatelliteFirmware(Satellite):
     """Satellite-side firmware for Industrial Satellite.
 
@@ -101,26 +65,22 @@ class IndustrialSatelliteFirmware(Satellite):
             timeout=0.01
         )
 
-        # Create managers for UART access
-        from transport.uart_manager import UARTManager
-        uart_up_mgr = UARTManager(uart_up_hw)
+        # Transport layer handles queue management and relay
+        # Upstream transport has queue + relay from downstream
+        self.transport = UARTTransport(
+            uart_up_hw, 
+            COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS,
+            uart_downstream=uart_down_hw  # Automatically relays downstream data upstream
+        )
         
-        # Set up upstream queue-based TX system to prevent race conditions
-        # Multiple tasks write to upstream (relay, monitor_power, monitor_connection, start)
-        # Only the TX worker should write directly to hardware
-        self.upstream_queue = asyncio.Queue()
-        self.uart_up_mgr_queued = _QueuedUARTManager(self.upstream_queue)
-        self.uart_up_mgr = uart_up_mgr  # Hardware UART (only used by TX worker)
-
-        # Create a manager for downstream UART to access low-level operations
-        self.uart_down_mgr = UARTManager(uart_down_hw)
-
-        # Wrap with transport layer
-        self.transport_up = UARTTransport(self.uart_up_mgr_queued, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
-        self.transport_down = UARTTransport(self.uart_down_mgr, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+        # Downstream transport for explicit message sending (no queue/relay needed)
+        self.transport_down = UARTTransport(
+            uart_down_hw,
+            COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+        )
 
         # Initialize base class with upstream transport
-        super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, transport=self.transport_up)
+        super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, transport=self.transport)
 
         # Init I2C bus
         self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
@@ -174,11 +134,11 @@ class IndustrialSatelliteFirmware(Satellite):
 
                 # Pass the NEW index downstream for the next box
                 msg_out = Message("ALL", "ID_ASSIGN", self.id)
-                self.transport_down.send(msg_out)
+                self.transport.send(msg_out)
             else:
                 # Not our type? Pass it along unchanged
                 msg_out = Message("ALL", "ID_ASSIGN", val)
-                self.transport_down.send(msg_out)
+                self.transport.send(msg_out)
 
         elif cmd == "SETENC":
             # Set the encoder position to a specific value
@@ -348,23 +308,6 @@ class IndustrialSatelliteFirmware(Satellite):
             duration = duration_val if duration_val > 0 else 2.0
             self.segment.start_matrix(duration)
 
-    async def relay_downstream_to_upstream(self):
-        """Ultra-fast, non-blocking relay of downstream data to the Master.
-
-        Pushes data to the upstream TX queue instead of direct hardware write
-        to prevent race conditions with transport_up messages.
-        """
-        # Pre-allocate a buffer to avoid memory fragmentation
-        buf = bytearray(64)
-        while True:
-            if self.uart_down_mgr.in_waiting > 0:
-                # Read whatever is available and queue it for upstream transmission
-                num_read = self.uart_down_mgr.readinto(buf)
-                # Copy to bytes() is necessary since buf is reused in the loop
-                # and the queued data must remain valid until the TX worker processes it
-                await self.upstream_queue.put(bytes(buf[:num_read]))
-            await asyncio.sleep(0) # Yield control immediately to other tasks
-
     async def monitor_power(self):
         """Background task to watch for local brownouts or downstream faults."""
         last_broadcast = 0
@@ -376,7 +319,7 @@ class IndustrialSatelliteFirmware(Satellite):
             # Send periodic voltage reports upstream every 5 seconds
             if now - last_broadcast > 5.0:
                 msg_out = Message(self.id, "POWER", [v['in'], v['bus'], v['log']])
-                self.transport_up.send(msg_out)
+                self.transport.send(msg_out)
                 last_broadcast = now
 
             # Safety Check: Logic rail sagging (Potential Buck Converter or Audio overload)
@@ -384,13 +327,13 @@ class IndustrialSatelliteFirmware(Satellite):
                 # Local warning: Dim LEDs to reduce current draw
                 self.leds.pixels.brightness = 0.05
                 msg_out = Message(self.id, "ERROR", f"LOGIC_BROWNOUT:{v['log']}V")
-                self.transport_up.send(msg_out)
+                self.transport.send(msg_out)
 
             # Safety Check: Downstream Bus Failure
             if self.power.sat_pwr.value and v["bus"] < 17.0:
                 self.power.emergency_kill() # Instant cut-off
                 msg_out = Message(self.id, "ERROR", "BUS_SHUTDOWN:LOW_V")
-                self.transport_up.send(msg_out)
+                self.transport.send(msg_out)
 
             await asyncio.sleep(0.5)
 
@@ -400,42 +343,25 @@ class IndustrialSatelliteFirmware(Satellite):
             # Scenario: Physical link detected but power is currently OFF
             if self.power.satbus_connected and not self.power.sat_pwr.value:
                 msg_out = Message(self.id, "LOG", "LINK_DETECTED:INIT_PWR")
-                self.transport_up.send(msg_out)
+                self.transport.send(msg_out)
                 # Perform soft-start to protect the bus
                 success, error = await self.power.soft_start_satellites()
                 if success:
                     msg_out = Message(self.id, "LOG", "LINK_ACTIVE")
-                    self.transport_up.send(msg_out)
+                    self.transport.send(msg_out)
                 else:
                     msg_out = Message(self.id, "ERROR", f"PWR_FAILED:{error}")
-                    self.transport_up.send(msg_out)
+                    self.transport.send(msg_out)
                     self.leds.pixels.fill((255, 0, 0))
 
             # Scenario: Physical link lost while power is ON
             elif not self.power.satbus_connected and self.power.sat_pwr.value:
                 self.power.emergency_kill() # Immediate hardware cut-off
                 msg_out = Message(self.id, "ERROR", "LINK_LOST")
-                self.transport_up.send(msg_out)
+                self.transport.send(msg_out)
                 self.leds.pixels.fill((0, 0, 0))
 
             await asyncio.sleep(0.5)
-
-    async def _upstream_tx_worker(self):
-        """Dedicated task to drain the TX queue to hardware UART.
-
-        This is the ONLY task that should write directly to uart_up_mgr.
-        All other code must push data to upstream_queue.
-
-        This prevents race conditions where multiple tasks interleave
-        partial packets, causing CRC failures and data corruption.
-        """
-        while True:
-            # Wait for data to be available in the queue
-            data = await self.upstream_queue.get()
-            # Write to hardware UART
-            self.uart_up_mgr.write(data)
-            # Mark task as done
-            self.upstream_queue.task_done()
 
     async def start(self):
         """Main async loop for handling communication and tasks.
@@ -443,12 +369,9 @@ class IndustrialSatelliteFirmware(Satellite):
             TODO:
                 Move the TX/RX handling into separate async tasks for better responsiveness.
         """
-        # Start the dedicated upstream TX worker (prevents race conditions)
-        asyncio.create_task(self._upstream_tx_worker())
         # Start monitoring tasks
         asyncio.create_task(self.monitor_power())
         asyncio.create_task(self.monitor_connection())
-        asyncio.create_task(self.relay_downstream_to_upstream())
 
         while True:
             # Feed the hardware watchdog timer to prevent system reset
@@ -458,7 +381,7 @@ class IndustrialSatelliteFirmware(Satellite):
             if not self.id: # Initial Discovery Phase
                 if time.monotonic() - self.last_tx > 3.0:
                     msg_out = Message("SAT", "NEW_SAT", self.sat_type_id)
-                    self.transport_up.send(msg_out)
+                    self.transport.send(msg_out)
                     self.last_tx = time.monotonic()
                     self.leds.flash_led(-1,
                                        Palette.AMBER,
@@ -470,19 +393,19 @@ class IndustrialSatelliteFirmware(Satellite):
                     # Use get_status_bytes() to avoid string allocation overhead
                     # Message class supports both str and bytes payloads
                     msg_out = Message(self.id, "STATUS", self.hid.get_status_bytes())
-                    self.transport_up.send(msg_out)
+                    self.transport.send(msg_out)
                     self.last_tx = time.monotonic()
 
             # RX FROM UPSTREAM -> CMD PROCESSING & TX TO DOWNSTREAM
             try:
                 # Receive message via transport (non-blocking)
-                message = self.transport_up.receive()
+                message = self.transport.receive()
                 if message:
                     # Process if addressed to us or broadcast
                     if message.destination == self.id or message.destination == "ALL":
                         await self.process_local_cmd(message.command, message.payload)
                     # Forward message downstream
-                    self.transport_down.send(message)
+                    self.transport.send(message)
             except ValueError as e:
                 # Buffer overflow or other error
                 print(f"Transport Error: {e}")

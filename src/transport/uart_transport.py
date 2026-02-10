@@ -1,5 +1,6 @@
 """UART transport implementation with binary protocol and COBS framing."""
 
+import asyncio
 import struct
 from utilities import cobs_encode, cobs_decode, calculate_crc8
 from .message import Message
@@ -321,6 +322,44 @@ def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
     # This avoids the "String Boomerang" problem where we convert bytes -> string -> bytes
     return payload_bytes
 
+
+class _QueuedUARTManager:
+    """Wrapper that writes to a queue instead of hardware.
+    
+    This prevents race conditions by ensuring all upstream UART writes
+    go through a single TX worker task that drains the queue.
+    """
+    
+    def __init__(self, queue):
+        """Initialize the queued UART manager.
+        
+        Parameters:
+            queue (asyncio.Queue): Queue to push data to.
+        """
+        self.queue = queue
+    
+    def write(self, data):
+        """Queue data for writing instead of writing directly.
+        
+        This is a synchronous wrapper around the async queue.put().
+        In CircuitPython's asyncio, we can use put_nowait() since
+        the queue is unbounded by default.
+        
+        Parameters:
+            data (bytes): Data to queue for transmission.
+        
+        Raises:
+            asyncio.QueueFull: If the queue is somehow bounded and full.
+        """
+        try:
+            # Use put_nowait for synchronous context
+            # This is safe because asyncio.Queue is unbounded by default
+            self.queue.put_nowait(data)
+        except Exception as e:
+            # In case of unexpected queue behavior, raise with context
+            raise RuntimeError(f"Failed to queue UART data: {e}") from e
+
+
 class UARTTransport:
     """UART transport implementation with binary protocol and COBS framing.
 
@@ -344,11 +383,11 @@ class UARTTransport:
     # Maximum size for internal receive buffer to prevent unbounded growth
     MAX_BUFFER_SIZE = 1024  # ample space for ~2-4 packets
 
-    def __init__(self, uart_hw, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None):
+    def __init__(self, uart_hw, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None, uart_downstream=None):
         """Initialize UART transport.
 
         Parameters:
-            uart_hw (UART or UARTManager): The UART hardware or manager for physical I/O.
+            uart_hw (UART or UARTManager): The upstream UART hardware or manager for physical I/O.
             command_map (dict, optional): Command string to byte mapping.
                 If None, an empty map is used (transport won't encode/decode commands).
             dest_map (dict, optional): Special destination string to byte mapping.
@@ -357,16 +396,50 @@ class UARTTransport:
                 Defaults to 100.
             payload_schemas (dict, optional): Command-specific payload schemas defining
                 encoding/decoding types. If None, uses heuristic encoding.
+            uart_downstream (UART, optional): Downstream UART hardware for relay functionality.
+                If provided, transport will automatically relay data from downstream to upstream.
         """
         # Import here to avoid circular dependency
         from .uart_manager import UARTManager
         
-        # If uart_hw already has UARTManager interface (has write and read_available), use it directly
-        # Otherwise wrap it in a UARTManager
+        # Set up upstream UART with queue management to prevent race conditions
+        # When multiple tasks send messages, they all go through a queue
+        self.upstream_queue = asyncio.Queue()
+        
+        # Wrap upstream hardware in UARTManager if needed
         if hasattr(uart_hw, 'write') and hasattr(uart_hw, 'read_available'):
-            self.uart_manager = uart_hw
+            self.uart_up_hw = uart_hw
         else:
-            self.uart_manager = UARTManager(uart_hw)
+            self.uart_up_hw = UARTManager(uart_hw)
+        
+        # Check if event loop is running - determines if we use queue or direct write
+        try:
+            asyncio.get_running_loop()
+            self._has_event_loop = True
+        except RuntimeError:
+            self._has_event_loop = False
+        
+        if self._has_event_loop:
+            # Create queued wrapper for upstream writes
+            self._uart_up_queued = _QueuedUARTManager(self.upstream_queue)
+            self.uart_manager = self._uart_up_queued  # send() uses queued manager
+            
+            # Start upstream TX worker to drain queue
+            asyncio.create_task(self._upstream_tx_worker())
+        else:
+            # No event loop - use direct writes (for testing)
+            self.uart_manager = self.uart_up_hw
+        
+        # Set up downstream UART if provided (for relay functionality)
+        self.uart_downstream = None
+        if uart_downstream:
+            if hasattr(uart_downstream, 'in_waiting') and hasattr(uart_downstream, 'readinto'):
+                self.uart_downstream = uart_downstream
+            else:
+                self.uart_downstream = UARTManager(uart_downstream)
+            # Start relay worker if downstream is provided (only if event loop is running)
+            if self._has_event_loop:
+                asyncio.create_task(self._relay_worker())
 
         # Store the maps for encoding/decoding
         self.command_map = command_map if command_map is not None else {}
@@ -517,5 +590,41 @@ class UARTTransport:
 
     def clear_buffer(self):
         """Clear the UART buffer and internal receive buffer."""
-        self.uart_manager.clear_buffer()
+        if hasattr(self.uart_manager, 'clear_buffer'):
+            self.uart_manager.clear_buffer()
         self._receive_buffer.clear()
+    
+    async def _upstream_tx_worker(self):
+        """Dedicated task to drain the TX queue to hardware UART.
+        
+        This is the ONLY task that should write directly to uart_up_hw.
+        All other code must push data to upstream_queue.
+        
+        This prevents race conditions where multiple tasks interleave
+        partial packets, causing CRC failures and data corruption.
+        """
+        while True:
+            # Wait for data to be available in the queue
+            data = await self.upstream_queue.get()
+            # Write to hardware UART
+            self.uart_up_hw.write(data)
+            # Mark task as done
+            self.upstream_queue.task_done()
+    
+    async def _relay_worker(self):
+        """Dedicated task to relay data from downstream UART to upstream.
+        
+        This automatically forwards all data received on the downstream UART
+        to the upstream UART through the queue system. This is used in satellite
+        firmware to relay messages from further downstream satellites.
+        """
+        # Pre-allocate a buffer to avoid memory fragmentation
+        buf = bytearray(64)
+        while True:
+            if self.uart_downstream and self.uart_downstream.in_waiting > 0:
+                # Read whatever is available and queue it for upstream transmission
+                num_read = self.uart_downstream.readinto(buf)
+                # Copy to bytes() is necessary since buf is reused in the loop
+                # and the queued data must remain valid until the TX worker processes it
+                await self.upstream_queue.put(bytes(buf[:num_read]))
+            await asyncio.sleep(0)  # Yield control immediately to other tasks
