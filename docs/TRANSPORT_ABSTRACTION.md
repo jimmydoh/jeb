@@ -33,6 +33,150 @@ Physical UART Hardware
 
 Protocol concerns are encapsulated in the transport layer.
 
+## Hardware Requirements
+
+### Non-Blocking UART Operation
+
+**CRITICAL**: The `uart_hw` object passed to `UARTTransport` MUST operate in non-blocking mode with a reliable `in_waiting` property implementation.
+
+#### Why This Matters
+
+The `UARTTransport.read_raw_into()` method checks `in_waiting` before calling `readinto()` to ensure non-blocking operation:
+
+```python
+def read_raw_into(self, buf):
+    if self.uart.in_waiting > 0:
+        return self.uart.readinto(buf)
+    return 0
+```
+
+If `in_waiting` is not implemented correctly or returns inaccurate values, the fallback to `readinto()` could block the entire asyncio event loop for the duration of the UART timeout (typically 10ms-100ms). This would:
+
+1. **Stall the event loop**: Other async tasks cannot run while waiting for UART data
+2. **Cause watchdog timeouts**: The watchdog timer may not be fed in time
+3. **Degrade UI responsiveness**: Display updates, button handling, and other tasks freeze
+4. **Break satellite communication**: Message relay and network coordination fail
+
+#### Required Interface
+
+The `uart_hw` object must implement the following interface:
+
+```python
+class UARTHardwareInterface:
+    @property
+    def in_waiting(self):
+        """Return number of bytes available in receive buffer without blocking.
+        
+        This MUST be a non-blocking operation that accurately reflects the
+        current state of the receive buffer. Returning inaccurate values
+        (e.g., always returning 0 or a stale count) will cause the transport
+        layer to either miss data or block unexpectedly.
+        
+        Returns:
+            int: Number of bytes available to read (>= 0)
+        """
+        
+    def readinto(self, buf):
+        """Read available bytes into the provided buffer.
+        
+        Should only be called when in_waiting > 0 to ensure non-blocking behavior.
+        
+        Parameters:
+            buf (bytearray): Buffer to read data into
+            
+        Returns:
+            int: Number of bytes actually read
+        """
+        
+    def read(self, n):
+        """Read n bytes from the receive buffer.
+        
+        Parameters:
+            n (int): Maximum number of bytes to read
+            
+        Returns:
+            bytes: Data read from buffer (may be less than n bytes)
+        """
+        
+    def write(self, data):
+        """Write data to UART transmit buffer.
+        
+        Parameters:
+            data (bytes): Data to transmit
+        """
+        
+    def reset_input_buffer(self):
+        """Clear the receive buffer, discarding all unread data."""
+```
+
+#### CircuitPython busio.UART
+
+The standard CircuitPython `busio.UART` class meets these requirements when properly configured:
+
+```python
+import busio
+import board
+
+# Create UART with appropriate timeout
+# A small timeout (0.01s = 10ms) prevents long blocking on read operations
+uart = busio.UART(board.TX, board.RX, baudrate=115200, timeout=0.01)
+
+# The in_waiting property is implemented correctly and non-blocking
+bytes_available = uart.in_waiting  # Returns immediately with count
+
+# The readinto() method respects the timeout parameter
+if uart.in_waiting > 0:
+    buf = bytearray(64)
+    count = uart.readinto(buf)  # Returns after reading or timeout
+```
+
+#### Custom Hardware Adapters
+
+If you're implementing a custom UART adapter or wrapping a different interface:
+
+1. **Ensure `in_waiting` is truly non-blocking**: Don't perform I/O operations or wait for hardware in the property getter
+2. **Keep the count accurate**: Update `in_waiting` whenever data is received or consumed
+3. **Test under load**: Verify behavior when receiving rapid bursts of data
+4. **Document deviations**: If your hardware has limitations, clearly document them
+
+Example of a correct wrapper:
+
+```python
+class NonBlockingUARTWrapper:
+    def __init__(self, hardware_uart):
+        self._uart = hardware_uart
+        self._buffer = bytearray()
+        
+    @property
+    def in_waiting(self):
+        # Non-blocking: just return the buffer length
+        return len(self._buffer)
+        
+    def readinto(self, buf):
+        # Only read from internal buffer (already received)
+        count = min(len(buf), len(self._buffer))
+        buf[:count] = self._buffer[:count]
+        del self._buffer[:count]
+        return count
+        
+    def _background_receive(self):
+        # Called periodically by async task to populate buffer
+        if self._uart.in_waiting > 0:
+            data = self._uart.read(self._uart.in_waiting)
+            self._buffer.extend(data)
+```
+
+#### Verification Checklist
+
+Before deploying a new UART hardware interface with `UARTTransport`:
+
+- [ ] `in_waiting` property returns immediately without blocking
+- [ ] `in_waiting` accurately reflects available data at all times
+- [ ] `readinto()` respects configured timeout and doesn't block indefinitely
+- [ ] Rapid data bursts don't cause `in_waiting` to report stale values
+- [ ] Event loop continues to run smoothly during UART operations
+- [ ] Watchdog timer is fed regularly (no unexpected resets)
+
 ## Key Components
 
 ### Message Class
