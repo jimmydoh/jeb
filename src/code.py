@@ -130,6 +130,8 @@ try:
                 clear_update_flag()  # Clear flag since config is missing
 
     else:
+        from updater import clear_update_flag
+
         print("⚠️ SD card not mounted - OTA updates require SD card")
         print("Skipping update")
         clear_update_flag()

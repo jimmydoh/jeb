@@ -99,6 +99,13 @@ class SatelliteFirmware:
         """Background task to manage the downstream RJ45 power pass-through."""
         while True:
             self.watchdog.check_in("connection")
+
+            # Suppress connection monitoring and downstream power management
+            # during initial discovery phase when ID is not yet assigned
+            if not self.id:
+                await asyncio.sleep(0.5)
+                continue
+
             # Scenario: Physical link detected but power is currently OFF
             if self.power.satbus_connected and not self.power.sat_pwr.value:
                 msg_out = Message(self.id, "LOG", "LINK_DETECTED:INIT_PWR")
@@ -125,9 +132,20 @@ class SatelliteFirmware:
         last_broadcast = 0
         while True:
             self.watchdog.check_in("power")
+
             # Update voltages and get current readings
             v = self.power.status
             now = time.monotonic()
+
+            # Safety Check: Downstream Bus Failure cut-off
+            if self.power.sat_pwr.value and v["bus"] < 17.0:
+                self.power.emergency_kill() # Instant cut-off
+
+            # Suppress power monitoring messages during initial
+            # discovery phase when ID is not yet assigned
+            if not self.id:
+                await asyncio.sleep(0.5)
+                continue
 
             # Send periodic voltage reports upstream every 5 seconds
             if now - last_broadcast > 5.0:
@@ -140,7 +158,7 @@ class SatelliteFirmware:
                 )
                 last_broadcast = now
 
-            # Safety Check: Logic rail sagging
+            # Send Error Message for Logic rail sagging
             if v["log"] < 4.7:
                 self.transport_up.send(
                     Message(
@@ -150,9 +168,8 @@ class SatelliteFirmware:
                     )
                 )
 
-            # Safety Check: Downstream Bus Failure
+            # Send Error Message for Downstream Bus Failure
             if self.power.sat_pwr.value and v["bus"] < 17.0:
-                self.power.emergency_kill() # Instant cut-off
                 self.transport_up.send(
                     Message(
                         self.id,

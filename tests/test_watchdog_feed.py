@@ -4,7 +4,7 @@
 This test validates that the fix for the watchdog starvation issue has been
 applied correctly by checking that watchdog feeding is called in the
 run_mode_with_safety method's waiting loop. The implementation now uses
-the safe_feed_watchdog() method which implements the watchdog flag pattern.
+the self.watchdog.safe_feed() method which implements the watchdog flag pattern.
 """
 
 import sys

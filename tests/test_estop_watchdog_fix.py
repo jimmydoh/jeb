@@ -75,12 +75,12 @@ def test_estop_nested_loop_updates_watchdog_flag():
 
     # Check if watchdog flag is set inside the nested loop
     assert 'self.watchdog.check_in("estop")' in loop_section, \
-        "Watchdog flag 'self.watchdog_flags[\"estop\"] = True' NOT found in nested loop - critical fix needed to prevent watchdog reset during E-Stop!"
+        "Watchdog flag 'self.watchdog.check_in(\"estop\")' NOT found in nested loop - critical fix needed to prevent watchdog reset during E-Stop!"
 
-    print("  ✓ Watchdog flag 'self.watchdog_flags[\"estop\"] = True' found in nested loop")
+    print("  ✓ Watchdog flag 'self.watchdog.check_in(\"estop\")' found in nested loop")
 
     # Verify it's before the sleep call in the nested loop
-    flag_pos = loop_section.find('self.watchdog_flags["estop"] = True')
+    flag_pos = loop_section.find('self.watchdog.check_in("estop")')
     sleep_pos = loop_section.find('await asyncio.sleep(0.2)')
 
     if sleep_pos == -1:
@@ -145,7 +145,7 @@ def test_comment_matches_proposed_fix():
     # Look for the comment near the flag update in nested loop
     found_comment = False
     for i, line in enumerate(lines):
-        if 'self.watchdog_flags["estop"] = True' in line:
+        if 'self.watchdog.check_in("estop")' in line:
             # Check if there's a comment on the same line or nearby
             if 'Signal that we are alive' in line or 'alive and waiting' in line:
                 print("  ✓ Found descriptive comment near flag update")

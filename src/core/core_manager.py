@@ -71,17 +71,7 @@ class CoreManager:
         self.root_data_dir = config.get("root_data_dir", "/")
 
         # Init Watchdog Manager
-        self.watchdog = WatchdogManager(
-            task_names=list([
-                "sat_network",
-                #"estop",
-                "power",
-                "connection",
-                "hw_hid",
-                "render"
-            ]),
-            timeout=5.0
-        )
+        self.watchdog = None
 
         # Init Data Manager for persistent storage of scores and settings
         self.data = DataManager(root_dir=self.root_data_dir)
@@ -399,6 +389,16 @@ class CoreManager:
             await self.display.update_status("POWER OK", "STARTING SYSTEM...")
             await asyncio.sleep(1)
 
+            print("Initializing Watchdog Manager...")
+            self.watchdog = WatchdogManager(
+                task_names=list([
+                    "power",
+                    "connection",
+                    "hw_hid"
+                ]),
+                timeout=5.0
+            )
+
             # Start transport monitoring to handle satellite activation
             self.transport.start()
             # Start Satellite Bus connection monitor
@@ -417,11 +417,13 @@ class CoreManager:
                 await asyncio.sleep(1)
 
         # Continue with other background tasks after power integrity is confirmed
+        self.watchdog.register_flags(["sat_network"])
         asyncio.create_task( # Satellite Network Management and Message Handling
             self.sat_network.monitor_satellites(
                 heartbeat_callback=lambda: self.watchdog.check_in("sat_network")
             )
         )
+        self.watchdog.register_flags(["render"])
         asyncio.create_task( # Centralized Render Loop
             self.renderer.run(
                 heartbeat_callback=lambda: self.watchdog.check_in("render")
@@ -429,6 +431,7 @@ class CoreManager:
         )
 
         # --- Experimental / Future Use ---
+        #self.watchdog.register_flags(["estop"])
         #asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
         #asyncio.create_task(self.synth.start_generative_drone())  # Background Music Drone
 
