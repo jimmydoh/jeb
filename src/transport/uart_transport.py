@@ -409,44 +409,46 @@ class UARTTransport:
         Returns:
             Message or None: Received message if available and valid, None otherwise.
         """
-        # 1. Read from Hardware
+        packet = None
+
+        # Read from Hardware and add any bytes to the internal buffer
         if self.uart.in_waiting:
             data = self.uart.read(self.uart.in_waiting)
             if data:
                 self._receive_buffer.extend(data)
-              
-                # Check if we have a complete packet (terminated by 0x00)
-                delimiter_idx = self._receive_buffer.find(b'\x00')
-                if delimiter_idx < 0:
-                    # No complete packet yet
-                    # SAFETY: Prevent buffer explosion from noise when no valid packets present
-                    if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
-                        print("⚠️ UART Buffer Overflow - Clearing garbage (no packets found)")
-                        self._receive_buffer.clear()
-                    return None
-                  
-                # We have at least one complete packet - extract it
-                packet = bytes(self._receive_buffer[:delimiter_idx])
-                # Remove extracted packet and delimiter from buffer
-                del self._receive_buffer[:delimiter_idx + 1]
-                
-            # SAFETY: After processing a packet, check if buffer still too large
-            # This handles case where buffer has valid packet(s) plus excess garbage
+
+        # Check if we have a complete packet (terminated by 0x00) in the buffer
+        delimiter_idx = self._receive_buffer.find(b'\x00')
+        if delimiter_idx < 0:
+            # No complete packet yet
+            # SAFETY: Prevent buffer explosion from noise when no valid packets present
             if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
-                print("⚠️ UART Buffer Overflow - Removing excess data")
-                # First, discard oldest complete packets until we are back under the cap
-                while len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
-                    next_delimiter_idx = self._receive_buffer.find(b'\x00')
-                    if next_delimiter_idx < 0:
-                        # No complete packets left to discard; stop and fall back to tail retention
-                        break
-                    # Drop the oldest complete packet (up to and including its delimiter)
-                    del self._receive_buffer[:next_delimiter_idx + 1]
-                # If still too large (e.g., only partial/garbage data remains), keep only a bounded tail
-                if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
-                    keep_bytes = min(self.PARTIAL_PACKET_BUFFER_SIZE, self.MAX_BUFFER_SIZE)
-                    if len(self._receive_buffer) > keep_bytes:
-                        del self._receive_buffer[:-keep_bytes]        
+                print("⚠️ UART Buffer Overflow - Clearing garbage (no packets found)")
+                self._receive_buffer.clear()
+            return None
+        # Otherwise, we have at least one complete packet to process
+        packet = bytes(self._receive_buffer[:delimiter_idx])
+        # Remove extracted packet and delimiter from buffer
+        del self._receive_buffer[:delimiter_idx + 1]
+
+        # SAFETY: After processing a packet, check if buffer still too large
+        # This handles case where buffer has valid packet(s) plus excess garbage
+        if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
+            print("⚠️ UART Buffer Overflow - Removing excess data")
+            # First, discard oldest complete packets until we are back under the cap
+            while len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
+                next_delimiter_idx = self._receive_buffer.find(b'\x00')
+                if next_delimiter_idx < 0:
+                    # No complete packets left to discard; stop and fall back to tail retention
+                    break
+                # Drop the oldest complete packet (up to and including its delimiter)
+                del self._receive_buffer[:next_delimiter_idx + 1]
+            # If still too large (e.g., only partial/garbage data remains), keep only a bounded tail
+            if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
+                keep_bytes = min(self.PARTIAL_PACKET_BUFFER_SIZE, self.MAX_BUFFER_SIZE)
+                if len(self._receive_buffer) > keep_bytes:
+                    del self._receive_buffer[:-keep_bytes]
+
         if not packet:
             return None
 
@@ -463,7 +465,12 @@ class UARTTransport:
                 return None # CRC Fail
 
             # Parse Fields
-            dest_str, offset = _decode_destination(content, 0, self.dest_reverse_map, self.max_index_value)
+            dest_str, offset = _decode_destination(
+                content,
+                0,
+                self.dest_reverse_map,
+                self.max_index_value
+            )
             if offset >= len(content):
                 return None
 
