@@ -75,6 +75,7 @@ class MockUARTManager:
         self.sent_packets = []
         self.receive_buffer = bytearray()
         self._in_waiting = 0
+        self.buffer_cleared = False
         self.uart = MockUART(self)
     
     def write(self, data):
@@ -85,6 +86,10 @@ class MockUARTManager:
     def in_waiting(self):
         """Mock in_waiting property."""
         return self._in_waiting
+    
+    def read(self, n):
+        """Mock read method - delegates to nested uart object."""
+        return self.uart.read(n)
     
     def read_available(self):
         """Mock read_available method."""
@@ -104,12 +109,19 @@ class MockUARTManager:
         if idx >= 0:
             data = bytes(self.receive_buffer[:idx + len(delimiter)])
             del self.receive_buffer[:idx + len(delimiter)]
+            self._in_waiting = len(self.receive_buffer)
             return data
         return None
     
+    def reset_input_buffer(self):
+        """Mock reset_input_buffer method."""
+        self.receive_buffer.clear()
+        self._in_waiting = 0
+        self.buffer_cleared = True
+    
     def clear_buffer(self):
-        """Mock clear_buffer method."""
-        pass
+        """Mock clear_buffer method - old name for compatibility."""
+        self.reset_input_buffer()
 
 
 # Import transport classes
@@ -183,7 +195,8 @@ def test_led_commands_use_byte_encoding():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # LED command should encode R,G,B,brightness as 4 bytes
-    msg_out = Message("0101", "LED", "255,128,64,100")
+    # Use tuple for proper binary encoding
+    msg_out = Message("0101", "LED", (255, 128, 64, 100))
     transport.send(msg_out)
     
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
