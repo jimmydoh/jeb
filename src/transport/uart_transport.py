@@ -269,7 +269,7 @@ class UARTTransport:
                 is not implemented correctly or returns inaccurate values, the fallback
                 to `readinto()` in `read_raw_into()` could block the entire asyncio
                 event loop for the duration of the UART timeout (typically 10ms-100ms).
-                
+
                 Required uart_hw interface:
                 - `in_waiting`: Property that accurately returns the number of bytes
                   available in the receive buffer without blocking.
@@ -277,7 +277,7 @@ class UARTTransport:
                 - `read(n)`: Method to read n bytes from the buffer.
                 - `write(data)`: Method to write data to UART.
                 - `reset_input_buffer()`: Method to clear the receive buffer.
-                
+
             command_map (dict, optional): Command string to byte mapping.
                 If None, an empty map is used (transport won't encode/decode commands).
             dest_map (dict, optional): Special destination string to byte mapping.
@@ -351,7 +351,7 @@ class UARTTransport:
             return self.uart.readinto(buf)
         return 0
 
-    def enable_relay_from(self, source_transport):
+    def enable_relay_from(self, source_transport, heartbeat_callback=None):
         """Enable raw data relay from a source transport to this transport.
 
         Useful for daisy-chaining where data received on `source_transport`
@@ -362,12 +362,14 @@ class UARTTransport:
         """
         if self._relay_task:
             self._relay_task.cancel()
-        self._relay_task = asyncio.create_task(self._relay_worker(source_transport))
+        self._relay_task = asyncio.create_task(self._relay_worker(source_transport, heartbeat_callback))
 
-    async def _relay_worker(self, source_transport):
+    async def _relay_worker(self, source_transport, heartbeat_callback):
         """Background task to relay raw bytes."""
         buf = bytearray(64)
         while True:
+            if heartbeat_callback:
+                heartbeat_callback()
             # Read raw bytes from the source transport
             count = source_transport.read_raw_into(buf)
             if count > 0:

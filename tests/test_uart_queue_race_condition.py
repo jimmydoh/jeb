@@ -128,11 +128,11 @@ def test_relay_functionality_exists():
     firmware_content = get_base_firmware_content()
 
     # Check that enable_relay_from method exists in transport
-    assert 'def enable_relay_from(self, source_transport):' in transport_content, \
+    assert 'def enable_relay_from(self, source_transport, heartbeat_callback=None):' in transport_content, \
         "UARTTransport should have enable_relay_from method"
 
     # Check that _relay_worker exists
-    assert 'async def _relay_worker(self, source_transport):' in transport_content, \
+    assert 'async def _relay_worker(self, source_transport, heartbeat_callback):' in transport_content, \
         "UARTTransport should have _relay_worker method"
 
     # Check that firmware uses enable_relay_from
@@ -140,7 +140,7 @@ def test_relay_functionality_exists():
         "Firmware should use enable_relay_from"
 
     # Check specific usage pattern in firmware
-    assert 'self.transport_up.enable_relay_from(self.transport_down)' in firmware_content, \
+    assert 'self.transport_up.enable_relay_from(' in firmware_content, \
         "Firmware should enable relay from downstream to upstream"
 
     print("  ✓ enable_relay_from method exists in UARTTransport")
@@ -156,7 +156,7 @@ def test_relay_worker_uses_queue():
 
     # Get the relay worker method (normalized spacing in lookahead)
     relay_match = re.search(
-        r'async def _relay_worker\(self, source_transport\):.*?(?=\n\s+(?:async\s+)?def\s|\nclass\s|\Z)',
+        r'async def _relay_worker\(self, source_transport, heartbeat_callback\):.*?(?=\n\s+(?:async\s+)?def\s|\nclass\s|\Z)',
         content,
         re.DOTALL
     )
@@ -251,7 +251,7 @@ def test_relay_worker_dynamic_backoff():
 
     # Get the relay worker method
     relay_match = re.search(
-        r'async def _relay_worker\(self, source_transport\):.*?(?=\n\s+(?:async\s+)?def\s|\nclass\s|\Z)',
+        r'async def _relay_worker\(self, source_transport, heartbeat_callback\):.*?(?=\n\s+(?:async\s+)?def\s|\nclass\s|\Z)',
         content,
         re.DOTALL
     )

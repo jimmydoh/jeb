@@ -5,9 +5,8 @@ import time
 
 from adafruit_ticks import ticks_ms
 import busio
-import microcontroller
 
-from managers import PowerManager
+from managers import PowerManager, WatchdogManager
 from transport import Message, UARTTransport, CMD_ID_ASSIGN, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 from utilities import Pins
 
@@ -73,6 +72,11 @@ class SatelliteFirmware:
             CMD_ID_ASSIGN: self._handle_id_assign
         }
 
+        self.watchdog = WatchdogManager(
+            task_names=["power", "connection", "relay"],
+            timeout=5.0
+        )
+
     async def _handle_id_assign(self, val):
         if isinstance(val, bytes):
             val = val.decode('utf-8')
@@ -94,6 +98,7 @@ class SatelliteFirmware:
     async def monitor_connection(self):
         """Background task to manage the downstream RJ45 power pass-through."""
         while True:
+            self.watchdog.check_in("connection")
             # Scenario: Physical link detected but power is currently OFF
             if self.power.satbus_connected and not self.power.sat_pwr.value:
                 msg_out = Message(self.id, "LOG", "LINK_DETECTED:INIT_PWR")
@@ -119,6 +124,7 @@ class SatelliteFirmware:
         """Background task to watch for local brownouts or downstream faults."""
         last_broadcast = 0
         while True:
+            self.watchdog.check_in("power")
             # Update voltages and get current readings
             v = self.power.status
             now = time.monotonic()
@@ -192,7 +198,10 @@ class SatelliteFirmware:
         # Start the trasnport tasks
         self.transport_up.start()
         self.transport_down.start()
-        self.transport_up.enable_relay_from(self.transport_down)
+        self.transport_up.enable_relay_from(
+            self.transport_down,
+            heartbeat_callback=lambda: self.watchdog.check_in("relay")
+        )
 
         # Start monitoring tasks
         asyncio.create_task(self.monitor_power())
@@ -204,7 +213,7 @@ class SatelliteFirmware:
         # Primary satellite loop
         while True:
             # Feed the hardware watchdog timer to prevent system reset
-            microcontroller.watchdog.feed()
+            self.watchdog.safe_feed()
 
             # Local status tasks
             # Set LEDs based on power status

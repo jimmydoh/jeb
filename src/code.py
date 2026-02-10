@@ -27,7 +27,6 @@ import json
 import os
 import time
 
-import microcontroller
 import supervisor
 
 # Check if SD card was mounted in boot.py
@@ -153,17 +152,6 @@ print(f"ROLE: {role}, ID: {type_id}, NAME: {type_name}")
 # Add computed values to config for manager initialization
 config["root_data_dir"] = ROOT_DATA_DIR
 
-# Enable Hardware Watchdog Timer for system reliability
-# The watchdog will reset the system if it's not fed within the timeout period
-# This prevents indefinite hangs and ensures system recovery
-WATCHDOG_TIMEOUT = 8.0  # 8 seconds - reasonable for async event loop iterations
-try:
-    microcontroller.watchdog.timeout = WATCHDOG_TIMEOUT
-    microcontroller.watchdog.mode = microcontroller.WatchDogMode.RESET
-    print(f"Watchdog Timer enabled: {WATCHDOG_TIMEOUT}s timeout")
-except Exception as e:
-    print(f"⚠️ Warning: Could not enable watchdog timer: {e}")
-
 if test_mode:
     print("⚠️ Running in TEST MODE. No main application will be loaded. ⚠️")
     from managers import ConsoleManager
@@ -187,14 +175,10 @@ if __name__ == "__main__":
     try:
         if app is None:
             print("‼️No application loaded.‼️")
-            # Feed watchdog in idle loop to prevent reset
             while True:
-                microcontroller.watchdog.feed()
                 time.sleep(1)
         else:
             print(f"Starting main app loop for {type_name} ")
-            # Feed watchdog before starting main application
-            microcontroller.watchdog.feed()
             asyncio.run(app.start())
     except Exception as e:
         print(f"🚨⛔ CRITICAL CRASH: {e}")
@@ -202,6 +186,4 @@ if __name__ == "__main__":
         traceback.print_exception(e)
         # Reduced sleep to maintain watchdog margin before reload
         time.sleep(2)
-        # Feed watchdog after sleep, before reload
-        microcontroller.watchdog.feed()
         supervisor.reload()
