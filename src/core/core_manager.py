@@ -5,6 +5,8 @@ Core Manager for JEB Master Controller.
 TODO: Implement HardwareContext for modes to limit access
 """
 
+import time
+
 import asyncio
 import busio
 import microcontroller
