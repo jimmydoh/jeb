@@ -67,21 +67,32 @@ class BaseTransport:
 
 ### UARTTransport Implementation
 
-Handles UART-specific concerns:
+Handles ALL UART-specific concerns internally:
 
 - Binary protocol with COBS framing (eliminates 0x00 bytes)
 - CRC-8 calculation and verification
 - 0x00 byte as packet terminator (no newlines)
+- Queue management for upstream (prevents race conditions)
+- Automatic relay from downstream to upstream (optional)
 - Integration with UARTManager for buffered I/O
 
 ```python
 from transport import UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
-# Create UART transport
+# Core Manager - single UART
 uart_hw = busio.UART(tx_pin, rx_pin, baudrate=115200)
 transport = UARTTransport(uart_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
-# Send a message (CRC and COBS encoding handled transparently)
+# Satellite Firmware - dual UART with automatic relay
+uart_up = busio.UART(tx_up, rx_up, baudrate=115200)
+uart_down = busio.UART(tx_down, rx_down, baudrate=115200)
+transport = UARTTransport(
+    uart_up, 
+    COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS,
+    uart_downstream=uart_down  # Automatically relays downstream data upstream
+)
+
+# Send a message (queuing, CRC, and COBS encoding handled internally)
 msg = Message("ALL", "ID_ASSIGN", "0100")
 transport.send(msg)
 
@@ -91,41 +102,30 @@ if msg:
     print(f"Received: {msg.command}")
 ```
 
-### Queue-Based TX Worker Pattern (Satellite Firmware)
+### Internal Queue and Relay Management
 
-To prevent race conditions when multiple tasks write to the same UART, satellite firmware implements a queue-based TX worker pattern:
+UARTTransport manages queuing and relay internally - firmware code doesn't need to handle this:
 
 ```python
-# In sat_01_firmware.py
-class IndustrialSatelliteFirmware(Satellite):
-    def __init__(self):
-        # Create upstream queue and queued manager
-        self.upstream_queue = asyncio.Queue()
-        self.uart_up_mgr_queued = _QueuedUARTManager(self.upstream_queue)
-        
-        # Transport uses queued manager for writes
-        self.transport_up = UARTTransport(self.uart_up_mgr_queued, ...)
-        
-        # Hardware UART only accessed by TX worker
-        self.uart_up_mgr = uart_up_mgr
-    
-    async def _upstream_tx_worker(self):
-        """Dedicated task to drain TX queue to hardware."""
-        while True:
-            data = await self.upstream_queue.get()
-            self.uart_up_mgr.write(data)
-            self.upstream_queue.task_done()
+# Inside UARTTransport.__init__():
+self.upstream_queue = asyncio.Queue()  # Internal queue
+asyncio.create_task(self._upstream_tx_worker())  # Internal TX worker
+
+if uart_downstream:
+    asyncio.create_task(self._relay_worker())  # Internal relay worker
 ```
 
-This ensures all upstream writes (from relay, monitor_power, monitor_connection, etc.) are serialized through a single TX worker task, preventing interleaved packet writes.
+This ensures all upstream writes are serialized through a single TX worker task, preventing interleaved packet writes. Relay from downstream to upstream happens automatically when `uart_downstream` is provided.
 
 ## Benefits
 
 ### 1. Separation of Concerns
 
-- **CoreManager** focuses on game logic and satellite coordination
-- **Transport** handles serialization, integrity checking, and physical I/O
+- **CoreManager/Satellite** focuses on application logic and command processing
+- **Transport** handles ALL UART coordination: protocol, queuing, relay, integrity checking
 - **UARTManager** handles low-level buffering and hardware access
+
+Firmware code never manages queues, workers, or relay logic - it's all in Transport.
 
 ### 2. Easy to Extend
 
@@ -234,37 +234,23 @@ self.uart = UARTManager(uart_hw)
 ```python
 from transport import UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
-uart_hw = busio.UART(tx, rx, baudrate=115200)
-self.transport = UARTTransport(uart_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
-```
-
-### Satellite Firmware - Queue-Based TX Worker
-
-For satellite firmware that needs to prevent UART race conditions:
-
-```python
-# Create queue and queued manager wrapper
-self.upstream_queue = asyncio.Queue()
-self.uart_up_mgr_queued = _QueuedUARTManager(self.upstream_queue)
-self.uart_up_mgr = UARTManager(uart_up_hw)  # Hardware access for TX worker only
-
-# Transport uses queued manager
-self.transport_up = UARTTransport(
-    self.uart_up_mgr_queued, 
-    COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+# Dual UART with automatic relay
+uart_up = busio.UART(tx_up, rx_up, baudrate=115200)
+uart_down = busio.UART(tx_down, rx_down, baudrate=115200)
+self.transport = UARTTransport(
+    uart_up, 
+    COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS,
+    uart_downstream=uart_down  # Transport handles relay automatically
 )
 
-# Start TX worker task
-async def start(self):
-    asyncio.create_task(self._upstream_tx_worker())
-    # ... other tasks
-
-async def _upstream_tx_worker(self):
-    while True:
-        data = await self.upstream_queue.get()
-        self.uart_up_mgr.write(data)
-        self.upstream_queue.task_done()
+# Also create downstream transport for explicit sends
+self.transport_down = UARTTransport(
+    uart_down,
+    COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+)
 ```
+
+No queue management, no TX workers, no relay tasks - Transport handles it all.
 
 ## Files Changed
 
@@ -283,8 +269,9 @@ async def _upstream_tx_worker(self):
 - `src/core/core_manager.py` - Uses transport layer
 - `src/satellites/base.py` - Uses transport layer
 - `src/satellites/sat_01_driver.py` - Uses transport layer
-- `src/satellites/sat_01_firmware.py` - Uses transport layer + queue-based TX worker
+- `src/satellites/sat_01_firmware.py` - Uses transport layer (simplified, no queue/relay management)
 - `src/managers/satellite_network_manager.py` - Uses transport layer
+- `src/transport/uart_transport.py` - Now handles queue management and relay internally
 
 ### Unchanged Files
 - `src/utilities/crc.py` - Still provides CRC functions (used by transport)
@@ -306,7 +293,7 @@ python3 tests/test_binary_transport.py
 python3 tests/test_base_transport.py
 
 # Race condition fix validation
-python3 tests/test_uart_queue_race_condition.py
+python3 tests/test_transport_consolidation.py
 
 # Transport reusability tests
 python3 tests/test_transport_reusability.py
