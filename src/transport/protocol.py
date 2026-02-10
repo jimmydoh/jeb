@@ -58,7 +58,7 @@ COMMAND_MAP = {
 DEST_MAP = {
     "ALL": 0xFF,
     "CORE": 0x00,
-    "SAT": 0x01,
+    "SAT": 0xFE,
 }
 
 # --- Command Groups (The Source of Truth for Dispatch) ---
