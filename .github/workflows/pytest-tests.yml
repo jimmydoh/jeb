@@ -4,11 +4,11 @@ on:
   push:
     branches:
       - main
-      - develop
+      - dev
   pull_request:
     branches:
       - main
-      - develop
+      - dev
   workflow_dispatch:
 
 jobs:
@@ -16,21 +16,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
       - name: Install dependencies
         run: |
           # Install pytest and pytest-asyncio for running async tests
           pip install pytest pytest-asyncio
-      
+
       - name: Run unit tests with pytest
         run: |
           # Run pure unit tests using pytest (excluding performance and integration tests)
