@@ -11,7 +11,7 @@ from utilities import Palette
 class AnimationSlot:
     """Reusable animation slot to avoid object churn."""
     __slots__ = ('active', 'type', 'color', 'speed', 'start', 'duration', 'priority')
-    
+
     def __init__(self):
         self.active = False
         self.type = None
@@ -20,7 +20,7 @@ class AnimationSlot:
         self.start = 0.0
         self.duration = None
         self.priority = 0
-    
+
     def set(self, anim_type, color, speed, start, duration, priority):
         """Update slot properties in place."""
         self.active = True
@@ -30,7 +30,7 @@ class AnimationSlot:
         self.start = start
         self.duration = duration
         self.priority = priority
-    
+
     def clear(self):
         """Mark slot as inactive without deallocating."""
         self.active = False
@@ -47,7 +47,7 @@ class BasePixelManager:
         # Fixed-size list for animations (one slot per pixel)
         # Each slot is a reusable AnimationSlot object
         self.active_animations = [AnimationSlot() for _ in range(self.num_pixels)]
-        
+
         # Track active animation count to avoid O(n) checks
         self._active_count = 0
 
@@ -68,7 +68,7 @@ class BasePixelManager:
         # Validate index bounds
         if idx < 0 or idx >= self.num_pixels:
             return False
-        
+
         slot = self.active_animations[idx]
         if slot.active:
             # Only clear if priority is sufficient
@@ -87,7 +87,7 @@ class BasePixelManager:
         # Validate index bounds
         if idx < 0 or idx >= self.num_pixels:
             return
-        
+
         # Check priority lock
         slot = self.active_animations[idx]
         if slot.active:
@@ -115,16 +115,17 @@ class BasePixelManager:
 
             slot.set(anim_type, color, speed, start_t, duration, priority)
 
-    async def animate_loop(self):
+    async def animate_loop(self, step=True):
         """Unified background task to handle all pixel animations."""
         while True:
             # Check if any animations are active using counter
             if self._active_count == 0:
-                await asyncio.sleep(0.1)
+                if step:
+                    return
+                await asyncio.sleep(0.05)
                 continue
 
             now = time.monotonic()
-            dirty = False
 
             for idx in range(self.num_pixels):
                 slot = self.active_animations[idx]
@@ -138,7 +139,6 @@ class BasePixelManager:
                         self.pixels[idx] = (0, 0, 0)
                         slot.clear()
                         self._active_count -= 1
-                        dirty = True
                         continue
 
                 # 2. Animation Logic
@@ -147,7 +147,6 @@ class BasePixelManager:
                 # --- SOLID ---
                 if slot.type == "SOLID":
                     self.pixels[idx] = slot.color
-                    dirty = True
 
                 # --- BLINK ---
                 elif slot.type == "BLINK":
@@ -157,7 +156,6 @@ class BasePixelManager:
                         self.pixels[idx] = slot.color
                     else:
                         self.pixels[idx] = (0, 0, 0)
-                    dirty = True
 
                 # --- PULSE (Breathing) ---
                 elif slot.type == "PULSE":
@@ -166,13 +164,11 @@ class BasePixelManager:
                     factor = max(0.1, factor)
                     base = slot.color
                     self.pixels[idx] = tuple(int(c * factor) for c in base)
-                    dirty = True
 
                 # --- RAINBOW ---
                 elif slot.type == "RAINBOW":
                     hue = (elapsed * slot.speed + (idx * 0.05)) % 1.0
                     self.pixels[idx] = Palette.hsv_to_rgb(hue, 1.0, 1.0)
-                    dirty = True
 
                 # --- GLITCH ---
                 elif slot.type == "GLITCH":
@@ -183,7 +179,6 @@ class BasePixelManager:
                              self.pixels[idx] = (0, 0, 0)
                     else:
                         self.pixels[idx] = slot.color
-                    dirty = True
 
                 # --- SCANNER (Cylon) ---
                 elif slot.type == "SCANNER":
@@ -198,7 +193,6 @@ class BasePixelManager:
                     brightness = max(0, 1.0 - dist) # Tail length of 1.0
                     base = slot.color
                     self.pixels[idx] = tuple(int(c * brightness) for c in base)
-                    dirty = True
 
                 # --- CHASER (Centrifuge) ---
                 elif slot.type == "CHASER":
@@ -212,7 +206,6 @@ class BasePixelManager:
                     brightness = max(0, 1.0 - (dist / 2.0)) # Broader tail
                     base = slot.color
                     self.pixels[idx] = tuple(int(c * brightness) for c in base)
-                    dirty = True
 
                 # --- DECAY ---
                 elif slot.type == "DECAY":
@@ -225,9 +218,8 @@ class BasePixelManager:
                         factor = 1.0 - (elapsed / duration)
                         base = slot.color
                         self.pixels[idx] = tuple(int(c * factor) for c in base)
-                    dirty = True
 
-            # Note: Hardware write is now handled by CoreManager.render_loop()
-            # We only update the memory buffer here
+            if step:
+                return
 
             await asyncio.sleep(0.05)

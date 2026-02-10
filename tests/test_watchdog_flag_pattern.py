@@ -34,21 +34,15 @@ def test_watchdog_flags_dict_exists():
         content = f.read()
     
     # Check for watchdog_flags initialization
-    if 'self.watchdog_flags = {' not in content:
-        print("  ✗ 'self.watchdog_flags = {' not found")
-        return False
+    assert 'self.watchdog_flags = {' in content, "'self.watchdog_flags = {' not found"
     
     print("  ✓ Found 'self.watchdog_flags' dictionary initialization")
     
     # Check for required flag keys
     required_flags = ["sat_network", "estop", "power", "connection", "hw_hid", "render"]
     for flag in required_flags:
-        if f'"{flag}"' not in content:
-            print(f"  ✗ Flag '{flag}' not found in watchdog_flags")
-            return False
+        assert f'"{flag}"' in content, f"Flag '{flag}' not found in watchdog_flags"
         print(f"  ✓ Found flag: {flag}")
-    
-    return True
 
 
 def test_safe_feed_watchdog_method_exists():
@@ -68,9 +62,7 @@ def test_safe_feed_watchdog_method_exists():
         content = f.read()
     
     # Check for safe_feed_watchdog method
-    if 'def safe_feed_watchdog(self):' not in content:
-        print("  ✗ 'def safe_feed_watchdog(self):' not found")
-        return False
+    assert 'def safe_feed_watchdog(self):' in content, "'def safe_feed_watchdog(self):' not found"
     
     print("  ✓ Found 'safe_feed_watchdog' method")
     
@@ -78,34 +70,26 @@ def test_safe_feed_watchdog_method_exists():
     method_pattern = r'def safe_feed_watchdog\(self\):(.*?)(?=\n    def |\n    async def |\Z)'
     match = re.search(method_pattern, content, re.DOTALL)
     
-    if not match:
-        print("  ✗ Could not extract safe_feed_watchdog method body")
-        return False
+    assert match, "Could not extract safe_feed_watchdog method body"
     
     method_body = match.group(1)
     
     # Check that it checks all flags
-    if 'all(self.watchdog_flags.values())' not in method_body:
-        print("  ✗ Method does not check all flags with 'all(self.watchdog_flags.values())'")
-        return False
+    assert 'all(self.watchdog_flags.values())' in method_body, \
+        "Method does not check all flags with 'all(self.watchdog_flags.values())'"
     
     print("  ✓ Method checks all flags before feeding")
     
     # Check that it feeds the watchdog
-    if 'microcontroller.watchdog.feed()' not in method_body:
-        print("  ✗ Method does not feed watchdog with 'microcontroller.watchdog.feed()'")
-        return False
+    assert 'microcontroller.watchdog.feed()' in method_body, \
+        "Method does not feed watchdog with 'microcontroller.watchdog.feed()'"
     
     print("  ✓ Method feeds watchdog when all flags are True")
     
     # Check that it resets flags
-    if 'self.watchdog_flags[key] = False' not in method_body:
-        print("  ✗ Method does not reset flags after feeding")
-        return False
+    assert 'self.watchdog_flags[key] = False' in method_body, "Method does not reset flags after feeding"
     
     print("  ✓ Method resets flags after feeding")
-    
-    return True
 
 
 def test_monitor_tasks_set_flags():
@@ -125,37 +109,27 @@ def test_monitor_tasks_set_flags():
         content = f.read()
     
     # Define tasks and their corresponding flag names
+    # Note: render_loop has been moved to RenderManager, not in CoreManager
     tasks_to_check = [
         ("monitor_estop", "estop"),
         ("monitor_power", "power"),
         ("monitor_connection", "connection"),
         ("monitor_hw_hid", "hw_hid"),
-        ("render_loop", "render"),
     ]
-    
-    all_tasks_ok = True
     
     for task_name, flag_name in tasks_to_check:
         # Extract the task method
         method_pattern = rf'async def {task_name}\(self\):(.*?)(?=\n    async def |\n    def |\Z)'
         match = re.search(method_pattern, content, re.DOTALL)
         
-        if not match:
-            print(f"  ✗ Could not find {task_name} method")
-            all_tasks_ok = False
-            continue
+        assert match, f"Could not find {task_name} method"
         
         method_body = match.group(1)
         
         # Check if the flag is set
         flag_set_pattern = f'self.watchdog_flags["{flag_name}"] = True'
-        if flag_set_pattern not in method_body:
-            print(f"  ✗ {task_name} does not set watchdog flag '{flag_name}'")
-            all_tasks_ok = False
-        else:
-            print(f"  ✓ {task_name} sets flag '{flag_name}'")
-    
-    return all_tasks_ok
+        assert flag_set_pattern in method_body, f"{task_name} does not set watchdog flag '{flag_name}'"
+        print(f"  ✓ {task_name} sets flag '{flag_name}'")
 
 
 def test_sat_network_sets_flag():
@@ -175,9 +149,7 @@ def test_sat_network_sets_flag():
         content = f.read()
     
     # Check that __init__ accepts watchdog_flags parameter
-    if 'watchdog_flags=None' not in content:
-        print("  ✗ __init__ does not accept watchdog_flags parameter")
-        return False
+    assert 'watchdog_flags=None' in content, "__init__ does not accept watchdog_flags parameter"
     
     print("  ✓ __init__ accepts watchdog_flags parameter")
     
@@ -185,27 +157,21 @@ def test_sat_network_sets_flag():
     method_pattern = r'async def monitor_satellites\(self\):(.*?)(?=\n    async def |\n    def |\Z)'
     match = re.search(method_pattern, content, re.DOTALL)
     
-    if not match:
-        print("  ✗ Could not find monitor_satellites method")
-        return False
+    assert match, "Could not find monitor_satellites method"
     
     method_body = match.group(1)
     
     # Check if the flag is set
-    if 'self.watchdog_flags["sat_network"] = True' not in method_body:
-        print("  ✗ monitor_satellites does not set watchdog flag 'sat_network'")
-        return False
+    assert 'self.watchdog_flags["sat_network"] = True' in method_body, \
+        "monitor_satellites does not set watchdog flag 'sat_network'"
     
     print("  ✓ monitor_satellites sets flag 'sat_network'")
     
     # Check for None check
-    if 'if self.watchdog_flags is not None:' not in method_body:
-        print("  ✗ monitor_satellites does not check if watchdog_flags is None")
-        return False
+    assert 'if self.watchdog_flags is not None:' in method_body, \
+        "monitor_satellites does not check if watchdog_flags is None"
     
     print("  ✓ monitor_satellites checks if watchdog_flags is not None")
-    
-    return True
 
 
 def test_main_loop_uses_safe_feed():
@@ -228,17 +194,13 @@ def test_main_loop_uses_safe_feed():
     start_pattern = r'async def start\(self\):(.*?)(?=\n    async def |\n    def |\Z)'
     match = re.search(start_pattern, content, re.DOTALL)
     
-    if not match:
-        print("  ✗ Could not find start() method")
-        return False
+    assert match, "Could not find start() method"
     
     start_body = match.group(1)
     print("  ✓ Found start() method")
     
     # Check for safe_feed_watchdog calls
-    if 'self.safe_feed_watchdog()' not in start_body:
-        print("  ✗ 'self.safe_feed_watchdog()' not found in start() method")
-        return False
+    assert 'self.safe_feed_watchdog()' in start_body, "'self.safe_feed_watchdog()' not found in start() method"
     
     print("  ✓ start() method uses safe_feed_watchdog")
     
@@ -254,8 +216,6 @@ def test_main_loop_uses_safe_feed():
         print("  ⚠ Main loop should use safe_feed_watchdog() instead")
     else:
         print("  ✓ No direct watchdog.feed() calls in start() method")
-    
-    return True
 
 
 def test_run_mode_with_safety_uses_safe_feed():
@@ -278,17 +238,14 @@ def test_run_mode_with_safety_uses_safe_feed():
     method_pattern = r'async def run_mode_with_safety\(self.*?\):(.*?)(?=\n    async def |\n    def |\Z)'
     match = re.search(method_pattern, content, re.DOTALL)
     
-    if not match:
-        print("  ✗ Could not find run_mode_with_safety method")
-        return False
+    assert match, "Could not find run_mode_with_safety method"
     
     method_body = match.group(1)
     print("  ✓ Found run_mode_with_safety method")
     
     # Check for safe_feed_watchdog calls
-    if 'self.safe_feed_watchdog()' not in method_body:
-        print("  ✗ 'self.safe_feed_watchdog()' not found in run_mode_with_safety")
-        return False
+    assert 'self.safe_feed_watchdog()' in method_body, \
+        "'self.safe_feed_watchdog()' not found in run_mode_with_safety"
     
     print("  ✓ run_mode_with_safety uses safe_feed_watchdog")
     
@@ -298,8 +255,6 @@ def test_run_mode_with_safety_uses_safe_feed():
         print("  ⚠ Should use safe_feed_watchdog() instead")
     else:
         print("  ✓ No direct watchdog.feed() calls in run_mode_with_safety")
-    
-    return True
 
 
 def test_sat_network_receives_flags():
@@ -319,59 +274,55 @@ def test_sat_network_receives_flags():
         content = f.read()
     
     # Check that SatelliteNetworkManager is initialized with watchdog_flags
-    if 'SatelliteNetworkManager(' not in content:
-        print("  ✗ SatelliteNetworkManager initialization not found")
-        return False
+    assert 'SatelliteNetworkManager(' in content, "SatelliteNetworkManager initialization not found"
     
     # Extract the initialization
     init_pattern = r'self\.sat_network = SatelliteNetworkManager\((.*?)\)'
     match = re.search(init_pattern, content, re.DOTALL)
     
-    if not match:
-        print("  ✗ Could not extract SatelliteNetworkManager initialization")
-        return False
+    assert match, "Could not extract SatelliteNetworkManager initialization"
     
     init_args = match.group(1)
     
     # Check if watchdog_flags is passed
-    if 'self.watchdog_flags' not in init_args:
-        print("  ✗ watchdog_flags not passed to SatelliteNetworkManager")
-        return False
+    assert 'self.watchdog_flags' in init_args, "watchdog_flags not passed to SatelliteNetworkManager"
     
     print("  ✓ CoreManager passes watchdog_flags to SatelliteNetworkManager")
-    
-    return True
 
 
-if __name__ == "__main__":
-    print("=" * 60)
+def run_all_tests():
+    """Run all watchdog flag pattern tests."""
+    print("\n" + "=" * 60)
     print("Watchdog Flag Pattern Implementation Verification")
     print("Testing fix for watchdog blind feeding")
-    print("=" * 60)
+    print("=" * 60 + "\n")
     
-    results = []
-    results.append(("Watchdog flags dictionary exists", test_watchdog_flags_dict_exists()))
-    results.append(("safe_feed_watchdog method exists", test_safe_feed_watchdog_method_exists()))
-    results.append(("Monitor tasks set flags", test_monitor_tasks_set_flags()))
-    results.append(("SatelliteNetworkManager sets flag", test_sat_network_sets_flag()))
-    results.append(("CoreManager passes flags to SatelliteNetworkManager", test_sat_network_receives_flags()))
-    results.append(("Main loop uses safe_feed_watchdog", test_main_loop_uses_safe_feed()))
-    results.append(("run_mode_with_safety uses safe_feed_watchdog", test_run_mode_with_safety_uses_safe_feed()))
+    tests = [
+        test_watchdog_flags_dict_exists,
+        test_safe_feed_watchdog_method_exists,
+        test_monitor_tasks_set_flags,
+        test_sat_network_sets_flag,
+        test_sat_network_receives_flags,
+        test_main_loop_uses_safe_feed,
+        test_run_mode_with_safety_uses_safe_feed,
+    ]
+    
+    failed = 0
+    passed = 0
+    
+    for test in tests:
+        try:
+            test()
+            passed += 1
+        except Exception as e:
+            print(f"\n❌ Test failed: {test.__name__}")
+            print(f"   Error: {e}")
+            import traceback
+            traceback.print_exc()
+            failed += 1
     
     print("\n" + "=" * 60)
-    print("Test Results Summary:")
-    print("=" * 60)
-    
-    all_passed = True
-    for test_name, passed in results:
-        status = "✓ PASS" if passed else "✗ FAIL"
-        print(f"  {status}: {test_name}")
-        if not passed:
-            all_passed = False
-    
-    print("=" * 60)
-    
-    if all_passed:
+    if failed == 0:
         print("ALL TESTS PASSED ✓")
         print()
         print("The watchdog flag pattern successfully:")
@@ -380,7 +331,13 @@ if __name__ == "__main__":
         print("  • Resets flags after feeding to detect next iteration")
         print("  • Allows system reset to recover from zombie state")
         print("  • Maintains all existing watchdog functionality")
-        sys.exit(0)
     else:
         print("SOME TESTS FAILED ✗")
-        sys.exit(1)
+    print("=" * 60 + "\n")
+    
+    return failed == 0
+
+
+if __name__ == "__main__":
+    success = run_all_tests()
+    sys.exit(0 if success else 1)

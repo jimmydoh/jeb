@@ -9,16 +9,33 @@ reusable for other projects while applications can inject their specific
 command sets.
 """
 
-# Command string to byte mapping
+# --- Command Constants (Avoid Magic Strings in Logic) ---
+CMD_PING = "PING"
+CMD_ACK = "ACK"
+CMD_NACK = "NACK"
+CMD_ID_ASSIGN = "ID_ASSIGN"
+CMD_NEW_SAT = "NEW_SAT"
+CMD_STATUS = "STATUS"
+CMD_ERROR = "ERROR"
+CMD_LOG = "LOG"
+CMD_SYNC_FRAME = "SYNC_FRAME"
+CMD_POWER = "POWER"
+CMD_SETENC = "SETENC"
+
+# --- Command Mapping ---
 COMMAND_MAP = {
-    # Core commands
-    "STATUS": 0x01,
-    "ID_ASSIGN": 0x02,
-    "NEW_SAT": 0x03,
-    "ERROR": 0x04,
-    "LOG": 0x05,
-    "POWER": 0x06,
-    
+    # System & Discovery
+    CMD_PING: 0x01,
+    CMD_ACK: 0x02,
+    CMD_NACK: 0x03,
+    CMD_ID_ASSIGN: 0x04,
+    CMD_NEW_SAT: 0x05,
+    CMD_STATUS: 0x06,
+    CMD_ERROR: 0x07,
+    CMD_LOG: 0x08,
+    CMD_SYNC_FRAME: 0x09,
+    CMD_POWER: 0x0A,
+
     # LED commands
     "LED": 0x10,
     "LEDFLASH": 0x11,
@@ -27,31 +44,46 @@ COMMAND_MAP = {
     "LEDCENTRI": 0x14,
     "LEDRAINBOW": 0x15,
     "LEDGLITCH": 0x16,
-    
+
     # Display commands
     "DSP": 0x20,
     "DSPCORRUPT": 0x21,
     "DSPMATRIX": 0x22,
-    
+
     # Encoder commands
-    "SETENC": 0x30,
+    CMD_SETENC: 0x30,
 }
-
-# Reverse mapping for decoding
-COMMAND_REVERSE_MAP = {v: k for k, v in COMMAND_MAP.items()}
-
 
 # Special destination IDs
 DEST_MAP = {
     "ALL": 0xFF,
+    "CORE": 0x00,
     "SAT": 0xFE,
 }
 
+# --- Command Groups (The Source of Truth for Dispatch) ---
+#These sets allow the firmware to ask "Is this an LED command?"
+# without knowing the specific command names.
+
+# Dynamically generate these based on your naming convention,
+# or explicitly list them if you want strict control.
+LED_COMMANDS = {k for k in COMMAND_MAP if k.startswith("LED")}
+DSP_COMMANDS = {k for k in COMMAND_MAP if k.startswith("DSP")}
+
+# Commands that are handled directly by the Firmware class
+SYSTEM_COMMANDS = {
+    CMD_ID_ASSIGN,
+    CMD_SYNC_FRAME,
+    CMD_SETENC,
+    CMD_NEW_SAT
+}
+
+# Reverse mapping for decoding
+COMMAND_REVERSE_MAP = {v: k for k, v in COMMAND_MAP.items()}
 DEST_REVERSE_MAP = {v: k for k, v in DEST_MAP.items()}
 
 # Maximum value for single-byte index (used to distinguish 1-byte vs 2-byte dest IDs)
 MAX_INDEX_VALUE = 100
-
 
 # Payload encoding type constants
 ENCODING_RAW_TEXT = 'text'
@@ -62,7 +94,7 @@ ENCODING_FLOATS = 'floats'
 
 # Command-specific payload schemas
 # This eliminates ambiguity in type interpretation
-# 
+#
 # Schema fields:
 #   'type': One of the ENCODING_* constants above
 #   'desc': Human-readable description
@@ -73,7 +105,8 @@ PAYLOAD_SCHEMAS = {
     "NEW_SAT": {'type': ENCODING_RAW_TEXT, 'desc': 'Satellite type ID like "01"'},
     "ERROR": {'type': ENCODING_RAW_TEXT, 'desc': 'Error description text'},
     "LOG": {'type': ENCODING_RAW_TEXT, 'desc': 'Log message text'},
-    
+    "SYNC_FRAME": {'type': ENCODING_FLOATS, 'desc': 'Frame sync: frame_number,time_seconds'},
+
     # LED commands - RGB values plus parameters (variable count OK)
     "LED": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness bytes'},
     "LEDFLASH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
@@ -82,16 +115,16 @@ PAYLOAD_SCHEMAS = {
     "LEDCENTRI": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
     "LEDRAINBOW": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'speed,brightness'},
     "LEDGLITCH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'intensity,brightness'},
-    
+
     # Display commands
     "DSP": {'type': ENCODING_RAW_TEXT, 'desc': 'Display message text'},
     "DSPCORRUPT": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'level,duration'},
     "DSPMATRIX": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'speed,density'},
-    
+
     # Power and status - use floats for voltage/current measurements
     "POWER": {'type': ENCODING_FLOATS, 'desc': 'voltage1,voltage2,current'},
     "STATUS": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'status bytes (variable length)'},
-    
+
     # Encoder
     "SETENC": {'type': ENCODING_NUMERIC_WORDS, 'desc': 'encoder position'},
 }

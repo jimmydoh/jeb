@@ -93,7 +93,7 @@ class MockJEBPixel:
 
 
 # Simplified MatrixManager for testing (avoiding CircuitPython dependencies)
-class TestableMatrixManager:
+class MockMatrixManager:
     """Simplified MatrixManager for testing non-blocking behavior."""
 
     def __init__(self, jeb_pixel):
@@ -210,7 +210,7 @@ async def test_show_icon_non_blocking_slide_left():
 
     # Create mock pixel and matrix manager
     mock_pixel = MockJEBPixel(64)
-    matrix = TestableMatrixManager(mock_pixel)
+    matrix = MockMatrixManager(mock_pixel)
 
     # Record start time
     start_time = time.time()
@@ -240,7 +240,7 @@ async def test_show_icon_other_animations_non_blocking():
     print("\nTesting show_icon with other animation modes...")
 
     mock_pixel = MockJEBPixel(64)
-    matrix = TestableMatrixManager(mock_pixel)
+    matrix = MockMatrixManager(mock_pixel)
 
     # Test PULSE animation
     start_time = time.time()
@@ -271,7 +271,7 @@ async def test_concurrent_show_icon_calls():
     print("\nTesting concurrent SLIDE_LEFT animations...")
 
     mock_pixel = MockJEBPixel(64)
-    matrix = TestableMatrixManager(mock_pixel)
+    matrix = MockMatrixManager(mock_pixel)
 
     # Start multiple SLIDE_LEFT animations concurrently
     start_time = time.time()
@@ -303,7 +303,7 @@ async def test_slide_left_animation_completes():
     print("\nTesting SLIDE_LEFT animation completion...")
 
     mock_pixel = MockJEBPixel(64)
-    matrix = TestableMatrixManager(mock_pixel)
+    matrix = MockMatrixManager(mock_pixel)
 
     # Track if pixels are being updated
     initial_state = [mock_pixel[i] for i in range(64)]
@@ -333,7 +333,7 @@ async def test_blocking_vs_non_blocking_comparison():
     print("\nTesting performance comparison...")
 
     mock_pixel = MockJEBPixel(64)
-    matrix = TestableMatrixManager(mock_pixel)
+    matrix = MockMatrixManager(mock_pixel)
 
     # Test non-blocking (current implementation)
     start_time = time.time()

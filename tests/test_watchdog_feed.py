@@ -35,17 +35,13 @@ def test_watchdog_feed_present_in_code():
     method_pattern = r'async def run_mode_with_safety\(self.*?\n(.*?)(?=\n    async def|\n    def|\Z)'
     match = re.search(method_pattern, content, re.DOTALL)
     
-    if not match:
-        print("  ✗ Could not find run_mode_with_safety method")
-        return False
+    assert match, "Could not find run_mode_with_safety method"
     
     method_body = match.group(1)
     print("  ✓ Found run_mode_with_safety method")
     
     # Check for the while loop
-    if 'while not sub_task.done():' not in method_body:
-        print("  ✗ Could not find 'while not sub_task.done():' loop")
-        return False
+    assert 'while not sub_task.done():' in method_body, "Could not find 'while not sub_task.done():' loop"
     
     print("  ✓ Found 'while not sub_task.done():' loop")
     
@@ -61,9 +57,7 @@ def test_watchdog_feed_present_in_code():
         loop_body = loop_body[:next_def]
     
     # Check for watchdog feed call in the loop (now uses safe_feed_watchdog)
-    if 'self.safe_feed_watchdog()' not in loop_body:
-        print("  ✗ 'self.safe_feed_watchdog()' not found in while loop")
-        return False
+    assert 'self.safe_feed_watchdog()' in loop_body, "'self.safe_feed_watchdog()' not found in while loop"
     
     print("  ✓ Found 'self.safe_feed_watchdog()' in while loop")
     
@@ -77,8 +71,6 @@ def test_watchdog_feed_present_in_code():
         print("  ⚠ Warning: safe_feed_watchdog() appears after sleep, should be at top of loop")
     else:
         print("  ✓ safe_feed_watchdog() is positioned correctly (before sleep)")
-    
-    return True
 
 
 def test_watchdog_feed_in_main_loop():
@@ -101,25 +93,19 @@ def test_watchdog_feed_in_main_loop():
     start_pattern = r'async def start\(self\):(.*?)(?=\n    async def|\n    def|\Z)'
     match = re.search(start_pattern, content, re.DOTALL)
     
-    if not match:
-        print("  ✗ Could not find start() method")
-        return False
+    assert match, "Could not find start() method"
     
     start_body = match.group(1)
     print("  ✓ Found start() method")
     
     # Check for watchdog feed in the main loop (now uses safe_feed_watchdog)
-    if 'self.safe_feed_watchdog()' not in start_body:
-        print("  ✗ 'self.safe_feed_watchdog()' not found in start() method")
-        return False
+    assert 'self.safe_feed_watchdog()' in start_body, "'self.safe_feed_watchdog()' not found in start() method"
     
     print("  ✓ Found 'self.safe_feed_watchdog()' in start() method")
     
     # Count occurrences
     feed_count = start_body.count('self.safe_feed_watchdog()')
     print(f"  ✓ Found {feed_count} safe_feed_watchdog call(s) in start() method")
-    
-    return True
 
 
 def test_microcontroller_import():
@@ -139,39 +125,40 @@ def test_microcontroller_import():
         content = f.read()
     
     # Check for microcontroller import
-    if 'import microcontroller' not in content:
-        print("  ✗ 'import microcontroller' not found")
-        return False
+    assert 'import microcontroller' in content, "'import microcontroller' not found"
     
     print("  ✓ Found 'import microcontroller'")
-    return True
 
 
-if __name__ == "__main__":
-    print("=" * 60)
+def run_all_tests():
+    """Run all watchdog feed fix tests."""
+    print("\n" + "=" * 60)
     print("Watchdog Feed Fix Verification")
     print("Testing fix for watchdog starvation during gameplay")
-    print("=" * 60)
+    print("=" * 60 + "\n")
     
-    results = []
-    results.append(("Microcontroller Import", test_microcontroller_import()))
-    results.append(("Watchdog Feed in run_mode_with_safety", test_watchdog_feed_present_in_code()))
-    results.append(("Watchdog Feed in start() loop", test_watchdog_feed_in_main_loop()))
+    tests = [
+        test_microcontroller_import,
+        test_watchdog_feed_present_in_code,
+        test_watchdog_feed_in_main_loop,
+    ]
+    
+    failed = 0
+    passed = 0
+    
+    for test in tests:
+        try:
+            test()
+            passed += 1
+        except Exception as e:
+            print(f"\n❌ Test failed: {test.__name__}")
+            print(f"   Error: {e}")
+            import traceback
+            traceback.print_exc()
+            failed += 1
     
     print("\n" + "=" * 60)
-    print("Test Results Summary:")
-    print("=" * 60)
-    
-    all_passed = True
-    for test_name, passed in results:
-        status = "✓ PASS" if passed else "✗ FAIL"
-        print(f"  {status}: {test_name}")
-        if not passed:
-            all_passed = False
-    
-    print("=" * 60)
-    
-    if all_passed:
+    if failed == 0:
         print("ALL TESTS PASSED ✓")
         print()
         print("The fix successfully:")
@@ -180,7 +167,13 @@ if __name__ == "__main__":
         print("  • Imports microcontroller module for watchdog access")
         print("  • Prevents system reset during long-running modes")
         print("  • Implements watchdog flag pattern to prevent blind feeding")
-        sys.exit(0)
     else:
         print("SOME TESTS FAILED ✗")
-        sys.exit(1)
+    print("=" * 60 + "\n")
+    
+    return failed == 0
+
+
+if __name__ == "__main__":
+    success = run_all_tests()
+    sys.exit(0 if success else 1)

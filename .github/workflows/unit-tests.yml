@@ -4,11 +4,7 @@ on:
   push:
     branches:
       - main
-      - develop
   pull_request:
-    branches:
-      - main
-      - develop
   workflow_dispatch:
 
 jobs:
@@ -16,23 +12,23 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
       - name: Install dependencies
         run: |
           # Install pytest for tests that use pytest fixtures/decorators
           # Note: Most tests are designed to run standalone with python3,
           # but some use pytest.mark decorators for test categorization
           pip install pytest
-      
+
       - name: Run unit tests
         run: |
           # Run pure unit tests (excluding performance and integration tests)
@@ -41,23 +37,23 @@ jobs:
           # 2. Tests handle async/await with asyncio.run() internally
           # 3. Tests provide custom formatted output
           # 4. Running with pytest would require pytest-asyncio for async tests
-          
+
           # Track test results
           success_count=0
           fail_count=0
           failed_tests=""
-          
+
           echo "============================================================"
           echo "Running Pure Unit Tests"
           echo "============================================================"
           echo ""
-          
+
           for test in tests/test_*.py; do
             # Skip performance and integration tests
             if [[ "$test" == *"performance"* ]] || [[ "$test" == *"integration"* ]]; then
               continue
             fi
-            
+
             echo "Running $(basename $test)..."
             if python3 "$test" 2>&1; then
               echo "  ✓ PASS"
@@ -73,19 +69,19 @@ jobs:
             fi
             echo ""
           done
-          
+
           echo "============================================================"
           echo "Test Summary"
           echo "============================================================"
           echo "Passed: $success_count"
           echo "Failed: $fail_count"
-          
+
           if [ -n "$failed_tests" ]; then
             echo ""
             echo "Failed tests:"
             echo "$failed_tests"
             exit 1
           fi
-          
+
           echo ""
           echo "✓ All unit tests passed!"

@@ -68,7 +68,7 @@ class MockJEBPixel:
     def show(self):
         pass
 
-class TestableMatrixManager:
+class MockMatrixManager:
     """Simplified MatrixManager matching the actual implementation."""
     def __init__(self, jeb_pixel):
         self.pixels = jeb_pixel
@@ -146,7 +146,7 @@ async def test_critical_monitoring_not_blocked():
 
     # Setup
     mock_pixel = MockJEBPixel(64)
-    matrix = TestableMatrixManager(mock_pixel)
+    matrix = MockMatrixManager(mock_pixel)
     monitor = MockCriticalMonitor()
 
     # Start critical monitor
@@ -217,7 +217,7 @@ async def test_mode_transition_responsiveness():
     print("=" * 60)
 
     mock_pixel = MockJEBPixel(64)
-    matrix = TestableMatrixManager(mock_pixel)
+    matrix = MockMatrixManager(mock_pixel)
 
     # Simulate rapid mode transitions (like menu navigation)
     start_time = time.time()

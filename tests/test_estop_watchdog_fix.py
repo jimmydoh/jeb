@@ -39,17 +39,13 @@ def test_estop_nested_loop_updates_watchdog_flag():
     method_pattern = r'async def monitor_estop\(self\):(.*?)(?=\n    async def |\n    def |\Z)'
     match = re.search(method_pattern, content, re.DOTALL)
     
-    if not match:
-        print("  ✗ Could not find monitor_estop method")
-        return False
+    assert match, "Could not find monitor_estop method"
     
     method_body = match.group(1)
     print("  ✓ Found monitor_estop method")
     
     # Look for the nested while loop (while not self.hid.estop:)
-    if 'while not self.hid.estop:' not in method_body:
-        print("  ✗ Could not find 'while not self.hid.estop:' nested loop")
-        return False
+    assert 'while not self.hid.estop:' in method_body, "Could not find 'while not self.hid.estop:' nested loop"
     
     print("  ✓ Found 'while not self.hid.estop:' nested loop")
     
@@ -78,10 +74,8 @@ def test_estop_nested_loop_updates_watchdog_flag():
     print(f"  → Nested loop section length: {len(loop_section)} characters")
     
     # Check if watchdog flag is set inside the nested loop
-    if 'self.watchdog_flags["estop"] = True' not in loop_section:
-        print("  ✗ Watchdog flag 'self.watchdog_flags[\"estop\"] = True' NOT found in nested loop")
-        print("\n  This is the critical fix needed to prevent watchdog reset during E-Stop!")
-        return False
+    assert 'self.watchdog_flags["estop"] = True' in loop_section, \
+        "Watchdog flag 'self.watchdog_flags[\"estop\"] = True' NOT found in nested loop - critical fix needed to prevent watchdog reset during E-Stop!"
     
     print("  ✓ Watchdog flag 'self.watchdog_flags[\"estop\"] = True' found in nested loop")
     
@@ -95,8 +89,6 @@ def test_estop_nested_loop_updates_watchdog_flag():
         print("  ⚠ Warning: Flag update appears after sleep")
     else:
         print("  ✓ Flag update is correctly positioned before sleep")
-    
-    return True
 
 
 def test_estop_outer_loop_still_updates_flag():
@@ -119,9 +111,7 @@ def test_estop_outer_loop_still_updates_flag():
     method_pattern = r'async def monitor_estop\(self\):(.*?)(?=\n    async def |\n    def |\Z)'
     match = re.search(method_pattern, content, re.DOTALL)
     
-    if not match:
-        print("  ✗ Could not find monitor_estop method")
-        return False
+    assert match, "Could not find monitor_estop method"
     
     method_body = match.group(1)
     
@@ -131,10 +121,9 @@ def test_estop_outer_loop_still_updates_flag():
     if flag_count < 2:
         print(f"  ⚠ Warning: Only {flag_count} flag update(s) found")
         print("  Expected at least 2: one in outer loop, one in nested loop")
-        return flag_count >= 1  # Still pass if at least one exists
     
+    assert flag_count >= 1, f"Expected at least 1 flag update, found {flag_count}"
     print(f"  ✓ Found {flag_count} flag updates (outer loop + nested loop)")
-    return True
 
 
 def test_comment_matches_proposed_fix():
@@ -165,36 +154,40 @@ def test_comment_matches_proposed_fix():
     
     if not found_comment:
         print("  ℹ No specific comment found, but flag update is present")
-        return True  # Not required, but nice to have
     
-    return True
+    # Test always passes - comment is nice to have but not required
+    assert True, "Comment check completed"
 
 
-if __name__ == "__main__":
-    print("=" * 60)
+def run_all_tests():
+    """Run all E-Stop watchdog fix tests."""
+    print("\n" + "=" * 60)
     print("E-Stop Watchdog Reset Fix Verification")
     print("Testing fix for watchdog reset during E-Stop state")
-    print("=" * 60)
+    print("=" * 60 + "\n")
     
-    results = []
-    results.append(("E-Stop nested loop updates watchdog flag", test_estop_nested_loop_updates_watchdog_flag()))
-    results.append(("E-Stop outer loop updates watchdog flag", test_estop_outer_loop_still_updates_flag()))
-    results.append(("Comment matches proposed fix", test_comment_matches_proposed_fix()))
+    tests = [
+        test_estop_nested_loop_updates_watchdog_flag,
+        test_estop_outer_loop_still_updates_flag,
+        test_comment_matches_proposed_fix,
+    ]
+    
+    failed = 0
+    passed = 0
+    
+    for test in tests:
+        try:
+            test()
+            passed += 1
+        except Exception as e:
+            print(f"\n❌ Test failed: {test.__name__}")
+            print(f"   Error: {e}")
+            import traceback
+            traceback.print_exc()
+            failed += 1
     
     print("\n" + "=" * 60)
-    print("Test Results Summary:")
-    print("=" * 60)
-    
-    all_passed = True
-    for test_name, passed in results:
-        status = "✓ PASS" if passed else "✗ FAIL"
-        print(f"  {status}: {test_name}")
-        if not passed:
-            all_passed = False
-    
-    print("=" * 60)
-    
-    if all_passed:
+    if failed == 0:
         print("ALL TESTS PASSED ✓")
         print()
         print("The fix successfully:")
@@ -205,9 +198,15 @@ if __name__ == "__main__":
         print()
         print("ISSUE RESOLVED: System will no longer hard reset 8 seconds")
         print("after E-Stop is engaged.")
-        sys.exit(0)
     else:
         print("SOME TESTS FAILED ✗")
         print()
         print("The E-Stop watchdog reset issue may not be fully resolved.")
-        sys.exit(1)
+    print("=" * 60 + "\n")
+    
+    return failed == 0
+
+
+if __name__ == "__main__":
+    success = run_all_tests()
+    sys.exit(0 if success else 1)
