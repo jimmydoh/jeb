@@ -257,7 +257,8 @@ def test_relay_worker_dynamic_backoff():
         "_relay_worker should use sleep(0) when processing data"
     
     # Check for longer sleep when idle (power saving)
-    # The recommendation is 5ms (0.005 seconds)
+    # The recommendation from the issue is 5ms (0.005 seconds) to allow the
+    # microcontroller to enter lower-power idle states while maintaining responsiveness
     assert 'await asyncio.sleep(0.005)' in relay_method, \
         "_relay_worker should use sleep(0.005) when idle to save power"
     
