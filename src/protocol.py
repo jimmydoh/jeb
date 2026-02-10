@@ -18,6 +18,7 @@ COMMAND_MAP = {
     "ERROR": 0x04,
     "LOG": 0x05,
     "POWER": 0x06,
+    "SYNC_FRAME": 0x07,
     
     # LED commands
     "LED": 0x10,
@@ -73,6 +74,7 @@ PAYLOAD_SCHEMAS = {
     "NEW_SAT": {'type': ENCODING_RAW_TEXT, 'desc': 'Satellite type ID like "01"'},
     "ERROR": {'type': ENCODING_RAW_TEXT, 'desc': 'Error description text'},
     "LOG": {'type': ENCODING_RAW_TEXT, 'desc': 'Log message text'},
+    "SYNC_FRAME": {'type': ENCODING_RAW_TEXT, 'desc': 'Frame sync: frame_number,time_seconds'},
     
     # LED commands - RGB values plus parameters (variable count OK)
     "LED": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness bytes'},
