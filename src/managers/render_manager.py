@@ -28,6 +28,7 @@ class RenderManager:
         # Sync State
         self.frame_counter = 0
         self.last_sync_broadcast = 0.0
+        self.sleep_adjustment = 0.0  # For gradual drift correction
 
     def add_animator(self, manager):
         """Register a manager that needs its .animate_loop(step=True) called."""
@@ -64,6 +65,11 @@ class RenderManager:
             next_frame_time += self.RENDER_FRAME_TIME
             now = time.monotonic()
             sleep_duration = next_frame_time - now
+            
+            # Apply drift correction adjustment if set
+            if self.sleep_adjustment != 0.0:
+                sleep_duration += self.sleep_adjustment
+                self.sleep_adjustment = 0.0  # Reset after applying once
 
             if sleep_duration > 0:
                 await asyncio.sleep(sleep_duration)
@@ -76,7 +82,14 @@ class RenderManager:
         """Called by SLAVE devices when they receive a SYNC packet."""
         if self.sync_role == "SLAVE":
             estimated_core = core_frame + 1
-            drift = abs(self.frame_counter - estimated_core)
-            # Only snap if drift is noticeable (>2 frames) to prevent micro-stutters
-            if drift > 2:
+            drift = self.frame_counter - estimated_core
+            abs_drift = abs(drift)
+            
+            if abs_drift > 2:
+                # Large drift: snap immediately to prevent visible desync
                 self.frame_counter = estimated_core
+            elif abs_drift == 1:
+                # Small drift: gradually adjust via sleep time modification
+                # +/- 10% of frame time to smoothly catch up
+                adjustment = -0.1 * self.RENDER_FRAME_TIME if drift > 0 else 0.1 * self.RENDER_FRAME_TIME
+                self.sleep_adjustment = adjustment
