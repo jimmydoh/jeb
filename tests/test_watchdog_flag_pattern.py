@@ -109,12 +109,12 @@ def test_monitor_tasks_set_flags():
         content = f.read()
     
     # Define tasks and their corresponding flag names
+    # Note: render_loop has been moved to RenderManager, not in CoreManager
     tasks_to_check = [
         ("monitor_estop", "estop"),
         ("monitor_power", "power"),
         ("monitor_connection", "connection"),
         ("monitor_hw_hid", "hw_hid"),
-        ("render_loop", "render"),
     ]
     
     for task_name, flag_name in tasks_to_check:
