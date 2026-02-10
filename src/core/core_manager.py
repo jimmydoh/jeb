@@ -22,7 +22,6 @@ from managers import (
     PowerManager,
     SatelliteNetworkManager,
     SynthManager,
-    UARTManager,
 )
 from modes import AVAILABLE_MODES, BaseMode
 from transport import (
@@ -39,13 +38,13 @@ from utilities import (
 
 class CoreManager:
     """Class to hold global state for the master controller.
-    
+
     This class manages the core system state including:
     - Hardware managers (display, audio, LED, etc.)
     - Mode registry and active mode state
     - Satellite network connections
     - Power management and safety monitoring
-    
+
     Public Interface:
         modes: Dict[str, Type[BaseMode]] - Registry of available modes by mode ID
             Each mode class has a METADATA dict with the following structure:
@@ -56,7 +55,7 @@ class CoreManager:
                 "requires": List[str],  # Required hardware ["CORE", "INDUSTRIAL", etc.]
                 "settings": List[dict]  # Optional settings configuration
             }
-        
+
         satellites: Dict[int, Satellite] - Registry of connected satellites by slot ID
             Each satellite has properties:
             - sat_type_name: str (e.g., "INDUSTRIAL", "AUDIO")
@@ -65,7 +64,7 @@ class CoreManager:
     """
     # Render loop configuration - runs at 60Hz for smooth LED updates
     RENDER_FRAME_TIME = 1.0 / 60.0  # ~0.0167 seconds per frame
-    
+
     def __init__(self, root_data_dir="/", debug_mode=False):
 
         self.debug_mode = debug_mode
@@ -126,8 +125,8 @@ class CoreManager:
         # Preload Common UI Sounds
         self.audio.preload(
             [
-                "audio/menu_tick.wav",
-                "audio/menu_select.wav",
+                "audio/common/menu_tick.wav",
+                "audio/common/menu_select.wav",
             ]
         )
 
@@ -140,14 +139,11 @@ class CoreManager:
             timeout=0.01,
         )
 
-        # Wrap UART with buffering manager
-        uart_manager = UARTManager(uart_hw)
-
         # Wrap with transport layer for protocol handling
         self.transport = UARTTransport(
-            uart_manager, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+            uart_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
         )
-        
+
         # Watchdog Flag Pattern - Prevents blind feeding if critical tasks crash
         # Each critical background task must set its flag to True each iteration
         # The watchdog is only fed if ALL flags are True, then flags are reset
@@ -159,17 +155,18 @@ class CoreManager:
             "hw_hid": False,
             "render": False,
         }
-        
+
         # Initialize Satellite Network Manager
         self.sat_network = SatelliteNetworkManager(
             self.transport, self.display, self.audio, self.watchdog_flags
         )
+
         if debug_mode:
             self.sat_network.set_debug_mode(True)
 
         # System State
         self._mode_registry = {}
-        
+
         # modes: Public registry mapping mode IDs to mode classes
         # See class docstring for detailed structure documentation
         self.modes = {}
@@ -202,20 +199,20 @@ class CoreManager:
                 f"Mode '{mode_name}' not found in registry. Available modes: {available}"
             )
         return self._mode_registry[mode_name]
-    
+
     # Satellite Network Delegation Properties
     @property
     def satellites(self):
         """Access the satellite registry from SatelliteNetworkManager.
-        
+
         Returns a dictionary mapping slot IDs to Satellite objects:
             Dict[int, Satellite]
-        
+
         Each Satellite object provides:
             - sat_type_name (str): Type identifier (e.g., "INDUSTRIAL", "AUDIO")
             - is_active (bool): Whether the satellite is currently connected
             - slot_id (int): Physical slot position in the daisy chain
-        
+
         Example usage:
             for sat_id, satellite in self.core.satellites.items():
                 if satellite.sat_type_name == "INDUSTRIAL" and satellite.is_active:
@@ -223,12 +220,12 @@ class CoreManager:
                     pass
         """
         return self.sat_network.satellites
-    
+
     @property
     def sat_telemetry(self):
         """Access satellite telemetry from SatelliteNetworkManager."""
         return self.sat_network.sat_telemetry
-    
+
     @property
     def last_message_debug(self):
         """Access last debug message from SatelliteNetworkManager."""
@@ -236,7 +233,7 @@ class CoreManager:
 
     def safe_feed_watchdog(self):
         """Feed watchdog only if all critical tasks are alive.
-        
+
         Uses the Watchdog Flag Pattern to prevent blind feeding.
         Only feeds if all critical background tasks have set their flags,
         indicating they are still running properly.
@@ -305,7 +302,7 @@ class CoreManager:
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog_flags["estop"] = True
-            
+
             if not self.hid.estop and not self.meltdown:
                 self.meltdown = True
                 self.sat_network.send_all("LED", "ALL,0,0,0")  # Kill all LEDs
@@ -342,7 +339,7 @@ class CoreManager:
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog_flags["power"] = True
-            
+
             v = self.power.status
 
             if self.mode == "DASHBOARD":
@@ -368,7 +365,7 @@ class CoreManager:
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog_flags["connection"] = True
-            
+
             if self.power.satbus_connected and not self.power.satbus_powered:
                 # PHYSICAL LINK DETECTED - Trigger Soft Start
                 await self.display.update_status("LINK DETECTED", "POWERING BUS...")
@@ -397,13 +394,13 @@ class CoreManager:
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog_flags["hw_hid"] = True
-            
+
             self.hid.hw_update()
             await asyncio.sleep(0.01)
 
     async def render_loop(self):
         """Centralized hardware write task for NeoPixel strip.
-        
+
         This is the ONLY place where self.root_pixels.show() should be called.
         Runs at 60Hz to provide smooth, flicker-free LED updates while preventing
         race conditions from multiple async tasks writing to the hardware simultaneously.
@@ -411,7 +408,7 @@ class CoreManager:
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog_flags["render"] = True
-            
+
             # Write the current buffer state to hardware
             self.root_pixels.show()
             # Run at configured frame rate (default 60Hz)
