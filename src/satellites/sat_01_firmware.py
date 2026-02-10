@@ -134,11 +134,11 @@ class IndustrialSatelliteFirmware(Satellite):
 
                 # Pass the NEW index downstream for the next box
                 msg_out = Message("ALL", "ID_ASSIGN", self.id)
-                self.transport.send(msg_out)
+                self.transport_down.send(msg_out)
             else:
                 # Not our type? Pass it along unchanged
                 msg_out = Message("ALL", "ID_ASSIGN", val)
-                self.transport.send(msg_out)
+                self.transport_down.send(msg_out)
 
         elif cmd == "SETENC":
             # Set the encoder position to a specific value
@@ -405,7 +405,7 @@ class IndustrialSatelliteFirmware(Satellite):
                     if message.destination == self.id or message.destination == "ALL":
                         await self.process_local_cmd(message.command, message.payload)
                     # Forward message downstream
-                    self.transport.send(message)
+                    self.transport_down.send(message)
             except ValueError as e:
                 # Buffer overflow or other error
                 print(f"Transport Error: {e}")
