@@ -26,7 +26,7 @@ from managers import (
     HIDManager,
     LEDManager,
     RenderManager,
-    SegmentManager
+    SegmentManager,
 )
 from .base import SatelliteFirmware
 
@@ -41,14 +41,6 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
     """
     def __init__(self):
         """Initialize the Industrial Satellite Firmware."""
-        # TODO: Implement satellite watchdog
-        self.watchdog_flags = {
-            "power": False,
-            "connection": False,
-            "hw_hid": False,
-            "render": False,
-        }
-
         # --- ACTIVE MODE (Running on Satellite Hardware) ---
         # Initialize base class with upstream transport
         super().__init__(
@@ -87,7 +79,6 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
 
         self.renderer = RenderManager(
             self.root_pixels,
-            watchdog_flags=self.watchdog_flags,
             sync_role="SLAVE",
         )
 
@@ -133,5 +124,11 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
 
     async def custom_start(self):
         """Custom startup sequence for the Industrial Satellite."""
+        self.watchdog.register_flags(["render"])  # Register render task with the watchdog
+        asyncio.create_task( # Start the RenderManager loop
+            self.renderer.run(
+                heartbeat_callback=lambda: self.watchdog.check_in("render")
+            )
+        )
 
-        asyncio.create_task(self.renderer.run())  # Start the RenderManager loop
+        #TODO: Do we need a hid monitor for the sats?

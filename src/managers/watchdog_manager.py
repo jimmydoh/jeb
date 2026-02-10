@@ -19,6 +19,18 @@ class WatchdogManager:
             microcontroller.watchdog.mode = microcontroller.watchdog.WatchDogMode.RESET
             microcontroller.watchdog.feed()
 
+    def register_flags(self, task_names):
+        """Register additional tasks to monitor."""
+        for name in task_names:
+            if name not in self._flags:
+                self._flags[name] = False
+
+    def unregister_flags(self, task_names):
+        """Unregister tasks that no longer need monitoring."""
+        for name in task_names:
+            if name in self._flags:
+                del self._flags[name]
+
     def check_in(self, task_name):
         """Called by a task to indicate it is alive."""
         if task_name in self._flags:
