@@ -108,12 +108,22 @@ class MockUARTManager:
         """Mock in_waiting property."""
         return self._in_waiting
     
+    def read(self, n):
+        """Mock read method - delegates to nested uart object."""
+        return self.uart.read(n)
+    
     def read_available(self):
         """Mock read_available method."""
         if self._in_waiting > 0:
             data = self.uart.read(self._in_waiting)
             return data
         return b''
+    
+    def reset_input_buffer(self):
+        """Mock reset_input_buffer method."""
+        self.receive_buffer.clear()
+        self._in_waiting = 0
+        self.buffer_cleared = True
     
     @property
     def buffer_size(self):
@@ -129,12 +139,13 @@ class MockUARTManager:
             data = bytes(self.receive_buffer[:idx + len(delimiter)])
             # Remove from buffer
             del self.receive_buffer[:idx + len(delimiter)]
+            self._in_waiting = len(self.receive_buffer)
             return data
         return None
     
     def clear_buffer(self):
-        """Mock clear_buffer method."""
-        self.buffer_cleared = True
+        """Mock clear_buffer method - legacy name for backward compatibility with older test code."""
+        self.reset_input_buffer()
 
 # Now import the transport classes
 from transport import Message, UARTTransport
@@ -204,7 +215,8 @@ def test_uart_transport_receive():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Create a valid message by sending it first (to get proper binary format)
-    msg_out = Message("0101", "STATUS", "100,200")
+    # Use tuple for STATUS which expects ENCODING_NUMERIC_BYTES
+    msg_out = Message("0101", "STATUS", (100, 200))
     transport.send(msg_out)
     sent_packet = mock_uart.sent_packets[0]
     
@@ -314,7 +326,8 @@ def test_transport_abstraction():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Send a message - user doesn't need to know about CRC or COBS framing
-    msg_out = Message("0101", "LED", "255,128,64,32")
+    # Use tuple for LED which expects ENCODING_NUMERIC_BYTES
+    msg_out = Message("0101", "LED", (255, 128, 64, 32))
     transport.send(msg_out)
     
     # Simulate receiving the same message
@@ -377,7 +390,8 @@ def test_receive_assembles_fragmented_packets():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # Send a message to get a valid packet
-    msg_out = Message("0101", "LED", "255,128,64,32")
+    # Use tuple for LED which expects ENCODING_NUMERIC_BYTES
+    msg_out = Message("0101", "LED", (255, 128, 64, 32))
     transport.send(msg_out)
     sent_packet = mock_uart.sent_packets[0]
     

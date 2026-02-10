@@ -75,6 +75,7 @@ class MockUARTManager:
         self.sent_packets = []
         self.receive_buffer = bytearray()
         self._in_waiting = 0
+        self.buffer_cleared = False
         self.uart = MockUART(self)
     
     def write(self, data):
@@ -85,6 +86,10 @@ class MockUARTManager:
     def in_waiting(self):
         """Mock in_waiting property."""
         return self._in_waiting
+    
+    def read(self, n):
+        """Mock read method - delegates to nested uart object."""
+        return self.uart.read(n)
     
     def read_available(self):
         """Mock read_available method."""
@@ -107,8 +112,19 @@ class MockUARTManager:
             data = bytes(self.receive_buffer[:idx + len(delimiter)])
             # Remove from buffer
             del self.receive_buffer[:idx + len(delimiter)]
+            self._in_waiting = len(self.receive_buffer)
             return data
         return None
+    
+    def reset_input_buffer(self):
+        """Mock reset_input_buffer method."""
+        self.receive_buffer.clear()
+        self._in_waiting = 0
+        self.buffer_cleared = True
+    
+    def clear_buffer(self):
+        """Mock clear_buffer method - old name for compatibility."""
+        self.reset_input_buffer()
 
 
 # Now import the transport classes

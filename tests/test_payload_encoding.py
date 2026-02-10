@@ -75,6 +75,7 @@ class MockUARTManager:
         self.sent_packets = []
         self.receive_buffer = bytearray()
         self._in_waiting = 0
+        self.buffer_cleared = False
         self.uart = MockUART(self)
     
     def write(self, data):
@@ -85,6 +86,10 @@ class MockUARTManager:
     def in_waiting(self):
         """Mock in_waiting property."""
         return self._in_waiting
+    
+    def read(self, n):
+        """Mock read method - delegates to nested uart object."""
+        return self.uart.read(n)
     
     def read_available(self):
         """Mock read_available method."""
@@ -104,12 +109,19 @@ class MockUARTManager:
         if idx >= 0:
             data = bytes(self.receive_buffer[:idx + len(delimiter)])
             del self.receive_buffer[:idx + len(delimiter)]
+            self._in_waiting = len(self.receive_buffer)
             return data
         return None
     
+    def reset_input_buffer(self):
+        """Mock reset_input_buffer method."""
+        self.receive_buffer.clear()
+        self._in_waiting = 0
+        self.buffer_cleared = True
+    
     def clear_buffer(self):
-        """Mock clear_buffer method."""
-        pass
+        """Mock clear_buffer method - old name for compatibility."""
+        self.reset_input_buffer()
 
 
 # Import transport classes
@@ -183,7 +195,8 @@ def test_led_commands_use_byte_encoding():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # LED command should encode R,G,B,brightness as 4 bytes
-    msg_out = Message("0101", "LED", "255,128,64,100")
+    # Use tuple for proper binary encoding
+    msg_out = Message("0101", "LED", (255, 128, 64, 100))
     transport.send(msg_out)
     
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
@@ -205,8 +218,8 @@ def test_power_commands_use_float_encoding():
     mock_uart = MockUARTManager()
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
-    # POWER command uses floats for voltage/current
-    msg_out = Message("0101", "POWER", "19.5,18.2,5.0")
+    # POWER command uses floats for voltage/current - use tuple not string
+    msg_out = Message("0101", "POWER", (19.5, 18.2, 5.0))
     transport.send(msg_out)
     
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
@@ -272,21 +285,21 @@ def test_power_commands_accept_list_tuple():
     
     print("  ✓ Tuple input encoded correctly")
     
-    # Verify list/tuple produces same result as string
-    mock_uart_str = MockUARTManager()
-    transport_str = UARTTransport(mock_uart_str, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
-    msg_str = Message("0101", "POWER", "19.5,18.2,5.0")
-    transport_str.send(msg_str)
+    # Verify list produces same result as tuple
+    mock_uart_tuple = MockUARTManager()
+    transport_tuple = UARTTransport(mock_uart_tuple, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+    msg_tuple = Message("0101", "POWER", (19.5, 18.2, 5.0))
+    transport_tuple.send(msg_tuple)
     
     mock_uart_list = MockUARTManager()
     transport_list = UARTTransport(mock_uart_list, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     msg_list = Message("0101", "POWER", [19.5, 18.2, 5.0])
     transport_list.send(msg_list)
     
-    assert mock_uart_str.sent_packets[0] == mock_uart_list.sent_packets[0], \
-        "String and list encoding should produce identical binary packets"
+    assert mock_uart_tuple.sent_packets[0] == mock_uart_list.sent_packets[0], \
+        "Tuple and list encoding should produce identical binary packets"
     
-    print("  ✓ List/tuple produce identical binary output as string")
+    print("  ✓ List/tuple produce identical binary output")
     print("✓ POWER list/tuple input test passed")
 
 
@@ -328,8 +341,8 @@ def test_backward_compatibility():
     mock_uart = MockUARTManager()
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
-    # Test STATUS with correct number of values (5 bytes)
-    msg_out = Message("0101", "STATUS", "100,200,50,75,25")
+    # Test STATUS with correct number of values (5 bytes) - use tuple for byte encoding
+    msg_out = Message("0101", "STATUS", (100, 200, 50, 75, 25))
     transport.send(msg_out)
     
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
@@ -351,11 +364,11 @@ def test_roundtrip_all_command_types():
     test_cases = [
         ("ID_ASSIGN", Message("ALL", "ID_ASSIGN", "0100"), "0100"),  # text encoding
         ("NEW_SAT", Message("SAT", "NEW_SAT", "01"), "01"),  # text encoding
-        ("LED", Message("0101", "LED", "255,0,128,100"), (255, 0, 128, 100)),  # byte encoding
-        ("POWER", Message("0101", "POWER", "19.5,18.2,5.0"), None),  # float encoding (special check)
+        ("LED", Message("0101", "LED", (255, 0, 128, 100)), (255, 0, 128, 100)),  # byte encoding
+        ("POWER", Message("0101", "POWER", (19.5, 18.2, 5.0)), None),  # float encoding (special check)
         ("DSP", Message("0101", "DSP", "HELLO WORLD"), "HELLO WORLD"),  # text encoding
         ("ERROR", Message("0101", "ERROR", "LOW_VOLTAGE"), "LOW_VOLTAGE"),  # text encoding
-        ("STATUS", Message("0101", "STATUS", "100,200,50,75,25"), (100, 200, 50, 75, 25)),  # byte encoding
+        ("STATUS", Message("0101", "STATUS", (100, 200, 50, 75, 25)), (100, 200, 50, 75, 25)),  # byte encoding
     ]
     
     for cmd_name, msg_out, expected_payload in test_cases:
@@ -373,10 +386,9 @@ def test_roundtrip_all_command_types():
         
         # For floats, allow small precision differences
         if cmd_name == "POWER":
-            out_parts = [float(x) for x in msg_out.payload.split(',')]
             assert isinstance(msg_in.payload, tuple), f"POWER should return tuple, got {type(msg_in.payload)}"
-            assert len(msg_in.payload) == len(out_parts)
-            for out_val, in_val in zip(out_parts, msg_in.payload):
+            assert len(msg_in.payload) == len(msg_out.payload)
+            for out_val, in_val in zip(msg_out.payload, msg_in.payload):
                 assert abs(out_val - in_val) < 0.01
         else:
             assert msg_in.payload == expected_payload, \

@@ -142,11 +142,34 @@ assert mock_uart.sent_packets[0].decode() == "0101|LED|ALL,255,0,0|XX\n"
 ### 4. Backwards Compatibility
 
 The wire protocol remains unchanged:
-- Packets still use `DEST|CMD|PAYLOAD|CRC\n` format
+- Packets still use binary protocol with COBS framing
 - CRC-8 calculation is identical
 - Existing hardware works without modification
 
 Only the software architecture has improved.
+
+### 5. Race Condition Prevention
+
+The queued mode eliminates UART race conditions in satellite firmware:
+
+**Problem**: Multiple async tasks writing to UART concurrently can interleave packet bytes, causing:
+- CRC failures (checksum calculated on incomplete packet)
+- Protocol errors (malformed frames)
+- Data corruption (mixed payload bytes from different messages)
+
+**Solution**: Queued transport with dedicated TX worker:
+- All `send()` calls and relay operations add data to a single queue
+- One worker task serializes all writes to hardware
+- Guarantees atomic packet transmission
+- Minimal performance impact (queue operations are O(1) and async overhead is negligible)
+
+This is critical for satellites that:
+1. Send periodic status messages
+2. Relay downstream messages
+3. Send event-driven alerts (power, errors)
+4. Forward commands downstream
+
+Without queuing, these concurrent operations would corrupt the UART stream.
 
 ## Migration Guide
 
@@ -212,24 +235,76 @@ uart_mgr = UARTManager(uart_hw)
 self.transport = UARTTransport(uart_mgr)
 ```
 
+## Advanced Features
+
+### Queued Mode
+
+The UARTTransport supports a `queued` mode that prevents race conditions when multiple async tasks send messages concurrently:
+
+```python
+# Create a queued transport (recommended for upstream satellite communication)
+transport = UARTTransport(uart_hw, command_map, dest_map, max_index_value, 
+                          payload_schemas, queued=True)
+```
+
+In queued mode:
+- All `send()` calls are non-blocking and add packets to an internal queue
+- A dedicated `_tx_worker` task drains the queue to hardware
+- Prevents interleaved packet writes that would corrupt CRC checksums
+- Essential for satellites that both relay messages and send their own status
+
+### Relay Functionality
+
+The UARTTransport provides built-in relay capability for daisy-chained satellite networks:
+
+```python
+# Enable automatic data relay from downstream to upstream
+transport_up.enable_relay_from(transport_down)
+```
+
+The relay feature:
+- Runs an async `_relay_worker` task that continuously reads raw bytes
+- Forwards data transparently without parsing (zero overhead)
+- Integrates with queued mode automatically
+- Allows satellites to pass through messages from downstream satellites
+
+**Example Use Case**: Industrial Satellite 01 firmware
+
+```python
+# Create upstream transport with queued mode (prevents race conditions)
+self.transport_up = UARTTransport(uart_up_hw, ..., queued=True)
+
+# Create downstream transport (direct mode is fine)
+self.transport_down = UARTTransport(uart_down_hw, ...)
+
+# Enable relay - downstream messages automatically flow upstream
+self.transport_up.enable_relay_from(self.transport_down)
+
+# Now the satellite can:
+# 1. Send its own status messages via transport_up.send()
+# 2. Relay messages from downstream satellites automatically
+# 3. No race conditions - all writes go through the queue
+```
+
 ## Files Changed
 
 ### New Files
 - `src/transport/__init__.py` - Transport package exports
 - `src/transport/message.py` - Message class
 - `src/transport/base_transport.py` - Transport interface
-- `src/transport/uart_transport.py` - UART implementation
+- `src/transport/uart_transport.py` - UART implementation with queued mode and relay
+- `src/transport/ring_buffer.py` - Ring buffer utility for transport
 - `tests/test_transport.py` - Transport layer tests
+- `tests/test_uart_queue_race_condition.py` - Tests for queued mode and relay
 
 ### Modified Files
 - `src/core/core_manager.py` - Uses transport layer
 - `src/satellites/base.py` - Uses transport layer
 - `src/satellites/sat_01_driver.py` - Uses transport layer
-- `src/satellites/sat_01_firmware.py` - Uses transport layer
+- `src/satellites/sat_01_firmware.py` - Uses transport layer with queued mode and relay
 
 ### Unchanged Files
 - `src/utilities/crc.py` - Still provides CRC functions (used by transport)
-- `src/managers/uart_manager.py` - Still provides buffering (used by transport)
 - All game modes and UI code - Unaffected by changes
 
 ## Testing
@@ -239,6 +314,9 @@ All existing tests continue to pass:
 ```bash
 # Transport layer tests
 python3 tests/test_transport.py
+
+# Transport consolidation tests (queued mode and relay)
+python3 tests/test_uart_queue_race_condition.py
 
 # CRC tests (ensures integrity checking still works)
 python3 tests/test_crc.py
