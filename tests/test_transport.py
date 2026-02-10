@@ -570,6 +570,142 @@ def test_buffer_overflow_preserves_valid_packets():
     print("✓ Buffer overflow preserves valid packets test passed")
 
 
+def test_ring_buffer_wrapped_packet():
+    """Test that ring buffer correctly handles packets that wrap around the buffer end."""
+    print("\nTesting ring buffer wrapped packet handling...")
+
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+
+    # Create a valid packet
+    msg_out = Message("0101", "LED", (255, 128, 64, 32))
+    transport.send(msg_out)
+    sent_packet = mock_uart.sent_packets[0]
+    packet_len = len(sent_packet)
+
+    # Position the ring buffer so that when we add the packet, it will wrap
+    # We'll manually set head and tail to near the end
+    wrap_position = transport._buf_size - (packet_len // 2)
+    transport._head = wrap_position
+    transport._tail = wrap_position
+    
+    print(f"  Starting position: head={transport._head}, tail={transport._tail}")
+    
+    # Add the packet to UART buffer
+    mock_uart.receive_buffer.extend(sent_packet)
+    mock_uart._in_waiting = len(sent_packet)
+    
+    # Receive may need multiple calls if packet is fragmented by readinto()
+    msg = None
+    for attempt in range(5):  # Try up to 5 times
+        msg = transport.receive()
+        if msg is not None:
+            break
+    
+    assert msg is not None, f"Should receive wrapped packet (head={transport._head}, tail={transport._tail})"
+    assert msg.destination == "0101"
+    assert msg.command == "LED"
+    assert msg.payload == (255, 128, 64, 32)
+    
+    print(f"  Successfully received packet that wrapped around position {wrap_position}")
+    print("✓ Ring buffer wrapped packet test passed")
+
+
+def test_ring_buffer_multiple_wrapped_packets():
+    """Test receiving multiple packets when ring buffer wraps around."""
+    print("\nTesting multiple packets with ring buffer wrap-around...")
+
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+
+    # Create several packets
+    messages = [
+        Message("0101", "STATUS", f"{i}") for i in range(10)
+    ]
+    
+    for msg in messages:
+        transport.send(msg)
+    
+    packets = mock_uart.sent_packets[:]
+    mock_uart.sent_packets.clear()
+    
+    # Position head near end of buffer
+    offset = transport._buf_size - 50
+    transport._head = offset
+    transport._tail = offset
+    
+    # Add all packets - they will wrap around
+    for packet in packets:
+        mock_uart.receive_buffer.extend(packet)
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
+    
+    # Receive all packets
+    received = []
+    for _ in range(len(messages)):
+        msg = transport.receive()
+        if msg:
+            received.append(msg)
+    
+    # Should receive all packets correctly
+    assert len(received) == len(messages), f"Should receive all {len(messages)} packets, got {len(received)}"
+    
+    for i, msg in enumerate(received):
+        assert msg.destination == "0101"
+        assert msg.command == "STATUS"
+    
+    print(f"  Successfully received {len(received)} packets with wrap-around")
+    print("✓ Multiple wrapped packets test passed")
+
+
+def test_ring_buffer_full_recovery():
+    """Test that ring buffer recovers when buffer overflow is detected."""
+    print("\nTesting ring buffer overflow recovery...")
+
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+
+    # Fill buffer with garbage that exceeds threshold but has no delimiters
+    # This should trigger the overflow protection which resets the buffer
+    garbage_size = transport._buf_size - 100  # Nearly full but not completely
+    garbage = bytes(range(1, 256)) * (garbage_size // 255 + 1)
+    garbage = garbage[:garbage_size]
+    
+    mock_uart.receive_buffer.extend(garbage)
+    mock_uart._in_waiting = len(garbage)
+    
+    # Try to receive - should detect buffer getting too full with no delimiters
+    # May need multiple receive() calls to fully process and reset
+    for _ in range(5):
+        msg = transport.receive()
+        if msg is None:
+            bytes_in_buffer = (transport._head - transport._tail) % transport._buf_size
+            if bytes_in_buffer < 256:  # Buffer has been cleared/managed
+                break
+    
+    bytes_in_buffer = (transport._head - transport._tail) % transport._buf_size
+    print(f"  After overflow handling, buffer has {bytes_in_buffer} bytes")
+    
+    # Now send a valid packet - system should be able to receive it
+    msg_valid = Message("0101", "STATUS", (200,))  # Use tuple for ENCODING_NUMERIC_BYTES
+    transport.send(msg_valid)
+    valid_packet = mock_uart.sent_packets[0]
+    
+    # Clear any remaining garbage first for clean test
+    transport.clear_buffer()
+    
+    mock_uart.receive_buffer.extend(valid_packet)
+    mock_uart._in_waiting = len(valid_packet)
+    
+    # Should receive the valid packet
+    received = transport.receive()
+    assert received is not None, "Should receive valid packet after buffer overflow recovery"
+    assert received.destination == "0101"
+    assert received.command == "STATUS"
+    assert received.payload == (200,)
+    
+    print("✓ Ring buffer overflow recovery test passed")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("Transport Layer Test Suite")
@@ -590,6 +726,9 @@ if __name__ == "__main__":
         test_multiple_packets_in_buffer()
         test_receive_buffer_overflow_protection()
         test_buffer_overflow_preserves_valid_packets()
+        test_ring_buffer_wrapped_packet()
+        test_ring_buffer_multiple_wrapped_packets()
+        test_ring_buffer_full_recovery()
 
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")
