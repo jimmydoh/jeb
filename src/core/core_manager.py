@@ -66,9 +66,15 @@ class CoreManager:
             - slot_id: int
     """
     def __init__(self, root_data_dir="/", debug_mode=False):
-
-        self.debug_mode = debug_mode
-
+        # Load config or use defaults
+        if config is None:
+            config = {}
+        
+        self.debug_mode = config.get("debug_mode", False)
+        debug_mode = self.debug_mode
+        self.root_data_dir = config.get("root_data_dir", "/")
+        uart_baudrate = config.get("uart_baudrate", 115200)
+        
         # Watchdog Flag Pattern - Prevents blind feeding if critical tasks crash
         # Each critical background task must set its flag to True each iteration
         # The watchdog is only fed if ALL flags are True, then flags are reset
@@ -81,10 +87,8 @@ class CoreManager:
             "render": False,
         }
 
-        self.root_data_dir = root_data_dir
-
         # Init Data Manager for persistent storage of scores and settings
-        self.data = DataManager(root_dir=root_data_dir)
+        self.data = DataManager(root_dir=self.root_data_dir)
 
         # Init Pins
         Pins.initialize(profile="CORE", type_id="00")
@@ -147,7 +151,7 @@ class CoreManager:
         uart_hw = busio.UART(
             Pins.UART_TX,
             Pins.UART_RX,
-            baudrate=115200,
+            baudrate=uart_baudrate,
             receiver_buffer_size=512,
             timeout=0.01,
         )
@@ -339,6 +343,7 @@ class CoreManager:
 
                 # Strobe the neobar and satellite LEDs
                 while not self.hid.estop:  # While button is still latched down
+                    self.watchdog_flags["estop"] = True  # Signal that we are alive and waiting
                     # TODO Implement alarm LED strobing
                     await asyncio.sleep(0.2)
 
