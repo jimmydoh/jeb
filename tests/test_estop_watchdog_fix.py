@@ -159,31 +159,35 @@ def test_comment_matches_proposed_fix():
     assert True, "Comment check completed"
 
 
-if __name__ == "__main__":
-    print("=" * 60)
+def run_all_tests():
+    """Run all E-Stop watchdog fix tests."""
+    print("\n" + "=" * 60)
     print("E-Stop Watchdog Reset Fix Verification")
     print("Testing fix for watchdog reset during E-Stop state")
-    print("=" * 60)
+    print("=" * 60 + "\n")
     
-    results = []
-    results.append(("E-Stop nested loop updates watchdog flag", test_estop_nested_loop_updates_watchdog_flag()))
-    results.append(("E-Stop outer loop updates watchdog flag", test_estop_outer_loop_still_updates_flag()))
-    results.append(("Comment matches proposed fix", test_comment_matches_proposed_fix()))
+    tests = [
+        test_estop_nested_loop_updates_watchdog_flag,
+        test_estop_outer_loop_still_updates_flag,
+        test_comment_matches_proposed_fix,
+    ]
+    
+    failed = 0
+    passed = 0
+    
+    for test in tests:
+        try:
+            test()
+            passed += 1
+        except Exception as e:
+            print(f"\n❌ Test failed: {test.__name__}")
+            print(f"   Error: {e}")
+            import traceback
+            traceback.print_exc()
+            failed += 1
     
     print("\n" + "=" * 60)
-    print("Test Results Summary:")
-    print("=" * 60)
-    
-    all_passed = True
-    for test_name, passed in results:
-        status = "✓ PASS" if passed else "✗ FAIL"
-        print(f"  {status}: {test_name}")
-        if not passed:
-            all_passed = False
-    
-    print("=" * 60)
-    
-    if all_passed:
+    if failed == 0:
         print("ALL TESTS PASSED ✓")
         print()
         print("The fix successfully:")
@@ -194,9 +198,15 @@ if __name__ == "__main__":
         print()
         print("ISSUE RESOLVED: System will no longer hard reset 8 seconds")
         print("after E-Stop is engaged.")
-        sys.exit(0)
     else:
         print("SOME TESTS FAILED ✗")
         print()
         print("The E-Stop watchdog reset issue may not be fully resolved.")
-        sys.exit(1)
+    print("=" * 60 + "\n")
+    
+    return failed == 0
+
+
+if __name__ == "__main__":
+    success = run_all_tests()
+    sys.exit(0 if success else 1)

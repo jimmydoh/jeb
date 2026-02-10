@@ -4,11 +4,13 @@
 import sys
 import os
 
-# Add src to path for direct module import
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# Add src/transport to path to import protocol module directly
+# This avoids importing UARTTransport and other hardware dependencies
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'transport'))
 
-# Import protocol module
-import transport.protocol as protocol
+# Import protocol module directly (not through transport package)
+# This allows tests to run without CircuitPython hardware modules
+import protocol
 
 
 def test_command_map_completeness():

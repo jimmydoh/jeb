@@ -130,31 +130,35 @@ def test_microcontroller_import():
     print("  ✓ Found 'import microcontroller'")
 
 
-if __name__ == "__main__":
-    print("=" * 60)
+def run_all_tests():
+    """Run all watchdog feed fix tests."""
+    print("\n" + "=" * 60)
     print("Watchdog Feed Fix Verification")
     print("Testing fix for watchdog starvation during gameplay")
-    print("=" * 60)
+    print("=" * 60 + "\n")
     
-    results = []
-    results.append(("Microcontroller Import", test_microcontroller_import()))
-    results.append(("Watchdog Feed in run_mode_with_safety", test_watchdog_feed_present_in_code()))
-    results.append(("Watchdog Feed in start() loop", test_watchdog_feed_in_main_loop()))
+    tests = [
+        test_microcontroller_import,
+        test_watchdog_feed_present_in_code,
+        test_watchdog_feed_in_main_loop,
+    ]
+    
+    failed = 0
+    passed = 0
+    
+    for test in tests:
+        try:
+            test()
+            passed += 1
+        except Exception as e:
+            print(f"\n❌ Test failed: {test.__name__}")
+            print(f"   Error: {e}")
+            import traceback
+            traceback.print_exc()
+            failed += 1
     
     print("\n" + "=" * 60)
-    print("Test Results Summary:")
-    print("=" * 60)
-    
-    all_passed = True
-    for test_name, passed in results:
-        status = "✓ PASS" if passed else "✗ FAIL"
-        print(f"  {status}: {test_name}")
-        if not passed:
-            all_passed = False
-    
-    print("=" * 60)
-    
-    if all_passed:
+    if failed == 0:
         print("ALL TESTS PASSED ✓")
         print()
         print("The fix successfully:")
@@ -163,7 +167,13 @@ if __name__ == "__main__":
         print("  • Imports microcontroller module for watchdog access")
         print("  • Prevents system reset during long-running modes")
         print("  • Implements watchdog flag pattern to prevent blind feeding")
-        sys.exit(0)
     else:
         print("SOME TESTS FAILED ✗")
-        sys.exit(1)
+    print("=" * 60 + "\n")
+    
+    return failed == 0
+
+
+if __name__ == "__main__":
+    success = run_all_tests()
+    sys.exit(0 if success else 1)
