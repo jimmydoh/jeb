@@ -80,7 +80,17 @@ class RenderManager:
                 await asyncio.sleep(0)
 
     def apply_sync(self, core_frame):
-        """Called by SLAVE devices when they receive a SYNC packet."""
+        """Called by SLAVE devices when they receive a SYNC packet.
+        
+        Sync strategy:
+        - abs_drift > 2: Snap immediately (prevents large visible desync)
+        - abs_drift == 1: Gradual nudge via sleep adjustment (smooth correction)
+        - abs_drift == 0 or 2: No correction (stability zone to prevent oscillation)
+        
+        The 2-frame threshold provides hysteresis to prevent constant micro-adjustments
+        that could cause jitter. Only drifts > 2 frames are considered significant enough
+        to warrant an immediate snap.
+        """
         if self.sync_role == "SLAVE":
             estimated_core = core_frame + 1
             drift = self.frame_counter - estimated_core
