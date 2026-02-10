@@ -68,6 +68,17 @@ class MockUART:
         self.uart_manager._in_waiting = len(self.uart_manager.receive_buffer)
         return data
 
+    def readinto(self, buf):
+        """Mock readinto method."""
+        # Read available bytes into the provided buffer
+        n = min(len(buf), len(self.uart_manager.receive_buffer))
+        if n == 0:
+            return 0
+        buf[:n] = self.uart_manager.receive_buffer[:n]
+        del self.uart_manager.receive_buffer[:n]
+        self.uart_manager._in_waiting = len(self.uart_manager.receive_buffer)
+        return n
+
 
 class MockUARTManager:
     """Mock UARTManager for testing."""
@@ -90,6 +101,10 @@ class MockUARTManager:
     def read(self, n):
         """Mock read method - delegates to nested uart object."""
         return self.uart.read(n)
+    
+    def readinto(self, buf):
+        """Mock readinto method - delegates to nested uart object."""
+        return self.uart.readinto(buf)
     
     def read_available(self):
         """Mock read_available method."""
