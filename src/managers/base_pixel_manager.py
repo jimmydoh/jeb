@@ -222,5 +222,6 @@ class BasePixelManager:
 
             if step:
                 running = False
+                return
 
             await asyncio.sleep(0.05)

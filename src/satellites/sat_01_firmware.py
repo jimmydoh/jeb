@@ -119,15 +119,15 @@ class IndustrialSatelliteFirmware(Satellite):
 
         Additionally broadcasts frame sync to satellites periodically for coordinated animations.
         """
-        next_frame_time = asyncio.get_event_loop().time()
+        next_frame_time = time.monotonic()
 
         while True:
             # Set watchdog flag to indicate this task is alive
-            self.watchdog_flags["render"] = True
+            #self.watchdog_flags["render"] = True
 
             # Udpate the buffer state and write to hardware
             self.leds.animate_loop(step=True)
-            self.matrix.animate_loop(step=True)
+            #self.matrix.animate_loop(step=True)
             self.root_pixels.show()
 
             # Increment frame counter for sync tracking
@@ -135,7 +135,7 @@ class IndustrialSatelliteFirmware(Satellite):
 
             # Caclulate time to next frame to maintain consistent frame rate
             next_frame_time += self.RENDER_FRAME_TIME
-            now = asyncio.get_event_loop().time()
+            now = time.monotonic()
             sleep_duration = next_frame_time - now
             if sleep_duration > 0:
                 await asyncio.sleep(sleep_duration)
@@ -420,7 +420,6 @@ class IndustrialSatelliteFirmware(Satellite):
         asyncio.create_task(self.monitor_connection())
         # Start LED rendering and animation tasks
         asyncio.create_task(self.render_loop())  # Centralized LED Hardware Write
-        asyncio.create_task(self.leds.animate_loop())  # LED Animations
 
         while True:
             # Feed the hardware watchdog timer to prevent system reset

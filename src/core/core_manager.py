@@ -411,7 +411,7 @@ class CoreManager:
 
         Additionally broadcasts frame sync to satellites periodically for coordinated animations.
         """
-        next_frame_time = asyncio.get_event_loop().time()
+        next_frame_time = time.monotonic()
 
         while True:
             # Set watchdog flag to indicate this task is alive
@@ -434,7 +434,7 @@ class CoreManager:
 
             # Caclulate time to next frame to maintain consistent frame rate
             next_frame_time += self.RENDER_FRAME_TIME
-            now = asyncio.get_event_loop().time()
+            now = time.monotonic()
             sleep_duration = next_frame_time - now
             if sleep_duration > 0:
                 await asyncio.sleep(sleep_duration)
