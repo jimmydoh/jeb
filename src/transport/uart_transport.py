@@ -325,7 +325,7 @@ class UARTTransport:
 #endregion
 
 #region --- Protocol Methods ---
-    async def send(self, message):
+    def send(self, message):
         """Send a message over UART using binary protocol with COBS framing.
 
         Parameters:
@@ -349,7 +349,7 @@ class UARTTransport:
         else:
             self.uart.write(packet)
 
-    async def receive(self):
+    def receive(self):
         """Receive a message from UART if available.
 
         Non-blocking stateful receive that reads available bytes and buffers them
