@@ -97,9 +97,6 @@ class IndustrialSatelliteFirmware(Satellite):
         self.transport_up = UARTTransport(uart_up_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS, queued=True)
         self.transport_down = UARTTransport(uart_down_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
-        # Setup Upstream relay
-        self.transport_up.enable_relay_from(self.transport_down)
-
         # Initialize base class with upstream transport
         super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, transport=self.transport_up)
 
@@ -153,7 +150,7 @@ class IndustrialSatelliteFirmware(Satellite):
         """Optimized command processor using dispatch and delegation."""
         handler = self._system_handlers.get(cmd)
         if handler:
-            handler(val)
+            await handler(val)
             return
 
         # 2. Subsystem Delegation (Prefix Routing)
@@ -164,7 +161,7 @@ class IndustrialSatelliteFirmware(Satellite):
 
     # --- Private Handlers for System Logic ---
 
-    def _handle_id_assign(self, val):
+    async def _handle_id_assign(self, val):
         if isinstance(val, bytes):
             val = val.decode('utf-8')
         type_prefix = val[:2]
@@ -173,7 +170,7 @@ class IndustrialSatelliteFirmware(Satellite):
         if type_prefix == self.sat_type_id:
             new_index = current_index + 1
             self.id = f"{type_prefix}{new_index:02d}"
-            self.segment.start_message(f"ID {self.id}", loop=False)
+            await self.segment.start_message(f"ID {self.id}", loop=False)
 
             # Forward new index downstream
             msg_out = Message("ALL", CMD_ID_ASSIGN, self.id)
@@ -183,11 +180,11 @@ class IndustrialSatelliteFirmware(Satellite):
             msg_out = Message("ALL", CMD_ID_ASSIGN, val)
             self.transport_down.send(msg_out)
 
-    def _handle_sync_frame(self, val):
+    async def _handle_sync_frame(self, val):
         # val is tuple (frame, time) from binary payload
         self.renderer.apply_sync(int(val[0]))
 
-    def _handle_set_enc(self, val):
+    async def _handle_set_enc(self, val):
         # Handle both binary tuple and text formats
         if isinstance(val, (list, tuple)):
             self.hid.reset_encoder(int(val[0]))
@@ -256,6 +253,11 @@ class IndustrialSatelliteFirmware(Satellite):
             TODO:
                 Move the TX/RX handling into separate async tasks for better responsiveness.
         """
+        # Start the trasnport tasks
+        self.transport_up.start()
+        self.transport_down.start()
+        self.transport_up.enable_relay_from(self.transport_down)
+
         # Start monitoring tasks
         asyncio.create_task(self.monitor_power())
         asyncio.create_task(self.monitor_connection())

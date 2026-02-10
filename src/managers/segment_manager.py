@@ -35,7 +35,7 @@ class SegmentManager:
             values = parse_values(val)
 
         if cmd == "DSP":
-            self.start_message(
+            await self.start_message(
                 message=get_str(values, 0),
                 loop=(get_str(values, 1) == "1"),
                 speed=get_float(values, 2, 0.3),
@@ -43,10 +43,10 @@ class SegmentManager:
             )
         elif cmd == "DSPCORRUPT":
             duration = get_float(values, 0, 2.0)
-            self.start_corruption(duration if duration > 0 else 2.0)
+            await self.start_corruption(duration if duration > 0 else 2.0)
         elif cmd == "DSPMATRIX":
             duration = get_float(values, 0, 2.0)
-            self.start_matrix(duration if duration > 0 else 2.0)
+            await self.start_matrix(duration if duration > 0 else 2.0)
 
     # --- BASIC LOGIC ---
     async def _message_logic(self, text, loop=False, speed=0.3, direction="L"):

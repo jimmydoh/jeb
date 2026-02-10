@@ -224,9 +224,9 @@ def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
         decoded = payload_bytes.decode('utf-8')
         if all(32 <= ord(c) <= 126 or c in '\n\r\t' for c in decoded):
             return decoded
-    except:
-        pass
-    return payload_bytes
+    except UnicodeDecodeError:
+        # Fallback: return raw bytes if payload is not valid UTF-8
+        return payload_bytes
 #endregion
 
 #region --- Main Transport Class ---
@@ -303,7 +303,7 @@ class UARTTransport:
         # TX Queue Setup for queued mode
         if self.queued:
             self._tx_queue = asyncio.Queue()
-            asyncio.create_task(self._tx_worker())
+            self._tx_task = None
 
 #region --- Harware / IO Methods ---
     def read_raw_into(self, buf):
@@ -486,4 +486,10 @@ class UARTTransport:
             print(f"Protocol Error: {e}")
             return None
 #endregion
+
+    def start(self):
+        """Start any background tasks required by the transport."""
+        if self.queued and self._tx_task is None:
+            self._tx_task = asyncio.create_task(self._tx_worker())
+
 #endregion

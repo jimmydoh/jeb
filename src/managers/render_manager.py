@@ -55,7 +55,7 @@ class RenderManager:
 
             if self.sync_role == "MASTER" and self.network:
                 # Broadcast every 1 second
-                now = ticks_ms() / 1000.0
+                now = time.monotonic()
                 if now - self.last_sync_broadcast >= 1.0:
                     self.network.send_all("SYNC_FRAME", (float(self.frame_counter), now))
                     self.last_sync_broadcast = now

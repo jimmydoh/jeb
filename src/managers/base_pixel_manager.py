@@ -117,13 +117,12 @@ class BasePixelManager:
 
     async def animate_loop(self, step=True):
         """Unified background task to handle all pixel animations."""
-
-        running = True
-
-        while True and running:
+        while True:
             # Check if any animations are active using counter
             if self._active_count == 0:
-                await asyncio.sleep(0.1)
+                if step:
+                    return
+                await asyncio.sleep(0.05)
                 continue
 
             now = time.monotonic()
@@ -221,7 +220,6 @@ class BasePixelManager:
                         self.pixels[idx] = tuple(int(c * factor) for c in base)
 
             if step:
-                running = False
                 return
 
             await asyncio.sleep(0.05)

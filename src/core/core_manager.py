@@ -4,9 +4,6 @@ Core Manager for JEB Master Controller.
 
 TODO: Implement HardwareContext for modes to limit access
 """
-
-import time
-
 import asyncio
 import busio
 import microcontroller
@@ -69,12 +66,12 @@ class CoreManager:
         # Load config or use defaults
         if config is None:
             config = {}
-        
+
         self.debug_mode = config.get("debug_mode", False)
         debug_mode = self.debug_mode
         self.root_data_dir = config.get("root_data_dir", "/")
         uart_baudrate = config.get("uart_baudrate", 115200)
-        
+
         # Watchdog Flag Pattern - Prevents blind feeding if critical tasks crash
         # Each critical background task must set its flag to True each iteration
         # The watchdog is only fed if ALL flags are True, then flags are reset
