@@ -15,7 +15,6 @@ def test_manifest_file_exists():
     manifest_path = os.path.join(os.path.dirname(__file__), '..', 'src', 'modes', 'manifest.py')
     assert os.path.exists(manifest_path), "manifest.py file does not exist"
     print("✓ Manifest file exists")
-    return True
 
 def test_manifest_structure():
     """Test that manifest has the expected structure."""
@@ -40,7 +39,6 @@ def test_manifest_structure():
     assert "Simon," in content, "Simon not in AVAILABLE_MODES"
     
     print("✓ Manifest structure test passed")
-    return True
 
 def test_modes_init_updated():
     """Test that modes/__init__.py was updated to use manifest."""
@@ -56,7 +54,6 @@ def test_modes_init_updated():
     assert "AVAILABLE_MODES" in content, "AVAILABLE_MODES not in __init__.py"
     
     print("✓ Modes __init__.py updated correctly")
-    return True
 
 def test_core_manager_updated():
     """Test that CoreManager was updated to use manifest."""
@@ -103,7 +100,6 @@ def test_core_manager_updated():
         "Modes should be accessed dynamically via self.modes dict"
     
     print("✓ CoreManager updated correctly")
-    return True
 
 def test_documentation_in_manifest():
     """Test that manifest.py has proper documentation."""
@@ -121,7 +117,6 @@ def test_documentation_in_manifest():
         "Manifest should document how to add new modes"
     
     print("✓ Manifest documentation test passed")
-    return True
 
 if __name__ == "__main__":
     print("Running mode registry structure tests...\n")

@@ -34,12 +34,9 @@ def test_satellite_render_frame_time_exists():
         content = f.read()
 
     # Check for RENDER_FRAME_TIME constant
-    if 'RENDER_FRAME_TIME = 1.0 / 60.0' not in content:
-        print("  ✗ 'RENDER_FRAME_TIME = 1.0 / 60.0' not found")
-        return False
+    assert 'RENDER_FRAME_TIME = 1.0 / 60.0' in content, "'RENDER_FRAME_TIME = 1.0 / 60.0' not found"
 
     print("  ✓ Found RENDER_FRAME_TIME = 1.0 / 60.0 (60Hz)")
-    return True
 
 
 def test_satellite_render_loop_exists():
@@ -58,9 +55,7 @@ def test_satellite_render_loop_exists():
         content = f.read()
 
     # Check for render_loop method
-    if 'async def render_loop(self):' not in content:
-        print("  ✗ 'async def render_loop(self):' not found")
-        return False
+    assert 'async def render_loop(self):' in content, "'async def render_loop(self):' not found"
 
     print("  ✓ Found render_loop method")
 
@@ -68,34 +63,24 @@ def test_satellite_render_loop_exists():
     method_pattern = r'async def render_loop\(self\):(.*?)(?=\n    async def |\n    def |\Z)'
     match = re.search(method_pattern, content, re.DOTALL)
 
-    if not match:
-        print("  ✗ Could not extract render_loop method body")
-        return False
+    assert match, "Could not extract render_loop method body"
 
     method_body = match.group(1)
 
     # Check that it calls root_pixels.show()
-    if 'self.root_pixels.show()' not in method_body:
-        print("  ✗ Method does not call 'self.root_pixels.show()'")
-        return False
+    assert 'self.root_pixels.show()' in method_body, "Method does not call 'self.root_pixels.show()'"
 
     print("  ✓ Method calls self.root_pixels.show()")
 
     # Check that it increments frame counter
-    if 'self.frame_counter' not in method_body:
-        print("  ✗ Method does not increment frame_counter")
-        return False
+    assert 'self.frame_counter' in method_body, "Method does not increment frame_counter"
 
     print("  ✓ Method increments frame_counter")
 
     # Check that it uses RENDER_FRAME_TIME
-    if 'self.RENDER_FRAME_TIME' not in method_body:
-        print("  ✗ Method does not use RENDER_FRAME_TIME")
-        return False
+    assert 'self.RENDER_FRAME_TIME' in method_body, "Method does not use RENDER_FRAME_TIME"
 
     print("  ✓ Method uses RENDER_FRAME_TIME for sleep")
-
-    return True
 
 
 def test_satellite_frame_sync_state():
@@ -117,12 +102,8 @@ def test_satellite_frame_sync_state():
     required_vars = ['frame_counter', 'last_sync_frame', 'time_offset']
 
     for var in required_vars:
-        if f'self.{var}' not in content:
-            print(f"  ✗ 'self.{var}' not found in __init__")
-            return False
+        assert f'self.{var}' in content, f"'self.{var}' not found in __init__"
         print(f"  ✓ Found self.{var}")
-
-    return True
 
 
 def test_satellite_starts_render_loop():
@@ -144,27 +125,21 @@ def test_satellite_starts_render_loop():
     start_pattern = r'async def start\(self\):(.*?)(?=\n    async def |\n    def |\Z)'
     match = re.search(start_pattern, content, re.DOTALL)
 
-    if not match:
-        print("  ✗ Could not find start() method")
-        return False
+    assert match, "Could not find start() method"
 
     start_body = match.group(1)
 
     # Check for render_loop task creation
-    if 'asyncio.create_task(self.render_loop())' not in start_body:
-        print("  ✗ 'asyncio.create_task(self.render_loop())' not found in start()")
-        return False
+    assert 'asyncio.create_task(self.render_loop())' in start_body, \
+        "'asyncio.create_task(self.render_loop())' not found in start()"
 
     print("  ✓ start() creates render_loop task")
 
     # Check for LED animate_loop task creation
-    if 'asyncio.create_task(self.leds.animate_loop())' not in start_body:
-        print("  ✗ 'asyncio.create_task(self.leds.animate_loop())' not found in start()")
-        return False
+    assert 'asyncio.create_task(self.leds.animate_loop())' in start_body, \
+        "'asyncio.create_task(self.leds.animate_loop())' not found in start()"
 
     print("  ✓ start() creates LED animate_loop task")
-
-    return True
 
 
 def test_sync_frame_protocol():
@@ -183,20 +158,14 @@ def test_sync_frame_protocol():
         content = f.read()
 
     # Check for SYNC_FRAME in COMMAND_MAP
-    if '"SYNC_FRAME":' not in content:
-        print("  ✗ 'SYNC_FRAME' not found in COMMAND_MAP")
-        return False
+    assert '"SYNC_FRAME":' in content, "'SYNC_FRAME' not found in COMMAND_MAP"
 
     print("  ✓ Found SYNC_FRAME in COMMAND_MAP")
 
     # Check for SYNC_FRAME in PAYLOAD_SCHEMAS
-    if '"SYNC_FRAME":' not in content or 'Frame sync' not in content:
-        print("  ✗ SYNC_FRAME payload schema not found")
-        return False
+    assert '"SYNC_FRAME":' in content or 'Frame sync' in content, "SYNC_FRAME payload schema not found"
 
     print("  ✓ Found SYNC_FRAME payload schema")
-
-    return True
 
 
 def test_satellite_sync_frame_handler():
@@ -218,33 +187,23 @@ def test_satellite_sync_frame_handler():
     method_pattern = r'async def process_local_cmd\(self, cmd, val\):(.*?)(?=\n    async def |\n    def |\Z)'
     match = re.search(method_pattern, content, re.DOTALL)
 
-    if not match:
-        print("  ✗ Could not find process_local_cmd method")
-        return False
+    assert match, "Could not find process_local_cmd method"
 
     method_body = match.group(1)
 
     # Check for SYNC_FRAME handler
-    if 'cmd == "SYNC_FRAME"' not in method_body:
-        print("  ✗ SYNC_FRAME command handler not found")
-        return False
+    assert 'cmd == "SYNC_FRAME"' in method_body, "SYNC_FRAME command handler not found"
 
     print("  ✓ Found SYNC_FRAME command handler")
 
     # Check that it updates sync state
-    if 'self.last_sync_frame' not in method_body:
-        print("  ✗ Handler does not update last_sync_frame")
-        return False
+    assert 'self.last_sync_frame' in method_body, "Handler does not update last_sync_frame"
 
     print("  ✓ Handler updates last_sync_frame")
 
-    if 'self.time_offset' not in method_body:
-        print("  ✗ Handler does not update time_offset")
-        return False
+    assert 'self.time_offset' in method_body, "Handler does not update time_offset"
 
     print("  ✓ Handler updates time_offset")
-
-    return True
 
 
 def test_core_frame_sync_state():
@@ -263,19 +222,13 @@ def test_core_frame_sync_state():
         content = f.read()
 
     # Check for frame sync state variables
-    if 'self.frame_counter' not in content:
-        print("  ✗ 'self.frame_counter' not found")
-        return False
+    assert 'self.frame_counter' in content, "'self.frame_counter' not found"
 
     print("  ✓ Found self.frame_counter")
 
-    if 'self.last_sync_broadcast' not in content:
-        print("  ✗ 'self.last_sync_broadcast' not found")
-        return False
+    assert 'self.last_sync_broadcast' in content, "'self.last_sync_broadcast' not found"
 
     print("  ✓ Found self.last_sync_broadcast")
-
-    return True
 
 
 def test_core_broadcasts_frame_sync():
@@ -297,34 +250,24 @@ def test_core_broadcasts_frame_sync():
     method_pattern = r'async def render_loop\(self\):(.*?)(?=\n    async def |\Z)'
     match = re.search(method_pattern, content, re.DOTALL)
 
-    if not match:
-        print("  ✗ Could not find render_loop method")
-        return False
+    assert match, "Could not find render_loop method"
 
     method_body = match.group(1)
 
     # Check for frame counter increment
-    if 'self.frame_counter' not in method_body:
-        print("  ✗ render_loop does not increment frame_counter")
-        return False
+    assert 'self.frame_counter' in method_body, "render_loop does not increment frame_counter"
 
     print("  ✓ render_loop increments frame_counter")
 
     # Check for SYNC_FRAME broadcast
-    if 'SYNC_FRAME' not in method_body:
-        print("  ✗ render_loop does not broadcast SYNC_FRAME")
-        return False
+    assert 'SYNC_FRAME' in method_body, "render_loop does not broadcast SYNC_FRAME"
 
     print("  ✓ render_loop broadcasts SYNC_FRAME")
 
     # Check for periodic broadcast (not every frame)
-    if 'last_sync_broadcast' not in method_body:
-        print("  ✗ render_loop does not check last_sync_broadcast")
-        return False
+    assert 'last_sync_broadcast' in method_body, "render_loop does not check last_sync_broadcast"
 
     print("  ✓ render_loop uses periodic broadcast (not every frame)")
-
-    return True
 
 
 def test_frame_rate_consistency():
@@ -357,17 +300,11 @@ def test_frame_rate_consistency():
     core_has_60hz = 'RENDER_FRAME_TIME = 1.0 / 60.0' in core_content
     sat_has_60hz = 'RENDER_FRAME_TIME = 1.0 / 60.0' in sat_content
 
-    if not core_has_60hz:
-        print("  ✗ CoreManager does not have RENDER_FRAME_TIME = 1.0 / 60.0")
-        return False
+    assert core_has_60hz, "CoreManager does not have RENDER_FRAME_TIME = 1.0 / 60.0"
 
-    if not sat_has_60hz:
-        print("  ✗ IndustrialSatelliteFirmware does not have RENDER_FRAME_TIME = 1.0 / 60.0")
-        return False
+    assert sat_has_60hz, "IndustrialSatelliteFirmware does not have RENDER_FRAME_TIME = 1.0 / 60.0"
 
     print("  ✓ Both Core and Satellite use 60Hz (RENDER_FRAME_TIME = 1.0 / 60.0)")
-
-    return True
 
 
 if __name__ == "__main__":
