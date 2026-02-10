@@ -264,6 +264,20 @@ class UARTTransport:
 
         Parameters:
             uart_hw (UART): The UART hardware for physical I/O.
+                **CRITICAL REQUIREMENT**: uart_hw MUST operate in non-blocking mode
+                with a reliable `in_waiting` property implementation. If `in_waiting`
+                is not implemented correctly or returns inaccurate values, the fallback
+                to `readinto()` in `read_raw_into()` could block the entire asyncio
+                event loop for the duration of the UART timeout (typically 10ms-100ms).
+                
+                Required uart_hw interface:
+                - `in_waiting`: Property that accurately returns the number of bytes
+                  available in the receive buffer without blocking.
+                - `readinto(buf)`: Method to read available bytes into a buffer.
+                - `read(n)`: Method to read n bytes from the buffer.
+                - `write(data)`: Method to write data to UART.
+                - `reset_input_buffer()`: Method to clear the receive buffer.
+                
             command_map (dict, optional): Command string to byte mapping.
                 If None, an empty map is used (transport won't encode/decode commands).
             dest_map (dict, optional): Special destination string to byte mapping.
@@ -308,6 +322,23 @@ class UARTTransport:
 #region --- Harware / IO Methods ---
     def read_raw_into(self, buf):
         """Read available raw bytes into a buffer.
+
+        This method checks `in_waiting` before calling `readinto()` to ensure
+        non-blocking operation. The `in_waiting` check is critical for preventing
+        the asyncio event loop from blocking.
+
+        **IMPORTANT**: This implementation assumes that `self.uart.in_waiting` is
+        implemented correctly and returns accurate values. If `in_waiting` is not
+        reliable or not implemented, the fallback to `readinto()` could block the
+        entire asyncio loop for the duration of the UART timeout (default 10ms-100ms).
+
+        To ensure proper non-blocking behavior:
+        1. The uart_hw object must implement `in_waiting` as a non-blocking property
+           that accurately reflects the number of bytes available in the receive buffer.
+        2. The `readinto()` method should only be called when `in_waiting > 0` to
+           avoid potential blocking behavior.
+        3. If swapping to a different hardware interface, verify that it meets these
+           requirements or implement appropriate non-blocking wrappers.
 
         Parameters:
             buf (bytearray): Buffer to read into.
