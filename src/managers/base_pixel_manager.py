@@ -22,10 +22,18 @@ class AnimationSlot:
         self.priority = 0
 
     def set(self, anim_type, color, speed, start, duration, priority):
-        """Update slot properties in place."""
+        """Update slot properties in place.
+        
+        Args:
+            color: Can be a single color tuple (r,g,b), a list/tuple of colors,
+                   or None for effects like RAINBOW.
+                   Lists are converted to tuples for immutability.
+        """
         self.active = True
         self.type = anim_type
-        self.color = color
+        # Convert lists to tuples to prevent accidental mutation
+        # Tuples and None are kept as-is (already immutable)
+        self.color = tuple(color) if isinstance(color, list) else color
         self.speed = speed
         self.start = start
         self.duration = duration
