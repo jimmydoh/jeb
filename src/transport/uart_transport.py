@@ -253,6 +253,10 @@ class UARTTransport:
     # Maximum size for internal receive buffer to prevent unbounded growth
     MAX_BUFFER_SIZE = 1024  # ample space for ~2-4 packets
 
+    # Ring buffer constants
+    RING_BUFFER_SIZE = 2048  # Fixed 2KB ring buffer
+    MAX_PACKET_SIZE = 256    # Maximum packet size for scanning and scratchpad
+
     # Overflow handling thresholds
     # When overflow occurs after extracting a packet, use these to manage remaining data
     MAX_DELIMITER_DISTANCE_THRESHOLD = MAX_BUFFER_SIZE // 2  # If next packet is beyond this, likely garbage
@@ -308,15 +312,15 @@ class UARTTransport:
             'ENCODING_FLOATS': 'floats'
         }
 
-        # Fixed-Size Ring Buffer for Zero-Allocation Receive (2KB)
-        self._buf_size = 2048
+        # Fixed-Size Ring Buffer for Zero-Allocation Receive
+        self._buf_size = self.RING_BUFFER_SIZE
         self._buffer = bytearray(self._buf_size)
         self._mv = memoryview(self._buffer)
         self._head = 0  # Write position
         self._tail = 0  # Read position
         
-        # Linear Scratchpad for Packet Unwrapping (256 bytes max packet size)
-        self._packet_buf = bytearray(256)
+        # Linear Scratchpad for Packet Unwrapping
+        self._packet_buf = bytearray(self.MAX_PACKET_SIZE)
         self._packet_mv = memoryview(self._packet_buf)
 
         # Relay task
@@ -371,18 +375,20 @@ class UARTTransport:
         
         # Calculate available contiguous space in ring buffer
         if self._tail > self._head:
-            # Space wraps around: can write from head to end of buffer
+            # Space wraps around: can write from head to tail (minus 1 for full detection)
             space = self._tail - self._head - 1
         elif self._tail == self._head:
             # Buffer empty: can write from head to end (reserve 1 for full detection)
-            space = self._buf_size - self._head - 1
             if self._tail == 0:
                 space = self._buf_size - self._head - 1
+            else:
+                space = self._buf_size - self._head
         else:
             # tail < head: can write from head to end of buffer
-            space = self._buf_size - self._head
             if self._tail == 0:
                 space = self._buf_size - self._head - 1
+            else:
+                space = self._buf_size - self._head
         
         if space <= 0:
             return  # Buffer full
@@ -501,8 +507,8 @@ class UARTTransport:
         # Scan from tail to head, handling wrap-around
         bytes_available = (self._head - self._tail) % self._buf_size
         
-        # Limit scan to prevent hanging on massive garbage data
-        scan_limit = min(bytes_available, 256)
+        # Limit scan to MAX_PACKET_SIZE to prevent hanging on massive garbage data
+        scan_limit = min(bytes_available, self.MAX_PACKET_SIZE)
         
         packet_len = 0
         found_delimiter = False
@@ -518,11 +524,11 @@ class UARTTransport:
             # No delimiter found
             # SAFETY: If buffer is nearly full and no delimiter, clear the buffer to prevent deadlock
             # This is aggressive but necessary when flooded with garbage data
-            if bytes_available > self._buf_size - 256:
+            if bytes_available > self._buf_size - self.MAX_PACKET_SIZE:
                 # Buffer is critically full - reset it
                 self._head = 0
                 self._tail = 0
-            elif bytes_available >= 256:
+            elif bytes_available >= self.MAX_PACKET_SIZE:
                 # Advance tail by a larger chunk to clear garbage faster
                 self._tail = (self._tail + 100) % self._buf_size
             return None

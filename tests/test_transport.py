@@ -686,7 +686,7 @@ def test_ring_buffer_full_recovery():
     print(f"  After overflow handling, buffer has {bytes_in_buffer} bytes")
     
     # Now send a valid packet - system should be able to receive it
-    msg_valid = Message("0101", "STATUS", (200,))  # Use tuple for ENCODING_NUMERIC_BYTES
+    msg_valid = Message("0101", "STATUS", (200,))  # Use tuple for numeric byte payload
     transport.send(msg_valid)
     valid_packet = mock_uart.sent_packets[0]
     
