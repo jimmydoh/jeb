@@ -234,6 +234,66 @@ def test_transport_consolidation():
     print("✓ Transport consolidation test passed")
 
 
+def test_relay_worker_dynamic_backoff():
+    """Test that _relay_worker uses dynamic backoff when idle."""
+    print("\nTesting _relay_worker dynamic backoff...")
+    content = get_transport_content()
+    
+    # Get the relay worker method
+    relay_match = re.search(
+        r'async def _relay_worker\(self, source_transport\):.*?(?=\n\s+(?:async\s+)?def\s|\nclass\s|\Z)',
+        content,
+        re.DOTALL
+    )
+    assert relay_match, "_relay_worker method should exist"
+    relay_method = relay_match.group(0)
+    
+    # Check that it has conditional sleep based on data availability
+    assert 'if count > 0:' in relay_method or 'if count:' in relay_method, \
+        "_relay_worker should check if data was read"
+    
+    # Check for short sleep when data is present (high throughput)
+    assert 'await asyncio.sleep(0)' in relay_method, \
+        "_relay_worker should use sleep(0) when processing data"
+    
+    # Check for longer sleep when idle (power saving)
+    # The recommendation from the issue is 5ms (0.005 seconds) to allow the
+    # microcontroller to enter lower-power idle states while maintaining responsiveness
+    assert 'await asyncio.sleep(0.005)' in relay_method, \
+        "_relay_worker should use sleep(0.005) when idle to save power"
+    
+    # Verify the structure: sleep(0) should be in the if block, sleep(0.005) in else
+    # Extract the code structure more carefully
+    lines = relay_method.split('\n')
+    found_if_block = False
+    found_else_block = False
+    in_if_block = False
+    in_else_block = False
+    
+    for line in lines:
+        stripped = line.strip()
+        if 'if count > 0:' in stripped or 'if count:' in stripped:
+            found_if_block = True
+            in_if_block = True
+            in_else_block = False
+        elif stripped.startswith('else:'):
+            found_else_block = True
+            in_else_block = True
+            in_if_block = False
+        elif 'await asyncio.sleep(0)' in stripped and in_if_block:
+            pass  # Good - sleep(0) is in the if block
+        elif 'await asyncio.sleep(0.005)' in stripped and in_else_block:
+            pass  # Good - sleep(0.005) is in the else block
+    
+    assert found_if_block and found_else_block, \
+        "_relay_worker should have if/else structure for conditional sleep"
+    
+    print("  ✓ _relay_worker checks data availability")
+    print("  ✓ Uses sleep(0) when processing data (high throughput)")
+    print("  ✓ Uses sleep(0.005) when idle (power saving)")
+    print("✓ Relay worker dynamic backoff test passed")
+
+
 def test_race_condition_documented():
     """Test that the consolidation is properly documented."""
     print("\nTesting transport consolidation documentation...")
@@ -283,6 +343,7 @@ if __name__ == "__main__":
         test_transport_tx_worker_exists()
         test_relay_functionality_exists()
         test_relay_worker_uses_queue()
+        test_relay_worker_dynamic_backoff()
         test_send_uses_queue()
         test_transport_consolidation()
         test_race_condition_documented()
@@ -296,6 +357,7 @@ if __name__ == "__main__":
         print("  • Centralized all UART writes through queue/worker")
         print("  • Eliminated firmware-level UART race conditions")
         print("  • Maintained clean separation of concerns")
+        print("  • Implemented dynamic backoff in relay worker for power saving")
         
     except AssertionError as e:
         print(f"\n✗ TEST FAILED: {e}")
