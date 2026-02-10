@@ -3,42 +3,6 @@
 
 from .ring_buffer import RingBuffer
 
-class _QueuedUARTManager:
-    """Wrapper for UARTManager that writes to a queue instead of hardware.
-
-    This prevents race conditions by ensuring all upstream UART writes
-    go through a single TX worker task that drains the queue.
-    """
-
-    def __init__(self, queue):
-        """Initialize the queued UART manager.
-
-        Parameters:
-            queue (asyncio.Queue): Queue to push data to.
-        """
-        self.queue = queue
-
-    def write(self, data):
-        """Queue data for writing instead of writing directly.
-
-        This is a synchronous wrapper around the async queue.put().
-        In CircuitPython's asyncio, we can use put_nowait() since
-        the queue is unbounded by default.
-
-        Parameters:
-            data (bytes): Data to queue for transmission.
-
-        Raises:
-            asyncio.QueueFull: If the queue is somehow bounded and full.
-        """
-        try:
-            # Use put_nowait for synchronous context
-            # This is safe because asyncio.Queue is unbounded by default
-            self.queue.put_nowait(data)
-        except Exception as e:
-            # In case of unexpected queue behavior, raise with context
-            raise RuntimeError(f"Failed to queue UART data: {e}") from e
-
 class UARTManager:
     """Manages UART communication with non-blocking buffering.
 

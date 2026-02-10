@@ -24,6 +24,42 @@ from .base import Satellite
 TYPE_ID = "01"
 TYPE_NAME = "INDUSTRIAL"
 
+class _QueuedUARTManager:
+    """Wrapper for UART manager that writes to a queue instead of hardware.
+
+    This prevents race conditions by ensuring all upstream UART writes
+    go through a single TX worker task that drains the queue.
+    """
+
+    def __init__(self, queue):
+        """Initialize the queued UART manager.
+
+        Parameters:
+            queue (asyncio.Queue): Queue to push data to.
+        """
+        self.queue = queue
+
+    def write(self, data):
+        """Queue data for writing instead of writing directly.
+
+        This is a synchronous wrapper around the async queue.put().
+        In CircuitPython's asyncio, we can use put_nowait() since
+        the queue is unbounded by default.
+
+        Parameters:
+            data (bytes): Data to queue for transmission.
+
+        Raises:
+            asyncio.QueueFull: If the queue is somehow bounded and full.
+        """
+        try:
+            # Use put_nowait for synchronous context
+            # This is safe because asyncio.Queue is unbounded by default
+            self.queue.put_nowait(data)
+        except Exception as e:
+            # In case of unexpected queue behavior, raise with context
+            raise RuntimeError(f"Failed to queue UART data: {e}") from e
+
 class IndustrialSatelliteFirmware(Satellite):
     """Satellite-side firmware for Industrial Satellite.
 
@@ -65,9 +101,23 @@ class IndustrialSatelliteFirmware(Satellite):
             timeout=0.01
         )
 
-        # Wrap with transport layer using the queued manager
-        self.transport_up = UARTTransport(uart_up_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS, queued=True)
-        self.transport_down = UARTTransport(uart_down_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+        # Create managers for UART access
+        from transport.uart_manager import UARTManager
+        uart_up_mgr = UARTManager(uart_up_hw)
+        
+        # Set up upstream queue-based TX system to prevent race conditions
+        # Multiple tasks write to upstream (relay, monitor_power, monitor_connection, start)
+        # Only the TX worker should write directly to hardware
+        self.upstream_queue = asyncio.Queue()
+        self.uart_up_mgr_queued = _QueuedUARTManager(self.upstream_queue)
+        self.uart_up_mgr = uart_up_mgr  # Hardware UART (only used by TX worker)
+
+        # Create a manager for downstream UART to access low-level operations
+        self.uart_down_mgr = UARTManager(uart_down_hw)
+
+        # Wrap with transport layer
+        self.transport_up = UARTTransport(self.uart_up_mgr_queued, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+        self.transport_down = UARTTransport(self.uart_down_mgr, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
         # Initialize base class with upstream transport
         super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, transport=self.transport_up)
@@ -369,6 +419,23 @@ class IndustrialSatelliteFirmware(Satellite):
                 self.leds.pixels.fill((0, 0, 0))
 
             await asyncio.sleep(0.5)
+
+    async def _upstream_tx_worker(self):
+        """Dedicated task to drain the TX queue to hardware UART.
+
+        This is the ONLY task that should write directly to uart_up_mgr.
+        All other code must push data to upstream_queue.
+
+        This prevents race conditions where multiple tasks interleave
+        partial packets, causing CRC failures and data corruption.
+        """
+        while True:
+            # Wait for data to be available in the queue
+            data = await self.upstream_queue.get()
+            # Write to hardware UART
+            self.uart_up_mgr.write(data)
+            # Mark task as done
+            self.upstream_queue.task_done()
 
     async def start(self):
         """Main async loop for handling communication and tasks.

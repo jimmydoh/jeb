@@ -1,10 +1,8 @@
 """UART transport implementation with binary protocol and COBS framing."""
 
-import asyncio
 import struct
 from utilities import cobs_encode, cobs_decode, calculate_crc8
 from .message import Message
-from .uart_manager import _QueuedUARTManager, UARTManager
 
 
 def _encode_destination(dest_str, dest_map):
@@ -346,11 +344,11 @@ class UARTTransport:
     # Maximum size for internal receive buffer to prevent unbounded growth
     MAX_BUFFER_SIZE = 1024  # ample space for ~2-4 packets
 
-    def __init__(self, uart_hw, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None, queued=False):
+    def __init__(self, uart_hw, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None):
         """Initialize UART transport.
 
         Parameters:
-            uart_hw (UART): The UART hardware for physical I/O.
+            uart_hw (UART or UARTManager): The UART hardware or manager for physical I/O.
             command_map (dict, optional): Command string to byte mapping.
                 If None, an empty map is used (transport won't encode/decode commands).
             dest_map (dict, optional): Special destination string to byte mapping.
@@ -359,15 +357,15 @@ class UARTTransport:
                 Defaults to 100.
             payload_schemas (dict, optional): Command-specific payload schemas defining
                 encoding/decoding types. If None, uses heuristic encoding.
-            queued (bool, optional): If True, uses a queued UART manager for upstream
-                to prevent blocking on writes. Defaults to False.
         """
-        if queued:
-            self.uart_queue = asyncio.Queue()
-            self.uart_manager_queued = _QueuedUARTManager(self.uart_queue)
-            asyncio.create_task(self._uart_tx_worker())
-
-        self.uart_manager = UARTManager(uart_hw)
+        # Import here to avoid circular dependency
+        from .uart_manager import UARTManager
+        
+        # If uart_hw is not already a UARTManager, wrap it
+        if isinstance(uart_hw, UARTManager):
+            self.uart_manager = uart_hw
+        else:
+            self.uart_manager = UARTManager(uart_hw)
 
         # Store the maps for encoding/decoding
         self.command_map = command_map if command_map is not None else {}
@@ -424,13 +422,8 @@ class UARTTransport:
         # Append 0x00 terminator
         final_packet = cobs_encoded + b'\x00'
 
-        # Send via UART
-        if hasattr(self, 'uart_queue'):
-            # If using queued UART manager, push to queue
-            await self.uart_manager_queued.write(final_packet)
-        else:
-            # Direct write
-            self.uart_manager.write(final_packet)
+        # Send via UART manager
+        self.uart_manager.write(final_packet)
 
     async def receive(self):
         """Receive a message from UART if available.
@@ -525,20 +518,3 @@ class UARTTransport:
         """Clear the UART buffer and internal receive buffer."""
         self.uart_manager.clear_buffer()
         self._receive_buffer.clear()
-
-    async def _uart_tx_worker(self):
-        """Dedicated task to drain the TX queue to hardware.
-
-        This is the ONLY task that should write directly to uart_mgr.
-        All other code must push data to uart_queue.
-
-        This prevents race conditions where multiple tasks interleave
-        partial packets, causing CRC failures and data corruption.
-        """
-        while True:
-            # Wait for data to be available in the queue
-            data = await self.uart_queue.get()
-            # Write to hardware UART
-            self.uart_manager.write(data)
-            # Mark task as done
-            self.uart_queue.task_done()
