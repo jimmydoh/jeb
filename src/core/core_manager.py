@@ -22,6 +22,7 @@ from managers import (
     LEDManager,
     MatrixManager,
     PowerManager,
+    RenderManager,
     SatelliteNetworkManager,
     SynthManager,
 )
@@ -64,12 +65,22 @@ class CoreManager:
             - is_active: bool
             - slot_id: int
     """
-    # Render loop configuration - runs at 60Hz for smooth LED updates
-    RENDER_FRAME_TIME = 1.0 / 60.0  # ~0.0167 seconds per frame
-
     def __init__(self, root_data_dir="/", debug_mode=False):
 
         self.debug_mode = debug_mode
+
+        # Watchdog Flag Pattern - Prevents blind feeding if critical tasks crash
+        # Each critical background task must set its flag to True each iteration
+        # The watchdog is only fed if ALL flags are True, then flags are reset
+        self.watchdog_flags = {
+            "sat_network": False,
+            "estop": False,
+            "power": False,
+            "connection": False,
+            "hw_hid": False,
+            "render": False,
+        }
+
         self.root_data_dir = root_data_dir
 
         # Init Data Manager for persistent storage of scores and settings
@@ -146,18 +157,6 @@ class CoreManager:
             uart_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
         )
 
-        # Watchdog Flag Pattern - Prevents blind feeding if critical tasks crash
-        # Each critical background task must set its flag to True each iteration
-        # The watchdog is only fed if ALL flags are True, then flags are reset
-        self.watchdog_flags = {
-            "sat_network": False,
-            "estop": False,
-            "power": False,
-            "connection": False,
-            "hw_hid": False,
-            "render": False,
-        }
-
         # Initialize Satellite Network Manager
         self.sat_network = SatelliteNetworkManager(
             self.transport, self.display, self.audio, self.watchdog_flags
@@ -165,6 +164,16 @@ class CoreManager:
 
         if debug_mode:
             self.sat_network.set_debug_mode(True)
+
+        # Setup Render Manager to coordinate hardware writes and frame sync
+        self.renderer = RenderManager(
+            self.root_pixels,
+            watchdog_flags=self.watchdog_flags,
+            sync_role="MASTER",
+            network_manager=self.sat_network
+        )
+        self.renderer.add_animator(self.leds)
+        self.renderer.add_animator(self.matrix)
 
         # System State
         self._mode_registry = {}
@@ -404,60 +413,16 @@ class CoreManager:
             self.hid.hw_update()
             await asyncio.sleep(0.01)
 
-    async def render_loop(self):
-        """Centralized hardware write task for NeoPixel strip.
-
-        This is the ONLY place where self.root_pixels.show() should be called.
-        Runs at 60Hz to provide smooth, flicker-free LED updates while preventing
-        race conditions from multiple async tasks writing to the hardware simultaneously.
-
-        Additionally broadcasts frame sync to satellites periodically for coordinated animations.
-        """
-        next_frame_time = time.monotonic()
-
-        while True:
-            # Set watchdog flag to indicate this task is alive
-            self.watchdog_flags["render"] = True
-
-            # Udpate the buffer state and write to hardware
-            self.leds.animate_loop(step=True)
-            self.matrix.animate_loop(step=True)
-            self.root_pixels.show()
-
-            # Increment frame counter for sync tracking
-            self.frame_counter += 1
-
-            # Broadcast frame sync to satellites every 1 second (time-based, not frame-based)
-            # This is advisory sync - satellites can use it to align animations
-            current_time = ticks_ms() / 1000.0  # Convert to seconds
-            if current_time - self.last_sync_broadcast >= 1.0:
-                self.sat_network.send_all("SYNC_FRAME", (float(self.frame_counter), current_time))
-                self.last_sync_broadcast = current_time
-
-            # Caclulate time to next frame to maintain consistent frame rate
-            next_frame_time += self.RENDER_FRAME_TIME
-            now = time.monotonic()
-            sleep_duration = next_frame_time - now
-            if sleep_duration > 0:
-                await asyncio.sleep(sleep_duration)
-            else:                # We're behind schedule, skip sleeping to catch up
-                next_frame_time = now
-                await asyncio.sleep(0)  # Yield control to event loop to prevent starvation
-
     async def start(self):
         """Main async loop for the Master Controller."""
         # Start background infrastructure tasks
-        asyncio.create_task(self.render_loop())  # Centralized LED Hardware Write
         asyncio.create_task(self.sat_network.monitor_satellites())  # Satellite Network Management
         asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
         asyncio.create_task(self.monitor_power())  # Analog Power Monitoring
         asyncio.create_task(self.monitor_connection())  # RJ45 Link Detection
         asyncio.create_task(self.monitor_hw_hid())  # Local Hardware Input Polling
-        #asyncio.create_task(self.leds.animate_loop())  # Button LED Animations
-        #asyncio.create_task(self.matrix.animate_loop())  # Matrix LED Animations
-        asyncio.create_task(
-            self.synth.start_generative_drone()
-        )  # Background Music Drone
+        asyncio.create_task(self.renderer.run())  # Centralized Render Loop
+        asyncio.create_task(self.synth.start_generative_drone())  # Background Music Drone
 
         # Fancy bootup sequence
         # TODO Add boot animation and audio

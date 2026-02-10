@@ -17,7 +17,7 @@ from utilities import JEBPixel, Palette, Pins, parse_values, get_int, get_float,
 
 from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
-from managers import HIDManager, LEDManager, PowerManager, SegmentManager
+from managers import HIDManager, LEDManager, PowerManager, RenderManager, SegmentManager
 
 from .base import Satellite
 
@@ -38,6 +38,14 @@ class IndustrialSatelliteFirmware(Satellite):
         """Initialize the Industrial Satellite Firmware."""
         # State Variables
         self.last_tx = 0
+
+        # TODO: Implement satellite watchdog
+        self.watchdog_flags = {
+            "power": False,
+            "connection": False,
+            "hw_hid": False,
+            "render": False,
+        }
 
         # --- ACTIVE MODE (Running on Satellite Hardware) ---
         # Define REAL Pins for the Industrial Satellite
@@ -105,43 +113,18 @@ class IndustrialSatelliteFirmware(Satellite):
         self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=5)
         self.leds = LEDManager(self.led_jeb_pixel)
 
+        self.renderer = RenderManager(
+            self.root_pixels,
+            watchdog_flags=self.watchdog_flags,
+            sync_role="SLAVE",
+        )
+
+        self.renderer.add_animator(self.leds)  # Register LEDManager for animation updates
+
         # Frame sync state for coordinated animations with Core
         self.frame_counter = 0
         self.last_sync_frame = 0
         self.time_offset = 0.0  # Estimated time difference from Core (in seconds)
-
-    async def render_loop(self):
-        """Centralized hardware write task for NeoPixel strip.
-
-        This is the ONLY place where self.root_pixels.show() should be called.
-        Runs at 60Hz to provide smooth, flicker-free LED updates while preventing
-        race conditions from multiple async tasks writing to the hardware simultaneously.
-
-        Additionally broadcasts frame sync to satellites periodically for coordinated animations.
-        """
-        next_frame_time = time.monotonic()
-
-        while True:
-            # Set watchdog flag to indicate this task is alive
-            #self.watchdog_flags["render"] = True
-
-            # Udpate the buffer state and write to hardware
-            self.leds.animate_loop(step=True)
-            #self.matrix.animate_loop(step=True)
-            self.root_pixels.show()
-
-            # Increment frame counter for sync tracking
-            self.frame_counter += 1
-
-            # Caclulate time to next frame to maintain consistent frame rate
-            next_frame_time += self.RENDER_FRAME_TIME
-            now = time.monotonic()
-            sleep_duration = next_frame_time - now
-            if sleep_duration > 0:
-                await asyncio.sleep(sleep_duration)
-            else:                # We're behind schedule, skip sleeping to catch up
-                next_frame_time = now
-                await asyncio.sleep(0)  # Yield control to event loop to prevent starvation
 
     async def process_local_cmd(self, cmd, val):
         """Process commands addressed to this satellite.
@@ -175,15 +158,7 @@ class IndustrialSatelliteFirmware(Satellite):
                 self.transport_down.send(msg_out)
 
         elif cmd == "SYNC_FRAME":
-            # Frame sync command from Core for coordinated animations
-            # Payload: frame_number,core_time
-            core_frame = int(val[0])
-            core_time = val[1]
-
-            estimated_current_core_frame = core_frame + 1
-            drift = abs(self.frame_counter - estimated_current_core_frame)
-            if drift > 2:
-                self.frame_counter = estimated_current_core_frame
+            self.renderer.apply_sync(int(val[0]))
 
 
         elif cmd == "SETENC":
@@ -418,8 +393,7 @@ class IndustrialSatelliteFirmware(Satellite):
         # Start monitoring tasks
         asyncio.create_task(self.monitor_power())
         asyncio.create_task(self.monitor_connection())
-        # Start LED rendering and animation tasks
-        asyncio.create_task(self.render_loop())  # Centralized LED Hardware Write
+        asyncio.create_task(self.renderer.run())  # Start the RenderManager loop
 
         while True:
             # Feed the hardware watchdog timer to prevent system reset
