@@ -17,50 +17,12 @@ from utilities import JEBPixel, Palette, Pins, parse_values, get_int, get_float,
 
 from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
-from managers import HIDManager, LEDManager, PowerManager, SegmentManager, UARTManager
+from managers import HIDManager, LEDManager, PowerManager, SegmentManager
 
 from .base import Satellite
 
 TYPE_ID = "01"
 TYPE_NAME = "INDUSTRIAL"
-
-
-class _QueuedUARTManager:
-    """Wrapper for UARTManager that writes to a queue instead of hardware.
-    
-    This prevents race conditions by ensuring all upstream UART writes
-    go through a single TX worker task that drains the queue.
-    """
-    
-    def __init__(self, queue):
-        """Initialize the queued UART manager.
-        
-        Parameters:
-            queue (asyncio.Queue): Queue to push data to.
-        """
-        self.queue = queue
-    
-    def write(self, data):
-        """Queue data for writing instead of writing directly.
-        
-        This is a synchronous wrapper around the async queue.put().
-        In CircuitPython's asyncio, we can use put_nowait() since
-        the queue is unbounded by default.
-        
-        Parameters:
-            data (bytes): Data to queue for transmission.
-            
-        Raises:
-            asyncio.QueueFull: If the queue is somehow bounded and full.
-        """
-        try:
-            # Use put_nowait for synchronous context
-            # This is safe because asyncio.Queue is unbounded by default
-            self.queue.put_nowait(data)
-        except Exception as e:
-            # In case of unexpected queue behavior, raise with context
-            raise RuntimeError(f"Failed to queue UART data: {e}") from e
-
 
 class IndustrialSatelliteFirmware(Satellite):
     """Satellite-side firmware for Industrial Satellite.
@@ -68,9 +30,10 @@ class IndustrialSatelliteFirmware(Satellite):
     Handles hardware I/O, power management, and local command processing.
     Runs on the physical satellite hardware and manages all peripherals.
     """
+    
     # Render loop configuration - runs at 60Hz for smooth LED updates (matches CoreManager)
     RENDER_FRAME_TIME = 1.0 / 60.0  # ~0.0167 seconds per frame
-    
+
     def __init__(self):
         """Initialize the Industrial Satellite Firmware."""
         # State Variables
@@ -105,25 +68,10 @@ class IndustrialSatelliteFirmware(Satellite):
             timeout=0.01
         )
 
-        # Wrap UARTs with buffering managers
-        uart_up_mgr = UARTManager(uart_up_hw)
-        uart_down_mgr = UARTManager(uart_down_hw)
-        
-        # Create upstream TX queue to prevent race conditions
-        # All upstream writes must go through this queue
-        self.upstream_queue = asyncio.Queue()
-        
-        # Create a wrapper UART manager that writes to the queue
-        self.uart_up_mgr_queued = _QueuedUARTManager(self.upstream_queue)
-        
         # Wrap with transport layer using the queued manager
-        self.transport_up = UARTTransport(self.uart_up_mgr_queued, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
-        self.transport_down = UARTTransport(uart_down_mgr, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
-        
-        # Store the raw UART managers
-        self.uart_up_mgr = uart_up_mgr  # Hardware UART (only used by TX worker)
-        self.uart_down_mgr = uart_down_mgr
-        
+        self.transport_up = UARTTransport(uart_up_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS, queued=True)
+        self.transport_down = UARTTransport(uart_down_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+
         # Initialize base class with upstream transport
         super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, transport=self.transport_up)
 
@@ -178,7 +126,7 @@ class IndustrialSatelliteFirmware(Satellite):
 
     async def process_local_cmd(self, cmd, val):
         """Process commands addressed to this satellite.
-        
+
         Handles both text and binary payloads efficiently.
         Binary payloads are processed using parse_values() which now
         avoids the "String Boomerang" issue.
@@ -388,26 +336,9 @@ class IndustrialSatelliteFirmware(Satellite):
             duration = duration_val if duration_val > 0 else 2.0
             self.segment.start_matrix(duration)
 
-    async def _upstream_tx_worker(self):
-        """Dedicated task to drain the upstream TX queue to hardware.
-        
-        This is the ONLY task that should write directly to uart_up_mgr.
-        All other code must push data to upstream_queue.
-        
-        This prevents race conditions where multiple tasks interleave
-        partial packets, causing CRC failures and data corruption.
-        """
-        while True:
-            # Wait for data to be available in the queue
-            data = await self.upstream_queue.get()
-            # Write to hardware UART
-            self.uart_up_mgr.write(data)
-            # Mark task as done
-            self.upstream_queue.task_done()
-
     async def relay_downstream_to_upstream(self):
         """Ultra-fast, non-blocking relay of downstream data to the Master.
-        
+
         Pushes data to the upstream TX queue instead of direct hardware write
         to prevent race conditions with transport_up messages.
         """
