@@ -284,7 +284,7 @@ jeb/
 │   ├── boot.py                    # Hardware safety initialization (runs before code.py)
 │   ├── code.py                    # Main entry point and application loader
 │   ├── config.json                # Device configuration
-│   ├── protocol.py                # Protocol definitions and command mappings
+│   ├── updater.py                 # Over-The-Air (OTA) firmware update system (Pico 2W)
 │   │
 │   ├── core/                      # CORE unit implementation
 │   │   ├── __init__.py
@@ -320,6 +320,7 @@ jeb/
 │   │   ├── led_manager.py         # LED control
 │   │   ├── matrix_manager.py      # LED matrix control
 │   │   ├── power_manager.py       # Power system monitoring
+│   │   ├── render_manager.py      # LED rendering coordination and frame sync
 │   │   ├── satellite_network_manager.py  # Satellite network coordination
 │   │   ├── segment_manager.py     # 14-segment display control
 │   │   ├── synth_manager.py       # Audio synthesis
@@ -330,6 +331,7 @@ jeb/
 │   │   ├── __init__.py
 │   │   ├── base_transport.py      # Abstract transport base class
 │   │   ├── message.py             # Message structure definitions
+│   │   ├── protocol.py            # Protocol definitions and command mappings
 │   │   └── uart_transport.py      # UART transport implementation
 │   │
 │   └── utilities/                 # Helper modules
@@ -351,13 +353,17 @@ jeb/
 │   ├── hardware-sat-01.md         # Satellite 01 specifications
 │   ├── BINARY_PROTOCOL.md         # Binary protocol specification
 │   ├── CRC_IMPLEMENTATION.md      # CRC implementation details
+│   ├── LED_RENDERING.md           # LED rendering optimization and frame sync
+│   ├── OPTIMIZATION_SUMMARY.md    # Performance optimizations and improvements
+│   ├── OTA_UPDATE.md              # Over-The-Air firmware update system
 │   ├── PAYLOAD_ENCODING.md        # Payload encoding documentation
 │   ├── SYNTHIO_IMPLEMENTATION.md  # Audio synthesis implementation
 │   └── TRANSPORT_ABSTRACTION.md   # Transport layer abstraction
 │
 ├── examples/                      # Example configurations
 │   ├── config-example-core.json   # CORE config template
-│   └── config-example-sat-01.json # Satellite config template
+│   ├── config-example-sat-01.json # Satellite config template
+│   └── download_mpy_files.py      # Script for downloading/verifying compiled MPY files
 │
 ├── tests/                         # Test suite (Python/pytest)
 │   ├── test_*.py                  # Unit and integration tests
@@ -365,8 +371,9 @@ jeb/
 │
 ├── .gitignore                     # Git ignore patterns
 ├── LICENSE                        # MIT License
-├── TEST_COVERAGE_REPORT.md        # Test coverage report
-└── README.md                      # This file
+├── README.md                      # This file
+├── TEST_COVERAGE_REPORT.md        # Test coverage report and unit test summary
+└── VERSION                        # Current version identifier for builds
 ```
 
 ---
@@ -490,12 +497,19 @@ Detailed hardware and implementation documentation is available in the `docs/` d
 
 - **[hardware-core.md](docs/hardware-core.md)**: Complete CORE unit specifications, GPIO mapping, and schematics
 - **[hardware-sat-01.md](docs/hardware-sat-01.md)**: Industrial Satellite specifications and pinout
-- **[OTA_UPDATE.md](docs/OTA_UPDATE.md)**: Over-The-Air firmware update system (Pico 2W)
 - **[BINARY_PROTOCOL.md](docs/BINARY_PROTOCOL.md)**: Binary protocol specification and message format
 - **[CRC_IMPLEMENTATION.md](docs/CRC_IMPLEMENTATION.md)**: CRC implementation and validation details
+- **[LED_RENDERING.md](docs/LED_RENDERING.md)**: LED rendering optimization, frame sync, and animation architecture
+- **[OPTIMIZATION_SUMMARY.md](docs/OPTIMIZATION_SUMMARY.md)**: Performance optimizations and system improvements
+- **[OTA_UPDATE.md](docs/OTA_UPDATE.md)**: Over-The-Air firmware update system (Pico 2W)
 - **[PAYLOAD_ENCODING.md](docs/PAYLOAD_ENCODING.md)**: Payload encoding and decoding documentation
-- **[TRANSPORT_ABSTRACTION.md](docs/TRANSPORT_ABSTRACTION.md)**: Transport layer abstraction design
 - **[SYNTHIO_IMPLEMENTATION.md](docs/SYNTHIO_IMPLEMENTATION.md)**: Audio synthesis system implementation
+- **[TRANSPORT_ABSTRACTION.md](docs/TRANSPORT_ABSTRACTION.md)**: Transport layer abstraction design
+
+Additional resources:
+
+- **[TEST_COVERAGE_REPORT.md](TEST_COVERAGE_REPORT.md)**: Comprehensive test coverage analysis and unit test summary
+- **[.github/workflows/README.md](.github/workflows/README.md)**: GitHub Actions workflows for automated builds and testing
 
 ---
 
