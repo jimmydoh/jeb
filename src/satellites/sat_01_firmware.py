@@ -30,7 +30,7 @@ class IndustrialSatelliteFirmware(Satellite):
     Handles hardware I/O, power management, and local command processing.
     Runs on the physical satellite hardware and manages all peripherals.
     """
-    
+
     # Render loop configuration - runs at 60Hz for smooth LED updates (matches CoreManager)
     RENDER_FRAME_TIME = 1.0 / 60.0  # ~0.0167 seconds per frame
 
@@ -72,6 +72,9 @@ class IndustrialSatelliteFirmware(Satellite):
         self.transport_up = UARTTransport(uart_up_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS, queued=True)
         self.transport_down = UARTTransport(uart_down_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
+        # Setup Upstream relay
+        self.transport_up.enable_relay_from(self.transport_down)
+
         # Initialize base class with upstream transport
         super().__init__(sid=None, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, transport=self.transport_up)
 
@@ -101,7 +104,7 @@ class IndustrialSatelliteFirmware(Satellite):
         # Init LEDManager with JEBPixel wrapper for the 5 onboard LEDs
         self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=5)
         self.leds = LEDManager(self.led_jeb_pixel)
-        
+
         # Frame sync state for coordinated animations with Core
         self.frame_counter = 0
         self.last_sync_frame = 0
@@ -109,11 +112,11 @@ class IndustrialSatelliteFirmware(Satellite):
 
     async def render_loop(self):
         """Centralized hardware write task for NeoPixel LEDs.
-        
+
         This is the ONLY place where self.root_pixels.show() should be called.
         Runs at 60Hz to provide smooth, flicker-free LED updates while preventing
         race conditions from multiple async tasks writing to the hardware simultaneously.
-        
+
         Matches the CoreManager.render_loop() implementation for consistency.
         """
         while True:
@@ -161,7 +164,7 @@ class IndustrialSatelliteFirmware(Satellite):
             values = parse_values(val)
             core_frame = get_int(values, 0, 0)
             core_time = get_float(values, 1, 0.0)
-            
+
             # Update sync state
             self.last_sync_frame = core_frame
             # Calculate time offset (positive means satellite is ahead)
@@ -336,23 +339,6 @@ class IndustrialSatelliteFirmware(Satellite):
             duration = duration_val if duration_val > 0 else 2.0
             self.segment.start_matrix(duration)
 
-    async def relay_downstream_to_upstream(self):
-        """Ultra-fast, non-blocking relay of downstream data to the Master.
-
-        Pushes data to the upstream TX queue instead of direct hardware write
-        to prevent race conditions with transport_up messages.
-        """
-        # Pre-allocate a buffer to avoid memory fragmentation
-        buf = bytearray(64)
-        while True:
-            if self.uart_down_mgr.in_waiting > 0:
-                # Read whatever is available and queue it for upstream transmission
-                num_read = self.uart_down_mgr.readinto(buf)
-                # Copy to bytes() is necessary since buf is reused in the loop
-                # and the queued data must remain valid until the TX worker processes it
-                await self.upstream_queue.put(bytes(buf[:num_read]))
-            await asyncio.sleep(0) # Yield control immediately to other tasks
-
     async def monitor_power(self):
         """Background task to watch for local brownouts or downstream faults."""
         last_broadcast = 0
@@ -414,12 +400,9 @@ class IndustrialSatelliteFirmware(Satellite):
             TODO:
                 Move the TX/RX handling into separate async tasks for better responsiveness.
         """
-        # Start the dedicated upstream TX worker (prevents race conditions)
-        asyncio.create_task(self._upstream_tx_worker())
         # Start monitoring tasks
         asyncio.create_task(self.monitor_power())
         asyncio.create_task(self.monitor_connection())
-        asyncio.create_task(self.relay_downstream_to_upstream())
         # Start LED rendering and animation tasks
         asyncio.create_task(self.render_loop())  # Centralized LED Hardware Write
         asyncio.create_task(self.leds.animate_loop())  # LED Animations

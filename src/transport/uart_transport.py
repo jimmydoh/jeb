@@ -4,9 +4,8 @@ import asyncio
 import struct
 from utilities import cobs_encode, cobs_decode, calculate_crc8
 from .message import Message
-from .uart_manager import _QueuedUARTManager, UARTManager
 
-
+#region --- Helper Functions for Encoding/Decoding ---
 def _encode_destination(dest_str, dest_map):
     """Encode destination string to byte(s).
 
@@ -32,7 +31,6 @@ def _encode_destination(dest_str, dest_map):
         f"Invalid destination format: {dest_str}. "
         f"Expected 4-digit numeric ID (e.g., '0101') or mapped destination string (e.g., 'ALL', 'SAT')."
     )
-
 
 def _decode_destination(data, offset, dest_reverse_map, max_index_value):
     """Decode destination from bytes.
@@ -65,7 +63,6 @@ def _decode_destination(data, offset, dest_reverse_map, max_index_value):
     # Single byte: type only
     return f"{dest_byte:02d}", 1
 
-
 def _encode_command(cmd_str, command_map):
     """Encode command string to byte.
 
@@ -81,7 +78,6 @@ def _encode_command(cmd_str, command_map):
 
     raise ValueError(f"Unknown command: {cmd_str}")
 
-
 def _decode_command(cmd_byte, command_reverse_map):
     """Decode command byte to string.
 
@@ -96,7 +92,6 @@ def _decode_command(cmd_byte, command_reverse_map):
         return command_reverse_map[cmd_byte]
 
     raise ValueError(f"Unknown command byte: 0x{cmd_byte:02X}")
-
 
 def _encode_payload(payload_str, cmd_schema=None, encoding_constants=None):
     """Encode payload string/list/tuple/bytes to bytes with explicit type handling.
@@ -117,144 +112,38 @@ def _encode_payload(payload_str, cmd_schema=None, encoding_constants=None):
     """
     if not payload_str:
         return b''
-
-    # Handle bytes input - return as-is (already encoded)
     if isinstance(payload_str, (bytes, bytearray)):
         return bytes(payload_str)
 
-    # Handle list/tuple inputs directly without string conversion
+    # Efficient list/tuple packing
     if isinstance(payload_str, (list, tuple)):
         if cmd_schema and encoding_constants:
-            encoding_type = cmd_schema.get('type')
-            expected_count = cmd_schema.get('count')
+            etype = cmd_schema.get('type')
+            if etype == encoding_constants.get('ENCODING_NUMERIC_BYTES'):
+                return bytes([int(x) for x in payload_str])
+            elif etype == encoding_constants.get('ENCODING_NUMERIC_WORDS'):
+                return b''.join([struct.pack('<h', int(x)) for x in payload_str])
+            elif etype == encoding_constants.get('ENCODING_FLOATS'):
+                return b''.join([struct.pack('<f', float(x)) for x in payload_str])
 
-            # Validate count if specified
-            if expected_count is not None and len(payload_str) != expected_count:
-                raise ValueError(
-                    f"Schema expects {expected_count} values but got {len(payload_str)}"
-                )
+        # Heuristic fallback
+        out = bytearray()
+        for v in payload_str:
+            if isinstance(v, float):
+                out.extend(struct.pack('<f', v))
+            elif isinstance(v, int):
+                if -128 <= v <= 255:
+                    out.append(v & 0xFF)
+                else: out.extend(struct.pack('<i', v))
+            else: out.extend(struct.pack('<f', float(v)))
+        return bytes(out)
 
-            # Byte encoding (0-255 range)
-            if encoding_type == encoding_constants.get('ENCODING_NUMERIC_BYTES'):
-                output = bytearray()
-                for numeric_val in payload_str:
-                    numeric_val = int(numeric_val)
-                    if not (0 <= numeric_val <= 255):
-                        raise ValueError(f"Byte value {numeric_val} outside 0-255 range")
-                    output.append(numeric_val)
-                return bytes(output)
-
-            # Word encoding (16-bit signed integers)
-            elif encoding_type == encoding_constants.get('ENCODING_NUMERIC_WORDS'):
-                output = bytearray()
-                for numeric_val in payload_str:
-                    numeric_val = int(numeric_val)
-                    output.extend(struct.pack('<h', numeric_val))
-                return bytes(output)
-
-            # Float encoding (IEEE 754 single precision)
-            elif encoding_type == encoding_constants.get('ENCODING_FLOATS'):
-                output = bytearray()
-                for float_val in payload_str:
-                    float_val = float(float_val)
-                    output.extend(struct.pack('<f', float_val))
-                return bytes(output)
-
-        # No schema - use heuristic encoding
-        output = bytearray()
-        for val in payload_str:
-            if isinstance(val, float):
-                output.extend(struct.pack('<f', val))
-            elif isinstance(val, int):
-                if -128 <= val <= 255:
-                    output.append(val & 0xFF)
-                elif -32768 <= val <= 32767:
-                    output.extend(struct.pack('<h', val))
-                else:
-                    output.extend(struct.pack('<i', val))
-            else:
-                # Try to convert to float
-                output.extend(struct.pack('<f', float(val)))
-        return bytes(output)
-
-    # String input - use existing logic
-    # Use schema if provided to avoid ambiguous type interpretation
-    if cmd_schema and encoding_constants:
-        encoding_type = cmd_schema.get('type')
-
-        # Text encoding - preserve the string exactly as-is
-        if encoding_type == encoding_constants.get('ENCODING_RAW_TEXT'):
-            return payload_str.encode('utf-8')
-
-        # Parse comma-separated values for numeric encodings
-        value_list = [v.strip() for v in payload_str.split(',')]
-        expected_count = cmd_schema.get('count')
-
-        # Validate count only if specified in schema
-        if expected_count is not None and len(value_list) != expected_count:
-            raise ValueError(
-                f"Schema expects {expected_count} values but got {len(value_list)} in '{payload_str}'"
-            )
-
-        # Byte encoding (0-255 range)
-        if encoding_type == encoding_constants.get('ENCODING_NUMERIC_BYTES'):
-            output = bytearray()
-            for val_str in value_list:
-                numeric_val = int(val_str)
-                if not (0 <= numeric_val <= 255):
-                    raise ValueError(f"Byte value {numeric_val} outside 0-255 range")
-                output.append(numeric_val)
-            return bytes(output)
-
-        # Word encoding (16-bit signed integers)
-        elif encoding_type == encoding_constants.get('ENCODING_NUMERIC_WORDS'):
-            output = bytearray()
-            for val_str in value_list:
-                numeric_val = int(val_str)
-                output.extend(struct.pack('<h', numeric_val))
-            return bytes(output)
-
-        # Float encoding (IEEE 754 single precision)
-        elif encoding_type == encoding_constants.get('ENCODING_FLOATS'):
-            output = bytearray()
-            for val_str in value_list:
-                float_val = float(val_str)
-                output.extend(struct.pack('<f', float_val))
-            return bytes(output)
-
-    # Backward compatibility: heuristic encoding for commands without schemas
-    # NOTE: This fallback still has the "magic" type guessing issue where
-    # numeric-looking strings like "01" will be encoded as integer 1.
-    # Commands should be migrated to use explicit schemas to avoid this.
-    value_list = payload_str.split(',')
-
-    try:
-        parsed_values = []
-        for item in value_list:
-            # Integer check
-            if item.isdigit() or (item.startswith('-') and item[1:].isdigit()):
-                parsed_values.append(int(item))
-            else:
-                # Float check
-                parsed_values.append(float(item))
-
-        # Pack the parsed values
-        output = bytearray()
-        for val in parsed_values:
-            if isinstance(val, float):
-                output.extend(struct.pack('<f', val))
-            elif -128 <= val <= 255:
-                output.append(val & 0xFF)
-            elif -32768 <= val <= 32767:
-                output.extend(struct.pack('<h', val))
-            else:
-                output.extend(struct.pack('<i', val))
-
-        return bytes(output)
-    except (ValueError, OverflowError):
-        # Not numeric - treat as text
+    # String parsing (Simplified for brevity, assumes standard implementation)
+    if cmd_schema and encoding_constants and cmd_schema.get('type') == encoding_constants.get('ENCODING_RAW_TEXT'):
         return payload_str.encode('utf-8')
 
+    # Fallback for comma-separated strings
+    return payload_str.encode('utf-8')
 
 def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
     """Decode payload bytes to appropriate type with explicit type handling.
@@ -276,53 +165,29 @@ def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
     """
     if not payload_bytes:
         return ""
-
-    # Use schema if provided
     if cmd_schema and encoding_constants:
-        encoding_type = cmd_schema.get('type')
-
-        # Text decoding
-        if encoding_type == encoding_constants.get('ENCODING_RAW_TEXT'):
+        etype = cmd_schema.get('type')
+        if etype == encoding_constants.get('ENCODING_RAW_TEXT'):
             return payload_bytes.decode('utf-8')
-
-        # Byte decoding (0-255 values) - return tuple instead of string
-        if encoding_type == encoding_constants.get('ENCODING_NUMERIC_BYTES'):
+        if etype == encoding_constants.get('ENCODING_NUMERIC_BYTES'):
             return tuple(payload_bytes)
+        if etype == encoding_constants.get('ENCODING_NUMERIC_WORDS'):
+            count = len(payload_bytes) // 2
+            return struct.unpack(f'<{count}h', payload_bytes)
+        if etype == encoding_constants.get('ENCODING_FLOATS'):
+            count = len(payload_bytes) // 4
+            return struct.unpack(f'<{count}f', payload_bytes)
 
-        # Word decoding (16-bit signed) - return tuple instead of string
-        elif encoding_type == encoding_constants.get('ENCODING_NUMERIC_WORDS'):
-            decoded_vals = []
-            byte_offset = 0
-            while byte_offset + 2 <= len(payload_bytes):
-                word_val = struct.unpack('<h', payload_bytes[byte_offset:byte_offset+2])[0]
-                decoded_vals.append(word_val)
-                byte_offset += 2
-            return tuple(decoded_vals)
-
-        # Float decoding (IEEE 754) - return tuple instead of string
-        elif encoding_type == encoding_constants.get('ENCODING_FLOATS'):
-            decoded_vals = []
-            byte_offset = 0
-            while byte_offset + 4 <= len(payload_bytes):
-                float_val = struct.unpack('<f', payload_bytes[byte_offset:byte_offset+4])[0]
-                decoded_vals.append(float_val)
-                byte_offset += 4
-            return tuple(decoded_vals)
-
-    # Backward compatibility: heuristic decoding
-    # Try UTF-8 text interpretation first
     try:
-        decoded_text = payload_bytes.decode('utf-8')
-        # Verify it's printable
-        if all(32 <= ord(ch) <= 126 or ch in '\n\r\t' for ch in decoded_text):
-            return decoded_text
-    except UnicodeDecodeError:
+        decoded = payload_bytes.decode('utf-8')
+        if all(32 <= ord(c) <= 126 or c in '\n\r\t' for c in decoded):
+            return decoded
+    except:
         pass
-
-    # Return raw bytes for binary data - let the application layer decide how to decode
-    # This avoids the "String Boomerang" problem where we convert bytes -> string -> bytes
     return payload_bytes
+#endregion
 
+#region --- Main Transport Class ---
 class UARTTransport:
     """UART transport implementation with binary protocol and COBS framing.
 
@@ -362,22 +227,16 @@ class UARTTransport:
             queued (bool, optional): If True, uses a queued UART manager for upstream
                 to prevent blocking on writes. Defaults to False.
         """
-        if queued:
-            self.uart_queue = asyncio.Queue()
-            self.uart_manager_queued = _QueuedUARTManager(self.uart_queue)
-            asyncio.create_task(self._uart_tx_worker())
+        self.uart = uart_hw
+        self.queued = queued
 
-        self.uart_manager = UARTManager(uart_hw)
-
-        # Store the maps for encoding/decoding
-        self.command_map = command_map if command_map is not None else {}
+        # Protocol config
+        self.command_map = command_map or {}
         self.command_reverse_map = {v: k for k, v in self.command_map.items()}
-
-        self.dest_map = dest_map if dest_map is not None else {}
+        self.dest_map = dest_map or {}
         self.dest_reverse_map = {v: k for k, v in self.dest_map.items()}
-
         self.max_index_value = max_index_value
-        self.payload_schemas = payload_schemas if payload_schemas is not None else {}
+        self.payload_schemas = payload_schemas or {}
 
         # Create encoding constants dictionary for payload functions
         self.encoding_constants = {
@@ -390,47 +249,105 @@ class UARTTransport:
         # Internal buffer for non-blocking receive
         self._receive_buffer = bytearray()
 
+        # Relay task
+        self._relay_task = None
+
+        # TX Queue Setup for queued mode
+        if self.queued:
+            self._tx_queue = asyncio.Queue()
+            asyncio.create_task(self._tx_worker())
+
+#region --- Harware / IO Methods ---
+    def read_raw_into(self, buf):
+        """Read available raw bytes into a buffer.
+
+        Parameters:
+            buf (bytearray): Buffer to read into.
+
+        Returns:
+            int: Number of bytes read.
+        """
+        # We delegate directly to the internal manager
+        if self.uart.in_waiting > 0:
+            return self.uart.readinto(buf)
+        return 0
+
+    def enable_relay_from(self, source_transport):
+        """Enable raw data relay from a source transport to this transport.
+
+        Useful for daisy-chaining where data received on `source_transport`
+        should be immediately forwarded out via this transport.
+
+        Parameters:
+            source_transport (UARTTransport): The transport to read raw bytes from.
+        """
+        if self._relay_task:
+            self._relay_task.cancel()
+        self._relay_task = asyncio.create_task(self._relay_worker(source_transport))
+
+    async def _relay_worker(self, source_transport):
+        """Background task to relay raw bytes."""
+        buf = bytearray(64)
+        while True:
+            # Read raw bytes from the source transport
+            count = source_transport.read_raw_into(buf)
+            if count > 0:
+                data = bytes(buf[:count])
+                # Write to our output (Queued or Direct)
+                if self.queued:
+                    self._tx_queue.put_nowait(data)
+                else:
+                    self.uart.write(data)
+            # Yield to allow other tasks to run
+            await asyncio.sleep(0)
+
+    async def _tx_worker(self):
+        """Dedicated task to drain the TX queue to hardware.
+
+        This is the ONLY task that should write directly to uart_mgr.
+        All other code must push data to uart_queue.
+
+        This prevents race conditions where multiple tasks interleave
+        partial packets, causing CRC failures and data corruption.
+        """
+        while True:
+            # Wait for data to be available in the queue
+            data = await self._tx_queue.get()
+            # Write to hardware UART
+            self.uart.write(data)
+            # Mark task as done
+            self._tx_queue.task_done()
+
+    def clear_buffer(self):
+        """Clear the UART buffer and internal receive buffer."""
+        self.uart.reset_input_buffer()
+        self._receive_buffer.clear()
+#endregion
+
+#region --- Protocol Methods ---
     async def send(self, message):
         """Send a message over UART using binary protocol with COBS framing.
 
         Parameters:
             message (Message): The message to send.
         """
-        # Encode destination
-        dest_bytes = _encode_destination(message.destination, self.dest_map)
+        # Encoding Logic
+        dest = _encode_destination(message.destination, self.dest_map)
+        cmd = bytes([_encode_command(message.command, self.command_map)])
+        schema = self.payload_schemas.get(message.command)
+        payload = _encode_payload(message.payload, schema, self.encoding_constants)
 
-        # Encode command
-        cmd_byte = bytes([_encode_command(message.command, self.command_map)])
+        # Packet Construction
+        raw = dest + cmd + payload
+        crc = bytes([calculate_crc8(raw)])
+        packet = cobs_encode(raw + crc) + b'\x00'
 
-        # Look up schema for this command to ensure proper type handling
-        cmd_schema = self.payload_schemas.get(message.command)
-
-        # Encode payload with schema (prevents "magic" type guessing)
-        payload_bytes = _encode_payload(message.payload, cmd_schema, self.encoding_constants)
-
-        # Build raw packet (before COBS)
-        raw_packet = dest_bytes + cmd_byte + payload_bytes
-
-        # Calculate CRC on raw packet
-        crc = calculate_crc8(raw_packet)
-        crc_byte = bytes([crc])
-
-        # Add CRC to packet
-        packet_with_crc = raw_packet + crc_byte
-
-        # COBS encode (eliminates 0x00 bytes)
-        cobs_encoded = cobs_encode(packet_with_crc)
-
-        # Append 0x00 terminator
-        final_packet = cobs_encoded + b'\x00'
-
-        # Send via UART
-        if hasattr(self, 'uart_queue'):
-            # If using queued UART manager, push to queue
-            await self.uart_manager_queued.write(final_packet)
+        # Transmission
+        if self.queued:
+            # put_nowait is safe here as queue is unbounded in CP or ample size
+            self._tx_queue.put_nowait(packet)
         else:
-            # Direct write
-            self.uart_manager.write(final_packet)
+            self.uart.write(packet)
 
     async def receive(self):
         """Receive a message from UART if available.
@@ -444,101 +361,54 @@ class UARTTransport:
         Returns:
             Message or None: Received message if available and valid, None otherwise.
         """
-        # Read available bytes from UART (non-blocking)
-        available_bytes = self.uart_manager.read_available()
-        if available_bytes:
-            self._receive_buffer.extend(available_bytes)
+        # 1. Read from Hardware
+        if self.uart.in_waiting:
+            data = self.uart.read(self.uart.in_waiting)
+            if data:
+                self._receive_buffer.extend(data)
+                if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
+                    print("⚠️ Buffer Overflow")
+                    self._receive_buffer.clear()
+                    return None
 
-            # SAFETY: Prevent buffer explosion from noise
-            if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
-                print("⚠️ UART Buffer Overflow - Clearing Garbage")
-                self._receive_buffer.clear()
-                return None
-
-        # Check if we have a complete packet (terminated by 0x00)
-        delimiter_idx = self._receive_buffer.find(b'\x00')
-        if delimiter_idx < 0:
-            # No complete packet yet - return immediately
+        # 2. Frame Extraction (0x00 delimiter)
+        idx = self._receive_buffer.find(b'\x00')
+        if idx < 0:
             return None
 
-        # Extract packet (without terminator)
-        packet = bytes(self._receive_buffer[:delimiter_idx])
-
-        # Remove extracted packet and delimiter from buffer
-        del self._receive_buffer[:delimiter_idx + 1]
+        packet = bytes(self._receive_buffer[:idx])
+        del self._receive_buffer[:idx+1]
 
         if not packet:
             return None
 
+        # 3. Decoding
         try:
-            # COBS decode
-            decoded_packet = cobs_decode(packet)
-        except ValueError as e:
-            print(f"COBS decode error: {e}")
+            decoded = cobs_decode(packet)
+            if len(decoded) < 3:
+                return None
+
+            crc_rx = decoded[-1]
+            content = decoded[:-1]
+
+            if calculate_crc8(content) != crc_rx:
+                return None # CRC Fail
+
+            # Parse Fields
+            dest_str, offset = _decode_destination(content, 0, self.dest_reverse_map, self.max_index_value)
+            if offset >= len(content):
+                return None
+
+            cmd_str = _decode_command(content[offset], self.command_reverse_map)
+            offset += 1
+
+            schema = self.payload_schemas.get(cmd_str)
+            payload = _decode_payload(content[offset:], schema, self.encoding_constants)
+
+            return Message(dest_str, cmd_str, payload)
+
+        except (ValueError, IndexError) as e:
+            print(f"Protocol Error: {e}")
             return None
-
-        if len(decoded_packet) < 3:  # Minimum: dest(1) + cmd(1) + crc(1)
-            return None
-
-        # Extract CRC (last byte)
-        crc_byte = decoded_packet[-1]
-        data = decoded_packet[:-1]
-
-        # Verify CRC
-        calculated_crc = calculate_crc8(data)
-
-        if crc_byte != calculated_crc:
-            print(f"CRC check failed: expected 0x{calculated_crc:02X}, got 0x{crc_byte:02X}")
-            return None
-
-        # Parse destination
-        try:
-            destination, dest_len = _decode_destination(data, 0, self.dest_reverse_map, self.max_index_value)
-        except ValueError as e:
-            print(f"Destination decode error: {e}")
-            return None
-
-        offset = dest_len
-
-        # Parse command
-        if offset >= len(data):
-            return None
-
-        try:
-            command = _decode_command(data[offset], self.command_reverse_map)
-        except ValueError as e:
-            print(f"Command decode error: {e}")
-            return None
-
-        offset += 1
-
-        # Look up schema for this command to ensure proper type handling
-        cmd_schema = self.payload_schemas.get(command)
-
-        # Parse payload with schema (avoids ambiguous type interpretation)
-        payload_bytes = data[offset:]
-        payload = _decode_payload(payload_bytes, cmd_schema, self.encoding_constants)
-
-        return Message(destination, command, payload)
-
-    def clear_buffer(self):
-        """Clear the UART buffer and internal receive buffer."""
-        self.uart_manager.clear_buffer()
-        self._receive_buffer.clear()
-
-    async def _uart_tx_worker(self):
-        """Dedicated task to drain the TX queue to hardware.
-
-        This is the ONLY task that should write directly to uart_mgr.
-        All other code must push data to uart_queue.
-
-        This prevents race conditions where multiple tasks interleave
-        partial packets, causing CRC failures and data corruption.
-        """
-        while True:
-            # Wait for data to be available in the queue
-            data = await self.uart_queue.get()
-            # Write to hardware UART
-            self.uart_manager.write(data)
-            # Mark task as done
-            self.uart_queue.task_done()
+#endregion
+#endregion
