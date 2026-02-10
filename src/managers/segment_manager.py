@@ -7,6 +7,8 @@ import time
 
 from adafruit_ht16k33.segments import Seg14x4
 
+from utilities import parse_values, get_float, get_str
+
 class SegmentManager:
     """Manages dual 14-segment displays."""
     def __init__(self, i2c):
@@ -18,12 +20,33 @@ class SegmentManager:
         self._display_task = None
 
     # --- BASIC TRIGGERS ---
-    async def start_message(self, text, loop=False, speed=0.3, direction="L"):
+    async def start_message(self, message, loop=False, speed=0.3, direction="L"):
         """Starts a marquee message as a task."""
         if self._display_task and not self._display_task.done():
             self._display_task.cancel()
             await asyncio.sleep(0.1)
-        self._display_task = asyncio.create_task(self._message_logic(text, loop, speed, direction))
+        self._display_task = asyncio.create_task(self._message_logic(message, loop, speed, direction))
+
+    async def apply_command(self, cmd, val):
+        """Parses and executes a raw protocol command."""
+        if isinstance(val, (list, tuple)):
+            values = val
+        else:
+            values = parse_values(val)
+
+        if cmd == "DSP":
+            self.start_message(
+                message=get_str(values, 0),
+                loop=(get_str(values, 1) == "1"),
+                speed=get_float(values, 2, 0.3),
+                direction=get_str(values, 3, "L")
+            )
+        elif cmd == "DSPCORRUPT":
+            duration = get_float(values, 0, 2.0)
+            self.start_corruption(duration if duration > 0 else 2.0)
+        elif cmd == "DSPMATRIX":
+            duration = get_float(values, 0, 2.0)
+            self.start_matrix(duration if duration > 0 else 2.0)
 
     # --- BASIC LOGIC ---
     async def _message_logic(self, text, loop=False, speed=0.3, direction="L"):

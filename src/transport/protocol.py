@@ -9,19 +9,32 @@ reusable for other projects while applications can inject their specific
 command sets.
 """
 
-# Command string to byte mapping
+# --- Command Constants (Avoid Magic Strings in Logic) ---
+CMD_PING = "PING"
+CMD_ACK = "ACK"
+CMD_NACK = "NACK"
+CMD_ID_ASSIGN = "ID_ASSIGN"
+CMD_NEW_SAT = "NEW_SAT"
+CMD_STATUS = "STATUS"
+CMD_ERROR = "ERROR"
+CMD_LOG = "LOG"
+CMD_SYNC_FRAME = "SYNC_FRAME"
+CMD_POWER = "POWER"
+CMD_SETENC = "SETENC"
+
+# --- Command Mapping ---
 COMMAND_MAP = {
     # System & Discovery
-    "PING": 0x01,
-    "ACK": 0x02,
-    "NACK": 0x03,
-    "ID_ASSIGN": 0x04,
-    "NEW_SAT": 0x05,
-    "STATUS": 0x06,
-    "ERROR": 0x07,
-    "LOG": 0x08,
-    "SYNC_FRAME": 0x09,
-    "POWER": 0x0A,
+    CMD_PING: 0x01,
+    CMD_ACK: 0x02,
+    CMD_NACK: 0x03,
+    CMD_ID_ASSIGN: 0x04,
+    CMD_NEW_SAT: 0x05,
+    CMD_STATUS: 0x06,
+    CMD_ERROR: 0x07,
+    CMD_LOG: 0x08,
+    CMD_SYNC_FRAME: 0x09,
+    CMD_POWER: 0x0A,
 
     # LED commands
     "LED": 0x10,
@@ -38,12 +51,8 @@ COMMAND_MAP = {
     "DSPMATRIX": 0x22,
 
     # Encoder commands
-    "SETENC": 0x30,
+    CMD_SETENC: 0x30,
 }
-
-# Reverse mapping for decoding
-COMMAND_REVERSE_MAP = {v: k for k, v in COMMAND_MAP.items()}
-
 
 # Special destination IDs
 DEST_MAP = {
@@ -52,11 +61,29 @@ DEST_MAP = {
     "SAT": 0x01,
 }
 
+# --- Command Groups (The Source of Truth for Dispatch) ---
+#These sets allow the firmware to ask "Is this an LED command?"
+# without knowing the specific command names.
+
+# Dynamically generate these based on your naming convention,
+# or explicitly list them if you want strict control.
+LED_COMMANDS = {k for k in COMMAND_MAP if k.startswith("LED")}
+DSP_COMMANDS = {k for k in COMMAND_MAP if k.startswith("DSP")}
+
+# Commands that are handled directly by the Firmware class
+SYSTEM_COMMANDS = {
+    CMD_ID_ASSIGN,
+    CMD_SYNC_FRAME,
+    CMD_SETENC,
+    CMD_NEW_SAT
+}
+
+# Reverse mapping for decoding
+COMMAND_REVERSE_MAP = {v: k for k, v in COMMAND_MAP.items()}
 DEST_REVERSE_MAP = {v: k for k, v in DEST_MAP.items()}
 
 # Maximum value for single-byte index (used to distinguish 1-byte vs 2-byte dest IDs)
 MAX_INDEX_VALUE = 100
-
 
 # Payload encoding type constants
 ENCODING_RAW_TEXT = 'text'

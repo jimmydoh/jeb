@@ -13,12 +13,33 @@ import microcontroller
 import busio
 import neopixel
 
-from utilities import JEBPixel, Palette, Pins, parse_values, get_int, get_float, get_str
-
-from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
-
-from managers import HIDManager, LEDManager, PowerManager, RenderManager, SegmentManager
-
+from utilities import (
+    JEBPixel,
+    Palette,
+    Pins,
+    parse_values,
+    get_int,
+)
+from transport import (
+    Message,
+    UARTTransport,
+    CMD_ID_ASSIGN,
+    CMD_SYNC_FRAME,
+    CMD_SETENC,
+    LED_COMMANDS,
+    DSP_COMMANDS,
+    COMMAND_MAP,
+    DEST_MAP,
+    MAX_INDEX_VALUE,
+    PAYLOAD_SCHEMAS
+)
+from managers import (
+    HIDManager,
+    LEDManager,
+    PowerManager,
+    RenderManager,
+    SegmentManager
+)
 from .base import Satellite
 
 TYPE_ID = "01"
@@ -30,10 +51,6 @@ class IndustrialSatelliteFirmware(Satellite):
     Handles hardware I/O, power management, and local command processing.
     Runs on the physical satellite hardware and manages all peripherals.
     """
-
-    # Render loop configuration - runs at 60Hz for smooth LED updates (matches CoreManager)
-    RENDER_FRAME_TIME = 1.0 / 60.0  # ~0.0167 seconds per frame
-
     def __init__(self):
         """Initialize the Industrial Satellite Firmware."""
         # State Variables
@@ -126,208 +143,57 @@ class IndustrialSatelliteFirmware(Satellite):
         self.last_sync_frame = 0
         self.time_offset = 0.0  # Estimated time difference from Core (in seconds)
 
+        self._system_handlers = {
+            CMD_ID_ASSIGN: self._handle_id_assign,
+            CMD_SYNC_FRAME: self._handle_sync_frame,
+            CMD_SETENC: self._handle_set_enc,
+        }
+
     async def process_local_cmd(self, cmd, val):
-        """Process commands addressed to this satellite.
+        """Optimized command processor using dispatch and delegation."""
+        handler = self._system_handlers.get(cmd)
+        if handler:
+            handler(val)
+            return
 
-        Handles both text and binary payloads efficiently.
-        Binary payloads are processed using parse_values() which now
-        avoids the "String Boomerang" issue.
+        # 2. Subsystem Delegation (Prefix Routing)
+        if cmd in LED_COMMANDS:
+            await self.leds.apply_command(cmd, val)
+        elif cmd in DSP_COMMANDS:
+            await self.segment.apply_command(cmd, val)
 
-        TODO Adjust async logic for LED and Segment tasks - will be handled by manager classes
-        """
-        if cmd == "ID_ASSIGN":
-            # ID_ASSIGN uses text format, ensure val is string
-            if isinstance(val, bytes):
-                val = val.decode('utf-8')
-            type_prefix = val[:2]
-            current_index = int(val[2:])
-            if type_prefix == self.sat_type_id:
-                # We are the correct type, increment the index
-                new_index = current_index + 1
-                self.id = f"{type_prefix}{new_index:02d}" # e.g. "0101"
+    # --- Private Handlers for System Logic ---
 
-                # Visual confirmation on 14-segments
-                self.segment.start_message(f"ID {self.id}", loop=False)
+    def _handle_id_assign(self, val):
+        if isinstance(val, bytes):
+            val = val.decode('utf-8')
+        type_prefix = val[:2]
+        current_index = int(val[2:])
 
-                # Pass the NEW index downstream for the next box
-                msg_out = Message("ALL", "ID_ASSIGN", self.id)
-                self.transport_down.send(msg_out)
-            else:
-                # Not our type? Pass it along unchanged
-                msg_out = Message("ALL", "ID_ASSIGN", val)
-                self.transport_down.send(msg_out)
+        if type_prefix == self.sat_type_id:
+            new_index = current_index + 1
+            self.id = f"{type_prefix}{new_index:02d}"
+            self.segment.start_message(f"ID {self.id}", loop=False)
 
-        elif cmd == "SYNC_FRAME":
-            self.renderer.apply_sync(int(val[0]))
+            # Forward new index downstream
+            msg_out = Message("ALL", CMD_ID_ASSIGN, self.id)
+            self.transport_down.send(msg_out)
+        else:
+            # Pass original downstream
+            msg_out = Message("ALL", CMD_ID_ASSIGN, val)
+            self.transport_down.send(msg_out)
 
+    def _handle_sync_frame(self, val):
+        # val is tuple (frame, time) from binary payload
+        self.renderer.apply_sync(int(val[0]))
 
-        elif cmd == "SETENC":
-            # Set the encoder position to a specific value
-            # parse_values now handles both bytes and strings efficiently!
-            if len(val) > 0:
-                values = parse_values(val)
-                self.hid.reset_encoder(get_int(values, 0))
-
-        elif cmd == "LED" or cmd == "LEDFLASH" or cmd == "LEDBREATH":
-            # Parse payload once for all LED types
-            # parse_values now handles bytes without String Boomerang!
+    def _handle_set_enc(self, val):
+        # Handle both binary tuple and text formats
+        if isinstance(val, (list, tuple)):
+            self.hid.reset_encoder(int(val[0]))
+        else:
             values = parse_values(val)
-            idx_raw = get_str(values, 0)
-            target_indices = range(6) if idx_raw == "ALL" else [get_int(values, 0)]
-
-            for i in target_indices:
-
-                # E.g. LED|r,g,b,duration,brightness,priority
-                # LED|0,100,100,100,2.0,0.2,2
-                # Set LED 0 to RGB(100,100,100) for 2.0 seconds at 20% brightness, priority 2
-                if cmd == "LED":
-                    # Static Color
-                    r = get_int(values, 1)
-                    g = get_int(values, 2)
-                    b = get_int(values, 3)
-                    duration_val = get_float(values, 4)
-                    duration = duration_val if duration_val > 0 else None
-                    brightness = get_float(values, 5, 1.0)
-                    priority = get_int(values, 6, 2)
-                    self.leds.solid_led(i,
-                                       (r, g, b),
-                                       brightness=brightness,
-                                       duration=duration,
-                                       priority=priority)
-
-                # E.g. LEDFLASH|r,g,b,duration,brightness,priority,speed,off_speed
-                # LEDFLASH|0,255,0,2.0,0.5,2,0.5,0.1
-                # LED 0 flashes green for 2s at 50% brightness, speed 0.5s on, 0.1s off, priority 2
-                elif cmd == "LEDFLASH":
-                    # Flashing Animation
-                    r = get_int(values, 1)
-                    g = get_int(values, 2)
-                    b = get_int(values, 3)
-                    duration_val = get_float(values, 4)
-                    duration = duration_val if duration_val > 0 else None
-                    brightness = get_float(values, 5, 1.0)
-                    priority = get_int(values, 6, 2)
-                    speed = get_float(values, 7, 0.1)
-                    off_speed_val = get_float(values, 8)
-                    off_speed = off_speed_val if off_speed_val > 0 else None
-                    self.leds.flash_led(i,
-                                       (r, g, b),
-                                       brightness=brightness,
-                                       duration=duration,
-                                       priority=priority,
-                                       speed=speed,
-                                       off_speed=off_speed)
-
-                # E.g. LEDBREATH|r,g,b,duration,brightness,priority,speed
-                # LEDBREATH|0,0,0,255,2.0,0.2,3,2.0
-                # LED 0 breathes blue over 2s at 20% brightness, speed 2.0, priority 3
-                elif cmd == "LEDBREATH":
-                    # Breathing Animation
-                    r = get_int(values, 1)
-                    g = get_int(values, 2)
-                    b = get_int(values, 3)
-                    duration_val = get_float(values, 4)
-                    duration = duration_val if duration_val > 0 else None
-                    brightness = get_float(values, 5, 1.0)
-                    priority = get_int(values, 6, 2)
-                    speed = get_float(values, 7, 2.0)
-                    self.leds.breathe_led(i,
-                                         (r, g, b),
-                                         brightness=brightness,
-                                         duration=duration,
-                                         priority=priority,
-                                         speed=speed)
-
-        elif cmd == "LEDCYLON":
-            # E.g. LEDCYLON|r,g,b,duration,speed
-            # LEDCYLON|255,0,0,2.0,0.08
-            # Red Cylon for 2 seconds at 0.08 speed
-            values = parse_values(val)
-            r = get_int(values, 0)
-            g = get_int(values, 1)
-            b = get_int(values, 2)
-            duration_val = get_float(values, 3, 2.0)
-            duration = duration_val if duration_val > 0 else 2.0
-            speed = get_float(values, 4, 0.08)
-            self.leds.start_cylon((r, g, b),
-                                 duration=duration,
-                                 speed=speed)
-
-        elif cmd == "LEDCENTRI":
-            # E.g. LEDCENTRI|r,g,b,duration,speed
-            # LEDCENTRI|255,0,0,2.0,0.08
-            # Red Centrifuge for 2 seconds at 0.08 speed
-            values = parse_values(val)
-            r = get_int(values, 0)
-            g = get_int(values, 1)
-            b = get_int(values, 2)
-            duration_val = get_float(values, 3, 2.0)
-            duration = duration_val if duration_val > 0 else 2.0
-            speed = get_float(values, 4, 0.08)
-            self.leds.start_centrifuge((r, g, b),
-                                      duration=duration,
-                                      speed=speed)
-
-        elif cmd == "LEDRAINBOW":
-            # E.g. LEDRAINBOW|duration,speed
-            # LEDRAINBOW|2.0,0.08
-            # Rainbow for 2 seconds at 0.08 speed
-            values = parse_values(val)
-            duration_val = get_float(values, 0, 2.0)
-            duration = duration_val if duration_val > 0 else 2.0
-            speed = get_float(values, 1, 0.08)
-            self.leds.start_rainbow(duration=duration,
-                                   speed=speed)
-
-        elif cmd == "LEDGLITCH":
-            # E.g. LEDGLITCH|duration,speed
-            # LEDGLITCH|2.0,0.08
-            # Glitch for 2 seconds at 0.08 speed
-            values = parse_values(val)
-            duration_val = get_float(values, 0, 2.0)
-            duration = duration_val if duration_val > 0 else 2.0
-            speed = get_float(values, 1, 0.08)
-            # TODO Find a way to pass multiple colors
-            colors = [
-                Palette.YELLOW,
-                Palette.CYAN,
-                Palette.WHITE,
-                Palette.MAGENTA,
-            ]
-            self.leds.start_glitch(colors,
-                                   duration=duration,
-                                   speed=speed)
-
-        elif cmd == "DSP":
-            # E.g. DSP|message,loop,speed,direction
-            # DSP|HELLO,1,0.2,L
-            # Display "HELLO" looping at 0.2s speed, left direction
-            values = parse_values(val)
-            message = get_str(values, 0)
-            loop = True if get_str(values, 1) == "1" else False
-            speed = get_float(values, 2, 0.3)
-            direction = get_str(values, 3, "L")
-
-            # Cancel any existing display task and start new one
-            self.segment.start_message(message, loop, speed, direction)
-
-        elif cmd == "DSPCORRUPT":
-            # E.g. DSPCORRUPT|duration
-            # DSPCORRUPT|2.0
-            # Start corruption animation for 2 seconds
-            values = parse_values(val)
-            duration_val = get_float(values, 0, 2.0)
-            duration = duration_val if duration_val > 0 else 2.0
-            self.segment.start_corruption(duration)
-
-        elif cmd == "DSPMATRIX":
-            # E.g. DSPMATRIX|duration
-            # DSPMATRIX|2.0
-            # Start matrix rain animation for 2 seconds
-            values = parse_values(val)
-            duration_val = get_float(values, 0, 2.0)
-            duration = duration_val if duration_val > 0 else 2.0
-            self.segment.start_matrix(duration)
+            self.hid.reset_encoder(get_int(values, 0))
 
     async def monitor_power(self):
         """Background task to watch for local brownouts or downstream faults."""
