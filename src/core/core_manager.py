@@ -6,7 +6,6 @@ TODO: Implement HardwareContext for modes to limit access
 """
 import asyncio
 import busio
-import microcontroller
 import neopixel
 from adafruit_ticks import ticks_ms, ticks_diff
 
@@ -22,6 +21,7 @@ from managers import (
     RenderManager,
     SatelliteNetworkManager,
     SynthManager,
+    WatchdogManager
 )
 from modes import AVAILABLE_MODES, BaseMode
 from transport import (
@@ -62,27 +62,16 @@ class CoreManager:
             - is_active: bool
             - slot_id: int
     """
-    def __init__(self, root_data_dir="/", debug_mode=False):
+    def __init__(self, config=None):
         # Load config or use defaults
         if config is None:
             config = {}
 
         self.debug_mode = config.get("debug_mode", False)
-        debug_mode = self.debug_mode
         self.root_data_dir = config.get("root_data_dir", "/")
-        uart_baudrate = config.get("uart_baudrate", 115200)
 
-        # Watchdog Flag Pattern - Prevents blind feeding if critical tasks crash
-        # Each critical background task must set its flag to True each iteration
-        # The watchdog is only fed if ALL flags are True, then flags are reset
-        self.watchdog_flags = {
-            "sat_network": False,
-            "estop": False,
-            "power": False,
-            "connection": False,
-            "hw_hid": False,
-            "render": False,
-        }
+        # Init Watchdog Manager
+        self.watchdog = None
 
         # Init Data Manager for persistent storage of scores and settings
         self.data = DataManager(root_dir=self.root_data_dir)
@@ -98,23 +87,40 @@ class CoreManager:
             Pins.SATBUS_DETECT,
         )
 
-        # TODO Check power state
-
-        # Init Buzzer for early audio feedback
-        self.buzzer = BuzzerManager(Pins.BUZZER, volume=0.5)
-        self.buzzer.play_song("POWER_UP")
-
         # Init I2C bus
         self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
 
-        # Init other managers
+        # UART for satellite communication
+        uart_hw = busio.UART(
+            Pins.UART_TX,
+            Pins.UART_RX,
+            baudrate=config.get("uart_baudrate", 115200),
+            receiver_buffer_size=config.get("uart_buffer_size", 512),
+            timeout=0.01,
+        )
+
+        # Wrap with transport layer for protocol handling
+        self.transport = UARTTransport(
+            uart_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+        )
+
+        # Init Basic Audio (Buzzer)
+        self.buzzer = BuzzerManager(Pins.BUZZER, volume=0.5)
+
+        # Init Primary Audio (I2S) and Synthesizer
         self.audio = AudioManager(
             Pins.I2S_SCK, Pins.I2S_WS, Pins.I2S_SD, root_data_dir=self.root_data_dir
         )
-
+        self.audio.preload(
+            [
+                "audio/common/menu_tick.wav",
+                "audio/common/menu_select.wav",
+            ]
+        )
         self.synth = SynthManager()
         self.audio.attach_synth(self.synth.source)  # Connect synth to audio mixer
 
+        # Init Display (OLED)
         self.display = DisplayManager(self.i2c)
         self.hid = HIDManager(
             encoders=Pins.ENCODERS,
@@ -122,6 +128,15 @@ class CoreManager:
             mcp_int_pin=Pins.EXPANDER_INT,
             expanded_buttons=Pins.EXPANDER_BUTTONS,
         )
+
+        # Initialize Satellite Network Manager
+        self.sat_network = SatelliteNetworkManager(
+            self.transport,
+            self.display,
+            self.audio
+        )
+        if self.debug_mode:
+            self.sat_network.set_debug_mode(True)
 
         # Init LEDs
         self.root_pixels = neopixel.NeoPixel(
@@ -136,40 +151,9 @@ class CoreManager:
         self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=64, num_pixels=4)
         self.leds = LEDManager(self.led_jeb_pixel)
 
-        # Preload Common UI Sounds
-        self.audio.preload(
-            [
-                "audio/common/menu_tick.wav",
-                "audio/common/menu_select.wav",
-            ]
-        )
-
-        # UART for satellite communication
-        uart_hw = busio.UART(
-            Pins.UART_TX,
-            Pins.UART_RX,
-            baudrate=uart_baudrate,
-            receiver_buffer_size=512,
-            timeout=0.01,
-        )
-
-        # Wrap with transport layer for protocol handling
-        self.transport = UARTTransport(
-            uart_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
-        )
-
-        # Initialize Satellite Network Manager
-        self.sat_network = SatelliteNetworkManager(
-            self.transport, self.display, self.audio, self.watchdog_flags
-        )
-
-        if debug_mode:
-            self.sat_network.set_debug_mode(True)
-
-        # Setup Render Manager to coordinate hardware writes and frame sync
+        # Setup Render Manager to coordinate LED animations
         self.renderer = RenderManager(
             self.root_pixels,
-            watchdog_flags=self.watchdog_flags,
             sync_role="MASTER",
             network_manager=self.sat_network
         )
@@ -190,12 +174,9 @@ class CoreManager:
             meta = getattr(mode_class, "METADATA", BaseMode.METADATA)
             self.modes[meta["id"]] = mode_class
         self.mode = "DASHBOARD"
-        self.meltdown = False
-        self.sat_active = False
 
-        # Frame sync state for coordinated LED animations with satellites
-        self.frame_counter = 0
-        self.last_sync_broadcast = 0.0
+        # Track e-stop 'Meltdown'
+        self.meltdown = False
 
     def _get_mode(self, mode_name):
         """Get a mode class from the registry with helpful error message.
@@ -247,23 +228,6 @@ class CoreManager:
         """Access last debug message from SatelliteNetworkManager."""
         return self.sat_network.last_message_debug
 
-    def safe_feed_watchdog(self):
-        """Feed watchdog only if all critical tasks are alive.
-
-        Uses the Watchdog Flag Pattern to prevent blind feeding.
-        Only feeds if all critical background tasks have set their flags,
-        indicating they are still running properly.
-        """
-        # Check if all critical tasks have reported in
-        if all(self.watchdog_flags.values()):
-            # All tasks are alive - safe to feed the watchdog
-            microcontroller.watchdog.feed()
-            # Reset all flags for the next iteration
-            for key in self.watchdog_flags:
-                self.watchdog_flags[key] = False
-        # If any flag is False, we DON'T feed the watchdog
-        # This will trigger a system reset, recovering from the zombie state
-
     async def cleanup_task(self, task):
         """Gracefully awaits the cancellation of a task."""
         try:
@@ -283,7 +247,7 @@ class CoreManager:
 
         while not sub_task.done():
             # Feed the watchdog only if all critical tasks are alive
-            self.safe_feed_watchdog()
+            self.watchdog.safe_feed()
 
             # E-Stop engaged
             if self.meltdown:
@@ -317,7 +281,7 @@ class CoreManager:
         """
         while True:
             # Set watchdog flag to indicate this task is alive
-            self.watchdog_flags["estop"] = True
+            self.watchdog.check_in("estop")
 
             if not self.hid.estop and not self.meltdown:
                 self.meltdown = True
@@ -340,7 +304,7 @@ class CoreManager:
 
                 # Strobe the neobar and satellite LEDs
                 while not self.hid.estop:  # While button is still latched down
-                    self.watchdog_flags["estop"] = True  # Signal that we are alive and waiting
+                    self.watchdog.check_in("estop")  # Signal that we are alive and waiting
                     # TODO Implement alarm LED strobing
                     await asyncio.sleep(0.2)
 
@@ -355,7 +319,7 @@ class CoreManager:
         """Background task to watch for brownouts or disconnects."""
         while True:
             # Set watchdog flag to indicate this task is alive
-            self.watchdog_flags["power"] = True
+            self.watchdog.check_in("power")
 
             v = self.power.status
 
@@ -381,7 +345,7 @@ class CoreManager:
         """Background task to detect physical RJ45 connection and manage bus power."""
         while True:
             # Set watchdog flag to indicate this task is alive
-            self.watchdog_flags["connection"] = True
+            self.watchdog.check_in("connection")
 
             if self.power.satbus_connected and not self.power.satbus_powered:
                 # PHYSICAL LINK DETECTED - Trigger Soft Start
@@ -410,32 +374,77 @@ class CoreManager:
         """Background task to poll hardware inputs."""
         while True:
             # Set watchdog flag to indicate this task is alive
-            self.watchdog_flags["hw_hid"] = True
+            self.watchdog.check_in("hw_hid")
 
             self.hid.hw_update()
             await asyncio.sleep(0.01)
 
     async def start(self):
         """Main async loop for the Master Controller."""
-        # Start background infrastructure tasks
-        asyncio.create_task(self.sat_network.monitor_satellites())  # Satellite Network Management
-        asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
-        asyncio.create_task(self.monitor_power())  # Analog Power Monitoring
-        asyncio.create_task(self.monitor_connection())  # RJ45 Link Detection
-        asyncio.create_task(self.monitor_hw_hid())  # Local Hardware Input Polling
-        asyncio.create_task(self.renderer.run())  # Centralized Render Loop
-        asyncio.create_task(self.synth.start_generative_drone())  # Background Music Drone
+        # --- POWER ON SELF TEST ---
+        # Check power integrity before starting main application loop
+        if self.power.check_power_integrity():
+            self.buzzer.play_song("POWER_UP")
+            print("Power integrity check passed. Starting system...")
+            await self.display.update_status("POWER OK", "STARTING SYSTEM...")
+            await asyncio.sleep(1)
 
-        # Fancy bootup sequence
+            print("Initializing Watchdog Manager...")
+            self.watchdog = WatchdogManager(
+                task_names=list([
+                    "power",
+                    "connection",
+                    "hw_hid"
+                ]),
+                timeout=5.0
+            )
+
+            # Start transport monitoring to handle satellite activation
+            self.transport.start()
+            # Start Satellite Bus connection monitor
+            asyncio.create_task(self.monitor_connection())
+            # Start expanded power monitoring
+            asyncio.create_task(self.monitor_power())
+            # Start hardware input monitoring
+            asyncio.create_task(self.monitor_hw_hid())
+
+        else:
+            self.buzzer.play_song("POWER_FAIL")
+            print("Power integrity check failed! Check power supply and connections.")
+            await self.display.update_status("POWER ERROR", "CHECK CONNECTIONS")
+            # Do not start main loop if power is not stable
+            while True:
+                await asyncio.sleep(1)
+
+        # Continue with other background tasks after power integrity is confirmed
+        self.watchdog.register_flags(["sat_network"])
+        asyncio.create_task( # Satellite Network Management and Message Handling
+            self.sat_network.monitor_satellites(
+                heartbeat_callback=lambda: self.watchdog.check_in("sat_network")
+            )
+        )
+        self.watchdog.register_flags(["render"])
+        asyncio.create_task( # Centralized Render Loop
+            self.renderer.run(
+                heartbeat_callback=lambda: self.watchdog.check_in("render")
+            )
+        )
+
+        # --- Experimental / Future Use ---
+        #self.watchdog.register_flags(["estop"])
+        #asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
+        #asyncio.create_task(self.synth.start_generative_drone())  # Background Music Drone
+
+        # Bootup has completed, play a fancy animation
         # TODO Add boot animation and audio
 
         while True:
             # Feed the watchdog only if all critical tasks are alive
-            self.safe_feed_watchdog()
+            self.watchdog.safe_feed()
 
             # Meltdown state pauses the menu selection
             while self.meltdown:
-                self.safe_feed_watchdog()
+                self.watchdog.safe_feed()
                 await asyncio.sleep(0.1)
 
             # --- GENERIC MODE RUNNER ---
@@ -484,7 +493,7 @@ class CoreManager:
                                 await asyncio.sleep(1)
                                 # 60 second countdown
                                 disconnect_time = ticks_ms()
-                                while not sat.is_active and run_robust:
+                                while not target_sat.is_active and run_robust:
                                     elapsed = ticks_diff(ticks_ms(), disconnect_time)
                                     if elapsed > 60000:
                                         run_robust = False
@@ -494,7 +503,7 @@ class CoreManager:
                                         "LINK LOST", f"ABORT IN: {secs_left}s"
                                     )
                                     await asyncio.sleep(0.1)
-                                if sat.is_active and run_robust:
+                                if target_sat.is_active and run_robust:
                                     await self.display.update_status(
                                         "LINK RESTORED", "RESUMING..."
                                     )

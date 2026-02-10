@@ -55,7 +55,7 @@ class MockUART:
     @property
     def in_waiting(self):
         """Mock in_waiting property."""
-        return len(self.uart_manager.receive_buffer)
+        return self.uart_manager._in_waiting
 
     def read(self, n):
         """Mock read method."""
@@ -65,7 +65,19 @@ class MockUART:
             return b''
         data = bytes(self.uart_manager.receive_buffer[:n])
         del self.uart_manager.receive_buffer[:n]
+        self.uart_manager._in_waiting = len(self.uart_manager.receive_buffer)
         return data
+
+    def readinto(self, buf):
+        """Mock readinto method."""
+        # Read available bytes into the provided buffer
+        n = min(len(buf), len(self.uart_manager.receive_buffer))
+        if n == 0:
+            return 0
+        buf[:n] = self.uart_manager.receive_buffer[:n]
+        del self.uart_manager.receive_buffer[:n]
+        self.uart_manager._in_waiting = len(self.uart_manager.receive_buffer)
+        return n
 
 
 class MockUARTManager:
@@ -84,11 +96,15 @@ class MockUARTManager:
     @property
     def in_waiting(self):
         """Mock in_waiting property."""
-        return len(self.receive_buffer)
+        return self._in_waiting
 
     def read(self, n):
         """Mock read method - delegates to nested uart object."""
         return self.uart.read(n)
+
+    def readinto(self, buf):
+        """Mock readinto method - delegates to nested uart object."""
+        return self.uart.readinto(buf)
 
     def read_available(self):
         """Mock read_available method."""
@@ -167,6 +183,7 @@ def test_text_payload_returns_string():
 
     # Receive it back
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
+    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
     msg_in = transport.receive()
 
     assert msg_in is not None, "Should receive a message"
