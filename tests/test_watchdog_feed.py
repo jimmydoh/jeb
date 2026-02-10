@@ -35,17 +35,13 @@ def test_watchdog_feed_present_in_code():
     method_pattern = r'async def run_mode_with_safety\(self.*?\n(.*?)(?=\n    async def|\n    def|\Z)'
     match = re.search(method_pattern, content, re.DOTALL)
     
-    if not match:
-        print("  ✗ Could not find run_mode_with_safety method")
-        return False
+    assert match, "Could not find run_mode_with_safety method"
     
     method_body = match.group(1)
     print("  ✓ Found run_mode_with_safety method")
     
     # Check for the while loop
-    if 'while not sub_task.done():' not in method_body:
-        print("  ✗ Could not find 'while not sub_task.done():' loop")
-        return False
+    assert 'while not sub_task.done():' in method_body, "Could not find 'while not sub_task.done():' loop"
     
     print("  ✓ Found 'while not sub_task.done():' loop")
     
@@ -61,9 +57,7 @@ def test_watchdog_feed_present_in_code():
         loop_body = loop_body[:next_def]
     
     # Check for watchdog feed call in the loop (now uses safe_feed_watchdog)
-    if 'self.safe_feed_watchdog()' not in loop_body:
-        print("  ✗ 'self.safe_feed_watchdog()' not found in while loop")
-        return False
+    assert 'self.safe_feed_watchdog()' in loop_body, "'self.safe_feed_watchdog()' not found in while loop"
     
     print("  ✓ Found 'self.safe_feed_watchdog()' in while loop")
     
@@ -77,8 +71,6 @@ def test_watchdog_feed_present_in_code():
         print("  ⚠ Warning: safe_feed_watchdog() appears after sleep, should be at top of loop")
     else:
         print("  ✓ safe_feed_watchdog() is positioned correctly (before sleep)")
-    
-    return True
 
 
 def test_watchdog_feed_in_main_loop():
@@ -101,25 +93,19 @@ def test_watchdog_feed_in_main_loop():
     start_pattern = r'async def start\(self\):(.*?)(?=\n    async def|\n    def|\Z)'
     match = re.search(start_pattern, content, re.DOTALL)
     
-    if not match:
-        print("  ✗ Could not find start() method")
-        return False
+    assert match, "Could not find start() method"
     
     start_body = match.group(1)
     print("  ✓ Found start() method")
     
     # Check for watchdog feed in the main loop (now uses safe_feed_watchdog)
-    if 'self.safe_feed_watchdog()' not in start_body:
-        print("  ✗ 'self.safe_feed_watchdog()' not found in start() method")
-        return False
+    assert 'self.safe_feed_watchdog()' in start_body, "'self.safe_feed_watchdog()' not found in start() method"
     
     print("  ✓ Found 'self.safe_feed_watchdog()' in start() method")
     
     # Count occurrences
     feed_count = start_body.count('self.safe_feed_watchdog()')
     print(f"  ✓ Found {feed_count} safe_feed_watchdog call(s) in start() method")
-    
-    return True
 
 
 def test_microcontroller_import():
@@ -139,12 +125,9 @@ def test_microcontroller_import():
         content = f.read()
     
     # Check for microcontroller import
-    if 'import microcontroller' not in content:
-        print("  ✗ 'import microcontroller' not found")
-        return False
+    assert 'import microcontroller' in content, "'import microcontroller' not found"
     
     print("  ✓ Found 'import microcontroller'")
-    return True
 
 
 if __name__ == "__main__":
