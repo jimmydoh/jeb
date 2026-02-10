@@ -65,6 +65,7 @@ class MockUART:
             return b''
         data = bytes(self.uart_manager.receive_buffer[:n])
         del self.uart_manager.receive_buffer[:n]
+        self.uart_manager._in_waiting = len(self.uart_manager.receive_buffer)
         return data
 
     def readinto(self, buf):
