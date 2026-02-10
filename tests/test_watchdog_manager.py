@@ -71,9 +71,9 @@ def test_initialization_without_timeout():
     assert "task3" in manager._flags, "task3 should be in flags"
     
     # All flags should start as False
-    assert manager._flags["task1"] == False, "task1 flag should start False"
-    assert manager._flags["task2"] == False, "task2 flag should start False"
-    assert manager._flags["task3"] == False, "task3 flag should start False"
+    assert not manager._flags["task1"], "task1 flag should start False"
+    assert not manager._flags["task2"], "task2 flag should start False"
+    assert not manager._flags["task3"], "task3 flag should start False"
     
     # Watchdog should not be enabled
     assert MockMicrocontroller.watchdog.timeout is None, "Watchdog should not be configured"
@@ -116,15 +116,15 @@ def test_check_in_valid_task():
     
     # Check in task_a
     manager.check_in("task_a")
-    assert manager._flags["task_a"] == True, "task_a flag should be True"
-    assert manager._flags["task_b"] == False, "task_b flag should still be False"
-    assert manager._flags["task_c"] == False, "task_c flag should still be False"
+    assert manager._flags["task_a"], "task_a flag should be True"
+    assert not manager._flags["task_b"], "task_b flag should still be False"
+    assert not manager._flags["task_c"], "task_c flag should still be False"
     
     # Check in task_b
     manager.check_in("task_b")
-    assert manager._flags["task_a"] == True, "task_a flag should still be True"
-    assert manager._flags["task_b"] == True, "task_b flag should be True"
-    assert manager._flags["task_c"] == False, "task_c flag should still be False"
+    assert manager._flags["task_a"], "task_a flag should still be True"
+    assert manager._flags["task_b"], "task_b flag should be True"
+    assert not manager._flags["task_c"], "task_c flag should still be False"
     
     print("✓ Check-in with valid task test passed")
 
@@ -143,8 +143,8 @@ def test_check_in_invalid_task():
     manager.check_in("invalid_task")
     
     # Valid tasks should still be False
-    assert manager._flags["task1"] == False, "task1 flag should still be False"
-    assert manager._flags["task2"] == False, "task2 flag should still be False"
+    assert not manager._flags["task1"], "task1 flag should still be False"
+    assert not manager._flags["task2"], "task2 flag should still be False"
     
     # No error should be raised
     print("✓ Check-in with invalid task test passed (silently ignored)")
@@ -175,7 +175,7 @@ def test_safe_feed_all_tasks_checked_in():
     result = manager.safe_feed()
     
     # Should return True
-    assert result == True, "safe_feed should return True when all tasks checked in"
+    assert result is True, "safe_feed should return True when all tasks checked in"
     
     # Watchdog should be fed
     assert MockMicrocontroller.watchdog.feed_count == initial_feed_count + 1, \
@@ -209,16 +209,16 @@ def test_safe_feed_not_all_tasks_checked_in():
     result = manager.safe_feed()
     
     # Should return False
-    assert result == False, "safe_feed should return False when not all tasks checked in"
+    assert result is False, "safe_feed should return False when not all tasks checked in"
     
     # Watchdog should NOT be fed
     assert MockMicrocontroller.watchdog.feed_count == initial_feed_count, \
         "Watchdog should not be fed"
     
     # Flags should NOT be reset
-    assert manager._flags["task1"] == True, "task1 flag should still be True"
-    assert manager._flags["task2"] == True, "task2 flag should still be True"
-    assert manager._flags["task3"] == False, "task3 flag should still be False"
+    assert manager._flags["task1"], "task1 flag should still be True"
+    assert manager._flags["task2"], "task2 flag should still be True"
+    assert not manager._flags["task3"], "task3 flag should still be False"
     
     print("✓ Safe feed with not all tasks checked in test passed")
 
@@ -242,7 +242,7 @@ def test_safe_feed_no_tasks_checked_in():
     result = manager.safe_feed()
     
     # Should return False
-    assert result == False, "safe_feed should return False when no tasks checked in"
+    assert result is False, "safe_feed should return False when no tasks checked in"
     
     # Watchdog should NOT be fed
     assert MockMicrocontroller.watchdog.feed_count == initial_feed_count, \
@@ -268,26 +268,26 @@ def test_multiple_cycles():
     manager.check_in("task1")
     manager.check_in("task2")
     result1 = manager.safe_feed()
-    assert result1 == True, "Cycle 1: should feed"
+    assert result1 is True, "Cycle 1: should feed"
     assert MockMicrocontroller.watchdog.feed_count == initial_feed_count + 1
     
     # Cycle 2: Only task1 checks in
     manager.check_in("task1")
     result2 = manager.safe_feed()
-    assert result2 == False, "Cycle 2: should not feed"
+    assert result2 is False, "Cycle 2: should not feed"
     assert MockMicrocontroller.watchdog.feed_count == initial_feed_count + 1  # No additional feed
     
     # Cycle 3: task2 checks in now (task1 still True from cycle 2)
     manager.check_in("task2")
     result3 = manager.safe_feed()
-    assert result3 == True, "Cycle 3: should feed (both tasks checked in over time)"
+    assert result3 is True, "Cycle 3: should feed (both tasks checked in over time)"
     assert MockMicrocontroller.watchdog.feed_count == initial_feed_count + 2
     
     # Cycle 4: All tasks check in again
     manager.check_in("task1")
     manager.check_in("task2")
     result4 = manager.safe_feed()
-    assert result4 == True, "Cycle 4: should feed"
+    assert result4 is True, "Cycle 4: should feed"
     assert MockMicrocontroller.watchdog.feed_count == initial_feed_count + 3
     
     print("✓ Multiple cycles test passed")
@@ -308,10 +308,10 @@ def test_single_task():
     
     # Should be able to feed
     result = manager.safe_feed()
-    assert result == True, "Should feed when the only task checks in"
+    assert result is True, "Should feed when the only task checks in"
     
     # Flag should be reset
-    assert manager._flags["only_task"] == False, "Flag should be reset"
+    assert not manager._flags["only_task"], "Flag should be reset"
     
     print("✓ Single task test passed")
 
@@ -328,7 +328,7 @@ def test_empty_task_list():
     
     # With no tasks, safe_feed should always succeed
     result = manager.safe_feed()
-    assert result == True, "Should feed when no tasks are registered (all([]) is True)"
+    assert result is True, "Should feed when no tasks are registered (all([]) is True)"
     
     print("✓ Empty task list test passed")
 
