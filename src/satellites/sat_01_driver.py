@@ -9,19 +9,19 @@ Industrial Satellite and does not include hardware-specific code.
 from managers import HIDManager
 from utilities import Pins
 
-from .base import Satellite
+from .base_driver import SatelliteDriver
 
 TYPE_ID = "01"
 TYPE_NAME = "INDUSTRIAL"
 
 
-class IndustrialSatelliteDriver(Satellite):
+class IndustrialSatelliteDriver(SatelliteDriver):
     """Core-side driver for Industrial Satellite.
 
     Handles telemetry parsing and command serialization.
     Does not load hardware libraries or perform hardware I/O.
     """
-    
+
     def __init__(self, sid, transport):
         """Initialize the Industrial Satellite Driver.
 
@@ -30,7 +30,7 @@ class IndustrialSatelliteDriver(Satellite):
             transport: Transport layer for communication.
         """
         super().__init__(sid=sid, sat_type_id=TYPE_ID, sat_type_name=TYPE_NAME, transport=transport)
-        
+
         # Initialize HIDManager in monitor-only mode (no hardware)
 
         # Define PLACEHOLDERS for State Sizing

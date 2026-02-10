@@ -62,15 +62,13 @@ class CoreManager:
             - is_active: bool
             - slot_id: int
     """
-    def __init__(self, root_data_dir="/", debug_mode=False):
+    def __init__(self, config=None):
         # Load config or use defaults
         if config is None:
             config = {}
 
         self.debug_mode = config.get("debug_mode", False)
-        debug_mode = self.debug_mode
         self.root_data_dir = config.get("root_data_dir", "/")
-        uart_baudrate = config.get("uart_baudrate", 115200)
 
         # Watchdog Flag Pattern - Prevents blind feeding if critical tasks crash
         # Each critical background task must set its flag to True each iteration
@@ -98,23 +96,40 @@ class CoreManager:
             Pins.SATBUS_DETECT,
         )
 
-        # TODO Check power state
-
-        # Init Buzzer for early audio feedback
-        self.buzzer = BuzzerManager(Pins.BUZZER, volume=0.5)
-        self.buzzer.play_song("POWER_UP")
-
         # Init I2C bus
         self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
 
-        # Init other managers
+        # UART for satellite communication
+        uart_hw = busio.UART(
+            Pins.UART_TX,
+            Pins.UART_RX,
+            baudrate=config.get("uart_baudrate", 115200),
+            receiver_buffer_size=config.get("uart_buffer_size", 512),
+            timeout=0.01,
+        )
+
+        # Wrap with transport layer for protocol handling
+        self.transport = UARTTransport(
+            uart_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+        )
+
+        # Init Basic Audio (Buzzer)
+        self.buzzer = BuzzerManager(Pins.BUZZER, volume=0.5)
+
+        # Init Primary Audio (I2S) and Synthesizer
         self.audio = AudioManager(
             Pins.I2S_SCK, Pins.I2S_WS, Pins.I2S_SD, root_data_dir=self.root_data_dir
         )
-
+        self.audio.preload(
+            [
+                "audio/common/menu_tick.wav",
+                "audio/common/menu_select.wav",
+            ]
+        )
         self.synth = SynthManager()
         self.audio.attach_synth(self.synth.source)  # Connect synth to audio mixer
 
+        # Init Display (OLED)
         self.display = DisplayManager(self.i2c)
         self.hid = HIDManager(
             encoders=Pins.ENCODERS,
@@ -122,6 +137,13 @@ class CoreManager:
             mcp_int_pin=Pins.EXPANDER_INT,
             expanded_buttons=Pins.EXPANDER_BUTTONS,
         )
+
+        # Initialize Satellite Network Manager
+        self.sat_network = SatelliteNetworkManager(
+            self.transport, self.display, self.audio, self.watchdog_flags
+        )
+        if self.debug_mode:
+            self.sat_network.set_debug_mode(True)
 
         # Init LEDs
         self.root_pixels = neopixel.NeoPixel(
@@ -136,37 +158,7 @@ class CoreManager:
         self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=64, num_pixels=4)
         self.leds = LEDManager(self.led_jeb_pixel)
 
-        # Preload Common UI Sounds
-        self.audio.preload(
-            [
-                "audio/common/menu_tick.wav",
-                "audio/common/menu_select.wav",
-            ]
-        )
-
-        # UART for satellite communication
-        uart_hw = busio.UART(
-            Pins.UART_TX,
-            Pins.UART_RX,
-            baudrate=uart_baudrate,
-            receiver_buffer_size=512,
-            timeout=0.01,
-        )
-
-        # Wrap with transport layer for protocol handling
-        self.transport = UARTTransport(
-            uart_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
-        )
-
-        # Initialize Satellite Network Manager
-        self.sat_network = SatelliteNetworkManager(
-            self.transport, self.display, self.audio, self.watchdog_flags
-        )
-
-        if debug_mode:
-            self.sat_network.set_debug_mode(True)
-
-        # Setup Render Manager to coordinate hardware writes and frame sync
+        # Setup Render Manager to coordinate LED animations
         self.renderer = RenderManager(
             self.root_pixels,
             watchdog_flags=self.watchdog_flags,
@@ -190,12 +182,9 @@ class CoreManager:
             meta = getattr(mode_class, "METADATA", BaseMode.METADATA)
             self.modes[meta["id"]] = mode_class
         self.mode = "DASHBOARD"
-        self.meltdown = False
-        self.sat_active = False
 
-        # Frame sync state for coordinated LED animations with satellites
-        self.frame_counter = 0
-        self.last_sync_broadcast = 0.0
+        # Track e-stop 'Meltdown'
+        self.meltdown = False
 
     def _get_mode(self, mode_name):
         """Get a mode class from the registry with helpful error message.
@@ -417,16 +406,40 @@ class CoreManager:
 
     async def start(self):
         """Main async loop for the Master Controller."""
-        # Start background infrastructure tasks
+        # --- POWER ON SELF TEST ---
+        # Check power integrity before starting main application loop
+        if self.power.check_power_integrity():
+            self.buzzer.play_song("POWER_UP")
+            print("Power integrity check passed. Starting system...")
+            await self.display.update_status("POWER OK", "STARTING SYSTEM...")
+            await asyncio.sleep(1)
+
+            # Start transport monitoring to handle satellite activation
+            # (currently does nothing, but add in case of future queue etc.)
+            self.transport.start()
+            # Start Satellite Bus connection monitor
+            asyncio.create_task(self.monitor_connection())
+            # Start expanded power monitoring
+            asyncio.create_task(self.monitor_power())
+
+        else:
+            self.buzzer.play_song("POWER_FAIL")
+            print("Power integrity check failed! Check power supply and connections.")
+            await self.display.update_status("POWER ERROR", "CHECK CONNECTIONS")
+            # Do not start main loop if power is not stable
+            while True:
+                await asyncio.sleep(1)
+
+        # Continue with other background tasks after power integrity is confirmed
         asyncio.create_task(self.sat_network.monitor_satellites())  # Satellite Network Management
-        asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
-        asyncio.create_task(self.monitor_power())  # Analog Power Monitoring
-        asyncio.create_task(self.monitor_connection())  # RJ45 Link Detection
         asyncio.create_task(self.monitor_hw_hid())  # Local Hardware Input Polling
         asyncio.create_task(self.renderer.run())  # Centralized Render Loop
-        asyncio.create_task(self.synth.start_generative_drone())  # Background Music Drone
 
-        # Fancy bootup sequence
+        # --- Experimental / Future Use ---
+        #asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
+        #asyncio.create_task(self.synth.start_generative_drone())  # Background Music Drone
+
+        # Bootup has completed, play a fancy animation
         # TODO Add boot animation and audio
 
         while True:
@@ -484,7 +497,7 @@ class CoreManager:
                                 await asyncio.sleep(1)
                                 # 60 second countdown
                                 disconnect_time = ticks_ms()
-                                while not sat.is_active and run_robust:
+                                while not target_sat.is_active and run_robust:
                                     elapsed = ticks_diff(ticks_ms(), disconnect_time)
                                     if elapsed > 60000:
                                         run_robust = False
@@ -494,7 +507,7 @@ class CoreManager:
                                         "LINK LOST", f"ABORT IN: {secs_left}s"
                                     )
                                     await asyncio.sleep(0.1)
-                                if sat.is_active and run_robust:
+                                if target_sat.is_active and run_robust:
                                     await self.display.update_status(
                                         "LINK RESTORED", "RESUMING..."
                                     )

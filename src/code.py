@@ -33,10 +33,12 @@ import supervisor
 # Check if SD card was mounted in boot.py
 # Note: We cannot import boot.py as it will re-execute the script
 # Instead, check if /sd directory exists in the filesystem
+# TODO: Fix this - I believe the /sd dir will exist regardless
 def is_sd_mounted():
-    """Check if SD card is mounted by checking for /sd directory."""
+    """Check if SD card is mounted by checking for /sd directory via stat."""
     try:
-        return 'sd' in os.listdir('/')
+        os.stat('/sd')
+        return True
     except OSError:
         return False
 
@@ -56,7 +58,12 @@ def load_config():
     default_config = {
         "role": "CORE",  # Default role
         "type_id": "00",  # Satellite ID (00 for core)
+        "type_name": "CORE",  # Human-readable name
+        "wifi_ssid": "",  # Wi-Fi SSID (empty by default)
+        "wifi_password": "",  # Wi-Fi password (empty by default)
+        "update_url": "",  # OTA update URL (empty by default)
         "uart_baudrate": 115200,  # Default UART baudrate
+        "uart_buffer_size": 512,  # Default UART buffer size
         "mount_sd_card": False,  # Whether to initialize SD card
         "debug_mode": False,  # Debug mode off by default
         "test_mode": True  # Test mode on by default (real hardware should set to False)
@@ -87,48 +94,52 @@ config = load_config()
 # --- OTA UPDATE CHECK ---
 # Check if we need to run the updater before starting the main application
 try:
-    from updater import should_check_for_updates, Updater, clear_update_flag
-    
-    if should_check_for_updates():
-        print("\n" + "="*50)
-        print("   OTA UPDATE REQUIRED")
-        print("="*50 + "\n")
-        
-        # Check if Wi-Fi is configured and SD card is mounted
-        if not SD_MOUNTED:
-            print("⚠️ SD card not mounted - OTA updates require SD card")
-            print("Skipping update")
-            clear_update_flag()  # Clear flag since we can't proceed without SD
-        elif config.get("wifi_ssid") and config.get("update_url"):
-            try:
-                updater = Updater(config, sd_mounted=SD_MOUNTED)
-                update_success = updater.run_update()
-                
-                if update_success:
-                    # Only clear flag on successful update
-                    clear_update_flag()
-                    print("\n✓ Update complete and installed - rebooting...")
-                    updater.reboot()
-                else:
-                    # Do NOT clear flag - preserve for retry on next boot
-                    print("\n⚠️ Update failed - flag preserved for retry")
-                    print("Device will attempt update again on next boot")
-                    
-            except Exception as e:
-                # Do NOT clear flag on fatal error - preserve for retry
-                print(f"\n❌ Updater fatal error: {e}")
-                print("Flag preserved - device will retry update on next boot")
-                print("Continuing with existing firmware")
-        else:
-            print("⚠️ Wi-Fi not configured - skipping update")
-            print("Configure wifi_ssid and update_url in config.json")
-            clear_update_flag()  # Clear flag since config is missing
-        
-        print()
-        
+    # Check if SD Mounted - Updater requires SD for temporary storage
+    if SD_MOUNTED:
+
+        from updater import should_check_for_updates, Updater, clear_update_flag
+
+        if should_check_for_updates():
+            print("\n" + "="*50)
+            print("   OTA UPDATE REQUIRED")
+            print("="*50 + "\n")
+
+            # Check if Wi-Fi is configured
+            if config.get("wifi_ssid") and config.get("update_url"):
+                try:
+                    updater = Updater(config, sd_mounted=SD_MOUNTED)
+                    update_success = updater.run_update()
+
+                    if update_success:
+                        # Only clear flag on successful update
+                        clear_update_flag()
+                        print("\n✓ Update complete and installed - rebooting...")
+                        updater.reboot()
+                    else:
+                        # Do NOT clear flag - preserve for retry on next boot
+                        print("\n⚠️ Update failed - flag preserved for retry")
+                        print("Device will attempt update again on next boot")
+
+                except Exception as e:
+                    # Do NOT clear flag on fatal error - preserve for retry
+                    print(f"\n❌ Updater fatal error: {e}")
+                    print("Flag preserved - device will retry update on next boot")
+                    print("Continuing with existing firmware")
+            else:
+                print("⚠️ Wi-Fi not configured - skipping update")
+                print("Configure wifi_ssid and update_url in config.json")
+                clear_update_flag()  # Clear flag since config is missing
+
+    else:
+        print("⚠️ SD card not mounted - OTA updates require SD card")
+        print("Skipping update")
+        clear_update_flag()
+
 except ImportError:
     print("⚠️ Updater module not available")
 
+
+# --- APPLICATION RUN ---
 app = None
 
 role = config.get("role", "UNKNOWN")
@@ -155,8 +166,8 @@ except Exception as e:
 
 if test_mode:
     print("⚠️ Running in TEST MODE. No main application will be loaded. ⚠️")
-    from testing import TestManager
-    app = TestManager(role, type_id)
+    from managers import ConsoleManager
+    app = ConsoleManager(role, type_id)
 else:
     if role == "CORE" and type_id == "00":
         from core.core_manager import CoreManager
