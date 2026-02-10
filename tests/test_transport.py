@@ -706,6 +706,34 @@ def test_ring_buffer_full_recovery():
     print("✓ Ring buffer overflow recovery test passed")
 
 
+def test_ring_buffer_end_of_array_deadlock():
+    """Test that buffer does not deadlock when empty at the very end of the array."""
+    print("\nTesting ring buffer end-of-array deadlock...")
+    
+    mock_uart = MockUARTManager()
+    transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
+    
+    # 1. Force pointers to the very last byte (2047)
+    # Simulates a scenario where we just read everything up to the end
+    transport._head = 2047
+    transport._tail = 2047
+    
+    # 2. Add 1 byte of data to UART
+    # This should be writable! (Write at 2047, head wraps to 0)
+    mock_uart.receive_buffer.extend(b'\x00')  # A delimiter
+    mock_uart._in_waiting = 1
+    
+    # 3. Trigger read
+    transport._read_hw()
+    
+    # 4. Check if head moved
+    # If buggy, head stays 2047 (space calculated as 0)
+    # If fixed, head wraps to 0
+    assert transport._head == 0, f"Deadlock! Head stuck at {transport._head} instead of wrapping to 0"
+    
+    print("✓ Deadlock test passed")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("Transport Layer Test Suite")
@@ -729,6 +757,7 @@ if __name__ == "__main__":
         test_ring_buffer_wrapped_packet()
         test_ring_buffer_multiple_wrapped_packets()
         test_ring_buffer_full_recovery()
+        test_ring_buffer_end_of_array_deadlock()
 
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")

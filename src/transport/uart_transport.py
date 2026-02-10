@@ -378,17 +378,18 @@ class UARTTransport:
             # Space wraps around: can write from head to tail (minus 1 for full detection)
             space = self._tail - self._head - 1
         elif self._tail == self._head:
-            # Buffer empty: can write from head to end (reserve 1 for full detection)
-            if self._tail == 0:
-                space = self._buf_size - self._head - 1
-            else:
-                space = self._buf_size - self._head
+            # Buffer Empty: We can use the whole contiguous chunk to the end
+            space = self._buf_size - self._head
+            # EXCEPTION: If head is 0, we can't fill the ENTIRE buffer (2048)
+            # because head would wrap to 0, matching tail (looks empty).
+            if self._head == 0:
+                space -= 1
         else:
-            # tail < head: can write from head to end of buffer
+            # Tail < Head: Write to end of physical buffer
+            space = self._buf_size - self._head
+            # EXCEPTION: If tail is 0, we can't write up to 2048 (wrapping to 0)
             if self._tail == 0:
-                space = self._buf_size - self._head - 1
-            else:
-                space = self._buf_size - self._head
+                space -= 1
         
         if space <= 0:
             return  # Buffer full
