@@ -43,8 +43,6 @@ def test_watchdog_flags_dict_exists():
     for flag in required_flags:
         assert f'"{flag}"' in content, f"Flag '{flag}' not found in watchdog_flags"
         print(f"  ✓ Found flag: {flag}")
-    
-    return True
 
 
 def test_safe_feed_watchdog_method_exists():
@@ -92,8 +90,6 @@ def test_safe_feed_watchdog_method_exists():
     assert 'self.watchdog_flags[key] = False' in method_body, "Method does not reset flags after feeding"
     
     print("  ✓ Method resets flags after feeding")
-    
-    return True
 
 
 def test_monitor_tasks_set_flags():
@@ -134,8 +130,6 @@ def test_monitor_tasks_set_flags():
         flag_set_pattern = f'self.watchdog_flags["{flag_name}"] = True'
         assert flag_set_pattern in method_body, f"{task_name} does not set watchdog flag '{flag_name}'"
         print(f"  ✓ {task_name} sets flag '{flag_name}'")
-    
-    return True
 
 
 def test_sat_network_sets_flag():
@@ -178,8 +172,6 @@ def test_sat_network_sets_flag():
         "monitor_satellites does not check if watchdog_flags is None"
     
     print("  ✓ monitor_satellites checks if watchdog_flags is not None")
-    
-    return True
 
 
 def test_main_loop_uses_safe_feed():
@@ -224,8 +216,6 @@ def test_main_loop_uses_safe_feed():
         print("  ⚠ Main loop should use safe_feed_watchdog() instead")
     else:
         print("  ✓ No direct watchdog.feed() calls in start() method")
-    
-    return True
 
 
 def test_run_mode_with_safety_uses_safe_feed():
@@ -265,8 +255,6 @@ def test_run_mode_with_safety_uses_safe_feed():
         print("  ⚠ Should use safe_feed_watchdog() instead")
     else:
         print("  ✓ No direct watchdog.feed() calls in run_mode_with_safety")
-    
-    return True
 
 
 def test_sat_network_receives_flags():
@@ -300,39 +288,41 @@ def test_sat_network_receives_flags():
     assert 'self.watchdog_flags' in init_args, "watchdog_flags not passed to SatelliteNetworkManager"
     
     print("  ✓ CoreManager passes watchdog_flags to SatelliteNetworkManager")
-    
-    return True
 
 
-if __name__ == "__main__":
-    print("=" * 60)
+def run_all_tests():
+    """Run all watchdog flag pattern tests."""
+    print("\n" + "=" * 60)
     print("Watchdog Flag Pattern Implementation Verification")
     print("Testing fix for watchdog blind feeding")
-    print("=" * 60)
+    print("=" * 60 + "\n")
     
-    results = []
-    results.append(("Watchdog flags dictionary exists", test_watchdog_flags_dict_exists()))
-    results.append(("safe_feed_watchdog method exists", test_safe_feed_watchdog_method_exists()))
-    results.append(("Monitor tasks set flags", test_monitor_tasks_set_flags()))
-    results.append(("SatelliteNetworkManager sets flag", test_sat_network_sets_flag()))
-    results.append(("CoreManager passes flags to SatelliteNetworkManager", test_sat_network_receives_flags()))
-    results.append(("Main loop uses safe_feed_watchdog", test_main_loop_uses_safe_feed()))
-    results.append(("run_mode_with_safety uses safe_feed_watchdog", test_run_mode_with_safety_uses_safe_feed()))
+    tests = [
+        test_watchdog_flags_dict_exists,
+        test_safe_feed_watchdog_method_exists,
+        test_monitor_tasks_set_flags,
+        test_sat_network_sets_flag,
+        test_sat_network_receives_flags,
+        test_main_loop_uses_safe_feed,
+        test_run_mode_with_safety_uses_safe_feed,
+    ]
+    
+    failed = 0
+    passed = 0
+    
+    for test in tests:
+        try:
+            test()
+            passed += 1
+        except Exception as e:
+            print(f"\n❌ Test failed: {test.__name__}")
+            print(f"   Error: {e}")
+            import traceback
+            traceback.print_exc()
+            failed += 1
     
     print("\n" + "=" * 60)
-    print("Test Results Summary:")
-    print("=" * 60)
-    
-    all_passed = True
-    for test_name, passed in results:
-        status = "✓ PASS" if passed else "✗ FAIL"
-        print(f"  {status}: {test_name}")
-        if not passed:
-            all_passed = False
-    
-    print("=" * 60)
-    
-    if all_passed:
+    if failed == 0:
         print("ALL TESTS PASSED ✓")
         print()
         print("The watchdog flag pattern successfully:")
@@ -341,7 +331,13 @@ if __name__ == "__main__":
         print("  • Resets flags after feeding to detect next iteration")
         print("  • Allows system reset to recover from zombie state")
         print("  • Maintains all existing watchdog functionality")
-        sys.exit(0)
     else:
         print("SOME TESTS FAILED ✗")
-        sys.exit(1)
+    print("=" * 60 + "\n")
+    
+    return failed == 0
+
+
+if __name__ == "__main__":
+    success = run_all_tests()
+    sys.exit(0 if success else 1)
