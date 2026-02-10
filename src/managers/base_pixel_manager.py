@@ -180,6 +180,10 @@ class BasePixelManager:
 
                 # --- GLITCH ---
                 elif slot.type == "GLITCH":
+                    # TODO: GLITCH animation may have a bug - if slot.color is a list/tuple of colors,
+                    # line 183 assigns the entire collection to the pixel instead of randomly selecting
+                    # one color. This should probably be: self.pixels[idx] = random.choice(slot.color)
+                    # For now, this works when slot.color is a single color tuple.
                     if random.random() > 0.9:
                         if random.random() > 0.5:
                              self.pixels[idx] = (255, 255, 255)

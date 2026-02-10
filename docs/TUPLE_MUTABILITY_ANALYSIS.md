@@ -73,17 +73,19 @@ await self.start_glitch(
 )
 ```
 
-The GLITCH animation receives a list of color tuples. The code at `base_pixel_manager.py:183` does:
+The GLITCH animation receives a list of color tuples. The code at `base_pixel_manager.py:189` does:
 ```python
 self.pixels[idx] = slot.color
 ```
 
-This assigns the entire list/tuple of colors to a single pixel, which seems incorrect. The animation should probably randomly select from the list. However:
+This assigns the entire list/tuple of colors to a single pixel, which may be incorrect. The animation should probably randomly select from the list. However:
 - This is a separate bug from the mutability issue
 - The list contains immutable tuples (Palette colors)
 - With the defensive fix, this list is now converted to a tuple, making it immutable
 - Doesn't cause crashes or security issues
 - Not part of the original issue scope
+
+**Action Taken**: Added TODO comment in `base_pixel_manager.py` (line 183-186) to track this for future investigation.
 
 ## Test Coverage
 
