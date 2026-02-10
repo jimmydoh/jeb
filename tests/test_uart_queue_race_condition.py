@@ -171,9 +171,9 @@ def test_send_uses_queue():
     print("\nTesting send() method queue integration...")
     content = get_transport_content()
     
-    # Get the send method
+    # Get the send method (note: it's now synchronous, not async)
     send_match = re.search(
-        r'async def send\(self, message\):.*?(?=\n    async def |\n    def |\Z)',
+        r'def send\(self, message\):.*?(?=\n    def |\n    async def |\Z)',
         content,
         re.DOTALL
     )
@@ -223,10 +223,10 @@ def test_transport_consolidation():
                 # This might be OK if it's just hardware initialization
                 pass
     
-    # Verify transport has all the functionality
-    assert 'async def send(self' in transport_content, \
+    # Verify transport has all the functionality (note: they're synchronous now)
+    assert 'def send(self' in transport_content, \
         "UARTTransport should have send method"
-    assert 'async def receive(self' in transport_content, \
+    assert 'def receive(self' in transport_content, \
         "UARTTransport should have receive method"
     
     print("  ✓ Firmware uses transport layer for communication")
