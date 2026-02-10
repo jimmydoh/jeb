@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Test that AnimationSlot ensures color immutability by converting lists to tuples."""
+"""Test that AnimationSlot ensures color immutability by converting lists to tuples.
+
+Note: This test duplicates the AnimationSlot class implementation to avoid CircuitPython
+dependencies (audiobusio, etc.) that prevent importing from the actual source in a
+standard Python environment. The implementation is kept in sync manually.
+"""
 
 import sys
 import os
 
-# Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-# Import AnimationSlot from base_pixel_manager
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'managers'))
+# AnimationSlot is duplicated here to avoid CircuitPython dependencies
+# Keep in sync with src/managers/base_pixel_manager.py
 
 
 class AnimationSlot:
