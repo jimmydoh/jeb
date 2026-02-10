@@ -346,8 +346,11 @@ class UARTTransport:
                     self._tx_queue.put_nowait(data)
                 else:
                     self.uart.write(data)
-            # Yield to allow other tasks to run
-            await asyncio.sleep(0)
+                # Yield briefly to process high throughput
+                await asyncio.sleep(0)
+            else:
+                # Sleep 5ms if bus is idle to save power
+                await asyncio.sleep(0.005)
 
     async def _tx_worker(self):
         """Dedicated task to drain the TX queue to hardware.
