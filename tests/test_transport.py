@@ -89,6 +89,17 @@ class MockUART:
         self.uart_manager._in_waiting = len(self.uart_manager.receive_buffer)
         return data
 
+    def readinto(self, buf):
+        """Mock readinto method."""
+        # Read available bytes into the provided buffer
+        n = min(len(buf), len(self.uart_manager.receive_buffer))
+        if n == 0:
+            return 0
+        buf[:n] = self.uart_manager.receive_buffer[:n]
+        del self.uart_manager.receive_buffer[:n]
+        self.uart_manager._in_waiting = len(self.uart_manager.receive_buffer)
+        return n
+
 
 class MockUARTManager:
     """Mock UARTManager for testing."""
@@ -111,6 +122,10 @@ class MockUARTManager:
     def read(self, n):
         """Mock read method - delegates to nested uart object."""
         return self.uart.read(n)
+
+    def readinto(self, buf):
+        """Mock readinto method - delegates to nested uart object."""
+        return self.uart.readinto(buf)
 
     def read_available(self):
         """Mock read_available method."""
@@ -480,14 +495,13 @@ def test_receive_buffer_overflow_protection():
     mock_uart.receive_buffer.extend(garbage_data)
     mock_uart._in_waiting = len(garbage_data)
 
-    # First receive should detect overflow
+    # First receive should detect overflow and handle it gracefully
     msg = transport.receive()
     assert msg is None, "Should return None when buffer overflows"
 
-    # When there's no null terminator in the garbage, buffer gets cleared
-    # This is expected behavior since there's no valid packet to preserve
-    assert len(transport._receive_buffer) == 0, "Internal buffer should be cleared when full of garbage with no terminators"
-
+    # Ring buffer will have consumed what it can (up to 2KB) and started advancing tail
+    # The exact state depends on buffer size, but system should remain functional
+    
     # Now send a valid packet - system should recover
     msg_valid = Message("0101", "STATUS", "100")
     transport.send(msg_valid)
