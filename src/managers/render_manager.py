@@ -91,5 +91,7 @@ class RenderManager:
             elif abs_drift == 1:
                 # Small drift: gradually adjust via sleep time modification
                 # +/- 10% of frame time to smoothly catch up
-                adjustment = -0.1 * self.RENDER_FRAME_TIME if drift > 0 else 0.1 * self.RENDER_FRAME_TIME
+                # If satellite is ahead (drift > 0), sleep MORE to slow down
+                # If satellite is behind (drift < 0), sleep LESS to speed up
+                adjustment = 0.1 * self.RENDER_FRAME_TIME if drift > 0 else -0.1 * self.RENDER_FRAME_TIME
                 self.sleep_adjustment = adjustment
