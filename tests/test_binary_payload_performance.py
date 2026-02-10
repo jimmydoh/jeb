@@ -262,6 +262,7 @@ def test_no_string_boomerang():
     msg_in = transport.receive()
     
     # With ENCODING_NUMERIC_BYTES schema, payload is returned as tuple directly
+    # (no string conversion - that's the fix!)
     assert isinstance(msg_in.payload, tuple), f"Payload should be tuple, got {type(msg_in.payload)}"
     
     # Verify we got the right values - no string conversion needed!
@@ -283,11 +284,11 @@ def test_heap_efficiency():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     
     # OLD WAY (String Boomerang):
-    # bytes [0, 255, 128, 64] -> string "0,255,128,64" -> split -> ["0", "255", "128", "64"] -> parse -> [0, 255, 128, 64]
+    # bytes [10, 20, 30, 40] -> string "10,20,30,40" -> split -> ["10", "20", "30", "40"] -> parse -> [10, 20, 30, 40]
     # Creates: 1 string + 4 string objects + 1 list = 6 objects
     
     # NEW WAY (Direct):
-    # bytes [0, 255, 128, 64] -> tuple (10, 20, 30, 40)
+    # bytes [10, 20, 30, 40] -> tuple (10, 20, 30, 40)
     # Creates: 1 tuple = 1 object (zero copies)
     
     msg_out = Message("0101", "LED", (10, 20, 30, 40))

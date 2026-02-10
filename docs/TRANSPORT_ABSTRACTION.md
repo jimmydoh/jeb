@@ -161,7 +161,7 @@ The queued mode eliminates UART race conditions in satellite firmware:
 - All `send()` calls and relay operations add data to a single queue
 - One worker task serializes all writes to hardware
 - Guarantees atomic packet transmission
-- Zero performance impact (queue operations are O(1))
+- Minimal performance impact (queue operations are O(1) and async overhead is negligible)
 
 This is critical for satellites that:
 1. Send periodic status messages

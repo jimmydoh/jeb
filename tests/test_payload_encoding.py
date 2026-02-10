@@ -285,7 +285,7 @@ def test_power_commands_accept_list_tuple():
     
     print("  ✓ Tuple input encoded correctly")
     
-    # Verify list/tuple produces same result as tuple
+    # Verify list produces same result as tuple
     mock_uart_tuple = MockUARTManager()
     transport_tuple = UARTTransport(mock_uart_tuple, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     msg_tuple = Message("0101", "POWER", (19.5, 18.2, 5.0))

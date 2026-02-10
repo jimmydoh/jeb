@@ -144,7 +144,7 @@ class MockUARTManager:
         return None
     
     def clear_buffer(self):
-        """Mock clear_buffer method - old name for compatibility."""
+        """Mock clear_buffer method - legacy name for backward compatibility with older test code."""
         self.reset_input_buffer()
 
 # Now import the transport classes

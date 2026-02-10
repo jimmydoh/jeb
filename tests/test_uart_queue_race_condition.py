@@ -46,8 +46,8 @@ def test_transport_queued_mode_exists():
     print("Testing UARTTransport queued mode...")
     content = get_transport_content()
     
-    # Check that __init__ accepts queued parameter
-    assert re.search(r'def __init__\(self.*queued', content, re.DOTALL), \
+    # Check that __init__ accepts queued parameter (more specific pattern)
+    assert re.search(r'def __init__\(self[^)]*queued', content), \
         "UARTTransport __init__ should accept 'queued' parameter"
     
     # Check that TX queue is created when queued=True
@@ -144,9 +144,9 @@ def test_relay_worker_uses_queue():
     print("\nTesting _relay_worker queue integration...")
     content = get_transport_content()
     
-    # Get the relay worker method
+    # Get the relay worker method (normalized spacing in lookahead)
     relay_match = re.search(
-        r'async def _relay_worker\(self, source_transport\):.*?(?=\n    def |\n    async def |\nclass |\Z)',
+        r'async def _relay_worker\(self, source_transport\):.*?(?=\n\s+(?:async\s+)?def\s|\nclass\s|\Z)',
         content,
         re.DOTALL
     )
@@ -171,9 +171,9 @@ def test_send_uses_queue():
     print("\nTesting send() method queue integration...")
     content = get_transport_content()
     
-    # Get the send method (note: it's now synchronous, not async)
+    # Get the send method (normalized spacing in lookahead)
     send_match = re.search(
-        r'def send\(self, message\):.*?(?=\n    def |\n    async def |\Z)',
+        r'def send\(self, message\):.*?(?=\n\s+(?:async\s+)?def\s|\Z)',
         content,
         re.DOTALL
     )
