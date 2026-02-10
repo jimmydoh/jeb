@@ -49,7 +49,7 @@ COMMAND_REVERSE_MAP = {v: k for k, v in COMMAND_MAP.items()}
 DEST_MAP = {
     "ALL": 0xFF,
     "CORE": 0x00,
-    "SAT": 0x01,
+    "SAT": 0xFE,
 }
 
 DEST_REVERSE_MAP = {v: k for k, v in DEST_MAP.items()}

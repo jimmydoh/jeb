@@ -139,10 +139,47 @@ def _encode_payload(payload_str, cmd_schema=None, encoding_constants=None):
         return bytes(out)
 
     # String parsing (Simplified for brevity, assumes standard implementation)
-    if cmd_schema and encoding_constants and cmd_schema.get('type') == encoding_constants.get('ENCODING_RAW_TEXT'):
-        return payload_str.encode('utf-8')
+    if cmd_schema and encoding_constants:
+        etype = cmd_schema.get('type')
+        if etype == encoding_constants.get('ENCODING_RAW_TEXT'):
+            return payload_str.encode('utf-8')
+        elif etype == encoding_constants.get('ENCODING_NUMERIC_BYTES'):
+            # Parse comma-separated integers as bytes
+            if ',' in payload_str:
+                values = [int(x.strip()) for x in payload_str.split(',')]
+                return bytes(values)
+            else:
+                return bytes([int(payload_str)])
+        elif etype == encoding_constants.get('ENCODING_NUMERIC_WORDS'):
+            # Parse comma-separated integers as 16-bit words
+            if ',' in payload_str:
+                values = [int(x.strip()) for x in payload_str.split(',')]
+            else:
+                values = [int(payload_str)]
+            return b''.join([struct.pack('<h', v) for v in values])
+        elif etype == encoding_constants.get('ENCODING_FLOATS'):
+            # Parse comma-separated floats
+            if ',' in payload_str:
+                values = [float(x.strip()) for x in payload_str.split(',')]
+            else:
+                values = [float(payload_str)]
+            return b''.join([struct.pack('<f', v) for v in values])
 
     # Fallback for comma-separated strings
+    # Try to parse as comma-separated numeric values (backward compatibility)
+    if ',' in payload_str:
+        try:
+            parts = payload_str.split(',')
+            # Try to parse as integers
+            values = [int(p.strip()) for p in parts]
+            # Pack as bytes if all values fit in byte range
+            if all(0 <= v <= 255 for v in values):
+                return bytes(values)
+            # Otherwise fall through to text encoding
+        except ValueError:
+            pass  # Not numeric, treat as text
+    
+    # Default to text encoding
     return payload_str.encode('utf-8')
 
 def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
