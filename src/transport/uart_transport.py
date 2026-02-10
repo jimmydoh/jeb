@@ -361,8 +361,9 @@ class UARTTransport:
         # Import here to avoid circular dependency
         from .uart_manager import UARTManager
         
-        # If uart_hw is not already a UARTManager, wrap it
-        if isinstance(uart_hw, UARTManager):
+        # If uart_hw already has UARTManager interface (has write and read_available), use it directly
+        # Otherwise wrap it in a UARTManager
+        if hasattr(uart_hw, 'write') and hasattr(uart_hw, 'read_available'):
             self.uart_manager = uart_hw
         else:
             self.uart_manager = UARTManager(uart_hw)
@@ -388,7 +389,7 @@ class UARTTransport:
         # Internal buffer for non-blocking receive
         self._receive_buffer = bytearray()
 
-    async def send(self, message):
+    def send(self, message):
         """Send a message over UART using binary protocol with COBS framing.
 
         Parameters:
@@ -425,7 +426,7 @@ class UARTTransport:
         # Send via UART manager
         self.uart_manager.write(final_packet)
 
-    async def receive(self):
+    def receive(self):
         """Receive a message from UART if available.
 
         Non-blocking stateful receive that reads available bytes and buffers them
