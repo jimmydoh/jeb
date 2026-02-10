@@ -111,21 +111,37 @@ class IndustrialSatelliteFirmware(Satellite):
         self.time_offset = 0.0  # Estimated time difference from Core (in seconds)
 
     async def render_loop(self):
-        """Centralized hardware write task for NeoPixel LEDs.
+        """Centralized hardware write task for NeoPixel strip.
 
         This is the ONLY place where self.root_pixels.show() should be called.
         Runs at 60Hz to provide smooth, flicker-free LED updates while preventing
         race conditions from multiple async tasks writing to the hardware simultaneously.
 
-        Matches the CoreManager.render_loop() implementation for consistency.
+        Additionally broadcasts frame sync to satellites periodically for coordinated animations.
         """
+        next_frame_time = asyncio.get_event_loop().time()
+
         while True:
-            # Write the current buffer state to hardware
+            # Set watchdog flag to indicate this task is alive
+            self.watchdog_flags["render"] = True
+
+            # Udpate the buffer state and write to hardware
+            self.leds.animate_loop(step=True)
+            self.matrix.animate_loop(step=True)
             self.root_pixels.show()
-            # Increment local frame counter for sync tracking
+
+            # Increment frame counter for sync tracking
             self.frame_counter += 1
-            # Run at configured frame rate (default 60Hz, matches CoreManager)
-            await asyncio.sleep(self.RENDER_FRAME_TIME)
+
+            # Caclulate time to next frame to maintain consistent frame rate
+            next_frame_time += self.RENDER_FRAME_TIME
+            now = asyncio.get_event_loop().time()
+            sleep_duration = next_frame_time - now
+            if sleep_duration > 0:
+                await asyncio.sleep(sleep_duration)
+            else:                # We're behind schedule, skip sleeping to catch up
+                next_frame_time = now
+                await asyncio.sleep(0)  # Yield control to event loop to prevent starvation
 
     async def process_local_cmd(self, cmd, val):
         """Process commands addressed to this satellite.
@@ -161,15 +177,14 @@ class IndustrialSatelliteFirmware(Satellite):
         elif cmd == "SYNC_FRAME":
             # Frame sync command from Core for coordinated animations
             # Payload: frame_number,core_time
-            values = parse_values(val)
-            core_frame = get_int(values, 0, 0)
-            core_time = get_float(values, 1, 0.0)
+            core_frame = int(val[0])
+            core_time = val[1]
 
-            # Update sync state
-            self.last_sync_frame = core_frame
-            # Calculate time offset (positive means satellite is ahead)
-            current_time = time.monotonic()
-            self.time_offset = current_time - core_time
+            estimated_current_core_frame = core_frame + 1
+            drift = abs(self.frame_counter - estimated_current_core_frame)
+            if drift > 2:
+                self.frame_counter = estimated_current_core_frame
+
 
         elif cmd == "SETENC":
             # Set the encoder position to a specific value

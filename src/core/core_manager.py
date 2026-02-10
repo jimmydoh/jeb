@@ -180,7 +180,7 @@ class CoreManager:
         self.mode = "DASHBOARD"
         self.meltdown = False
         self.sat_active = False
-        
+
         # Frame sync state for coordinated LED animations with satellites
         self.frame_counter = 0
         self.last_sync_broadcast = 0.0
@@ -408,28 +408,39 @@ class CoreManager:
         This is the ONLY place where self.root_pixels.show() should be called.
         Runs at 60Hz to provide smooth, flicker-free LED updates while preventing
         race conditions from multiple async tasks writing to the hardware simultaneously.
-        
+
         Additionally broadcasts frame sync to satellites periodically for coordinated animations.
         """
+        next_frame_time = asyncio.get_event_loop().time()
+
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog_flags["render"] = True
 
-            # Write the current buffer state to hardware
+            # Udpate the buffer state and write to hardware
+            self.leds.animate_loop(step=True)
+            self.matrix.animate_loop(step=True)
             self.root_pixels.show()
-            
+
             # Increment frame counter for sync tracking
             self.frame_counter += 1
-            
+
             # Broadcast frame sync to satellites every 1 second (time-based, not frame-based)
             # This is advisory sync - satellites can use it to align animations
             current_time = ticks_ms() / 1000.0  # Convert to seconds
             if current_time - self.last_sync_broadcast >= 1.0:
-                self.sat_network.send_all("SYNC_FRAME", f"{self.frame_counter},{current_time}")
+                self.sat_network.send_all("SYNC_FRAME", (float(self.frame_counter), current_time))
                 self.last_sync_broadcast = current_time
-            
-            # Run at configured frame rate (default 60Hz)
-            await asyncio.sleep(self.RENDER_FRAME_TIME)
+
+            # Caclulate time to next frame to maintain consistent frame rate
+            next_frame_time += self.RENDER_FRAME_TIME
+            now = asyncio.get_event_loop().time()
+            sleep_duration = next_frame_time - now
+            if sleep_duration > 0:
+                await asyncio.sleep(sleep_duration)
+            else:                # We're behind schedule, skip sleeping to catch up
+                next_frame_time = now
+                await asyncio.sleep(0)  # Yield control to event loop to prevent starvation
 
     async def start(self):
         """Main async loop for the Master Controller."""
@@ -440,8 +451,8 @@ class CoreManager:
         asyncio.create_task(self.monitor_power())  # Analog Power Monitoring
         asyncio.create_task(self.monitor_connection())  # RJ45 Link Detection
         asyncio.create_task(self.monitor_hw_hid())  # Local Hardware Input Polling
-        asyncio.create_task(self.leds.animate_loop())  # Button LED Animations
-        asyncio.create_task(self.matrix.animate_loop())  # Matrix LED Animations
+        #asyncio.create_task(self.leds.animate_loop())  # Button LED Animations
+        #asyncio.create_task(self.matrix.animate_loop())  # Matrix LED Animations
         asyncio.create_task(
             self.synth.start_generative_drone()
         )  # Background Music Drone

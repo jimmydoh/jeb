@@ -10,33 +10,37 @@ also exported from this module so existing code can import them easily.
 """
 
 from .message import Message
-from .base_transport import BaseTransport
 from .uart_transport import UARTTransport
-
-# Import protocol definitions for convenience
-# Users can import from here: from transport import COMMAND_MAP, DEST_MAP, PAYLOAD_SCHEMAS
-# Or from protocol module directly: from protocol import COMMAND_MAP, DEST_MAP, PAYLOAD_SCHEMAS
 try:
-    # Try to import from parent package (protocol.py at src level)
-    from ..protocol import (
-        COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE,
-        ENCODING_RAW_TEXT, ENCODING_NUMERIC_BYTES, ENCODING_NUMERIC_WORDS, ENCODING_FLOATS,
-        PAYLOAD_SCHEMAS
+    from .protocol import (
+        COMMAND_MAP,
+        DEST_MAP,
+        MAX_INDEX_VALUE,
+        PAYLOAD_SCHEMAS,
+        ENCODING_RAW_TEXT,
+        ENCODING_NUMERIC_BYTES,
+        ENCODING_NUMERIC_WORDS,
+        ENCODING_FLOATS,
     )
 except (ImportError, ValueError):
-    # If relative import fails (e.g., running as script), provide empty defaults
     COMMAND_MAP = {}
     DEST_MAP = {}
     MAX_INDEX_VALUE = 100
+    PAYLOAD_SCHEMAS = {}
     ENCODING_RAW_TEXT = 'text'
     ENCODING_NUMERIC_BYTES = 'bytes'
     ENCODING_NUMERIC_WORDS = 'words'
     ENCODING_FLOATS = 'floats'
-    PAYLOAD_SCHEMAS = {}
 
 __all__ = [
-    'Message', 'BaseTransport', 'UARTTransport',
-    'COMMAND_MAP', 'DEST_MAP', 'MAX_INDEX_VALUE',
-    'ENCODING_RAW_TEXT', 'ENCODING_NUMERIC_BYTES', 'ENCODING_NUMERIC_WORDS', 'ENCODING_FLOATS',
-    'PAYLOAD_SCHEMAS'
+    'Message',
+    'UARTTransport',
+    'COMMAND_MAP',
+    'DEST_MAP',
+    'MAX_INDEX_VALUE',
+    'PAYLOAD_SCHEMAS',
+    'ENCODING_RAW_TEXT',
+    'ENCODING_NUMERIC_BYTES',
+    'ENCODING_NUMERIC_WORDS',
+    'ENCODING_FLOATS',
 ]
