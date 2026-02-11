@@ -30,17 +30,22 @@ jobs:
 
       - name: Install CircuitPython mpy-cross
         run: |
-          # Download CircuitPython 10.x mpy-cross executable
+          # Build CircuitPython-specific mpy-cross from source
           # Using version 10.0.0 for CircuitPython 10.x compatibility
           CIRCUITPYTHON_VERSION="10.0.0"
-          MPY_CROSS_URL="https://github.com/adafruit/circuitpython/releases/download/${CIRCUITPYTHON_VERSION}/mpy-cross-linux-amd64-${CIRCUITPYTHON_VERSION}"
           
-          echo "Downloading CircuitPython mpy-cross ${CIRCUITPYTHON_VERSION}..."
-          curl -L -o mpy-cross "${MPY_CROSS_URL}"
-          chmod +x mpy-cross
+          echo "Cloning CircuitPython ${CIRCUITPYTHON_VERSION}..."
+          git clone --depth 1 --branch ${CIRCUITPYTHON_VERSION} https://github.com/adafruit/circuitpython.git /tmp/circuitpython
+          
+          echo "Installing build dependencies..."
+          pip install jinja2 polib huffman
+          
+          echo "Building mpy-cross..."
+          cd /tmp/circuitpython/mpy-cross
+          make
           
           # Move to a location in PATH
-          sudo mv mpy-cross /usr/local/bin/
+          sudo cp build/mpy-cross /usr/local/bin/
           
           # Verify installation
           mpy-cross --version

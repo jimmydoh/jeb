@@ -332,10 +332,12 @@ MPY (MicroPython bytecode) files offer several advantages:
 ## Compilation Process
 
 The workflow uses `mpy-cross`, the CircuitPython-specific cross-compiler:
-- Version: CircuitPython 10.0.0 mpy-cross executable
-- Source: Downloaded from CircuitPython releases on GitHub
+- Version: Built from CircuitPython 10.0.0 source
+- Source: Compiled from CircuitPython GitHub repository
 - Target: Compatible with CircuitPython 10.x+
 - Special handling: `boot.py` and `code.py` are copied as-is and not compiled
+
+The workflow builds mpy-cross from CircuitPython source to ensure compatibility with CircuitPython 10.x+ runtime and features.
 
 ### CircuitPython-Specific Files
 
@@ -343,7 +345,7 @@ The following files are **not compiled** and are copied to the build directory a
 - **boot.py**: CircuitPython boot file that runs before code.py
 - **code.py**: Main application entry point
 
-These files contain CircuitPython-specific initialization code and should remain as `.py` files for proper device operation.
+These files are kept as `.py` files to ensure they remain easily editable and debuggable on the device.
 
 ### Error Handling
 
