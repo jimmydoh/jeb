@@ -302,21 +302,39 @@ class CoreManager:
 
     # --- Background Tasks ---
     async def monitor_estop(self):
-        """Background task to monitor the E-Stop button (gameplay interaction).
+        """
+        Background task to monitor the E-Stop button.
+        Used for Gameplay elements only - NOT A SAFETY FEATURE.
 
         Engaging the E-Stop triggers meltdown mode with audio alarms.
 
-        Releasing the E-Stop resets the system.
+        Releasing the E-Stop returns to the normal state.
+
+        TODO: Decision - get rid of this altogether and just use the button
+        for manual aborts in modes? The meltdown state is fun but may not be
+        worth the complexity. Also prevents the button from being used as
+        an actual gameplay element if it's tied to a global meltdown state.
         """
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("estop")
 
-            if not self.hid.estop and not self.meltdown:
+            if self.meltdown:
+                if self.hid.estop: # User reset the button
+                    self.meltdown = False
+                    self.estop_event.clear()  # Reset the event for future use
+                    await self.audio.play("system_reset.wav")
+                    await self.display.update_status("SAFETY RESET", "PLEASE STAND BY")
+                    await asyncio.sleep(2)
+                else:
+                    # Still in meltdown, continue strobing and waiting for reset
+                    await asyncio.sleep(0.05)
+                    continue
+            elif not self.hid.estop:
+                # E-Stop has been engaged, trigger meltdown
                 self.meltdown = True
                 self.estop_event.set()  # Signal to any listening tasks that E-Stop is engaged
                 self.sat_network.send_all("LED", "ALL,0,0,0")  # Kill all LEDs
-
                 # Audio Alarms
                 await self.audio.play(
                     "background_winddown.wav", channel=self.audio.CH_ATMO, loop=False
@@ -328,22 +346,7 @@ class CoreManager:
                 await self.audio.play(
                     "voice_meltdown.wav", channel=self.audio.CH_VOICE, loop=True
                 )
-
-                # High Contrast Warning on OLED
                 self.display.update_status("!!! EMERGENCY STOP !!!", "PULL UP TO RESET")
-
-                # Strobe the neobar and satellite LEDs
-                while not self.hid.estop:  # While button is still latched down
-                    self.watchdog.check_in("estop")  # Signal that we are alive and waiting
-                    # TODO Implement alarm LED strobing
-                    await asyncio.sleep(0.2)
-
-                # Once button is twisted/reset
-                self.meltdown = False
-                self.estop_event.clear()  # Reset the event for future use
-                await self.audio.play("system_reset.wav")
-                await self.display.update_status("SAFETY RESET", "PLEASE STAND BY")
-                await asyncio.sleep(2)
 
             await asyncio.sleep(0.05)
 
