@@ -137,6 +137,45 @@ class MockUARTManager:
 # Import transport
 from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
+
+def drain_tx_buffer(transport, mock_uart):
+    """Helper function to manually drain TX buffer for synchronous tests.
+    
+    Simulates what the async TX worker does, but synchronously.
+    """
+    while transport._tx_head != transport._tx_tail:
+        head = transport._tx_head
+        tail = transport._tx_tail
+        size = transport._tx_buffer_size
+        
+        # Determine contiguous chunk to write
+        if head > tail:
+            chunk = transport._tx_mv[tail:head]
+        else:
+            chunk = transport._tx_mv[tail:size]
+        
+        # Write to mock UART (convert memoryview to bytes)
+        transport.uart.write(bytes(chunk))
+        
+        # Advance tail
+        transport._tx_tail = (tail + len(chunk)) % size
+
+
+def receive_message_sync(transport):
+    """Helper function to manually receive a message for synchronous tests.
+    
+    Simulates what the async RX worker does, but synchronously.
+    Returns a message if available, None otherwise.
+    """
+    # First try to get from queue if workers have been run
+    msg = transport.receive_nowait()
+    if msg is not None:
+        return msg
+    
+    # Otherwise, manually process incoming data
+    transport._read_hw()
+    return transport._try_decode_one()
+
 def simulate_led_command_processing(payload):
     """Simulate firmware processing of LED command with binary payload."""
     # This mimics what sat_01_firmware.py does in process_local_cmd
@@ -172,6 +211,7 @@ def test_end_to_end_binary_flow():
     # Send LED command: LED 0, RGB(255, 128, 64), 2.0s duration, 0.8 brightness, priority 3
     msg_out = Message("0101", "LED", "0,255,128,64")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     print(f"  Master sent: {msg_out}")
     print(f"  Wire format: {mock_uart.sent_packets[0].hex()}")
@@ -179,7 +219,7 @@ def test_end_to_end_binary_flow():
     # SATELLITE SIDE: Receive the message
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
     mock_uart._in_waiting = len(mock_uart.sent_packets[0])
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     print(f"  Satellite received: {msg_in}")
     print(f"  Payload type: {type(msg_in.payload)}")
@@ -261,11 +301,12 @@ def test_struct_unpack_ultimate_performance():
     # Send LED command
     msg_out = Message("0101", "LED", "10,20,30,40,50,60,70")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     # Receive
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
     mock_uart._in_waiting = len(mock_uart.sent_packets[0])
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     # Option 1: Using parse_values (converts to list)
     values_list = parse_values(msg_in.payload)
@@ -308,10 +349,11 @@ def test_backward_compatibility():
     # Text command: DSP with message
     msg_out = Message("0101", "DSP", "HELLO WORLD")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
     mock_uart._in_waiting = len(mock_uart.sent_packets[0])
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     print(f"  Sent: {msg_out}")
     print(f"  Received payload type: {type(msg_in.payload)}")
@@ -342,10 +384,11 @@ def test_mixed_commands():
 
         msg_out = Message("0101", cmd, payload)
         transport.send(msg_out)
+        drain_tx_buffer(transport, mock_uart)
 
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
         mock_uart._in_waiting = len(mock_uart.sent_packets[0])
-        msg_in = transport.receive()
+        msg_in = receive_message_sync(transport)
 
         actual_type = "bytes" if isinstance(msg_in.payload, bytes) else "str"
 

@@ -142,6 +142,45 @@ class MockUARTManager:
 # Now import the transport classes
 from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
+
+def drain_tx_buffer(transport, mock_uart):
+    """Helper function to manually drain TX buffer for synchronous tests.
+    
+    Simulates what the async TX worker does, but synchronously.
+    """
+    while transport._tx_head != transport._tx_tail:
+        head = transport._tx_head
+        tail = transport._tx_tail
+        size = transport._tx_buffer_size
+        
+        # Determine contiguous chunk to write
+        if head > tail:
+            chunk = transport._tx_mv[tail:head]
+        else:
+            chunk = transport._tx_mv[tail:size]
+        
+        # Write to mock UART (convert memoryview to bytes)
+        transport.uart.write(bytes(chunk))
+        
+        # Advance tail
+        transport._tx_tail = (tail + len(chunk)) % size
+
+
+def receive_message_sync(transport):
+    """Helper function to manually receive a message for synchronous tests.
+    
+    Simulates what the async RX worker does, but synchronously.
+    Returns a message if available, None otherwise.
+    """
+    # First try to get from queue if workers have been run
+    msg = transport.receive_nowait()
+    if msg is not None:
+        return msg
+    
+    # Otherwise, manually process incoming data
+    transport._read_hw()
+    return transport._try_decode_one()
+
 def test_binary_payload_returns_bytes():
     """Test that binary payloads are returned as bytes, not strings."""
     print("Testing binary payload returns bytes...")
@@ -153,11 +192,12 @@ def test_binary_payload_returns_bytes():
     # Send a message with numeric payload (will be encoded as binary)
     msg_out = Message("0101", "LED", "0,255,128,64")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     # Receive it back
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    msg_in = transport.receive()
+    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
+    msg_in = receive_message_sync(transport)
 
     assert msg_in is not None, "Should receive a message"
     # Without schema, text payloads remain as strings if printable
@@ -180,11 +220,12 @@ def test_text_payload_returns_string():
     # Send a message with text payload
     msg_out = Message("0101", "DSP", "HELLO")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     # Receive it back
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
     mock_uart._in_waiting = len(mock_uart.sent_packets[0])
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     assert msg_in is not None, "Should receive a message"
     assert isinstance(msg_in.payload, str), f"Expected str, got {type(msg_in.payload)}"
@@ -270,11 +311,12 @@ def test_no_string_boomerang():
     # Send LED command with 4 values using tuple for binary encoding
     msg_out = Message("0101", "LED", (0, 255, 128, 64))
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     # Receive it
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    msg_in = transport.receive()
+    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
+    msg_in = receive_message_sync(transport)
 
     # With ENCODING_NUMERIC_BYTES schema, payload is returned as tuple directly
     # (no string conversion - that's the fix!)
@@ -308,10 +350,11 @@ def test_heap_efficiency():
 
     msg_out = Message("0101", "LED", (10, 20, 30, 40))
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    msg_in = transport.receive()
+    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
+    msg_in = receive_message_sync(transport)
 
     # The payload is now tuple - no intermediate string objects created!
     assert isinstance(msg_in.payload, tuple), f"Expected tuple, got {type(msg_in.payload)}"
