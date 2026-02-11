@@ -320,7 +320,7 @@ class CoreManager:
             self.watchdog.check_in("estop")
 
             if self.meltdown:
-                if self.hid.estop: # User reset the button
+                if not self.hid.estop: # User reset the button
                     self.meltdown = False
                     self.estop_event.clear()  # Reset the event for future use
                     await self.audio.play("system_reset.wav")
@@ -330,7 +330,7 @@ class CoreManager:
                     # Still in meltdown, continue strobing and waiting for reset
                     await asyncio.sleep(0.05)
                     continue
-            elif not self.hid.estop:
+            elif self.hid.estop:
                 # E-Stop has been engaged, trigger meltdown
                 self.meltdown = True
                 self.estop_event.set()  # Signal to any listening tasks that E-Stop is engaged
