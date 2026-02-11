@@ -391,11 +391,11 @@ class CoreManager:
 
             print("Initializing Watchdog Manager...")
             self.watchdog = WatchdogManager(
-                task_names=list([
+                task_names=[
                     "power",
                     "connection",
                     "hw_hid"
-                ]),
+                ],
                 timeout=5.0
             )
 

@@ -318,7 +318,7 @@ class UARTTransport:
         self._mv = memoryview(self._buffer)
         self._head = 0  # Write position
         self._tail = 0  # Read position
-        
+
         # Linear Scratchpad for Packet Unwrapping
         self._packet_buf = bytearray(self.MAX_PACKET_SIZE)
         self._packet_mv = memoryview(self._packet_buf)
@@ -365,14 +365,14 @@ class UARTTransport:
 
     def _read_hw(self):
         """Read UART data into ring buffer using zero-allocation readinto.
-        
+
         This method reads available UART data directly into the ring buffer
         using memoryview slicing, avoiding any memory allocation or copying.
         Handles ring buffer wrap-around automatically.
         """
         if not self.uart.in_waiting:
             return
-        
+
         # Calculate available contiguous space in ring buffer
         if self._tail > self._head:
             # Space wraps around: can write from head to tail (minus 1 for full detection)
@@ -387,13 +387,10 @@ class UARTTransport:
         else:
             # Tail < Head: Write to end of physical buffer
             space = self._buf_size - self._head
-            # EXCEPTION: If tail is 0, we can't write up to 2048 (wrapping to 0)
-            if self._tail == 0:
-                space -= 1
-        
+
         if space <= 0:
             return  # Buffer full
-        
+
         # Read directly into ring buffer memoryview slice
         try:
             count = self.uart.readinto(self._mv[self._head : self._head + space])
@@ -499,28 +496,28 @@ class UARTTransport:
         """
         # 1. Pump hardware data into ring buffer
         self._read_hw()
-        
+
         # 2. Check if we have any data
         if self._head == self._tail:
             return None  # Buffer empty
-        
+
         # 3. Find delimiter (0x00) in ring buffer
         # Scan from tail to head, handling wrap-around
         bytes_available = (self._head - self._tail) % self._buf_size
-        
+
         # Limit scan to MAX_PACKET_SIZE to prevent hanging on massive garbage data
         scan_limit = min(bytes_available, self.MAX_PACKET_SIZE)
-        
+
         packet_len = 0
         found_delimiter = False
-        
+
         for i in range(scan_limit):
             idx = (self._tail + i) % self._buf_size
             if self._buffer[idx] == 0x00:
                 found_delimiter = True
                 packet_len = i
                 break
-        
+
         if not found_delimiter:
             # No delimiter found
             # SAFETY: If buffer is nearly full and no delimiter, clear the buffer to prevent deadlock
@@ -533,15 +530,15 @@ class UARTTransport:
                 # Advance tail by a larger chunk to clear garbage faster
                 self._tail = (self._tail + 100) % self._buf_size
             return None
-        
+
         # 4. Unwrap packet from ring buffer into linear scratchpad
         # This uses fast memoryview slice assignment instead of Python loops
-        
+
         if packet_len > len(self._packet_buf):
             # Packet too large - skip it
             self._tail = (self._tail + packet_len + 1) % self._buf_size
             return None
-        
+
         # Case A: Packet is contiguous (no wrap-around)
         if self._tail + packet_len <= self._buf_size:
             # Fast copy: Linear slice to linear slice
@@ -551,27 +548,27 @@ class UARTTransport:
             # Copy in two chunks using fast slice assignment
             first_chunk = self._buf_size - self._tail
             second_chunk = packet_len - first_chunk
-            
+
             # Copy part 1: tail to end of buffer
             self._packet_mv[:first_chunk] = self._mv[self._tail:]
             # Copy part 2: start of buffer to remainder
             self._packet_mv[first_chunk:packet_len] = self._mv[:second_chunk]
-        
+
         # 5. Advance tail past packet and delimiter
         self._tail = (self._tail + packet_len + 1) % self._buf_size
-        
+
         # 6. Decode packet using linear scratchpad
         try:
             decoded = cobs_decode(self._packet_mv[:packet_len])
             if len(decoded) < 3:
                 return None
-            
+
             crc_rx = decoded[-1]
             content = decoded[:-1]
-            
+
             if calculate_crc8(content) != crc_rx:
                 return None  # CRC fail
-            
+
             # Parse fields
             dest_str, offset = _decode_destination(
                 content,
@@ -581,15 +578,15 @@ class UARTTransport:
             )
             if offset >= len(content):
                 return None
-            
+
             cmd_str = _decode_command(content[offset], self.command_reverse_map)
             offset += 1
-            
+
             schema = self.payload_schemas.get(cmd_str)
             payload = _decode_payload(content[offset:], schema, self.encoding_constants)
-            
+
             return Message(dest_str, cmd_str, payload)
-            
+
         except (ValueError, IndexError) as e:
             print(f"Protocol Error: {e}")
             return None

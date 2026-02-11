@@ -133,7 +133,7 @@ class PowerManager:
         """Instant hardware cut-off for the satellite bus."""
         self.sat_pwr.value = False
 
-    def check_power_integrity(self):
+    async def check_power_integrity(self):
         """Diagnostic check performed at boot and during play."""
         v = self.status
         if v["input" if "input" in self.sense_names else "0"] < 15.0:
