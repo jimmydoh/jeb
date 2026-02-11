@@ -43,10 +43,10 @@ def test_watchdog_feed_present_in_code():
     # The new implementation uses asyncio.wait instead of a while loop
     # Check that watchdog is being fed in the start() method instead
     # (which is where it should be for the new architecture)
-    
+
     # For now, just verify the method exists since the architecture has changed
     # The actual watchdog feeding happens in the main start() loop
-    
+
     print("  ✓ Method structure verified (architecture uses asyncio.wait)")
     print("  NOTE: Watchdog feeding occurs in main start() loop (verified in next test)")
 
@@ -77,12 +77,12 @@ def test_watchdog_feed_in_main_loop():
     print("  ✓ Found start() method")
 
     # Check for watchdog feed in the main loop (now uses safe_feed_watchdog)
-    assert 'self.watchdog.safe_feed()' in start_body, "'self.watchdog.safe_feed()' not found in start() method"
+    assert 'monitor_watchdog_feed' in start_body, "'monitor_watchdog_feed' not found in start() method"
 
-    print("  ✓ Found 'self.watchdog.safe_feed()' in start() method")
+    print("  ✓ Found 'monitor_watchdog_feed' in start() method")
 
     # Count occurrences
-    feed_count = start_body.count('self.watchdog.safe_feed()')
+    feed_count = start_body.count('monitor_watchdog_feed')
     print(f"  ✓ Found {feed_count} safe_feed call(s) in start() method")
 
 
