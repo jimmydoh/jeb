@@ -34,9 +34,9 @@ def get_firmware_content():
 def get_base_firmware_content():
     """Get the content of base.py."""
     file_path = os.path.join(
-        os.path.dirname(__file__), '..', 'src', 'satellites', 'base.py'
+        os.path.dirname(__file__), '..', 'src', 'satellites', 'base_firmware.py'
     )
-    assert os.path.exists(file_path), "base.py should exist"
+    assert os.path.exists(file_path), "base_firmware.py should exist"
     with open(file_path, 'r') as f:
         return f.read()
 
