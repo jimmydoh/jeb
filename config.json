@@ -1,1 +1,1 @@
-{"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": true, "web_server_port": 8080, "debug_mode": true, "role": "CORE", "type_id": "00"}
+{"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": true, "debug_mode": true}

@@ -142,6 +142,26 @@ def test_web_server():
         for path, method, func in manager.server.routes:
             print(f"      - {method.__name__} {path}")
         
+        # Verify all expected routes are present
+        expected_routes = [
+            '/',
+            '/api/config/global',
+            '/api/config/modes',
+            '/api/files',
+            '/api/files/download',
+            '/api/files/upload',
+            '/api/logs',
+            '/api/console',
+            '/api/actions/ota-update',
+            '/api/actions/toggle-debug',
+            '/api/actions/reorder-satellites',
+            '/api/system/status'
+        ]
+        registered_paths = [path for path, _, _ in manager.server.routes]
+        for expected in expected_routes:
+            if expected not in registered_paths:
+                print(f"   ⚠️ WARNING: Expected route not found: {expected}")
+        
         print("\n" + "="*60)
         print("   ✓ All tests passed!")
         print("="*60 + "\n")

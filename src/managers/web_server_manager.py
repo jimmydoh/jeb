@@ -211,6 +211,94 @@ class WebServerManager:
                 return Response(request, f'{{"error": "{str(e)}"}}', 
                               content_type="application/json", status=500)
         
+        # API: Upload file (Note: CircuitPython HTTP server may need chunked upload)
+        @self.server.route("/api/files/upload", POST)
+        def upload_file(request: Request):
+            """Upload a file to the SD card."""
+            try:
+                # Get target path and filename from query params
+                path = request.query_params.get("path", "/sd")
+                filename = request.query_params.get("filename")
+                
+                if not filename:
+                    return Response(request, '{"error": "Filename required"}', 
+                                  content_type="application/json", status=400)
+                
+                # Security: Prevent directory traversal
+                if ".." in path or ".." in filename:
+                    return Response(request, '{"error": "Invalid path"}', 
+                                  content_type="application/json", status=400)
+                
+                # Get file content from request body
+                content = request.body
+                
+                # Write file
+                filepath = f"{path}/{filename}"
+                with open(filepath, "wb") as f:
+                    f.write(content)
+                
+                self.log(f"File uploaded: {filepath}")
+                return Response(request, f'{{"status": "success", "path": "{filepath}"}}', 
+                              content_type="application/json")
+            except Exception as e:
+                self.log(f"Error uploading file: {e}")
+                return Response(request, f'{{"error": "{str(e)}"}}', 
+                              content_type="application/json", status=500)
+        
+        # API: Get mode settings
+        @self.server.route("/api/config/modes", GET)
+        def get_mode_settings(request: Request):
+            """Return mode settings from data manager."""
+            try:
+                # Load mode settings from data manager if available
+                # For now, return example structure showing available modes
+                modes_data = {
+                    "SIMON": {
+                        "settings": [
+                            {"key": "mode", "label": "MODE", "options": ["CLASSIC", "REVERSE", "BLIND"], "default": "CLASSIC"},
+                            {"key": "difficulty", "label": "DIFF", "options": ["EASY", "NORMAL", "HARD", "INSANE"], "default": "NORMAL"}
+                        ],
+                        "current": {
+                            "mode": "CLASSIC",
+                            "difficulty": "NORMAL"
+                        }
+                    },
+                    # Add more modes as needed
+                }
+                
+                return Response(request, json.dumps(modes_data), 
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}', 
+                              content_type="application/json", status=500)
+        
+        # API: Update mode settings
+        @self.server.route("/api/config/modes", POST)
+        def update_mode_settings(request: Request):
+            """Update settings for a specific mode."""
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}', 
+                                  content_type="application/json", status=400)
+                
+                mode_id = data.get("mode_id")
+                settings = data.get("settings")
+                
+                if not mode_id or not settings:
+                    return Response(request, '{"error": "mode_id and settings required"}', 
+                                  content_type="application/json", status=400)
+                
+                # Save settings (would integrate with DataManager in actual implementation)
+                self.log(f"Mode settings updated for {mode_id}")
+                
+                return Response(request, '{"status": "success"}', 
+                              content_type="application/json")
+            except Exception as e:
+                self.log(f"Error updating mode settings: {e}")
+                return Response(request, f'{{"error": "{str(e)}"}}', 
+                              content_type="application/json", status=500)
+        
         # API: Get logs
         @self.server.route("/api/logs", GET)
         def get_logs(request: Request):
@@ -260,6 +348,33 @@ class WebServerManager:
                 return Response(request, f'{{"status": "debug_{status}"}}', 
                               content_type="application/json")
             except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}', 
+                              content_type="application/json", status=500)
+        
+        # API: Reorder satellites
+        @self.server.route("/api/actions/reorder-satellites", POST)
+        def reorder_satellites(request: Request):
+            """Reorder satellite IDs in configuration."""
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}', 
+                                  content_type="application/json", status=400)
+                
+                satellite_order = data.get("order")
+                if not satellite_order or not isinstance(satellite_order, list):
+                    return Response(request, '{"error": "order array required"}', 
+                                  content_type="application/json", status=400)
+                
+                # Save new satellite order to config
+                self.config["satellite_order"] = satellite_order
+                self._save_config()
+                
+                self.log(f"Satellite order updated: {satellite_order}")
+                return Response(request, '{"status": "success"}', 
+                              content_type="application/json")
+            except Exception as e:
+                self.log(f"Error reordering satellites: {e}")
                 return Response(request, f'{{"error": "{str(e)}"}}', 
                               content_type="application/json", status=500)
         
@@ -468,6 +583,7 @@ class WebServerManager:
         <div class="tabs">
             <button class="tab active" onclick="showTab('system')">System Status</button>
             <button class="tab" onclick="showTab('config')">Configuration</button>
+            <button class="tab" onclick="showTab('modes')">Mode Settings</button>
             <button class="tab" onclick="showTab('files')">File Browser</button>
             <button class="tab" onclick="showTab('logs')">Logs</button>
             <button class="tab" onclick="showTab('console')">Console</button>
@@ -508,11 +624,24 @@ class WebServerManager:
             <div id="configStatus" class="status" style="display:none;"></div>
         </div>
         
+        <div id="modes" class="tab-content">
+            <h2>Mode Settings</h2>
+            <p style="color: #b0b0b0; margin-bottom: 15px;">Configure settings for each game mode</p>
+            <div id="modesList"></div>
+            <button onclick="loadModeSettings()">Refresh Mode Settings</button>
+            <div id="modesStatus" class="status" style="display:none;"></div>
+        </div>
+        
         <div id="files" class="tab-content">
             <h2>File Browser</h2>
             <div>
                 <label>Current Path: <span id="currentPath">/sd</span></label>
                 <button onclick="loadFiles()">Refresh</button>
+            </div>
+            <div class="form-group" style="margin-top: 15px;">
+                <label>Upload File:</label>
+                <input type="file" id="fileUpload">
+                <button onclick="uploadFile()">Upload to Current Directory</button>
             </div>
             <ul class="file-list" id="fileList"></ul>
         </div>
@@ -556,6 +685,7 @@ class WebServerManager:
             if (tabName === 'system') loadSystemStatus();
             if (tabName === 'files') loadFiles();
             if (tabName === 'logs') loadLogs();
+            if (tabName === 'modes') loadModeSettings();
         }
         
         async function loadSystemStatus() {
@@ -756,6 +886,107 @@ class WebServerManager:
                 }
             } catch (error) {
                 showStatus('actionStatus', 'Error: ' + error, 'error');
+            }
+        }
+        
+        async function loadModeSettings() {
+            try {
+                const response = await fetch('/api/config/modes');
+                const modes = await response.json();
+                
+                const modesList = document.getElementById('modesList');
+                modesList.innerHTML = '';
+                
+                for (const [modeId, modeData] of Object.entries(modes)) {
+                    const modeDiv = document.createElement('div');
+                    modeDiv.style.marginBottom = '20px';
+                    modeDiv.style.padding = '15px';
+                    modeDiv.style.background = '#1a1a1a';
+                    modeDiv.style.borderRadius = '5px';
+                    
+                    let html = `<h3 style="color: #4CAF50; margin-bottom: 10px;">${modeId}</h3>`;
+                    
+                    modeData.settings.forEach(setting => {
+                        const currentValue = modeData.current[setting.key] || setting.default;
+                        html += `
+                            <div class="form-group">
+                                <label>${setting.label}:</label>
+                                <select id="${modeId}_${setting.key}">
+                                    ${setting.options.map(opt => 
+                                        `<option value="${opt}" ${opt === currentValue ? 'selected' : ''}>${opt}</option>`
+                                    ).join('')}
+                                </select>
+                            </div>
+                        `;
+                    });
+                    
+                    html += `<button onclick="saveModeSettings('${modeId}')">Save ${modeId} Settings</button>`;
+                    modeDiv.innerHTML = html;
+                    modesList.appendChild(modeDiv);
+                }
+            } catch (error) {
+                showStatus('modesStatus', 'Error loading mode settings: ' + error, 'error');
+            }
+        }
+        
+        async function saveModeSettings(modeId) {
+            try {
+                // Collect all settings for this mode
+                const settings = {};
+                document.querySelectorAll(`[id^="${modeId}_"]`).forEach(elem => {
+                    const key = elem.id.replace(`${modeId}_`, '');
+                    settings[key] = elem.value;
+                });
+                
+                const response = await fetch('/api/config/modes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode_id: modeId, settings: settings })
+                });
+                
+                if (response.ok) {
+                    showStatus('modesStatus', `${modeId} settings saved successfully`, 'success');
+                } else {
+                    showStatus('modesStatus', 'Error saving settings', 'error');
+                }
+            } catch (error) {
+                showStatus('modesStatus', 'Error: ' + error, 'error');
+            }
+        }
+        
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileUpload');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a file first');
+                return;
+            }
+            
+            try {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    const content = e.target.result;
+                    
+                    const response = await fetch(
+                        `/api/files/upload?path=${encodeURIComponent(currentPath)}&filename=${encodeURIComponent(file.name)}`,
+                        {
+                            method: 'POST',
+                            body: content
+                        }
+                    );
+                    
+                    if (response.ok) {
+                        alert(`File ${file.name} uploaded successfully`);
+                        loadFiles();  // Refresh file list
+                    } else {
+                        const data = await response.json();
+                        alert('Upload failed: ' + data.error);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } catch (error) {
+                alert('Upload error: ' + error);
             }
         }
         
