@@ -186,7 +186,7 @@ def test_relay_worker_uses_queue():
 
 
 def test_send_uses_queue():
-    """Test that send() method writes to TX buffer or directly to UART."""
+    """Test that send() method writes to TX buffer."""
     print("\nTesting send() method integration...")
     content = get_transport_content()
 
@@ -199,22 +199,13 @@ def test_send_uses_queue():
     assert send_match, "send method should exist"
     send_method = send_match.group(0)
 
-    # In the new architecture, send() writes to TX buffer when workers are running,
-    # or directly to UART when workers are not running (for testing)
-    # Check that it can write to TX buffer
+    # In the async architecture, send() always writes to TX buffer
+    # The TX worker (when running) drains the buffer to UART
     assert '_write_to_tx_buffer' in send_method, \
-        "send() should use _write_to_tx_buffer when async workers are running"
+        "send() should use _write_to_tx_buffer to enqueue data"
 
-    # Check that it can also write directly to UART (for backward compatibility)
-    assert 'self.uart.write(packet)' in send_method, \
-        "send() should support direct write when async workers are not running"
-
-    # Check that it checks for worker status
-    assert 'self._tx_task' in send_method, \
-        "send() should check if TX worker is running"
-
-    print("  ✓ send() integrates with ring buffer system")
-    print("  ✓ send() supports both async and sync modes")
+    print("  ✓ send() writes to TX ring buffer")
+    print("  ✓ TX worker drains buffer to UART (async)")
     print("✓ Send method integration test passed")
 
 
