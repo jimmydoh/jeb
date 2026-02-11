@@ -167,12 +167,13 @@ class CoreManager:
         # See class docstring for detailed structure documentation
         self.modes = {}
         for mode_class in AVAILABLE_MODES:
-            # Store by class name for registry access
-            self._mode_registry[mode_class.__name__] = mode_class
-            # Store by mode ID for efficient lookup in main loop
-            # Safely access METADATA, defaulting if missing
-            meta = getattr(mode_class, "METADATA", BaseMode.METADATA)
-            self.modes[meta["id"]] = mode_class
+            try:
+                # Attempt to inspect/register the mode
+                self._mode_registry[mode_class.__name__] = mode_class
+                meta = getattr(mode_class, "METADATA", BaseMode.METADATA)
+                self.modes[meta["id"]] = mode_class
+            except Exception as e:
+                print(f"FAILED TO LOAD MODE {mode_class}: {e}")
         self.mode = "DASHBOARD"
 
         # --- SAFETY EVENTS ---
