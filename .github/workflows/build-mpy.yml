@@ -4,13 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'src/*.py'
-      - 'src/**/*.py'
-  pull_request:
-    paths:
-      - 'src/*.py'
-      - 'src/**/*.py'
   workflow_dispatch:
 
 jobs:
@@ -31,28 +24,28 @@ jobs:
       - name: Install CircuitPython mpy-cross
         run: |
           # Build CircuitPython-specific mpy-cross from source
-          # Using version 10.0.0 for CircuitPython 10.x compatibility
-          CIRCUITPYTHON_VERSION="10.0.0"
-          
+          # Using version 10.0.3 for CircuitPython 10.0.3 compatibility
+          CIRCUITPYTHON_VERSION="10.0.3"
+
           echo "Cloning CircuitPython ${CIRCUITPYTHON_VERSION}..."
-          git clone --depth 1 --branch ${CIRCUITPYTHON_VERSION} https://github.com/adafruit/circuitpython.git /tmp/circuitpython || { 
+          git clone --depth 1 --branch ${CIRCUITPYTHON_VERSION} https://github.com/adafruit/circuitpython.git /tmp/circuitpython || {
             echo "ERROR: Failed to clone CircuitPython repository"
             exit 1
           }
-          
+
           echo "Installing build dependencies..."
           pip install jinja2 polib huffman
-          
+
           echo "Building mpy-cross..."
           cd /tmp/circuitpython/mpy-cross
-          make || { 
+          make || {
             echo "ERROR: Failed to build mpy-cross"
             exit 1
           }
-          
+
           # Move to a location in PATH
           sudo cp build/mpy-cross /usr/local/bin/
-          
+
           # Verify installation
           mpy-cross --version
 
@@ -134,13 +127,13 @@ jobs:
           while IFS= read -r pyfile; do
             # Get the relative path from src
             relpath="${pyfile#src/}"
-            
+
             # Skip boot.py and code.py - they should not be compiled
             if [ "$relpath" = "boot.py" ] || [ "$relpath" = "code.py" ]; then
               echo "Skipping $pyfile (should not be compiled)"
               continue
             fi
-            
+
             # Create directory structure in build/mpy
             mkdir -p "build/mpy/$(dirname "$relpath")"
             # Compile to .mpy
