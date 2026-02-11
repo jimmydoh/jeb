@@ -252,6 +252,7 @@ class UARTTransport:
     # Ring buffer constants
     RING_BUFFER_SIZE = 2048  # Fixed 2KB ring buffer
     MAX_PACKET_SIZE = 256    # Maximum packet size for scanning and scratchpad
+    BATCH_LIMIT = 10         # Max messages to process per loop iteration
 
     def __init__(self, uart_hw, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None):
         """Initialize UART transport.
@@ -346,10 +347,8 @@ class UARTTransport:
         # Calculate free space in buffer
         if tail > head:
             free_space = tail - head - 1
-        elif tail == head:
-            free_space = size - 1
         else:
-            free_space = size - head
+            free_space = (size - head) + tail - 1
 
         if data_len > free_space:
             raise BufferError("TX buffer overflow: Not enough space to write data")
@@ -575,10 +574,8 @@ class UARTTransport:
             size = self._tx_buffer_size
             if tail > head:
                 free_space = tail - head - 1
-            elif tail == head:
-                free_space = size - 1
             else:
-                free_space = size - head
+                free_space = size - head # Don't wrap as we are passing a memoryview slice
 
             if free_space <= 0:
                 # Buffer full, wait for space to be available
@@ -611,18 +608,20 @@ class UARTTransport:
             # Pump hardware data into ring buffer
             self._read_hw()
 
-            # Decode a packet and put it in the RX queue
-            msg = self._try_decode_one()
-
-            if msg:
-                self._rx_queue.put_nowait(msg)
-                await asyncio.sleep(0)  # Yield to event loop after processing a message
-            else:
-                if self.uart.in_waiting > 0:
-                    # Sleep briefly when idle to reduce CPU usage
-                    await asyncio.sleep(0.005)
+            packets_processed = 0
+            while packets_processed < self.BATCH_LIMIT:
+                # Decode a packet and put it in the RX queue
+                msg = self._try_decode_one()
+                if msg:
+                    self._rx_queue.put_nowait(msg)
+                    packets_processed += 1
                 else:
-                    await asyncio.sleep(0.02)  # Longer sleep when no data is available
+                    break
+
+            if self.uart.in_waiting > 0 or packets_processed >= self.BATCH_LIMIT:
+                await asyncio.sleep(0.005) # Sleep briefly when data waiting or batch ongoing
+            else:
+                await asyncio.sleep(0.02)  # Longer sleep when no data is available
 
     async def _tx_worker(self):
         """Dedicated task to drain the TX queue to hardware.
