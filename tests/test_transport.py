@@ -526,7 +526,7 @@ def test_buffer_overflow_preserves_valid_packets():
     mock_uart = MockUARTManager()
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
-    # Test threshold: intentionally exceed MAX_BUFFER_SIZE by 20%
+    # Test threshold: intentionally exceed RING_BUFFER_SIZE by 20%
     OVERFLOW_TEST_THRESHOLD = 1.2
 
     # Create multiple valid packets
@@ -541,15 +541,15 @@ def test_buffer_overflow_preserves_valid_packets():
     valid_packets = mock_uart.sent_packets[:]
     mock_uart.sent_packets.clear()
 
-    # Add enough packets to buffer to exceed MAX_BUFFER_SIZE
+    # Add enough packets to buffer to exceed RING_BUFFER_SIZE
     total_size = 0
     for packet in valid_packets:
         mock_uart.receive_buffer.extend(packet)
         total_size += len(packet)
-        if total_size > transport.MAX_BUFFER_SIZE * OVERFLOW_TEST_THRESHOLD:
+        if total_size > transport.RING_BUFFER_SIZE * OVERFLOW_TEST_THRESHOLD:
             break
 
-    print(f"  Added {total_size} bytes to buffer (MAX={transport.MAX_BUFFER_SIZE})")
+    print(f"  Added {total_size} bytes to buffer (MAX={transport.RING_BUFFER_SIZE})")
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
 
     # Receive messages - should be able to process many of them despite overflow
@@ -585,11 +585,11 @@ def test_ring_buffer_wrapped_packet():
 
     # Position the ring buffer so that when we add the packet, it will wrap
     # We'll manually set head and tail to near the end
-    wrap_position = transport._buf_size - (packet_len // 2)
-    transport._head = wrap_position
-    transport._tail = wrap_position
+    wrap_position = transport._rx_buf_size - (packet_len // 2)
+    transport._rx_head = wrap_position
+    transport._rx_tail = wrap_position
     
-    print(f"  Starting position: head={transport._head}, tail={transport._tail}")
+    print(f"  Starting position: head={transport._rx_head}, tail={transport._rx_tail}")
     
     # Add the packet to UART buffer
     mock_uart.receive_buffer.extend(sent_packet)
@@ -602,7 +602,7 @@ def test_ring_buffer_wrapped_packet():
         if msg is not None:
             break
     
-    assert msg is not None, f"Should receive wrapped packet (head={transport._head}, tail={transport._tail})"
+    assert msg is not None, f"Should receive wrapped packet (head={transport._rx_head}, tail={transport._rx_tail})"
     assert msg.destination == "0101"
     assert msg.command == "LED"
     assert msg.payload == (255, 128, 64, 32)
@@ -630,9 +630,9 @@ def test_ring_buffer_multiple_wrapped_packets():
     mock_uart.sent_packets.clear()
     
     # Position head near end of buffer
-    offset = transport._buf_size - 50
-    transport._head = offset
-    transport._tail = offset
+    offset = transport._rx_buf_size - 50
+    transport._rx_head = offset
+    transport._rx_tail = offset
     
     # Add all packets - they will wrap around
     for packet in packets:
@@ -666,7 +666,7 @@ def test_ring_buffer_full_recovery():
 
     # Fill buffer with garbage that exceeds threshold but has no delimiters
     # This should trigger the overflow protection which resets the buffer
-    garbage_size = transport._buf_size - 100  # Nearly full but not completely
+    garbage_size = transport._rx_buf_size - 100  # Nearly full but not completely
     garbage = bytes(range(1, 256)) * (garbage_size // 255 + 1)
     garbage = garbage[:garbage_size]
     
@@ -678,11 +678,11 @@ def test_ring_buffer_full_recovery():
     for _ in range(5):
         msg = transport.receive()
         if msg is None:
-            bytes_in_buffer = (transport._head - transport._tail) % transport._buf_size
+            bytes_in_buffer = (transport._rx_head - transport._rx_tail) % transport._rx_buf_size
             if bytes_in_buffer < 256:  # Buffer has been cleared/managed
                 break
     
-    bytes_in_buffer = (transport._head - transport._tail) % transport._buf_size
+    bytes_in_buffer = (transport._rx_head - transport._rx_tail) % transport._rx_buf_size
     print(f"  After overflow handling, buffer has {bytes_in_buffer} bytes")
     
     # Now send a valid packet - system should be able to receive it
@@ -715,8 +715,8 @@ def test_ring_buffer_end_of_array_deadlock():
     
     # 1. Force pointers to the very last byte (2047)
     # Simulates a scenario where we just read everything up to the end
-    transport._head = 2047
-    transport._tail = 2047
+    transport._rx_head = 2047
+    transport._rx_tail = 2047
     
     # 2. Add 1 byte of data to UART
     # This should be writable! (Write at 2047, head wraps to 0)
@@ -729,7 +729,7 @@ def test_ring_buffer_end_of_array_deadlock():
     # 4. Check if head moved
     # If buggy, head stays 2047 (space calculated as 0)
     # If fixed, head wraps to 0
-    assert transport._head == 0, f"Deadlock! Head stuck at {transport._head} instead of wrapping to 0"
+    assert transport._rx_head == 0, f"Deadlock! Head stuck at {transport._rx_head} instead of wrapping to 0"
     
     print("✓ Deadlock test passed")
 

@@ -59,7 +59,7 @@ def test_required_methods(content):
         'discover_satellites',
         'get_sat',
         'send_all',
-        'handle_message',
+        'monitor_messages',  # Changed from handle_message to monitor_messages
         'monitor_satellites',
     ]
     
@@ -202,13 +202,14 @@ def test_core_manager_integration():
         "CoreManager should use sat_network"
     print("  ✓ CoreManager uses sat_network")
     
-    # Verify old methods are removed
+    # Verify old methods are removed or replaced with new async versions
+    # The old synchronous versions should not exist
     assert 'def discover_satellites(self):' not in content, \
-        "discover_satellites should be removed from CoreManager"
-    assert 'def handle_message(self, message):' not in content, \
-        "handle_message should be removed from CoreManager"
-    assert 'def monitor_sats(self):' not in content, \
-        "monitor_sats should be removed from CoreManager"
+        "Old synchronous discover_satellites should be removed from CoreManager"
+    assert 'def handle_message(self, message):' not in content and 'def monitor_messages(self):' not in content, \
+        "Old synchronous handle_message/monitor_messages should be removed from CoreManager"
+    assert 'def monitor_sats(self):' not in content and 'def monitor_satellites(self):' not in content, \
+        "Old synchronous monitor_sats/monitor_satellites should be removed from CoreManager"
     print("  ✓ Old satellite methods removed from CoreManager")
     
     print("✓ CoreManager integration test passed")

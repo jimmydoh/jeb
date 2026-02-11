@@ -688,17 +688,45 @@ class UARTTransport:
         crc = bytes([calculate_crc8(raw)])
         packet = cobs_encode(raw + crc) + b'\x00'
 
-        try:
-            self._write_to_tx_buffer(packet)
-        except BufferError as e:
-            print(f"TX Buffer Error: {e}")
-            # Optionally, we could implement a retry mechanism here or drop the packet
-            # For now, we just log the error and drop the packet
+        # If async TX worker is not running, write directly to UART (for tests/sync code)
+        if self._tx_task is None:
+            self.uart.write(packet)
+        else:
+            # Use TX buffer when async worker is active
+            try:
+                self._write_to_tx_buffer(packet)
+            except BufferError as e:
+                print(f"TX Buffer Error: {e}")
+                # Optionally, we could implement a retry mechanism here or drop the packet
+                # For now, we just log the error and drop the packet
 
-    async def receive(self):
+    def receive(self):
+        """Receive a message from UART if available (synchronous).
+
+        This method provides synchronous receive for backward compatibility
+        with tests and non-async code. It manually processes incoming data
+        without relying on background workers.
+
+        For async code, use receive_async() instead.
+
+        Returns:
+            Message or None: Received message if available, None otherwise.
+        """
+        # First, try to get a message from the queue if async workers are running
+        if self._rx_task is not None:
+            try:
+                return self._rx_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        
+        # If no async workers or queue is empty, process synchronously
+        self._read_hw()
+        return self._try_decode_one()
+
+    async def receive_async(self):
         """Asynchronously receive a message from the RX queue.
 
-        This method should be called by external code to get messages received
+        This method should be called by async code to get messages received
         from UART. It waits for a message to be available in the RX queue and
         returns it.
 
