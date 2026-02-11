@@ -122,13 +122,27 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
     def _get_status_bytes(self):
         return self.hid.get_status_bytes()
 
+#region --- Async Background Tasks ---
+    async def monitor_hw_hid(self):
+        """Background task to poll hardware inputs."""
+        while True:
+            # Set watchdog flag to indicate this task is alive
+            self.watchdog.check_in("hw_hid")
+            self.hid.hw_update()
+            await asyncio.sleep(0.02) # Poll at 50Hz
+
+
     async def custom_start(self):
         """Custom startup sequence for the Industrial Satellite."""
-        self.watchdog.register_flags(["render"])  # Register render task with the watchdog
-        asyncio.create_task( # Start the RenderManager loop
+
+        # Register the HID with the watchdog and start it
+        self.watchdog.register_flags(["hw_hid"])
+        asyncio.create_task(self.monitor_hw_hid())
+
+        # Register renderer with the watchdog and start it with heartbeat callback
+        self.watchdog.register_flags(["render"])
+        asyncio.create_task(
             self.renderer.run(
                 heartbeat_callback=lambda: self.watchdog.check_in("render")
             )
         )
-
-        #TODO: Do we need a hid monitor for the sats?

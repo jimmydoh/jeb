@@ -416,7 +416,7 @@ class CoreManager:
                 # Long-press Button D to trigger manual abort
                 self.abort_event.set()
 
-            await asyncio.sleep(0.05) # Poll at 20Hz
+            await asyncio.sleep(0.02) # Poll at 50Hz
 
     async def monitor_satellite(self, sat):
         """
