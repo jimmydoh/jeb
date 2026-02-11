@@ -70,9 +70,9 @@ class WebServerManager:
         if not self.wifi_ssid or not self.wifi_password:
             raise ValueError("WiFi credentials required for web server")
     
-    def connect_wifi(self, timeout=30):
+    async def connect_wifi(self, timeout=30):
         """
-        Connect to WiFi network.
+        Connect to WiFi network (async, non-blocking).
         
         Args:
             timeout (int): Connection timeout in seconds
@@ -93,9 +93,9 @@ class WebServerManager:
             start_time = time.monotonic()
             wifi.radio.connect(self.wifi_ssid, self.wifi_password, timeout=timeout)
             
-            # Wait for connection
+            # Wait for connection (non-blocking)
             while not wifi.radio.connected and (time.monotonic() - start_time) < timeout:
-                time.sleep(0.5)
+                await asyncio.sleep(0.5)  # Non-blocking async sleep
             
             if wifi.radio.connected:
                 print(f"✓ Connected! IP: {wifi.radio.ipv4_address}")
@@ -104,10 +104,12 @@ class WebServerManager:
                 return True
             else:
                 print("✗ Connection timeout")
+                self.connected = False
                 return False
                 
         except Exception as e:
             print(f"WiFi connection error: {e}")
+            self.connected = False
             return False
     
     def disconnect_wifi(self):
@@ -211,7 +213,7 @@ class WebServerManager:
         # API: Download file
         @self.server.route("/api/files/download", GET)
         def download_file(request: Request):
-            """Download a file from the SD card."""
+            """Download a file from the SD card using chunked reading."""
             try:
                 path = request.query_params.get("path")
                 if not path:
@@ -228,12 +230,23 @@ class WebServerManager:
                     return Response(request, '{"error": "Invalid path - access denied"}', 
                                   content_type="application/json", status=400)
                 
-                # Read file
-                with open(path, "rb") as f:
-                    content = f.read()
+                # Create a generator function to read file in chunks
+                def file_generator(filepath, chunk_size=1024):
+                    """Generator that yields file chunks to avoid loading entire file in RAM."""
+                    try:
+                        with open(filepath, "rb") as f:
+                            while True:
+                                chunk = f.read(chunk_size)
+                                if not chunk:
+                                    break
+                                yield chunk
+                    except Exception as e:
+                        print(f"Error reading file {filepath}: {e}")
                 
                 filename = path.split("/")[-1]
-                return Response(request, content, 
+                
+                # Return response with generator for chunked transfer
+                return Response(request, file_generator(path), 
                               content_type="application/octet-stream",
                               headers={"Content-Disposition": f"attachment; filename={filename}"})
             except Exception as e:
@@ -243,7 +256,7 @@ class WebServerManager:
         # API: Upload file (Note: CircuitPython HTTP server may need chunked upload)
         @self.server.route("/api/files/upload", POST)
         def upload_file(request: Request):
-            """Upload a file to the SD card."""
+            """Upload a file to the SD card with size limit to prevent MemoryError."""
             try:
                 # Get target path and filename from query params
                 path = request.query_params.get("path", "/sd")
@@ -268,17 +281,34 @@ class WebServerManager:
                     return Response(request, '{"error": "Invalid path - must be within /sd"}', 
                                   content_type="application/json", status=400)
                 
+                # Check available memory before attempting to read body
+                free_mem = gc.mem_free()
+                max_upload_size = min(50 * 1024, free_mem // 2)  # Max 50KB or half of free RAM
+                
                 # Get file content from request body
                 content = request.body
                 
-                # Write file
-                filepath = f"{path}/{filename}"
-                with open(filepath, "wb") as f:
-                    f.write(content)
+                # Check content size to prevent MemoryError
+                if len(content) > max_upload_size:
+                    return Response(request, 
+                                  f'{{"error": "File too large. Max size: {max_upload_size} bytes. Free RAM: {free_mem} bytes"}}', 
+                                  content_type="application/json", status=413)
                 
-                self.log(f"File uploaded: {filepath}")
-                return Response(request, f'{{"status": "success", "path": "{filepath}"}}', 
+                # Write file in chunks to minimize memory usage
+                filepath = f"{path}/{filename}"
+                chunk_size = 1024
+                with open(filepath, "wb") as f:
+                    for i in range(0, len(content), chunk_size):
+                        f.write(content[i:i+chunk_size])
+                
+                self.log(f"File uploaded: {filepath} ({len(content)} bytes)")
+                return Response(request, f'{{"status": "success", "path": "{filepath}", "size": {len(content)}}}', 
                               content_type="application/json")
+            except MemoryError:
+                gc.collect()  # Try to free memory
+                return Response(request, 
+                              '{"error": "MemoryError: File too large for available RAM"}', 
+                              content_type="application/json", status=507)
             except Exception as e:
                 self.log(f"Error uploading file: {e}")
                 return Response(request, f'{{"error": "{str(e)}"}}', 
@@ -480,585 +510,51 @@ class WebServerManager:
             raise RuntimeError(f"Error listing directory: {e}")
     
     def _generate_html_page(self):
-        """Generate the main HTML configuration page."""
+        """Load and stream the main HTML configuration page from file."""
+        # Try to load from SD card first, then fall back to local filesystem
+        html_paths = ["/sd/www/index.html", "www/index.html", "src/www/index.html"]
+        
+        for html_path in html_paths:
+            try:
+                # Check if file exists before creating generator
+                with open(html_path, "r") as test_f:
+                    pass  # File exists, proceed
+                
+                def html_generator(filepath, chunk_size=1024):
+                    """Generator that yields HTML file chunks to save RAM."""
+                    with open(filepath, "r") as f:
+                        while True:
+                            chunk = f.read(chunk_size)
+                            if not chunk:
+                                break
+                            yield chunk
+                
+                # Return generator for chunked streaming
+                return html_generator(html_path)
+            except OSError:
+                continue
+        
+        # Fallback: Return minimal error page if HTML file not found
         return """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JEB Field Service Configurator</title>
+    <title>JEB Field Service - Error</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            background: #1a1a1a;
-            color: #e0e0e0;
-            padding: 20px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        h1 {
-            color: #4CAF50;
-            margin-bottom: 30px;
-            font-size: 2em;
-        }
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #333;
-        }
-        .tab {
-            padding: 10px 20px;
-            background: #2a2a2a;
-            border: none;
-            color: #e0e0e0;
-            cursor: pointer;
-            border-radius: 5px 5px 0 0;
-        }
-        .tab.active {
-            background: #4CAF50;
-            color: white;
-        }
-        .tab-content {
-            display: none;
-            padding: 20px;
-            background: #2a2a2a;
-            border-radius: 0 5px 5px 5px;
-        }
-        .tab-content.active {
-            display: block;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            color: #b0b0b0;
-        }
-        input, textarea, select {
-            width: 100%;
-            padding: 8px;
-            background: #1a1a1a;
-            border: 1px solid #444;
-            color: #e0e0e0;
-            border-radius: 3px;
-        }
-        button {
-            padding: 10px 20px;
-            background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-            margin-right: 10px;
-        }
-        button:hover {
-            background: #45a049;
-        }
-        button.secondary {
-            background: #666;
-        }
-        button.secondary:hover {
-            background: #555;
-        }
-        .status {
-            margin-top: 10px;
-            padding: 10px;
-            border-radius: 3px;
-        }
-        .status.success {
-            background: #2d5016;
-            color: #90EE90;
-        }
-        .status.error {
-            background: #501616;
-            color: #ffcccb;
-        }
-        .file-list {
-            list-style: none;
-        }
-        .file-item {
-            padding: 8px;
-            background: #1a1a1a;
-            margin-bottom: 5px;
-            border-radius: 3px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .file-item:hover {
-            background: #333;
-        }
-        .log-viewer {
-            background: #1a1a1a;
-            padding: 10px;
-            height: 400px;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            border: 1px solid #444;
-            border-radius: 3px;
-        }
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        .info-card {
-            background: #1a1a1a;
-            padding: 15px;
-            border-radius: 5px;
-            border: 1px solid #444;
-        }
-        .info-card h3 {
-            color: #4CAF50;
-            margin-bottom: 10px;
-            font-size: 0.9em;
-        }
-        .info-card .value {
-            font-size: 1.5em;
-            color: #e0e0e0;
-        }
+        body { font-family: Arial; background: #1a1a1a; color: #e0e0e0; padding: 40px; text-align: center; }
+        h1 { color: #ff6b6b; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🔧 JEB Field Service Configurator</h1>
-        
-        <div class="tabs">
-            <button class="tab active" onclick="showTab('system')">System Status</button>
-            <button class="tab" onclick="showTab('config')">Configuration</button>
-            <button class="tab" onclick="showTab('modes')">Mode Settings</button>
-            <button class="tab" onclick="showTab('files')">File Browser</button>
-            <button class="tab" onclick="showTab('logs')">Logs</button>
-            <button class="tab" onclick="showTab('console')">Console</button>
-            <button class="tab" onclick="showTab('actions')">Actions</button>
-        </div>
-        
-        <div id="system" class="tab-content active">
-            <h2>System Status</h2>
-            <div class="info-grid" id="systemStatus"></div>
-            <button onclick="loadSystemStatus()">Refresh Status</button>
-        </div>
-        
-        <div id="config" class="tab-content">
-            <h2>Global Configuration</h2>
-            <form id="configForm">
-                <div class="form-group">
-                    <label>WiFi SSID:</label>
-                    <input type="text" name="wifi_ssid" id="wifi_ssid">
-                </div>
-                <div class="form-group">
-                    <label>WiFi Password:</label>
-                    <input type="password" name="wifi_password" id="wifi_password">
-                </div>
-                <div class="form-group">
-                    <label>Update URL:</label>
-                    <input type="text" name="update_url" id="update_url">
-                </div>
-                <div class="form-group">
-                    <label>Debug Mode:</label>
-                    <select name="debug_mode" id="debug_mode">
-                        <option value="false">Disabled</option>
-                        <option value="true">Enabled</option>
-                    </select>
-                </div>
-                <button type="button" onclick="loadConfig()">Load Current Config</button>
-                <button type="button" onclick="saveConfig()">Save Configuration</button>
-            </form>
-            <div id="configStatus" class="status" style="display:none;"></div>
-        </div>
-        
-        <div id="modes" class="tab-content">
-            <h2>Mode Settings</h2>
-            <p style="color: #b0b0b0; margin-bottom: 15px;">Configure settings for each game mode</p>
-            <div id="modesList"></div>
-            <button onclick="loadModeSettings()">Refresh Mode Settings</button>
-            <div id="modesStatus" class="status" style="display:none;"></div>
-        </div>
-        
-        <div id="files" class="tab-content">
-            <h2>File Browser</h2>
-            <div>
-                <label>Current Path: <span id="currentPath">/sd</span></label>
-                <button onclick="loadFiles()">Refresh</button>
-            </div>
-            <div class="form-group" style="margin-top: 15px;">
-                <label>Upload File:</label>
-                <input type="file" id="fileUpload">
-                <button onclick="uploadFile()">Upload to Current Directory</button>
-            </div>
-            <ul class="file-list" id="fileList"></ul>
-        </div>
-        
-        <div id="logs" class="tab-content">
-            <h2>System Logs</h2>
-            <button onclick="loadLogs()">Refresh Logs</button>
-            <div class="log-viewer" id="logViewer"></div>
-        </div>
-        
-        <div id="console" class="tab-content">
-            <h2>Console Output</h2>
-            <button onclick="loadConsole()">Refresh Console</button>
-            <div class="log-viewer" id="consoleViewer"></div>
-        </div>
-        
-        <div id="actions" class="tab-content">
-            <h2>Field Service Actions</h2>
-            <div class="form-group">
-                <button onclick="triggerOTAUpdate()">Trigger OTA Update</button>
-                <p style="color: #b0b0b0; margin-top: 5px;">Device will update on next boot</p>
-            </div>
-            <div class="form-group">
-                <button onclick="toggleDebugMode()">Toggle Debug Mode</button>
-                <p style="color: #b0b0b0; margin-top: 5px;">Enable/disable debug logging</p>
-            </div>
-            <div id="actionStatus" class="status" style="display:none;"></div>
-        </div>
-    </div>
-    
-    <script>
-        let currentPath = '/sd';
-        
-        function showTab(tabName) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-            document.getElementById(tabName).classList.add('active');
-            
-            // Auto-load content for some tabs
-            if (tabName === 'system') loadSystemStatus();
-            if (tabName === 'files') loadFiles();
-            if (tabName === 'logs') loadLogs();
-            if (tabName === 'modes') loadModeSettings();
-        }
-        
-        async function loadSystemStatus() {
-            try {
-                const response = await fetch('/api/system/status');
-                const data = await response.json();
-                
-                const html = `
-                    <div class="info-card">
-                        <h3>WiFi SSID</h3>
-                        <div class="value">${data.wifi_ssid}</div>
-                    </div>
-                    <div class="info-card">
-                        <h3>IP Address</h3>
-                        <div class="value">${data.ip_address}</div>
-                    </div>
-                    <div class="info-card">
-                        <h3>Debug Mode</h3>
-                        <div class="value">${data.debug_mode ? 'ON' : 'OFF'}</div>
-                    </div>
-                    <div class="info-card">
-                        <h3>Uptime</h3>
-                        <div class="value">${Math.floor(data.uptime)}s</div>
-                    </div>
-                    <div class="info-card">
-                        <h3>Free Memory</h3>
-                        <div class="value">${Math.floor(data.free_memory / 1024)}KB</div>
-                    </div>
-                `;
-                document.getElementById('systemStatus').innerHTML = html;
-            } catch (error) {
-                showStatus('systemStatus', 'Error loading status: ' + error, 'error');
-            }
-        }
-        
-        async function loadConfig() {
-            try {
-                const response = await fetch('/api/config/global');
-                const config = await response.json();
-                
-                document.getElementById('wifi_ssid').value = config.wifi_ssid || '';
-                document.getElementById('wifi_password').value = config.wifi_password || '';
-                document.getElementById('update_url').value = config.update_url || '';
-                document.getElementById('debug_mode').value = config.debug_mode ? 'true' : 'false';
-                
-                showStatus('configStatus', 'Configuration loaded', 'success');
-            } catch (error) {
-                showStatus('configStatus', 'Error loading config: ' + error, 'error');
-            }
-        }
-        
-        async function saveConfig() {
-            try {
-                const config = {
-                    wifi_ssid: document.getElementById('wifi_ssid').value,
-                    wifi_password: document.getElementById('wifi_password').value,
-                    update_url: document.getElementById('update_url').value,
-                    debug_mode: document.getElementById('debug_mode').value === 'true'
-                };
-                
-                const response = await fetch('/api/config/global', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config)
-                });
-                
-                if (response.ok) {
-                    showStatus('configStatus', 'Configuration saved successfully', 'success');
-                } else {
-                    showStatus('configStatus', 'Error saving configuration', 'error');
-                }
-            } catch (error) {
-                showStatus('configStatus', 'Error: ' + error, 'error');
-            }
-        }
-        
-        async function loadFiles() {
-            try {
-                const response = await fetch(`/api/files?path=${encodeURIComponent(currentPath)}`);
-                const data = await response.json();
-                
-                const fileList = document.getElementById('fileList');
-                fileList.innerHTML = '';
-                
-                // Add parent directory link if not at root
-                if (currentPath !== '/sd' && currentPath !== '/') {
-                    const li = document.createElement('li');
-                    li.className = 'file-item';
-                    li.innerHTML = `
-                        <span>📁 ..</span>
-                        <button class="secondary" onclick="navigateUp()">Up</button>
-                    `;
-                    fileList.appendChild(li);
-                }
-                
-                // Add files and directories
-                data.items.forEach(item => {
-                    const li = document.createElement('li');
-                    li.className = 'file-item';
-                    const icon = item.is_dir ? '📁' : '📄';
-                    const size = item.is_dir ? '' : ` (${formatSize(item.size)})`;
-                    
-                    li.innerHTML = `
-                        <span>${icon} ${item.name}${size}</span>
-                        <div>
-                            ${item.is_dir ? 
-                                `<button class="secondary" onclick="navigateTo('${item.path}')">Open</button>` :
-                                `<button class="secondary" onclick="downloadFile('${item.path}')">Download</button>`
-                            }
-                        </div>
-                    `;
-                    fileList.appendChild(li);
-                });
-                
-                document.getElementById('currentPath').textContent = currentPath;
-            } catch (error) {
-                console.error('Error loading files:', error);
-            }
-        }
-        
-        function navigateTo(path) {
-            currentPath = path;
-            loadFiles();
-        }
-        
-        function navigateUp() {
-            const parts = currentPath.split('/');
-            parts.pop();
-            currentPath = parts.join('/') || '/';
-            loadFiles();
-        }
-        
-        function downloadFile(path) {
-            window.location.href = `/api/files/download?path=${encodeURIComponent(path)}`;
-        }
-        
-        function formatSize(bytes) {
-            if (bytes < 1024) return bytes + ' B';
-            if (bytes < 1024 * 1024) return Math.floor(bytes / 1024) + ' KB';
-            return Math.floor(bytes / (1024 * 1024)) + ' MB';
-        }
-        
-        async function loadLogs() {
-            try {
-                const response = await fetch('/api/logs');
-                const logs = await response.json();
-                
-                const logViewer = document.getElementById('logViewer');
-                // Use textContent to prevent XSS - build text with newlines
-                logViewer.textContent = logs.map(log => 
-                    `[${Math.floor(log.time)}s] ${log.message}`
-                ).join('\n');
-                
-                // Scroll to bottom
-                logViewer.scrollTop = logViewer.scrollHeight;
-            } catch (error) {
-                document.getElementById('logViewer').textContent = 'Error loading logs: ' + error;
-            }
-        }
-        
-        async function loadConsole() {
-            try {
-                const response = await fetch('/api/console');
-                const data = await response.json();
-                
-                // Use textContent to prevent XSS attacks
-                const consoleViewer = document.getElementById('consoleViewer');
-                consoleViewer.textContent = data.output;
-            } catch (error) {
-                document.getElementById('consoleViewer').textContent = 'Error loading console: ' + error;
-            }
-        }
-        
-        async function triggerOTAUpdate() {
-            if (!confirm('Trigger OTA update? Device will update on next boot.')) return;
-            
-            try {
-                const response = await fetch('/api/actions/ota-update', { method: 'POST' });
-                const data = await response.json();
-                
-                if (response.ok) {
-                    showStatus('actionStatus', 'OTA update scheduled for next boot', 'success');
-                } else {
-                    showStatus('actionStatus', 'Error: ' + data.error, 'error');
-                }
-            } catch (error) {
-                showStatus('actionStatus', 'Error: ' + error, 'error');
-            }
-        }
-        
-        async function toggleDebugMode() {
-            try {
-                const response = await fetch('/api/actions/toggle-debug', { method: 'POST' });
-                const data = await response.json();
-                
-                if (response.ok) {
-                    showStatus('actionStatus', 'Debug mode toggled successfully', 'success');
-                    loadSystemStatus();  // Refresh status
-                } else {
-                    showStatus('actionStatus', 'Error: ' + data.error, 'error');
-                }
-            } catch (error) {
-                showStatus('actionStatus', 'Error: ' + error, 'error');
-            }
-        }
-        
-        async function loadModeSettings() {
-            try {
-                const response = await fetch('/api/config/modes');
-                const modes = await response.json();
-                
-                const modesList = document.getElementById('modesList');
-                modesList.innerHTML = '';
-                
-                for (const [modeId, modeData] of Object.entries(modes)) {
-                    const modeDiv = document.createElement('div');
-                    modeDiv.style.marginBottom = '20px';
-                    modeDiv.style.padding = '15px';
-                    modeDiv.style.background = '#1a1a1a';
-                    modeDiv.style.borderRadius = '5px';
-                    
-                    let html = `<h3 style="color: #4CAF50; margin-bottom: 10px;">${modeId}</h3>`;
-                    
-                    modeData.settings.forEach(setting => {
-                        const currentValue = modeData.current[setting.key] || setting.default;
-                        html += `
-                            <div class="form-group">
-                                <label>${setting.label}:</label>
-                                <select id="${modeId}_${setting.key}">
-                                    ${setting.options.map(opt => 
-                                        `<option value="${opt}" ${opt === currentValue ? 'selected' : ''}>${opt}</option>`
-                                    ).join('')}
-                                </select>
-                            </div>
-                        `;
-                    });
-                    
-                    html += `<button onclick="saveModeSettings('${modeId}')">Save ${modeId} Settings</button>`;
-                    modeDiv.innerHTML = html;
-                    modesList.appendChild(modeDiv);
-                }
-            } catch (error) {
-                showStatus('modesStatus', 'Error loading mode settings: ' + error, 'error');
-            }
-        }
-        
-        async function saveModeSettings(modeId) {
-            try {
-                // Collect all settings for this mode
-                const settings = {};
-                document.querySelectorAll(`[id^="${modeId}_"]`).forEach(elem => {
-                    const key = elem.id.replace(`${modeId}_`, '');
-                    settings[key] = elem.value;
-                });
-                
-                const response = await fetch('/api/config/modes', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mode_id: modeId, settings: settings })
-                });
-                
-                if (response.ok) {
-                    showStatus('modesStatus', `${modeId} settings saved successfully`, 'success');
-                } else {
-                    showStatus('modesStatus', 'Error saving settings', 'error');
-                }
-            } catch (error) {
-                showStatus('modesStatus', 'Error: ' + error, 'error');
-            }
-        }
-        
-        async function uploadFile() {
-            const fileInput = document.getElementById('fileUpload');
-            const file = fileInput.files[0];
-            
-            if (!file) {
-                alert('Please select a file first');
-                return;
-            }
-            
-            try {
-                const reader = new FileReader();
-                reader.onload = async (e) => {
-                    const content = e.target.result;
-                    
-                    const response = await fetch(
-                        `/api/files/upload?path=${encodeURIComponent(currentPath)}&filename=${encodeURIComponent(file.name)}`,
-                        {
-                            method: 'POST',
-                            body: content
-                        }
-                    );
-                    
-                    if (response.ok) {
-                        alert(`File ${file.name} uploaded successfully`);
-                        loadFiles();  // Refresh file list
-                    } else {
-                        const data = await response.json();
-                        alert('Upload failed: ' + data.error);
-                    }
-                };
-                reader.readAsArrayBuffer(file);
-            } catch (error) {
-                alert('Upload error: ' + error);
-            }
-        }
-        
-        function showStatus(elementId, message, type) {
-            const status = document.getElementById(elementId);
-            status.textContent = message;
-            status.className = 'status ' + type;
-            status.style.display = 'block';
-            setTimeout(() => {
-                status.style.display = 'none';
-            }, 5000);
-        }
-        
-        // Auto-load initial data
-        loadSystemStatus();
-    </script>
+    <h1>Configuration Error</h1>
+    <p>HTML interface file not found. Please ensure index.html is present in:</p>
+    <ul style="list-style: none;">
+        <li>/sd/www/index.html</li>
+        <li>www/index.html</li>
+        <li>src/www/index.html</li>
+    </ul>
 </body>
-</html>
-"""
+</html>"""
     
     async def start(self):
         """Start the web server."""
@@ -1071,7 +567,7 @@ class WebServerManager:
         print("="*50)
         
         # Connect to WiFi
-        if not self.connect_wifi():
+        if not await self.connect_wifi():
             print("Failed to connect to WiFi - web server not started")
             return
         
@@ -1092,13 +588,35 @@ class WebServerManager:
             
             self.log("Web server started")
             
-            # Server loop
+            # Server loop with WiFi reconnection
             while True:
                 try:
+                    # Check WiFi connection status
+                    if not wifi.radio.connected:
+                        print("WiFi disconnected! Attempting to reconnect...")
+                        self.connected = False
+                        self.log("WiFi connection lost")
+                        
+                        # Try to reconnect
+                        if await self.connect_wifi():
+                            print("WiFi reconnected successfully")
+                            self.log("WiFi reconnected")
+                            # Recreate server with new socket pool
+                            self.server.stop()
+                            self.server = Server(self.pool, "/static", debug=True)
+                            self.setup_routes()
+                            self.server.start(str(wifi.radio.ipv4_address), self.port)
+                        else:
+                            print("WiFi reconnection failed, retrying in 5 seconds...")
+                            await asyncio.sleep(5)
+                            continue
+                    
+                    # Poll server only when WiFi is connected
                     self.server.poll()
                     await asyncio.sleep(0.01)
                 except Exception as e:
                     print(f"Server error: {e}")
+                    self.log(f"Server error: {e}")
                     await asyncio.sleep(1)
                     
         except KeyboardInterrupt:
