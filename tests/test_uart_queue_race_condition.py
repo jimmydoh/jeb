@@ -52,45 +52,51 @@ def get_transport_content():
 
 
 def test_transport_queued_mode_exists():
-    """Test that UARTTransport supports queued mode."""
+    """Test that UARTTransport always uses queued mode (ring buffers and async workers)."""
     print("Testing UARTTransport queued mode...")
     content = get_transport_content()
 
-    # Check that __init__ accepts queued parameter (more specific pattern)
-    assert re.search(r'def __init__\(self[^)]*queued', content), \
-        "UARTTransport __init__ should accept 'queued' parameter"
+    # In the new architecture, queuing is ALWAYS enabled (no optional parameter)
+    # Check that RX queue is created (always present)
+    assert 'self._rx_queue = asyncio.Queue()' in content, \
+        "UARTTransport should create RX queue"
 
-    # Check that TX queue is created when queued=True
-    assert 'self._tx_queue = asyncio.Queue()' in content, \
-        "UARTTransport should create TX queue in queued mode"
+    # Check that TX buffer/event system exists (ring buffer + event-driven)
+    assert 'self._tx_buffer' in content, \
+        "UARTTransport should have TX ring buffer"
+    assert 'self._tx_event' in content, \
+        "UARTTransport should have TX event"
 
-    # Check that _tx_worker is started in queued mode
+    # Check that async workers are started
     assert 'asyncio.create_task(self._tx_worker())' in content, \
-        "UARTTransport should start _tx_worker task in queued mode"
+        "UARTTransport should start _tx_worker task"
+    assert 'asyncio.create_task(self._rx_worker())' in content, \
+        "UARTTransport should start _rx_worker task"
 
-    print("  ✓ UARTTransport has queued mode support")
+    print("  ✓ UARTTransport always uses queued mode (ring buffers + async workers)")
     print("✓ Transport queued mode test passed")
 
 
 def test_firmware_uses_queued_transport():
-    """Test that firmware creates transport with queued=True."""
-    print("\nTesting firmware uses queued transport...")
+    """Test that firmware creates transport (which always uses queued mode)."""
+    print("\nTesting firmware creates transport...")
     content = get_base_firmware_content()
 
-    # Check that transport_up is created with queued=True
-    assert 'queued=True' in content, \
-        "Firmware should create transport with queued=True"
+    # In the new architecture, queuing is ALWAYS enabled, so no parameter needed
+    # Check that transport_up is created
+    assert 'self.transport_up = UARTTransport(' in content, \
+        "Firmware should create transport_up"
 
-    # Verify it's the upstream transport that is queued
-    init_match = re.search(
-        r'self\.transport_up = UARTTransport\([^)]+queued=True',
-        content
-    )
-    assert init_match, \
-        "transport_up should be created with queued=True parameter"
+    # Check that transport_down is created
+    assert 'self.transport_down = UARTTransport(' in content, \
+        "Firmware should create transport_down"
 
-    print("  ✓ Firmware creates queued transport for upstream")
-    print("✓ Firmware queued transport test passed")
+    # Verify that old queued=True parameter is NOT used (it's no longer needed)
+    assert 'queued=True' not in content, \
+        "Firmware should not use deprecated queued parameter (queuing is always enabled now)"
+
+    print("  ✓ Firmware creates transports (queuing always enabled)")
+    print("✓ Firmware transport creation test passed")
 
 
 def test_transport_tx_worker_exists():
@@ -102,23 +108,21 @@ def test_transport_tx_worker_exists():
     assert 'async def _tx_worker(self):' in content, \
         "_tx_worker method should be defined in UARTTransport"
 
-    # Check that it gets data from the queue
-    assert 'data = await self._tx_queue.get()' in content, \
-        "_tx_worker should get data from the queue"
+    # In the new architecture, TX worker drains a ring buffer, not a queue
+    # Check that it waits for the TX event
+    assert 'await self._tx_event.wait()' in content, \
+        "_tx_worker should wait for TX event"
 
     # Check that it writes to the hardware UART
-    assert 'self.uart.write(data)' in content, \
+    assert 'self.uart.write(' in content, \
         "_tx_worker should write to hardware UART"
 
-    # Check that it marks task as done
-    assert 'self._tx_queue.task_done()' in content, \
-        "_tx_worker should call task_done()"
+    # Check that it advances the tail pointer
+    assert 'self._tx_tail' in content, \
+        "_tx_worker should manage TX ring buffer tail pointer"
 
-    print("  ✓ _tx_worker method exists in UARTTransport")
-    print("  ✓ Worker gets data from queue")
-    print("  ✓ Worker writes to hardware UART")
-    print("  ✓ Worker marks task as done")
-    print("✓ Transport TX worker test passed")
+    print("  ✓ _tx_worker exists and uses ring buffer + event system")
+    print("✓ TX worker test passed")
 
 
 def test_relay_functionality_exists():
@@ -150,8 +154,8 @@ def test_relay_functionality_exists():
 
 
 def test_relay_worker_uses_queue():
-    """Test that _relay_worker uses queue in queued mode."""
-    print("\nTesting _relay_worker queue integration...")
+    """Test that _relay_worker writes to TX ring buffer."""
+    print("\nTesting _relay_worker integration...")
     content = get_transport_content()
 
     # Get the relay worker method (normalized spacing in lookahead)
@@ -163,22 +167,27 @@ def test_relay_worker_uses_queue():
     assert relay_match, "_relay_worker method should exist"
     relay_method = relay_match.group(0)
 
-    # Check that it uses queue for queued transports
-    assert 'if self.queued:' in relay_method or 'self._tx_queue.put_nowait' in relay_method, \
-        "_relay_worker should check for queued mode or use queue"
+    # In the new architecture, relay worker writes directly to TX ring buffer
+    # Check that it manipulates TX buffer pointers
+    assert 'self._tx_head' in relay_method, \
+        "_relay_worker should write to TX ring buffer (uses _tx_head)"
 
-    # Check that it writes directly for non-queued transports
-    assert 'self.uart.write(data)' in relay_method, \
-        "_relay_worker should support direct write for non-queued transports"
+    # Check that it reads from source transport
+    assert 'source_transport.read_raw_into' in relay_method or 'source_transport.readinto' in relay_method, \
+        "_relay_worker should read from source transport"
 
-    print("  ✓ _relay_worker integrates with queue system")
-    print("  ✓ _relay_worker supports both queued and direct modes")
-    print("✓ Relay worker queue integration test passed")
+    # Check that it signals the TX worker
+    assert 'self._tx_event.set()' in relay_method, \
+        "_relay_worker should signal TX worker via event"
+
+    print("  ✓ _relay_worker integrates with ring buffer system")
+    print("  ✓ _relay_worker signals TX worker via event")
+    print("✓ Relay worker integration test passed")
 
 
 def test_send_uses_queue():
-    """Test that send() method uses queue in queued mode."""
-    print("\nTesting send() method queue integration...")
+    """Test that send() method writes to TX buffer or directly to UART."""
+    print("\nTesting send() method integration...")
     content = get_transport_content()
 
     # Get the send method (normalized spacing in lookahead)
@@ -190,21 +199,23 @@ def test_send_uses_queue():
     assert send_match, "send method should exist"
     send_method = send_match.group(0)
 
-    # Check that send uses queue for queued transports
-    assert 'if self.queued:' in send_method or 'self._tx_queue.put_nowait' in send_method, \
-        "send() should check for queued mode"
+    # In the new architecture, send() writes to TX buffer when workers are running,
+    # or directly to UART when workers are not running (for testing)
+    # Check that it can write to TX buffer
+    assert '_write_to_tx_buffer' in send_method, \
+        "send() should use _write_to_tx_buffer when async workers are running"
 
-    # Verify queue usage
-    assert 'put_nowait' in send_method, \
-        "send() should use put_nowait for queued transports"
-
-    # Check that it writes directly for non-queued transports
+    # Check that it can also write directly to UART (for backward compatibility)
     assert 'self.uart.write(packet)' in send_method, \
-        "send() should support direct write for non-queued transports"
+        "send() should support direct write when async workers are not running"
 
-    print("  ✓ send() integrates with queue system")
-    print("  ✓ send() supports both queued and direct modes")
-    print("✓ Send method queue integration test passed")
+    # Check that it checks for worker status
+    assert 'self._tx_task' in send_method, \
+        "send() should check if TX worker is running"
+
+    print("  ✓ send() integrates with ring buffer system")
+    print("  ✓ send() supports both async and sync modes")
+    print("✓ Send method integration test passed")
 
 
 def test_transport_consolidation():
@@ -259,7 +270,7 @@ def test_relay_worker_dynamic_backoff():
     relay_method = relay_match.group(0)
 
     # Check that it has conditional sleep based on data availability
-    assert 'if count > 0:' in relay_method or 'if count:' in relay_method, \
+    assert ('if count and count > 0:' in relay_method or 'if count > 0:' in relay_method or 'if count:' in relay_method), \
         "_relay_worker should check if data was read"
 
     # Check for short sleep when data is present (high throughput)
@@ -282,7 +293,7 @@ def test_relay_worker_dynamic_backoff():
 
     for line in lines:
         stripped = line.strip()
-        if 'if count > 0:' in stripped or 'if count:' in stripped:
+        if 'if count and count > 0:' in stripped or 'if count > 0:' in stripped or 'if count:' in stripped:
             found_if_block = True
             in_if_block = True
             in_else_block = False
