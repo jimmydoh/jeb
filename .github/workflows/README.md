@@ -200,10 +200,22 @@ A `manifest.json` file containing metadata about all compiled files:
   "build_timestamp": "2026-02-06T10:46:02Z",
   "files": [
     {
-      "path": "boot.mpy",
-      "download_path": "mpy/boot.mpy",
+      "path": "boot.py",
+      "download_path": "mpy/boot.py",
       "sha256": "c2dde4b80967920d03184350367707da580f607bb11de98782ac660c0eb2c7fe",
-      "size": 240
+      "size": 3589
+    },
+    {
+      "path": "code.py",
+      "download_path": "mpy/code.py",
+      "sha256": "a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890",
+      "size": 6855
+    },
+    {
+      "path": "updater.mpy",
+      "download_path": "mpy/updater.mpy",
+      "sha256": "d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5",
+      "size": 1240
     },
     ...
   ]
@@ -215,6 +227,8 @@ Fields:
 - `download_path`: Path for downloading from artifacts
 - `sha256`: SHA256 hash for integrity verification
 - `size`: File size in bytes
+
+Note: The manifest includes both `.py` files (boot.py, code.py) and `.mpy` compiled files.
 
 A lightweight `version.json` file is also included for quick version checks (~112 bytes):
 
@@ -276,11 +290,15 @@ def verify_file(filepath):
     
     return actual_hash == expected_hash
 
-# Verify a file
-if verify_file('boot.mpy'):
+# Verify a file (example with a .mpy file)
+if verify_file('updater.mpy'):
     print("File verified successfully!")
 else:
     print("File verification failed!")
+
+# Verify boot.py or code.py (these are .py files, not compiled)
+if verify_file('boot.py'):
+    print("boot.py verified successfully!")
 ```
 
 ### Example Script
@@ -313,38 +331,28 @@ MPY (MicroPython bytecode) files offer several advantages:
 
 ## Compilation Process
 
-The workflow uses `mpy-cross`, the official MicroPython cross-compiler:
-- Version: Latest from PyPI (`mpy-cross` package)
+The workflow uses `mpy-cross`, the CircuitPython-specific cross-compiler:
+- Version: Built from CircuitPython 10.0.0 source
+- Source: Compiled from CircuitPython GitHub repository
 - Target: Compatible with CircuitPython 10.x+
-- Error Handling: Files that fail to compile are logged but don't stop the workflow
+- Special handling: `boot.py` and `code.py` are copied as-is and not compiled
 
-### Known Limitations
+The workflow builds mpy-cross from CircuitPython source to ensure compatibility with CircuitPython 10.x+ runtime and features.
 
-Some Python 3 syntax features may not be supported by MicroPython/CircuitPython. Files that fail to compile are:
+### CircuitPython-Specific Files
+
+The following files are **not compiled** and are copied to the build directory as-is:
+- **boot.py**: CircuitPython boot file that runs before code.py
+- **code.py**: Main application entry point
+
+These files are kept as `.py` files to ensure they remain easily editable and debuggable on the device.
+
+### Error Handling
+
+Files that fail to compile (other than boot.py and code.py which are intentionally skipped) are:
 - Logged in the workflow output
 - Excluded from the manifest
 - The workflow continues and succeeds if at least one file compiles
-
-#### Current Known Issue: code.py
-
-The `src/code.py` file currently fails to compile due to dictionary unpacking syntax on line 63:
-
-```python
-return {**default_config, **config_data}  # Merge with defaults
-```
-
-**Why it fails:** MicroPython's parser (used by mpy-cross v1.27) doesn't support the `{**dict1, **dict2}` dictionary unpacking operator that was introduced in Python 3.5. While CircuitPython 10.x runtime supports this syntax when running .py files directly, the mpy-cross compiler has not yet implemented it in its parser.
-
-**Workaround:** This file can remain as a `.py` file on the device since CircuitPython will parse it correctly at runtime. The precompiled `.mpy` files for all other modules will still provide performance benefits. Alternatively, the code can be rewritten to use `dict.update()` or manual merging if compilation is required:
-
-```python
-# Alternative syntax that compiles:
-merged_config = default_config.copy()
-merged_config.update(config_data)
-return merged_config
-```
-
-**Impact:** This is a minor limitation affecting only 1 of 52 files. The workflow successfully compiles 51 files (98% success rate), and the main application entry point can run as interpreted Python without significant performance impact.
 
 ## Maintenance
 
