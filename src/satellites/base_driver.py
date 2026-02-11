@@ -1,4 +1,10 @@
-""""""
+"""
+Base driver class for all satellite boxes.
+
+A class representing a satellite expansion box
+used by the Satellite Network Manager to store
+state without hardware init.
+"""
 
 from adafruit_ticks import ticks_ms
 
