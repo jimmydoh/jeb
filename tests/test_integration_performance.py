@@ -182,7 +182,7 @@ def test_end_to_end_binary_flow():
 
     # SATELLITE SIDE: Receive the message
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = receive_message_sync(transport)
 
     print(f"  Satellite received: {msg_in}")
@@ -269,7 +269,7 @@ def test_struct_unpack_ultimate_performance():
 
     # Receive
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = receive_message_sync(transport)
 
     # Option 1: Using parse_values (converts to list)
@@ -316,7 +316,7 @@ def test_backward_compatibility():
     drain_tx_buffer(transport, mock_uart)
 
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = receive_message_sync(transport)
 
     print(f"  Sent: {msg_out}")
@@ -351,7 +351,7 @@ def test_mixed_commands():
         drain_tx_buffer(transport, mock_uart)
 
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-        mock_uart._in_waiting = len(mock_uart.sent_packets[0])
+        mock_uart._in_waiting = len(mock_uart.receive_buffer)
         msg_in = receive_message_sync(transport)
 
         actual_type = "bytes" if isinstance(msg_in.payload, bytes) else "str"

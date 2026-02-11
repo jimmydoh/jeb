@@ -160,7 +160,7 @@ def test_binary_payload_returns_bytes():
 
     # Receive it back
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = receive_message_sync(transport)
 
     assert msg_in is not None, "Should receive a message"
@@ -188,7 +188,7 @@ def test_text_payload_returns_string():
 
     # Receive it back
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = receive_message_sync(transport)
 
     assert msg_in is not None, "Should receive a message"
@@ -279,7 +279,7 @@ def test_no_string_boomerang():
 
     # Receive it
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = receive_message_sync(transport)
 
     # With ENCODING_NUMERIC_BYTES schema, payload is returned as tuple directly
@@ -317,7 +317,7 @@ def test_heap_efficiency():
     drain_tx_buffer(transport, mock_uart)
 
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
     msg_in = receive_message_sync(transport)
 
     # The payload is now tuple - no intermediate string objects created!
