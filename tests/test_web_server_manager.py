@@ -341,15 +341,24 @@ def run_all_tests():
     
     import asyncio
     
+    tests = [
+        test_initialization,
+        test_wifi_connection,  # This is async
+        test_logging,
+        test_directory_listing,
+        test_config_save,
+        test_html_generation,
+        test_route_registration,
+        test_invalid_config,
+    ]
+    
     try:
-        test_initialization()
-        asyncio.run(test_wifi_connection())  # Run async test
-        test_logging()
-        test_directory_listing()
-        test_config_save()
-        test_html_generation()
-        test_route_registration()
-        test_invalid_config()
+        for test in tests:
+            # Check if test is async and run accordingly
+            if asyncio.iscoroutinefunction(test):
+                asyncio.run(test())
+            else:
+                test()
         
         print("\n" + "="*60)
         print("   ✓ All tests passed!")
