@@ -175,7 +175,10 @@ class CoreManager:
             self.modes[meta["id"]] = mode_class
         self.mode = "DASHBOARD"
 
-        # Track e-stop 'Meltdown'
+        # --- SAFETY EVENTS ---
+        self.estop_event = asyncio.Event()
+        self.abort_event = asyncio.Event()
+        self.target_sat_event = asyncio.Event()
         self.meltdown = False
 
     def _get_mode(self, mode_name):
@@ -242,34 +245,59 @@ class CoreManager:
             mode_coroutine (coroutine): The main game or mode coroutine to run.
             target_sat (Satellite, optional): Specific satellite to monitor.
         """
-        # Create the game as a background task
+        # Create the mode and monitor event tasks
         sub_task = asyncio.create_task(mode_instance.execute())
+        estop_task = asyncio.create_task(self.estop_event.wait())
+        abort_task = asyncio.create_task(self.abort_event.wait())
 
-        while not sub_task.done():
-            # Feed the watchdog only if all critical tasks are alive
-            self.watchdog.safe_feed()
+        if target_sat:
+            target_sat_monitor_task = asyncio.create_task(self.monitor_satellite(target_sat))
+            target_sat_task = asyncio.create_task(self.target_sat_event.wait())
 
-            # E-Stop engaged
-            if self.meltdown:
-                sub_task.cancel()
-                await self.cleanup_task(sub_task)
-                return "ESTOP_ABORT"
+        # Clear events before starting
+        self.abort_event.clear()
+        self.target_sat_event.clear()
 
-            # Long-press Button D to abort
-            if self.hid.is_button_pressed(3, long=True, duration=5000):
-                sub_task.cancel()
-                await self.display.update_status("USER ABORT", "EXITING MODE...")
-                await self.cleanup_task(sub_task)
-                return "MANUAL_ABORT"
+        # Wait for the first of the mode completion or any safety event
+        tasks_to_wait = [sub_task, estop_task, abort_task]
+        if target_sat:
+            tasks_to_wait.extend([target_sat_monitor_task, target_sat_task])
 
-            # Target satellite unplugged
-            # (if applicable)
-            if target_sat and not target_sat.is_active:
-                sub_task.cancel()
-                await self.cleanup_task(sub_task)
-                return "LINK_LOST"
-            await asyncio.sleep(0.1)
-        return "SUCCESS"
+        done, pending = await asyncio.wait(
+            tasks_to_wait,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        # Cleanup: Cancel any pending tasks
+        for task in pending:
+            task.cancel()
+
+        if target_sat:
+            # Ensure the satellite monitor task is also cancelled
+            target_sat_monitor_task.cancel()
+
+        # Determine the result based on which task completed
+        if estop_task in done:
+            await self.display.update_status("ESTOP ENGAGED", "EXITING MODE...")
+            return "ESTOP_ABORT"
+        elif abort_task in done:
+            await self.display.update_status("USER ABORT", "EXITING MODE...")
+            return "MANUAL_ABORT"
+        elif target_sat_task in done:
+            await self.display.update_status("LINK LOST", "EXITING MODE...")
+            return "LINK_LOST"
+
+        if sub_task in done:
+            # Propagate any exceptions from the mode task
+            try:
+                result = sub_task.result()  # Get the result or exception
+                return result if result else "SUCCESS"
+            except Exception as e:
+                print(f"Error in mode execution: {e}")
+                await self.display.update_status("MODE ERROR", "CHECK LOGS")
+                return "MODE_ERROR"
+
+        return "UNKNOWN_EXIT"
 
     # --- Background Tasks ---
     async def monitor_estop(self):
@@ -285,6 +313,7 @@ class CoreManager:
 
             if not self.hid.estop and not self.meltdown:
                 self.meltdown = True
+                self.estop_event.set()  # Signal to any listening tasks that E-Stop is engaged
                 self.sat_network.send_all("LED", "ALL,0,0,0")  # Kill all LEDs
 
                 # Audio Alarms
@@ -310,10 +339,12 @@ class CoreManager:
 
                 # Once button is twisted/reset
                 self.meltdown = False
+                self.estop_event.clear()  # Reset the event for future use
                 await self.audio.play("system_reset.wav")
                 await self.display.update_status("SAFETY RESET", "PLEASE STAND BY")
                 await asyncio.sleep(2)
-            await asyncio.sleep(0.01)
+
+            await asyncio.sleep(0.05)
 
     async def monitor_power(self):
         """Background task to watch for brownouts or disconnects."""
@@ -375,9 +406,26 @@ class CoreManager:
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("hw_hid")
-
             self.hid.hw_update()
-            await asyncio.sleep(0.01)
+
+            if self.hid.is_button_pressed(3, long=True, duration=5000):
+                # Long-press Button D to trigger manual abort
+                self.abort_event.set()
+
+            await asyncio.sleep(0.05) # Poll at 20Hz
+
+    async def monitor_satellite(self, sat):
+        """
+        Background task to monitor a specific satellite.
+        """
+        if not sat:
+            await asyncio.Event().wait()  # Wait indefinitely if no satellite provided
+            return
+
+        while sat.is_active:
+            await asyncio.sleep(0.5)  # Poll at 2Hz to save CPU
+
+        self.target_sat_event.set()  # Signal that the target satellite has been disconnected
 
     async def start(self):
         """Main async loop for the Master Controller."""
