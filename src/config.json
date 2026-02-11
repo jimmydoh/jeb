@@ -7,5 +7,7 @@
     "test_mode": true,
     "wifi_ssid": "",
     "wifi_password": "",
-    "update_url": ""
+    "update_url": "",
+    "web_server_enabled": false,
+    "web_server_port": 80
 }

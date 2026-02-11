@@ -68,7 +68,9 @@ def load_config():
         "uart_buffer_size": 512,  # Default UART buffer size
         "mount_sd_card": False,  # Whether to initialize SD card
         "debug_mode": False,  # Debug mode off by default
-        "test_mode": True  # Test mode on by default (real hardware should set to False)
+        "test_mode": True,  # Test mode on by default (real hardware should set to False)
+        "web_server_enabled": False,  # Web server disabled by default
+        "web_server_port": 80  # Default HTTP port
     }
     try:
         if file_exists("config.json"):
@@ -143,6 +145,28 @@ except ImportError:
     print("⚠️ Updater module not available")
 
 
+# --- WEB SERVER STARTUP (if enabled) ---
+web_server = None
+if config.get("web_server_enabled", False):
+    try:
+        from managers import WebServerManager
+        
+        # Check if WiFi is configured
+        if config.get("wifi_ssid") and config.get("wifi_password"):
+            print("\n" + "="*50)
+            print("   WEB SERVER INITIALIZATION")
+            print("="*50)
+            web_server = WebServerManager(config)
+            print("Web server manager initialized - will start with app")
+        else:
+            print("⚠️ WiFi credentials not configured - web server disabled")
+            print("Configure wifi_ssid and wifi_password in config.json")
+    except ImportError:
+        print("⚠️ WebServerManager not available - check dependencies")
+    except Exception as e:
+        print(f"⚠️ Web server initialization error: {e}")
+
+
 # --- APPLICATION RUN ---
 app = None
 
@@ -184,7 +208,18 @@ if __name__ == "__main__":
                 time.sleep(1)
         else:
             print(f"Starting main app loop for {type_name} ")
-            asyncio.run(app.start())
+            
+            # If web server is enabled, run both app and web server concurrently
+            if web_server is not None:
+                async def run_both():
+                    """Run both the main app and web server concurrently."""
+                    app_task = asyncio.create_task(app.start())
+                    web_task = asyncio.create_task(web_server.start())
+                    await asyncio.gather(app_task, web_task)
+                
+                asyncio.run(run_both())
+            else:
+                asyncio.run(app.start())
     except Exception as e:
         print(f"🚨⛔ CRITICAL CRASH: {e}")
         import traceback
