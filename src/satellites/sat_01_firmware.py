@@ -26,9 +26,9 @@ from managers import (
     HIDManager,
     LEDManager,
     RenderManager,
-    SegmentManager,
+    SegmentManager
 )
-from .base import SatelliteFirmware
+from .base_firmware import SatelliteFirmware
 
 TYPE_ID = "01"
 TYPE_NAME = "INDUSTRIAL"
@@ -128,9 +128,10 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("hw_hid")
-            self.hid.hw_update()
-            await asyncio.sleep(0.02) # Poll at 50Hz
-
+            if self.hid.hw_update():
+                self.trigger_status_update()  # Trigger status update on state change
+            await asyncio.sleep(0.01) # Poll at 100Hz
+#endregion
 
     async def custom_start(self):
         """Custom startup sequence for the Industrial Satellite."""

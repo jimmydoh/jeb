@@ -1,4 +1,9 @@
-""""""
+"""
+Base firmware class for all satellite box hardware.
+
+A class representing a physical satellite expansion box
+including hardware init and functions.
+"""
 
 import asyncio
 import time
@@ -32,6 +37,7 @@ class SatelliteFirmware:
         Pins.initialize(profile="SAT", type_id=self.sat_type_id)
 
         # State Variables
+        self._status_event = asyncio.Event()  # Event to signal status updates for efficient waiting
         self.last_tx = 0
         self.last_seen = 0
         self.is_active = True
@@ -191,6 +197,10 @@ class SatelliteFirmware:
         self.last_seen = ticks_ms()
         self.is_active = True
 
+    def trigger_status_update(self):
+        """Trigger an immediate status update to be sent upstream."""
+        self._status_event.set()  # Signal that a status update is needed
+
     def _get_status_bytes(self):
         """Return a compact byte representation of the satellite's status for efficient transmission."""
         raise NotImplementedError("_get_status_bytes() must be implemented by satellite subclasses.")
@@ -248,12 +258,13 @@ class SatelliteFirmware:
                     self.transport_up.send(msg_out)
                     self.last_tx = time.monotonic()
             else: # Normal Operation
-                if time.monotonic() - self.last_tx > 0.1:
+                if self._status_event.is_set() or time.monotonic() - self.last_tx > 2.0:
                     # Use get_status_bytes() to avoid string allocation overhead
                     # Message class supports both str and bytes payloads
                     msg_out = Message(self.id, "STATUS", self._get_status_bytes())
                     self.transport_up.send(msg_out)
                     self.last_tx = time.monotonic()
+                    self._status_event.clear()
 
             # RX FROM UPSTREAM -> CMD PROCESSING & TX TO DOWNSTREAM
             try:

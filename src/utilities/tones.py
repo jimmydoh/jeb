@@ -16,7 +16,18 @@ H = 2.0  # Half
 Q = 1.0  # Quarter
 E = 0.5  # Eighth
 S = 0.25 # Sixteenth
+N32 = 0.125 # Thirty-second
+N64 = 0.0625 # Sixty-fourth
+N128 = 0.03125 # One hundred twenty-eighth
 T = 0.33 # Triplet
+
+# Note Length Examples
+# 90  BPM -> Q = 667ms, E = 333ms, S = 167ms, N32 = 83ms, N64 = 42ms, N128 = 21ms
+# 120 BPM -> Q = 500ms, E = 250ms, S = 125ms, N32 = 62ms, N64 = 31ms, N128 = 15ms
+# 150 BPM -> Q = 400ms, E = 200ms, S = 100ms, N32 = 50ms, N64 = 25ms, N128 = 12ms
+# 200 BPM -> Q = 300ms, E = 150ms, S = 75ms, N32 = 37ms, N64 = 18ms, N128 = 9ms
+#
+# Or just set to 60 bpm and use decimals of a second
 
 # --- TONE LIBRARY ---
 BEEP = {
@@ -30,8 +41,8 @@ ERROR = {
 }
 
 SUCCESS = {
-    'bpm': 120,
-    'sequence': [('E5', S), ('G5', S), ('C6', H)]
+    'bpm': 60,
+    'sequence': [('E5', 0.1), ('-', 0.05), ('B5', 0.3)]
 }
 
 POWER_UP = {

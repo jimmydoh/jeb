@@ -470,7 +470,9 @@ The project includes a comprehensive test suite in the `tests/` directory with u
 
 The repository includes a GitHub Action workflow that automatically compiles Python source files to MicroPython bytecode (`.mpy` files) for faster loading and reduced memory usage. The workflow:
 
-- Compiles all Python files in `src/` using `mpy-cross`
+- Uses CircuitPython-specific `mpy-cross` executable for compilation
+- Compiles all Python files in `src/` (except boot.py and code.py)
+- Copies boot.py and code.py as-is (not compiled)
 - Generates a `manifest.json` with file paths and SHA256 hashes
 - Generates a lightweight `version.json` for quick version checks
 - Automatically determines version from VERSION file, git tags, or git history
