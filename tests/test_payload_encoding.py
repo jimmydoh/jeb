@@ -142,6 +142,9 @@ class MockUARTManager:
 # Import transport classes
 from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
+# Import test helpers
+from test_helpers import drain_tx_buffer, receive_message_sync
+
 def test_id_assign_preserves_leading_zeros():
     """Test that ID_ASSIGN command preserves leading zeros in IDs."""
     print("Testing ID_ASSIGN with leading zeros...")
@@ -159,11 +162,12 @@ def test_id_assign_preserves_leading_zeros():
     for test_id, description in test_cases:
         msg_out = Message("ALL", "ID_ASSIGN", test_id)
         transport.send(msg_out)
+        drain_tx_buffer(transport, mock_uart)
 
         # Receive it back
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
         mock_uart._in_waiting = len(mock_uart.receive_buffer)
-        msg_in = transport.receive()
+        msg_in = receive_message_sync(transport)
 
         assert msg_in is not None, f"Failed to receive message for {description}"
         assert msg_in.payload == test_id, \
@@ -186,10 +190,11 @@ def test_new_sat_preserves_string_ids():
     for sat_id in test_cases:
         msg_out = Message("SAT", "NEW_SAT", sat_id)
         transport.send(msg_out)
+        drain_tx_buffer(transport, mock_uart)
 
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
         mock_uart._in_waiting = len(mock_uart.receive_buffer)
-        msg_in = transport.receive()
+        msg_in = receive_message_sync(transport)
 
         assert msg_in is not None
         assert msg_in.payload == sat_id, \
@@ -211,10 +216,11 @@ def test_led_commands_use_byte_encoding():
     # Use tuple for proper binary encoding
     msg_out = Message("0101", "LED", (255, 128, 64, 100))
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     assert msg_in is not None
     # LED uses ENCODING_NUMERIC_BYTES, so payload is returned as tuple
@@ -234,10 +240,11 @@ def test_power_commands_use_float_encoding():
     # POWER command uses floats for voltage/current - use tuple not string
     msg_out = Message("0101", "POWER", (19.5, 18.2, 5.0))
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     assert msg_in is not None
     # POWER uses ENCODING_FLOATS, so payload is returned as tuple
@@ -262,10 +269,11 @@ def test_power_commands_accept_list_tuple():
     test_values = [19.5, 18.2, 5.0]
     msg_out = Message("0101", "POWER", test_values)
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     assert msg_in is not None
     # POWER uses ENCODING_FLOATS, so payload is returned as tuple
@@ -284,10 +292,11 @@ def test_power_commands_accept_list_tuple():
     test_values = (19.5, 18.2, 5.0)
     msg_out = Message("0101", "POWER", test_values)
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     assert msg_in is not None
     assert isinstance(msg_in.payload, tuple), f"Expected tuple, got {type(msg_in.payload)}"
@@ -303,11 +312,13 @@ def test_power_commands_accept_list_tuple():
     transport_tuple = UARTTransport(mock_uart_tuple, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     msg_tuple = Message("0101", "POWER", (19.5, 18.2, 5.0))
     transport_tuple.send(msg_tuple)
+    drain_tx_buffer(transport_tuple, mock_uart_tuple)
 
     mock_uart_list = MockUARTManager()
     transport_list = UARTTransport(mock_uart_list, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     msg_list = Message("0101", "POWER", [19.5, 18.2, 5.0])
     transport_list.send(msg_list)
+    drain_tx_buffer(transport_list, mock_uart_list)
 
     assert mock_uart_tuple.sent_packets[0] == mock_uart_list.sent_packets[0], \
         "Tuple and list encoding should produce identical binary packets"
@@ -333,10 +344,11 @@ def test_display_commands_preserve_text():
     for text in test_texts:
         msg_out = Message("0101", "DSP", text)
         transport.send(msg_out)
+        drain_tx_buffer(transport, mock_uart)
 
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
         mock_uart._in_waiting = len(mock_uart.receive_buffer)
-        msg_in = transport.receive()
+        msg_in = receive_message_sync(transport)
 
         assert msg_in is not None
         assert msg_in.payload == text, \
@@ -357,10 +369,11 @@ def test_backward_compatibility():
     # Test STATUS with correct number of values (5 bytes) - use tuple for byte encoding
     msg_out = Message("0101", "STATUS", (100, 200, 50, 75, 25))
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[-1])
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     assert msg_in is not None
     # STATUS uses ENCODING_NUMERIC_BYTES, so payload is returned as tuple
@@ -389,9 +402,10 @@ def test_roundtrip_all_command_types():
         transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
         transport.send(msg_out)
+        drain_tx_buffer(transport, mock_uart)
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
         mock_uart._in_waiting = len(mock_uart.receive_buffer)
-        msg_in = transport.receive()
+        msg_in = receive_message_sync(transport)
 
         assert msg_in is not None, f"Failed to receive {cmd_name}"
         assert msg_in.destination == msg_out.destination
