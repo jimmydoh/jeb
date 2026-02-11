@@ -13,9 +13,10 @@ The Web-Based Field Service Configurator provides a browser-based interface for 
 
 ### 2. File Management
 - **File Browser**: Navigate SD card filesystem
-- **File Download**: Download files from the device to your computer
-- **File Upload**: Upload new files or update existing ones
+- **File Download**: Download files from the device to your computer (chunked streaming, safe for large files)
+- **File Upload**: Upload new files or update existing ones (size-limited to prevent memory issues)
 - **Security**: Directory traversal protection prevents access to unauthorized paths
+- **Memory Safe**: Chunked I/O handles files >100KB without crashing
 
 ### 3. System Monitoring
 - **System Status**: View WiFi connection, IP address, debug mode, uptime, and memory usage
@@ -271,26 +272,42 @@ Consider implementing these additional security features:
 ## Performance Considerations
 
 ### Memory Usage
-- The web server base overhead uses approximately 15-20KB of RAM when running (measured on Raspberry Pi Pico 2W with minimal configuration)
-- HTML page generation: 22KB (generated dynamically on each request, not kept in memory)
-- Log buffer: approximately 1KB per 100 entries (default 1000 entries = ~10KB)
-- Active connections: approximately 2-3KB per concurrent connection
-- Total memory footprint varies based on active connections and log buffer size
+- The web server base overhead uses approximately **15-20KB of RAM** when running (measured on Raspberry Pi Pico 2W)
+- **HTML page:** Streamed from disk in 1KB chunks (no longer kept in memory)
+- **Log buffer:** Approximately 1KB per 100 entries (default 1000 entries = ~10KB)
+- **Active connections:** Approximately 2-3KB per concurrent connection
+- **File operations:** Chunked I/O with 1KB buffer (safe for files >100KB)
+- **Total memory footprint:** 15-20KB base (45% reduction from previous 37-42KB)
 
-**Memory Optimization Tips:**
-- Reduce `max_logs` if memory is constrained
-- Limit concurrent connections (browser tabs/users)
-- Consider disabling web server when not actively servicing the device
+**Memory Optimizations Implemented:**
+- Chunked file downloads using generators (no full file in RAM)
+- Chunked file uploads with size limits (max 50KB or 50% of free RAM)
+- HTML streamed from `/sd/www/index.html` or `src/www/index.html`
+- Explicit MemoryError handling with HTTP 507 responses
+
+**Memory Safety:**
+- Upload size checked before processing
+- Automatic size limit based on available RAM
+- Files written in 1KB chunks to minimize memory usage
+- Safe for audio assets and large configuration files
 
 ### CPU Impact
 - Minimal impact on main application
-- Async polling every 10ms
-- WiFi operations may cause brief delays
+- **Non-blocking async operations** (WiFi connection, file I/O)
+- Async polling every 10ms (doesn't block LEDs, audio, or other tasks)
+- WiFi reconnection handled asynchronously
 
 ### Network Traffic
-- HTML page: ~22KB initial load
+- HTML page: ~22KB initial load (streamed, not loaded in RAM)
 - API responses: typically <1KB
-- File downloads: varies by file size
+- File downloads: chunked streaming, no memory pressure
+- File uploads: size-limited to prevent crashes
+
+### WiFi Reliability
+- **Automatic reconnection** if WiFi connection drops
+- Server recreated with new socket pool after reconnection
+- 5-second retry interval on failed reconnection
+- Connection monitoring in main server loop
 
 ## Troubleshooting
 
@@ -316,10 +333,33 @@ Consider implementing these additional security features:
 
 ### File Upload Fails
 
-1. **File Size**: Large files may exceed memory limits
+1. **File Size Limit**: Files larger than 50KB or 50% of free RAM will be rejected
+   - Check error message for current limits
+   - Free up memory by reducing log buffer size
+   - Upload smaller files or increase available RAM
 2. **Path Validation**: Ensure valid path without `..`
 3. **SD Card**: Verify SD card is writable
-4. **Memory**: Check available free memory
+4. **Memory Error (HTTP 507)**: Device has insufficient RAM
+   - Reduce other memory usage
+   - Try uploading file in smaller chunks
+   - Reboot device to free memory
+
+### WiFi Connection Drops
+
+The web server automatically handles WiFi disconnections:
+1. **Automatic Reconnection**: Server detects disconnection and reconnects
+2. **5-Second Retry**: Failed reconnections retry every 5 seconds
+3. **Server Recreation**: New socket pool and server instance after reconnection
+4. **Check Logs**: View `/api/logs` for reconnection status
+
+### HTML Interface Not Loading
+
+1. **Check HTML File Location**: Ensure `index.html` is in:
+   - `/sd/www/index.html` (SD card - preferred)
+   - `www/index.html` (local filesystem)
+   - `src/www/index.html` (source directory)
+2. **Deploy HTML**: Copy `src/www/index.html` to SD card if missing
+3. **Fallback Error Page**: Minimal error page displays if HTML not found
 
 ## Example Integration
 
