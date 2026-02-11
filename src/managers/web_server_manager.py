@@ -42,6 +42,11 @@ class WebServerManager:
     by code.py to provide web-based configuration interface.
     """
     
+    # Class constants for memory management and chunked I/O
+    CHUNK_SIZE = 1024  # Bytes to read/write at a time for file operations
+    MAX_UPLOAD_SIZE_BYTES = 50 * 1024  # Maximum upload size (50KB)
+    DEFAULT_MAX_LOGS = 1000  # Default maximum log entries to keep
+    
     def __init__(self, config, console_buffer=None):
         """
         Initialize the web server manager.
@@ -64,7 +69,7 @@ class WebServerManager:
         self.pool = None
         self.connected = False
         self.logs = []  # Ring buffer for log messages
-        self.max_logs = 1000  # Maximum log entries to keep
+        self.max_logs = self.DEFAULT_MAX_LOGS  # Maximum log entries to keep
         
         # Validate configuration
         if not self.wifi_ssid or not self.wifi_password:
@@ -231,8 +236,10 @@ class WebServerManager:
                                   content_type="application/json", status=400)
                 
                 # Create a generator function to read file in chunks
-                def file_generator(filepath, chunk_size=1024):
+                def file_generator(filepath, chunk_size=None):
                     """Generator that yields file chunks to avoid loading entire file in RAM."""
+                    if chunk_size is None:
+                        chunk_size = self.CHUNK_SIZE
                     try:
                         with open(filepath, "rb") as f:
                             while True:
@@ -283,7 +290,7 @@ class WebServerManager:
                 
                 # Check available memory before attempting to read body
                 free_mem = gc.mem_free()
-                max_upload_size = min(50 * 1024, free_mem // 2)  # Max 50KB or half of free RAM
+                max_upload_size = min(self.MAX_UPLOAD_SIZE_BYTES, free_mem // 2)  # Max 50KB or half of free RAM
                 
                 # Get file content from request body
                 content = request.body
@@ -296,10 +303,9 @@ class WebServerManager:
                 
                 # Write file in chunks to minimize memory usage
                 filepath = f"{path}/{filename}"
-                chunk_size = 1024
                 with open(filepath, "wb") as f:
-                    for i in range(0, len(content), chunk_size):
-                        f.write(content[i:i+chunk_size])
+                    for i in range(0, len(content), self.CHUNK_SIZE):
+                        f.write(content[i:i+self.CHUNK_SIZE])
                 
                 self.log(f"File uploaded: {filepath} ({len(content)} bytes)")
                 return Response(request, f'{{"status": "success", "path": "{filepath}", "size": {len(content)}}}', 
@@ -520,8 +526,10 @@ class WebServerManager:
                 with open(html_path, "r") as test_f:
                     pass  # File exists, proceed
                 
-                def html_generator(filepath, chunk_size=1024):
+                def html_generator(filepath, chunk_size=None):
                     """Generator that yields HTML file chunks to save RAM."""
+                    if chunk_size is None:
+                        chunk_size = self.CHUNK_SIZE
                     with open(filepath, "r") as f:
                         while True:
                             chunk = f.read(chunk_size)
