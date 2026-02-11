@@ -180,6 +180,12 @@ class SatelliteFirmware:
 
             await asyncio.sleep(0.5)
 
+    async def monitor_watchdog_feed(self):
+        """Background task to feed the watchdog if all systems are healthy."""
+        while True:
+            self.watchdog.safe_feed()
+            await asyncio.sleep(1)  # Feed the watchdog every second
+
     def update_heartbeat(self):
         """Update the last seen timestamp."""
         self.last_seen = ticks_ms()
@@ -227,11 +233,10 @@ class SatelliteFirmware:
         # Sat specific tasks
         await self.custom_start()
 
+        asyncio.create_task(self.monitor_watchdog_feed())
+
         # Primary satellite loop
         while True:
-            # Feed the hardware watchdog timer to prevent system reset
-            self.watchdog.safe_feed()
-
             # Local status tasks
             # Set LEDs based on power status
             # Add visuals for local errors / status

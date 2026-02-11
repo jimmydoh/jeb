@@ -431,6 +431,12 @@ class CoreManager:
 
         self.target_sat_event.set()  # Signal that the target satellite has been disconnected
 
+    async def monitor_watchdog_feed(self):
+        """Background task to feed the watchdog if all systems are healthy."""
+        while True:
+            self.watchdog.safe_feed()
+            await asyncio.sleep(1)  # Feed the watchdog every second
+
     async def start(self):
         """Main async loop for the Master Controller."""
         # --- POWER ON SELF TEST ---
@@ -482,6 +488,8 @@ class CoreManager:
             )
         )
 
+        asyncio.create_task(self.monitor_watchdog_feed())  # Start watchdog feed loop
+
         # --- Experimental / Future Use ---
         #self.watchdog.register_flags(["estop"])
         #asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
@@ -491,12 +499,8 @@ class CoreManager:
         # TODO Add boot animation and audio
 
         while True:
-            # Feed the watchdog only if all critical tasks are alive
-            self.watchdog.safe_feed()
-
             # Meltdown state pauses the menu selection
             while self.meltdown:
-                self.watchdog.safe_feed()
                 await asyncio.sleep(0.1)
 
             # --- GENERIC MODE RUNNER ---
