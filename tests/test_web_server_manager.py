@@ -200,17 +200,38 @@ def test_config_save():
     
     manager = WebServerManager(config)
     
-    # Modify config
-    manager.config["debug_mode"] = True
-    manager._save_config()
+    # Save original config if it exists
+    original_config = None
+    config_path = "config.json"
+    try:
+        with open(config_path, "r") as f:
+            original_config = f.read()
+    except FileNotFoundError:
+        pass
     
-    # Verify saved config
-    with open("config.json", "r") as f:
-        saved_config = json.load(f)
-    
-    assert saved_config["debug_mode"] == True
-    
-    print("  ✓ Config save test passed")
+    try:
+        # Modify config
+        manager.config["debug_mode"] = True
+        manager._save_config()
+        
+        # Verify saved config
+        with open(config_path, "r") as f:
+            saved_config = json.load(f)
+        
+        assert saved_config["debug_mode"] == True
+        
+        print("  ✓ Config save test passed")
+    finally:
+        # Restore original config
+        if original_config:
+            with open(config_path, "w") as f:
+                f.write(original_config)
+        else:
+            # Clean up test config if there was no original
+            try:
+                os.remove(config_path)
+            except FileNotFoundError:
+                pass
 
 
 def test_html_generation():

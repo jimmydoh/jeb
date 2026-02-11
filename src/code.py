@@ -215,7 +215,17 @@ if __name__ == "__main__":
                     """Run both the main app and web server concurrently."""
                     app_task = asyncio.create_task(app.start())
                     web_task = asyncio.create_task(web_server.start())
-                    await asyncio.gather(app_task, web_task)
+                    
+                    # Use return_exceptions=True to capture errors without stopping other tasks
+                    results = await asyncio.gather(app_task, web_task, return_exceptions=True)
+                    
+                    # Check for exceptions in either task
+                    for i, result in enumerate(results):
+                        if isinstance(result, Exception):
+                            task_name = "app" if i == 0 else "web_server"
+                            print(f"Task {task_name} failed with error: {result}")
+                            import traceback
+                            traceback.print_exception(type(result), result, result.__traceback__)
                 
                 asyncio.run(run_both())
             else:

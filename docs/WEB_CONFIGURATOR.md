@@ -271,9 +271,16 @@ Consider implementing these additional security features:
 ## Performance Considerations
 
 ### Memory Usage
-- The web server uses approximately 15-20KB of RAM when running
-- HTML page is generated dynamically (22KB)
-- Log buffer limited to 1000 entries (configurable)
+- The web server base overhead uses approximately 15-20KB of RAM when running (measured on Raspberry Pi Pico 2W with minimal configuration)
+- HTML page generation: 22KB (generated dynamically on each request, not kept in memory)
+- Log buffer: approximately 1KB per 100 entries (default 1000 entries = ~10KB)
+- Active connections: approximately 2-3KB per concurrent connection
+- Total memory footprint varies based on active connections and log buffer size
+
+**Memory Optimization Tips:**
+- Reduce `max_logs` if memory is constrained
+- Limit concurrent connections (browser tabs/users)
+- Consider disabling web server when not actively servicing the device
 
 ### CPU Impact
 - Minimal impact on main application

@@ -155,10 +155,34 @@ class WebServerManager:
                     return Response(request, '{"error": "Invalid JSON"}', 
                                   content_type="application/json", status=400)
                 
-                # Update config (validate critical fields)
+                # Validate and update config (protect critical fields)
+                protected_fields = ["role", "type_id"]
+                valid_boolean_fields = ["debug_mode", "test_mode", "web_server_enabled", "mount_sd_card"]
+                valid_int_fields = ["web_server_port", "uart_baudrate", "uart_buffer_size"]
+                
                 for key, value in data.items():
-                    if key not in ["role", "type_id"]:  # Protect critical fields
-                        self.config[key] = value
+                    # Skip protected fields
+                    if key in protected_fields:
+                        continue
+                    
+                    # Validate boolean fields
+                    if key in valid_boolean_fields:
+                        if not isinstance(value, bool):
+                            return Response(request, f'{{"error": "{key} must be boolean"}}', 
+                                          content_type="application/json", status=400)
+                    
+                    # Validate integer fields
+                    if key in valid_int_fields:
+                        if not isinstance(value, int) or value < 0:
+                            return Response(request, f'{{"error": "{key} must be positive integer"}}', 
+                                          content_type="application/json", status=400)
+                        # Validate port range
+                        if key == "web_server_port" and (value < 1 or value > 65535):
+                            return Response(request, '{"error": "Invalid port number (1-65535)"}', 
+                                          content_type="application/json", status=400)
+                    
+                    # Update config
+                    self.config[key] = value
                 
                 # Save config to file
                 self._save_config()
@@ -194,9 +218,14 @@ class WebServerManager:
                     return Response(request, '{"error": "Path required"}', 
                                   content_type="application/json", status=400)
                 
-                # Security: Prevent directory traversal
-                if ".." in path:
-                    return Response(request, '{"error": "Invalid path"}', 
+                # Security: Prevent directory traversal and validate path
+                # Normalize path and ensure it's within allowed directories
+                import os.path
+                normalized_path = os.path.normpath(path)
+                
+                # Check for directory traversal
+                if ".." in normalized_path or not (normalized_path.startswith("/sd/") or normalized_path == "/sd"):
+                    return Response(request, '{"error": "Invalid path - access denied"}', 
                                   content_type="application/json", status=400)
                 
                 # Read file
@@ -224,9 +253,19 @@ class WebServerManager:
                     return Response(request, '{"error": "Filename required"}', 
                                   content_type="application/json", status=400)
                 
-                # Security: Prevent directory traversal
-                if ".." in path or ".." in filename:
-                    return Response(request, '{"error": "Invalid path"}', 
+                # Security: Prevent directory traversal and validate paths
+                import os.path
+                normalized_path = os.path.normpath(path)
+                normalized_filename = os.path.normpath(filename)
+                
+                # Check for directory traversal in both path and filename
+                if ".." in normalized_path or ".." in normalized_filename:
+                    return Response(request, '{"error": "Invalid path - directory traversal not allowed"}', 
+                                  content_type="application/json", status=400)
+                
+                # Ensure path is within SD card
+                if not (normalized_path.startswith("/sd/") or normalized_path == "/sd"):
+                    return Response(request, '{"error": "Invalid path - must be within /sd"}', 
                                   content_type="application/json", status=400)
                 
                 # Get file content from request body
@@ -324,8 +363,19 @@ class WebServerManager:
             """Trigger a manual OTA update."""
             try:
                 # Set update flag
-                with open("/sd/UPDATE_FLAG.txt", "w") as f:
-                    f.write("UPDATE_REQUESTED\n")
+                try:
+                    with open("/sd/UPDATE_FLAG.txt", "w") as f:
+                        f.write("UPDATE_REQUESTED\n")
+                except OSError as e:
+                    # Provide more specific error message
+                    if e.errno == 30:  # Read-only filesystem
+                        error_msg = "SD card is read-only"
+                    elif e.errno == 28:  # No space left on device
+                        error_msg = "SD card is full"
+                    else:
+                        error_msg = f"Failed to write update flag: {e}"
+                    return Response(request, f'{{"error": "{error_msg}"}}', 
+                                  content_type="application/json", status=500)
                 
                 self.log("OTA update triggered - device will update on next boot")
                 return Response(request, '{"status": "update_scheduled"}', 
@@ -834,14 +884,15 @@ class WebServerManager:
                 const logs = await response.json();
                 
                 const logViewer = document.getElementById('logViewer');
-                logViewer.innerHTML = logs.map(log => 
+                // Use textContent to prevent XSS - build text with newlines
+                logViewer.textContent = logs.map(log => 
                     `[${Math.floor(log.time)}s] ${log.message}`
-                ).join('<br>');
+                ).join('\n');
                 
                 // Scroll to bottom
                 logViewer.scrollTop = logViewer.scrollHeight;
             } catch (error) {
-                document.getElementById('logViewer').innerHTML = 'Error loading logs: ' + error;
+                document.getElementById('logViewer').textContent = 'Error loading logs: ' + error;
             }
         }
         
@@ -850,9 +901,11 @@ class WebServerManager:
                 const response = await fetch('/api/console');
                 const data = await response.json();
                 
-                document.getElementById('consoleViewer').innerHTML = data.output.replace(/\\n/g, '<br>');
+                // Use textContent to prevent XSS attacks
+                const consoleViewer = document.getElementById('consoleViewer');
+                consoleViewer.textContent = data.output;
             } catch (error) {
-                document.getElementById('consoleViewer').innerHTML = 'Error loading console: ' + error;
+                document.getElementById('consoleViewer').textContent = 'Error loading console: ' + error;
             }
         }
         
