@@ -13,6 +13,9 @@ def drain_tx_buffer(transport, mock_uart):
     Parameters:
         transport: The UARTTransport instance
         mock_uart: The mock UART manager
+        
+    Returns:
+        None
     """
     while transport._tx_head != transport._tx_tail:
         head = transport._tx_head

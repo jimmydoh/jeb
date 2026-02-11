@@ -48,7 +48,7 @@ def test_watchdog_feed_present_in_code():
     # The actual watchdog feeding happens in the main start() loop
     
     print("  ✓ Method structure verified (architecture uses asyncio.wait)")
-    print("  ℹ Note: Watchdog feeding occurs in main start() loop (verified in next test)")
+    print("  NOTE: Watchdog feeding occurs in main start() loop (verified in next test)")
 
 
 def test_watchdog_feed_in_main_loop():
@@ -119,10 +119,10 @@ def run_all_tests():
         print("ALL TESTS PASSED ✓")
         print()
         print("The fix successfully:")
-        print("  • Uses safe_feed() in main start() loop")
-        print("  • Uses asyncio.wait architecture for mode safety")
-        print("  • Prevents system reset during long-running modes")
-        print("  • Implements watchdog flag pattern to prevent blind feeding")
+        print("  - Uses safe_feed() in main start() loop")
+        print("  - Uses asyncio.wait architecture for mode safety")
+        print("  - Prevents system reset during long-running modes")
+        print("  - Implements watchdog flag pattern to prevent blind feeding")
     else:
         print("SOME TESTS FAILED ✗")
     print("=" * 60 + "\n")
