@@ -28,9 +28,22 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install mpy-cross
+      - name: Install CircuitPython mpy-cross
         run: |
-          pip install mpy-cross
+          # Download CircuitPython 10.x mpy-cross executable
+          # Using version 10.0.0 for CircuitPython 10.x compatibility
+          CIRCUITPYTHON_VERSION="10.0.0"
+          MPY_CROSS_URL="https://github.com/adafruit/circuitpython/releases/download/${CIRCUITPYTHON_VERSION}/mpy-cross-linux-amd64-${CIRCUITPYTHON_VERSION}"
+          
+          echo "Downloading CircuitPython mpy-cross ${CIRCUITPYTHON_VERSION}..."
+          curl -L -o mpy-cross "${MPY_CROSS_URL}"
+          chmod +x mpy-cross
+          
+          # Move to a location in PATH
+          sudo mv mpy-cross /usr/local/bin/
+          
+          # Verify installation
+          mpy-cross --version
 
       - name: Determine version
         id: version
@@ -85,9 +98,23 @@ jobs:
           echo "Build version: ${{ steps.version.outputs.version }}"
           echo "Version source: ${{ steps.version.outputs.source }}"
 
+      - name: Copy boot.py and code.py as-is
+        run: |
+          # These files should not be compiled - copy them as-is
+          echo "Copying boot.py and code.py as-is (not compiled)..."
+          if [ -f "src/boot.py" ]; then
+            cp "src/boot.py" "build/mpy/boot.py"
+            echo "  ✓ Copied: src/boot.py -> build/mpy/boot.py"
+          fi
+          if [ -f "src/code.py" ]; then
+            cp "src/code.py" "build/mpy/code.py"
+            echo "  ✓ Copied: src/code.py -> build/mpy/code.py"
+          fi
+
       - name: Compile Python files to MPY
         run: |
           # Find all .py files in src directory and compile them
+          # Exclude boot.py and code.py as they should not be compiled
           # Track compilation results
           success_count=0
           fail_count=0
@@ -96,6 +123,13 @@ jobs:
           while IFS= read -r pyfile; do
             # Get the relative path from src
             relpath="${pyfile#src/}"
+            
+            # Skip boot.py and code.py - they should not be compiled
+            if [ "$relpath" = "boot.py" ] || [ "$relpath" = "code.py" ]; then
+              echo "Skipping $pyfile (should not be compiled)"
+              continue
+            fi
+            
             # Create directory structure in build/mpy
             mkdir -p "build/mpy/$(dirname "$relpath")"
             # Compile to .mpy
@@ -153,7 +187,8 @@ jobs:
           total_size = 0
           for root, dirs, files in os.walk("build/mpy"):
               for file in files:
-                  if file.endswith(".mpy"):
+                  # Include both .mpy and .py files (boot.py and code.py)
+                  if file.endswith(".mpy") or file.endswith(".py"):
                       filepath = os.path.join(root, file)
                       # Get relative path from build/mpy
                       relpath = os.path.relpath(filepath, "build/mpy")
