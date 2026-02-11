@@ -12,10 +12,10 @@ from .led_manager import LEDManager
 from .matrix_manager import MatrixManager
 from .power_manager import PowerManager
 from .render_manager import RenderManager
-from .satellite_network_manager import SatelliteNetworkManager
 from .segment_manager import SegmentManager
-from .synth_manager import SynthManager
 from .watchdog_manager import WatchdogManager
+from .satellite_network_manager import SatelliteNetworkManager
+from .synth_manager import SynthManager
 
 __all__ = [
     "AudioManager",
@@ -29,8 +29,8 @@ __all__ = [
     "MatrixManager",
     "PowerManager",
     "RenderManager",
-    "SatelliteNetworkManager",
     "SegmentManager",
+    "WatchdogManager",
+    "SatelliteNetworkManager",
     "SynthManager",
-    "WatchdogManager"
 ]

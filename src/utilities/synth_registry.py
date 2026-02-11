@@ -8,56 +8,51 @@ import array
 import math
 import synthio
 
+def _generate_sine(sample_size=512, max_amp=32000):
+    b = array.array("h", [0] * sample_size)
+    for i in range(sample_size):
+        b[i] = int(math.sin(math.pi * 2 * i / sample_size) * max_amp)
+    return b
+
+def _generate_square(sample_size=512, max_amp=32000):
+    b = array.array("h", [0] * sample_size)
+    half = sample_size // 2
+    for i in range(sample_size):
+        b[i] = max_amp if i < half else -max_amp
+    return b
+
+def _generate_saw(sample_size=512, max_amp=32000):
+    b = array.array("h", [0] * sample_size)
+    for i in range(sample_size):
+        # Scale 0..SIZE to -MAX..MAX
+        b[i] = int(-max_amp + (2 * max_amp * i / sample_size))
+    return b
+
+def _generate_triangle(sample_size=512, max_amp=32000):
+    b = array.array("h", [0] * sample_size)
+    quarter = sample_size // 4
+    three_quarter = 3 * sample_size // 4
+    for i in range(sample_size):
+        if i < quarter:
+            val = i / quarter
+        elif i < three_quarter:
+            val = 1 - (i - quarter) / quarter
+        else:
+            val = -1 + (i - three_quarter) / quarter
+        b[i] = int(val * max_amp)
+    return b
+
 class Waveforms:
     """Generates and stores single-cycle waveforms."""
 
     SAMPLE_SIZE = 512
     MAX_AMP = 32000 # Keep strictly under 32767 to avoid clipping
 
-    @staticmethod
-    def _generate_sine():
-        b = array.array("h", [0] * Waveforms.SAMPLE_SIZE)
-        for i in range(Waveforms.SAMPLE_SIZE):
-            b[i] = int(math.sin(math.pi * 2 * i / Waveforms.SAMPLE_SIZE) * Waveforms.MAX_AMP)
-        return b
-
-    @staticmethod
-    def _generate_square():
-        b = array.array("h", [0] * Waveforms.SAMPLE_SIZE)
-        half = Waveforms.SAMPLE_SIZE // 2
-        for i in range(Waveforms.SAMPLE_SIZE):
-            b[i] = Waveforms.MAX_AMP if i < half else -Waveforms.MAX_AMP
-        return b
-
-    @staticmethod
-    def _generate_saw():
-        b = array.array("h", [0] * Waveforms.SAMPLE_SIZE)
-        for i in range(Waveforms.SAMPLE_SIZE):
-            # Scale 0..SIZE to -MAX..MAX
-            b[i] = int(-Waveforms.MAX_AMP + (2 * Waveforms.MAX_AMP * i / Waveforms.SAMPLE_SIZE))
-        return b
-
-    @staticmethod
-    def _generate_triangle():
-        b = array.array("h", [0] * Waveforms.SAMPLE_SIZE)
-        quarter = Waveforms.SAMPLE_SIZE // 4
-        three_quarter = 3 * Waveforms.SAMPLE_SIZE // 4
-        for i in range(Waveforms.SAMPLE_SIZE):
-            if i < quarter:
-                val = i / quarter
-            elif i < three_quarter:
-                val = 2 - (i - quarter) / quarter
-            else:
-                val = -1 + (i - three_quarter) / quarter
-            b[i] = int(val * Waveforms.MAX_AMP)
-        return b
-
     # Pre-generated waveform singletons
-    SINE = _generate_sine()
-    SQUARE = _generate_square()
-    SAW = _generate_saw()
-    TRIANGLE = _generate_triangle()
-
+    SINE = _generate_sine(SAMPLE_SIZE, MAX_AMP)
+    SQUARE = _generate_square(SAMPLE_SIZE, MAX_AMP)
+    SAW = _generate_saw(SAMPLE_SIZE, MAX_AMP)
+    TRIANGLE = _generate_triangle(SAMPLE_SIZE, MAX_AMP)
 
 class Envelopes:
     """Pre-defined ADSR Envelopes."""

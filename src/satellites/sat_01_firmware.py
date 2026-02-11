@@ -26,7 +26,7 @@ from managers import (
     HIDManager,
     LEDManager,
     RenderManager,
-    SegmentManager,
+    SegmentManager
 )
 from .base import SatelliteFirmware
 
