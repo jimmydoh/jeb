@@ -69,35 +69,38 @@ def test_spawn_status_task_method_exists(content):
 
 
 def test_no_direct_asyncio_create_task_in_handle_message(content):
-    """Test that handle_message uses throttled task spawning for status updates."""
-    print("\nTesting handle_message uses throttled task spawning for status updates...")
+    """Test that monitor_messages uses throttled task spawning for status updates."""
+    print("\nTesting monitor_messages uses throttled task spawning for status updates...")
     
-    # Find handle_message method
-    handle_message_start = content.find('def handle_message(self')
-    assert handle_message_start != -1, "handle_message method should exist"
+    # Find monitor_messages method (renamed from handle_message)
+    monitor_messages_start = content.find('async def monitor_messages(self')
+    assert monitor_messages_start != -1, "monitor_messages method should exist"
     
-    # Find the next method after handle_message
-    next_method_start = content.find('\n    def ', handle_message_start + 1)
+    # Find the next method after monitor_messages
+    next_method_start = content.find('\n    def ', monitor_messages_start + 1)
     if next_method_start == -1:
-        next_method_start = len(content)
+        # Try finding async def instead
+        next_method_start = content.find('\n    async def ', monitor_messages_start + 1)
+        if next_method_start == -1:
+            next_method_start = len(content)
     
-    handle_message_body = content[handle_message_start:next_method_start]
+    monitor_messages_body = content[monitor_messages_start:next_method_start]
     
     # Check that _spawn_status_task is used for status updates
-    assert '_spawn_status_task' in handle_message_body, \
-        "handle_message should use _spawn_status_task"
-    print("  ✓ handle_message uses _spawn_status_task")
+    assert '_spawn_status_task' in monitor_messages_body, \
+        "monitor_messages should use _spawn_status_task"
+    print("  ✓ monitor_messages uses _spawn_status_task")
     
     # Verify status updates are throttled (not using direct asyncio.create_task for display.update_status)
     # Audio tasks are allowed to use asyncio.create_task directly
     status_update_pattern = r'asyncio\.create_task\s*\(\s*self\.display\.update_status'
-    status_matches = re.findall(status_update_pattern, handle_message_body)
+    status_matches = re.findall(status_update_pattern, monitor_messages_body)
     
     assert len(status_matches) == 0, \
         f"Status updates should use _spawn_status_task, not direct asyncio.create_task (found {len(status_matches)} instances)"
     print("  ✓ Status updates use throttled spawning")
     
-    print("✓ handle_message throttled task spawning test passed")
+    print("✓ monitor_messages throttled task spawning test passed")
 
 
 def test_no_direct_asyncio_create_task_in_monitor_satellites(content):

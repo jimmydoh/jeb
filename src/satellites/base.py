@@ -64,8 +64,8 @@ class SatelliteFirmware:
             timeout=0.01
         )
 
-        # Wrap with transport layer using the queued manager
-        self.transport_up = UARTTransport(uart_up_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS, queued=True)
+        # Wrap with transport layer (always uses queued mode now)
+        self.transport_up = UARTTransport(uart_up_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
         self.transport_down = UARTTransport(uart_down_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
         self._system_handlers = {
