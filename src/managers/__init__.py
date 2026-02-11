@@ -16,6 +16,7 @@ from .segment_manager import SegmentManager
 from .watchdog_manager import WatchdogManager
 from .satellite_network_manager import SatelliteNetworkManager
 from .synth_manager import SynthManager
+from .web_server_manager import WebServerManager
 
 __all__ = [
     "AudioManager",
@@ -33,4 +34,5 @@ __all__ = [
     "WatchdogManager",
     "SatelliteNetworkManager",
     "SynthManager",
+    "WebServerManager"
 ]

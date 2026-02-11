@@ -44,6 +44,7 @@
 - **Robust Power Distribution**: USB-C PD 20V input with separate 5V/2.5A logic and 5V/5A LED buck converters
 - **Advanced Sensing**: Four-channel ADC monitoring for voltage rails (20V raw/bus, 5V logic/LED)
 - **Over-The-Air Updates**: Wi-Fi-based firmware updates via manifest synchronization (Pico 2W)
+- **Web-Based Configurator**: Browser-based field service interface for remote configuration, file management, and system monitoring
 - **Rich I/O**: 
   - 128x64 OLED display (I2C)
   - 8x8 NeoPixel matrix (GlowBit 64)
@@ -504,6 +505,7 @@ Detailed hardware and implementation documentation is available in the `docs/` d
 - **[LED_RENDERING.md](docs/LED_RENDERING.md)**: LED rendering optimization, frame sync, and animation architecture
 - **[OPTIMIZATION_SUMMARY.md](docs/OPTIMIZATION_SUMMARY.md)**: Performance optimizations and system improvements
 - **[OTA_UPDATE.md](docs/OTA_UPDATE.md)**: Over-The-Air firmware update system (Pico 2W)
+- **[WEB_CONFIGURATOR.md](docs/WEB_CONFIGURATOR.md)**: Web-based field service configurator with remote configuration and monitoring
 - **[PAYLOAD_ENCODING.md](docs/PAYLOAD_ENCODING.md)**: Payload encoding and decoding documentation
 - **[SYNTHIO_IMPLEMENTATION.md](docs/SYNTHIO_IMPLEMENTATION.md)**: Audio synthesis system implementation
 - **[TRANSPORT_ABSTRACTION.md](docs/TRANSPORT_ABSTRACTION.md)**: Transport layer abstraction design
