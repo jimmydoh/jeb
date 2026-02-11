@@ -25,6 +25,7 @@ Test with multiple chained satellites.
 import asyncio
 import json
 import os
+import storage
 import time
 
 import supervisor
@@ -34,10 +35,12 @@ import supervisor
 # Instead, check if /sd directory exists in the filesystem
 # TODO: Fix this - I believe the /sd dir will exist regardless
 def is_sd_mounted():
-    """Check if SD card is mounted by checking for /sd directory via stat."""
+    """Check if SD card is mounted by verifying the mount point."""
     try:
-        os.stat('/sd')
-        return True
+        # storage.getmount returns the filesystem object mounted at path
+        # or None if nothing is mounted.
+        mount = storage.getmount('/sd')
+        return mount is not None
     except OSError:
         return False
 
