@@ -249,21 +249,11 @@ class UARTTransport:
     - Old: "DEST|CMD|PAYLOAD|CRC\n" (expensive string parsing)
     - New: [DEST][CMD][PAYLOAD][CRC] + COBS (zero parsing, direct byte access)
     """
-
-    # Maximum size for internal receive buffer to prevent unbounded growth
-    MAX_BUFFER_SIZE = 1024  # ample space for ~2-4 packets
-
     # Ring buffer constants
     RING_BUFFER_SIZE = 2048  # Fixed 2KB ring buffer
     MAX_PACKET_SIZE = 256    # Maximum packet size for scanning and scratchpad
 
-    # Overflow handling thresholds
-    # When overflow occurs after extracting a packet, use these to manage remaining data
-    MAX_DELIMITER_DISTANCE_THRESHOLD = MAX_BUFFER_SIZE // 2  # If next packet is beyond this, likely garbage
-    OVERFLOW_REMOVAL_SIZE = MAX_BUFFER_SIZE // 4  # Amount of old data to remove when distant delimiter found
-    PARTIAL_PACKET_BUFFER_SIZE = MAX_BUFFER_SIZE // 2  # Amount of recent data to keep when no delimiters
-
-    def __init__(self, uart_hw, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None, queued=False):
+    def __init__(self, uart_hw, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None):
         """Initialize UART transport.
 
         Parameters:
@@ -290,11 +280,8 @@ class UARTTransport:
                 Defaults to 100.
             payload_schemas (dict, optional): Command-specific payload schemas defining
                 encoding/decoding types. If None, uses heuristic encoding.
-            queued (bool, optional): If True, uses a queued UART manager for upstream
-                to prevent blocking on writes. Defaults to False.
         """
         self.uart = uart_hw
-        self.queued = queued
 
         # Protocol config
         self.command_map = command_map or {}
@@ -312,26 +299,76 @@ class UARTTransport:
             'ENCODING_FLOATS': 'floats'
         }
 
-        # Fixed-Size Ring Buffer for Zero-Allocation Receive
-        self._buf_size = self.RING_BUFFER_SIZE
-        self._buffer = bytearray(self._buf_size)
-        self._mv = memoryview(self._buffer)
-        self._head = 0  # Write position
-        self._tail = 0  # Read position
+        # RX Queue implemented as zero-allocation ring buffer
+        self._rx_buf_size = self.RING_BUFFER_SIZE
+        self._rx_buffer = bytearray(self._rx_buf_size)
+        self._rx_mv = memoryview(self._rx_buffer)
+        self._rx_head = 0
+        self._rx_tail = 0
+        self._rx_queue = asyncio.Queue()
+        self._rx_task = None
 
         # Linear Scratchpad for Packet Unwrapping
-        self._packet_buf = bytearray(self.MAX_PACKET_SIZE)
-        self._packet_mv = memoryview(self._packet_buf)
+        self._packet_rx_buf = bytearray(self.MAX_PACKET_SIZE)
+        self._packet_rx_mv = memoryview(self._packet_rx_buf)
+
+        # TX Queue implemented as zero-allocation ring buffer
+        self._tx_buffer_size = self.RING_BUFFER_SIZE
+        self._tx_buffer = bytearray(self._tx_buffer_size)
+        self._tx_mv = memoryview(self._tx_buffer)
+        self._tx_head = 0
+        self._tx_tail = 0
+        self._tx_event = asyncio.Event()
+        self._tx_task = None
 
         # Relay task
         self._relay_task = None
 
-        # TX Queue Setup for queued mode
-        if self.queued:
-            self._tx_queue = asyncio.Queue()
-            self._tx_task = None
-
 #region --- Harware / IO Methods ---
+    def _write_to_tx_buffer(self, data):
+        """Write data to the TX ring buffer.
+
+        This method is used by the send() method to enqueue data for transmission.
+        It handles ring buffer wrap-around and ensures that data is not overwritten
+        if the buffer is full. If the buffer is full, it raises an exception.
+
+        Parameters:
+            data (bytes): Data to write to the TX buffer.
+
+        Raises:
+            BufferError: If there is not enough space in the TX buffer to write the data.
+        """
+        data_len = len(data)
+        head = self._tx_head
+        tail = self._tx_tail
+        size = self._tx_buffer_size
+
+        # Calculate free space in buffer
+        if tail > head:
+            free_space = tail - head - 1
+        elif tail == head:
+            free_space = size - 1
+        else:
+            free_space = size - head
+
+        if data_len > free_space:
+            raise BufferError("TX buffer overflow: Not enough space to write data")
+
+        # Perform the copy (handling wrap-around)
+        # Case A: Data fits in the remainder of the buffer
+        if head + data_len <= size:
+            self._tx_mv[head : head + data_len] = data
+            self._tx_head = (head + data_len) % size
+        # Case B: Data wraps around
+        else:
+            first_chunk = size - head
+            second_chunk = data_len - first_chunk
+            self._tx_mv[head : size] = data[:first_chunk]
+            self._tx_mv[0 : second_chunk] = data[first_chunk:]
+            self._tx_head = second_chunk
+
+        self._tx_event.set()  # Signal TX worker that new data is available
+
     def read_raw_into(self, buf):
         """Read available raw bytes into a buffer.
 
@@ -374,115 +411,32 @@ class UARTTransport:
             return
 
         # Calculate available contiguous space in ring buffer
-        if self._tail > self._head:
+        if self._rx_tail > self._rx_head:
             # Space wraps around: can write from head to tail (minus 1 for full detection)
-            space = self._tail - self._head - 1
-        elif self._tail == self._head:
+            space = self._rx_tail - self._rx_head - 1
+        elif self._rx_tail == self._rx_head:
             # Buffer Empty: We can use the whole contiguous chunk to the end
-            space = self._buf_size - self._head
+            space = self._rx_buf_size - self._rx_head
             # EXCEPTION: If head is 0, we can't fill the ENTIRE buffer (2048)
             # because head would wrap to 0, matching tail (looks empty).
-            if self._head == 0:
+            if self._rx_head == 0:
                 space -= 1
         else:
             # Tail < Head: Write to end of physical buffer
-            space = self._buf_size - self._head
+            space = self._rx_buf_size - self._rx_head
 
         if space <= 0:
             return  # Buffer full
 
         # Read directly into ring buffer memoryview slice
         try:
-            count = self.uart.readinto(self._mv[self._head : self._head + space])
+            count = self.uart.readinto(self._rx_mv[self._rx_head : self._rx_head + space])
             if count and count > 0:
-                self._head = (self._head + count) % self._buf_size
+                self._rx_head = (self._rx_head + count) % self._rx_buf_size
         except Exception:
             pass  # Ignore read errors
 
-    def enable_relay_from(self, source_transport, heartbeat_callback=None):
-        """Enable raw data relay from a source transport to this transport.
-
-        Useful for daisy-chaining where data received on `source_transport`
-        should be immediately forwarded out via this transport.
-
-        Parameters:
-            source_transport (UARTTransport): The transport to read raw bytes from.
-        """
-        if self._relay_task:
-            self._relay_task.cancel()
-        self._relay_task = asyncio.create_task(self._relay_worker(source_transport, heartbeat_callback))
-
-    async def _relay_worker(self, source_transport, heartbeat_callback):
-        """Background task to relay raw bytes."""
-        buf = bytearray(64)
-        while True:
-            if heartbeat_callback:
-                heartbeat_callback()
-            # Read raw bytes from the source transport
-            count = source_transport.read_raw_into(buf)
-            if count > 0:
-                data = bytes(buf[:count])
-                # Write to our output (Queued or Direct)
-                if self.queued:
-                    self._tx_queue.put_nowait(data)
-                else:
-                    self.uart.write(data)
-                # Yield to event loop to maintain throughput
-                await asyncio.sleep(0)
-            else:
-                # Sleep 5ms when idle to reduce CPU usage and allow power saving
-                await asyncio.sleep(0.005)
-
-    async def _tx_worker(self):
-        """Dedicated task to drain the TX queue to hardware.
-
-        This is the ONLY task that should write directly to uart_mgr.
-        All other code must push data to uart_queue.
-
-        This prevents race conditions where multiple tasks interleave
-        partial packets, causing CRC failures and data corruption.
-        """
-        while True:
-            # Wait for data to be available in the queue
-            data = await self._tx_queue.get()
-            # Write to hardware UART
-            self.uart.write(data)
-            # Mark task as done
-            self._tx_queue.task_done()
-
-    def clear_buffer(self):
-        """Clear the UART buffer and internal ring buffer."""
-        self.uart.reset_input_buffer()
-        self._head = 0
-        self._tail = 0
-#endregion
-
-#region --- Protocol Methods ---
-    def send(self, message):
-        """Send a message over UART using binary protocol with COBS framing.
-
-        Parameters:
-            message (Message): The message to send.
-        """
-        # Encoding Logic
-        dest = _encode_destination(message.destination, self.dest_map)
-        cmd = bytes([_encode_command(message.command, self.command_map)])
-        schema = self.payload_schemas.get(message.command)
-        payload = _encode_payload(message.payload, schema, self.encoding_constants)
-
-        # Packet Construction
-        raw = dest + cmd + payload
-        crc = bytes([calculate_crc8(raw)])
-        packet = cobs_encode(raw + crc) + b'\x00'
-
-        # Transmission
-        if self.queued:
-            # put_nowait is safe here as queue is unbounded in CP or ample size
-            self._tx_queue.put_nowait(packet)
-        else:
-            self.uart.write(packet)
-
-    def receive(self):
+    def _try_decode_one(self):
         """Receive a message from UART if available.
 
         Non-blocking stateful receive that reads available bytes into a fixed-size
@@ -494,16 +448,13 @@ class UARTTransport:
         Returns:
             Message or None: Received message if available and valid, None otherwise.
         """
-        # 1. Pump hardware data into ring buffer
-        self._read_hw()
-
-        # 2. Check if we have any data
-        if self._head == self._tail:
+        # Check if we have any data
+        if self._rx_head == self._rx_tail:
             return None  # Buffer empty
 
-        # 3. Find delimiter (0x00) in ring buffer
+        # Find delimiter (0x00) in ring buffer
         # Scan from tail to head, handling wrap-around
-        bytes_available = (self._head - self._tail) % self._buf_size
+        bytes_available = (self._rx_head - self._rx_tail) % self._rx_buf_size
 
         # Limit scan to MAX_PACKET_SIZE to prevent hanging on massive garbage data
         scan_limit = min(bytes_available, self.MAX_PACKET_SIZE)
@@ -512,8 +463,8 @@ class UARTTransport:
         found_delimiter = False
 
         for i in range(scan_limit):
-            idx = (self._tail + i) % self._buf_size
-            if self._buffer[idx] == 0x00:
+            idx = (self._rx_tail + i) % self._rx_buf_size
+            if self._rx_buffer[idx] == 0x00:
                 found_delimiter = True
                 packet_len = i
                 break
@@ -522,44 +473,44 @@ class UARTTransport:
             # No delimiter found
             # SAFETY: If buffer is nearly full and no delimiter, clear the buffer to prevent deadlock
             # This is aggressive but necessary when flooded with garbage data
-            if bytes_available > self._buf_size - self.MAX_PACKET_SIZE:
+            if bytes_available > self._rx_buf_size - self.MAX_PACKET_SIZE:
                 # Buffer is critically full - reset it
-                self._head = 0
-                self._tail = 0
+                self._rx_head = 0
+                self._rx_tail = 0
             elif bytes_available >= self.MAX_PACKET_SIZE:
                 # Advance tail by a larger chunk to clear garbage faster
-                self._tail = (self._tail + 100) % self._buf_size
+                self._rx_tail = (self._rx_tail + 100) % self._rx_buf_size
             return None
 
-        # 4. Unwrap packet from ring buffer into linear scratchpad
+        # Unwrap packet from ring buffer into linear scratchpad
         # This uses fast memoryview slice assignment instead of Python loops
 
-        if packet_len > len(self._packet_buf):
+        if packet_len > len(self._packet_rx_buf):
             # Packet too large - skip it
-            self._tail = (self._tail + packet_len + 1) % self._buf_size
+            self._rx_tail = (self._rx_tail + packet_len + 1) % self._rx_buf_size
             return None
 
         # Case A: Packet is contiguous (no wrap-around)
-        if self._tail + packet_len <= self._buf_size:
+        if self._rx_tail + packet_len <= self._rx_buf_size:
             # Fast copy: Linear slice to linear slice
-            self._packet_mv[:packet_len] = self._mv[self._tail : self._tail + packet_len]
+            self._packet_rx_mv[:packet_len] = self._rx_mv[self._rx_tail : self._rx_tail + packet_len]
         else:
             # Case B: Packet wraps around end of ring buffer
             # Copy in two chunks using fast slice assignment
-            first_chunk = self._buf_size - self._tail
+            first_chunk = self._rx_buf_size - self._rx_tail
             second_chunk = packet_len - first_chunk
 
             # Copy part 1: tail to end of buffer
-            self._packet_mv[:first_chunk] = self._mv[self._tail:]
+            self._packet_rx_mv[:first_chunk] = self._rx_mv[self._rx_tail:]
             # Copy part 2: start of buffer to remainder
-            self._packet_mv[first_chunk:packet_len] = self._mv[:second_chunk]
+            self._packet_rx_mv[first_chunk:packet_len] = self._rx_mv[:second_chunk]
 
-        # 5. Advance tail past packet and delimiter
-        self._tail = (self._tail + packet_len + 1) % self._buf_size
+        # Advance tail past packet and delimiter
+        self._rx_tail = (self._rx_tail + packet_len + 1) % self._rx_buf_size
 
-        # 6. Decode packet using linear scratchpad
+        # Decode packet using linear scratchpad
         try:
-            decoded = cobs_decode(self._packet_mv[:packet_len])
+            decoded = cobs_decode(self._packet_rx_mv[:packet_len])
             if len(decoded) < 3:
                 return None
 
@@ -590,11 +541,192 @@ class UARTTransport:
         except (ValueError, IndexError) as e:
             print(f"Protocol Error: {e}")
             return None
+
+    def enable_relay_from(self, source_transport, heartbeat_callback=None):
+        """Enable raw data relay from a source transport to this transport.
+
+        Useful for daisy-chaining where data received on `source_transport`
+        should be immediately forwarded out via this transport.
+
+        Parameters:
+            source_transport (UARTTransport): The transport to read raw bytes from.
+        """
+        if self._relay_task:
+            self._relay_task.cancel()
+        self._relay_task = asyncio.create_task(self._relay_worker(source_transport, heartbeat_callback))
+
+    def clear_buffer(self):
+        """Clear the UART buffer and internal ring buffer."""
+        self.uart.reset_input_buffer()
+        self._rx_head = 0
+        self._rx_tail = 0
+#endregion
+
+#region --- Background Worker Tasks ---
+    async def _relay_worker(self, source_transport, heartbeat_callback):
+        """Background task to relay raw bytes."""
+        while True:
+            if heartbeat_callback:
+                heartbeat_callback()
+
+            # Calculate free space in TX ring buffer
+            head = self._tx_head
+            tail = self._tx_tail
+            size = self._tx_buffer_size
+            if tail > head:
+                free_space = tail - head - 1
+            elif tail == head:
+                free_space = size - 1
+            else:
+                free_space = size - head
+
+            if free_space <= 0:
+                # Buffer full, wait for space to be available
+                await asyncio.sleep(0.005)
+                continue
+
+            # Read directly into the TX buffer
+            # We pass the slice of our TX buffer directly to the source's read method.
+            count = source_transport.read_raw_into(self._tx_mv[head : head + free_space])
+
+            if count and count > 0:
+                self._tx_head = (head + count) % size
+                self._tx_event.set()  # Wake up TX worker if waiting
+                await asyncio.sleep(0)  # Yield to event loop
+            else:
+                # Sleep briefly when idle to reduce CPU usage
+                await asyncio.sleep(0.005)
+
+    async def _rx_worker(self):
+        """
+        Dedicated task to read from UART and fill RX ring buffer.
+
+        This is the ONLY task that should read directly from uart_mgr.
+        All other code must call receive() which reads from the ring buffer.
+
+        This prevents race conditions where multiple tasks interleave reads,
+        causing data corruption and lost messages.
+        """
+        while True:
+            # Pump hardware data into ring buffer
+            self._read_hw()
+
+            # Decode a packet and put it in the RX queue
+            msg = self._try_decode_one()
+
+            if msg:
+                self._rx_queue.put_nowait(msg)
+                await asyncio.sleep(0)  # Yield to event loop after processing a message
+            else:
+                if self.uart.in_waiting > 0:
+                    # Sleep briefly when idle to reduce CPU usage
+                    await asyncio.sleep(0.005)
+                else:
+                    await asyncio.sleep(0.02)  # Longer sleep when no data is available
+
+    async def _tx_worker(self):
+        """Dedicated task to drain the TX queue to hardware.
+
+        This is the ONLY task that should write directly to uart_mgr.
+        All other code must push data to uart_queue.
+
+        This prevents race conditions where multiple tasks interleave
+        partial packets, causing CRC failures and data corruption.
+        """
+        while True:
+            # Wait until we have data to send
+            await self._tx_event.wait()
+
+            # While there is data to send
+            while self._tx_head != self._tx_tail:
+                # Calculate available data in TX buffer
+                head = self._tx_head
+                tail = self._tx_tail
+                size = self._tx_buffer_size
+
+                # Determine contiguous chunk to write
+                if head > tail:
+                    # Contiguous from tail to head
+                    chunk = self._tx_mv[tail:head]
+                else:
+                    # Wraps around; write from tail to end of buffer first
+                    chunk = self._tx_mv[tail:size]
+
+                written = self.uart.write(chunk)
+
+                if written is None:
+                    # Some UART implementations return None instead of number of bytes written
+                    # In this case, we assume all bytes were written successfully
+                    written = len(chunk)
+
+                # Advance tail by number of bytes written
+                self._tx_tail = (tail + written) % size
+
+                # If we couldn't write all bytes, we'll try again immediately
+                if written < len(chunk):
+                    await asyncio.sleep(0.005)  # Brief sleep to yield to event loop
+
+            # Buffer empty, clear the event
+            self._tx_event.clear()
+#endregion
+
+#region --- Protocol Methods ---
+    def send(self, message):
+        """Send a message over UART using binary protocol with COBS framing.
+
+        Parameters:
+            message (Message): The message to send.
+        """
+        # Encoding Logic
+        dest = _encode_destination(message.destination, self.dest_map)
+        cmd = bytes([_encode_command(message.command, self.command_map)])
+        schema = self.payload_schemas.get(message.command)
+        payload = _encode_payload(message.payload, schema, self.encoding_constants)
+
+        # Packet Construction
+        raw = dest + cmd + payload
+        crc = bytes([calculate_crc8(raw)])
+        packet = cobs_encode(raw + crc) + b'\x00'
+
+        try:
+            self._write_to_tx_buffer(packet)
+        except BufferError as e:
+            print(f"TX Buffer Error: {e}")
+            # Optionally, we could implement a retry mechanism here or drop the packet
+            # For now, we just log the error and drop the packet
+
+    async def receive(self):
+        """Asynchronously receive a message from the RX queue.
+
+        This method should be called by external code to get messages received
+        from UART. It waits for a message to be available in the RX queue and
+        returns it.
+
+        Returns:
+            Message: The next received message.
+        """
+        return await self._rx_queue.get()
+
+    def receive_nowait(self):
+        """Attempt to receive a message from the RX queue without waiting.
+
+        This method returns immediately with a message if available, or None if
+        the queue is empty.
+
+        Returns:
+            Message or None: The next received message if available, or None if the queue is empty.
+        """
+        try:
+            return self._rx_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            return None
 #endregion
 
     def start(self):
         """Start any background tasks required by the transport."""
-        if self.queued and self._tx_task is None:
+        if self._tx_task is None:
             self._tx_task = asyncio.create_task(self._tx_worker())
+        if self._rx_task is None:
+            self._rx_task = asyncio.create_task(self._rx_worker())
 
 #endregion

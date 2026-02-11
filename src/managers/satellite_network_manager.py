@@ -5,6 +5,7 @@ from adafruit_ticks import ticks_ms, ticks_diff
 
 from satellites import IndustrialSatelliteDriver
 from transport import Message
+from utilities import parse_values, get_float
 
 
 class SatelliteNetworkManager:
@@ -100,103 +101,98 @@ class SatelliteNetworkManager:
         for sid in self.satellites:
             self.get_sat(sid).send_cmd(cmd, val)
 
-    def handle_message(self, message):
-        """Processes incoming messages and updates satellite states.
-
-        Args:
-            message: Message instance from transport layer
+    async def monitor_messages(self):
         """
-        # Store message representation for debugging
-        if self._debug_mode:
-            self.last_message_debug = str(message)
-
-        try:
-            sid = message.destination
-            cmd = message.command
-            payload = message.payload
-
-            # Import here to avoid circular dependency
-            from utilities import parse_values, get_float
-
-            # Command Processing
-            if cmd == "STATUS":
-                if sid in self.satellites:
-                    if not self.satellites[sid].is_active:
-                        self.satellites[sid].is_active = True
-                        self._spawn_status_task(
-                            self.display.update_status, "SAT RECONNECTED", f"ID: {sid}"
-                        )
-                        if self.satellites[sid].sat_type_name == "INDUSTRIAL":
-                            self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
-                            asyncio.create_task(
-                                self.audio.play(
-                                    "link_restored.wav", channel=self.audio.CH_SFX
-                                )
-                            )
-                    self.satellites[sid].update_from_packet(payload)
-                else:
-                    self._spawn_status_task(
-                        self.display.update_status, "UNKNOWN SAT", f"{sid} sent STATUS."
-                    )
-            elif cmd == "POWER":
-                v_data = parse_values(payload)
-                self.sat_telemetry[sid] = {
-                    "in": get_float(v_data, 0),
-                    "bus": get_float(v_data, 1),
-                    "log": get_float(v_data, 2),
-                }
-            elif cmd == "ERROR":
-                self._spawn_status_task(
-                    self.display.update_status, "SAT ERROR", f"ID: {sid} ERR: {payload}"
-                )
-                asyncio.create_task(
-                    self.audio.play("alarm_klaxon.wav", channel=self.audio.CH_SFX)
-                )
-            elif cmd == "HELLO":
-                if sid in self.satellites:
-                    self.satellites[sid].update_heartbeat()
-                else:
-                    if payload == "INDUSTRIAL":
-                        self.satellites[sid] = IndustrialSatelliteDriver(
-                            sid, self.transport
-                        )
-                    self._spawn_status_task(
-                        self.display.update_status, "NEW SAT", f"{sid} sent HELLO."
-                    )
-            elif cmd == "NEW_SAT":
-                self._spawn_status_task(
-                    self.display.update_status, "SAT CONNECTED", f"TYPE {payload} FOUND"
-                )
-                msg_out = Message("ALL", "ID_ASSIGN", f"{payload}00")
-                self.transport.send(msg_out)
-            else:
-                self._spawn_status_task(
-                    self.display.update_status, "UNKNOWN COMMAND", f"{sid} sent {cmd}"
-                )
-        except (ValueError, IndexError) as e:
-            print(f"Error handling message: {e}")
-
-    async def monitor_satellites(self, heartbeat_callback=None):
-        """Background task to monitor inbound messages and satellite health.
+        Background task to process incoming messages.
 
         This method should be run as an asyncio task. It handles:
-        - Receiving and processing messages from satellites
+        - Monitoring the transport rx queue for inbound messages
+        - Processing the message based on command and destination
+        """
+        # Event Driven message check
+        while True:
+            message = await self.transport.receive()
+
+            # Store message representation for debugging
+            if self._debug_mode:
+                # TODO: Fix this, message is not a string anymore
+                self.last_message_debug = str(message)
+
+            # Process the message based on its command and destination
+            try:
+                sid = message.destination
+                cmd = message.command
+                payload = message.payload
+
+                # Command Processing
+                if cmd == "STATUS":
+                    if sid in self.satellites:
+                        if not self.satellites[sid].is_active:
+                            self.satellites[sid].is_active = True
+                            self._spawn_status_task(
+                                self.display.update_status, "SAT RECONNECTED", f"ID: {sid}"
+                            )
+                            if self.satellites[sid].sat_type_name == "INDUSTRIAL":
+                                self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
+                                asyncio.create_task(
+                                    self.audio.play(
+                                        "link_restored.wav", channel=self.audio.CH_SFX
+                                    )
+                                )
+                        self.satellites[sid].update_from_packet(payload)
+                    else:
+                        self._spawn_status_task(
+                            self.display.update_status, "UNKNOWN SAT", f"{sid} sent STATUS."
+                        )
+                elif cmd == "POWER":
+                    v_data = parse_values(payload)
+                    self.sat_telemetry[sid] = {
+                        "in": get_float(v_data, 0),
+                        "bus": get_float(v_data, 1),
+                        "log": get_float(v_data, 2),
+                    }
+                elif cmd == "ERROR":
+                    self._spawn_status_task(
+                        self.display.update_status, "SAT ERROR", f"ID: {sid} ERR: {payload}"
+                    )
+                    asyncio.create_task(
+                        self.audio.play("alarm_klaxon.wav", channel=self.audio.CH_SFX)
+                    )
+                elif cmd == "HELLO":
+                    if sid in self.satellites:
+                        self.satellites[sid].update_heartbeat()
+                    else:
+                        if payload == "INDUSTRIAL":
+                            self.satellites[sid] = IndustrialSatelliteDriver(
+                                sid, self.transport
+                            )
+                        self._spawn_status_task(
+                            self.display.update_status, "NEW SAT", f"{sid} sent HELLO."
+                        )
+                elif cmd == "NEW_SAT":
+                    self._spawn_status_task(
+                        self.display.update_status, "SAT CONNECTED", f"TYPE {payload} FOUND"
+                    )
+                    msg_out = Message("ALL", "ID_ASSIGN", f"{payload}00")
+                    self.transport.send(msg_out)
+                else:
+                    self._spawn_status_task(
+                        self.display.update_status, "UNKNOWN COMMAND", f"{sid} sent {cmd}"
+                    )
+            except (ValueError, IndexError) as e:
+                print(f"Error handling message: {e}")
+
+    async def monitor_satellites(self, heartbeat_callback=None):
+        """
+        Background task to monitor satellite health.
+
+        This method should be run as an asyncio task. It handles:
         - Link watchdog to detect disconnected satellites
         """
         while True:
             # Invoke heartbeat callback if provided (e.g., to feed a watchdog timer in the core manager)
             if heartbeat_callback:
                 heartbeat_callback()
-
-            # Message Handling via transport layer
-            try:
-                # Receive message via transport (non-blocking)
-                message = self.transport.receive()
-                if message:
-                    self.handle_message(message)
-            except ValueError as e:
-                # Buffer overflow or other error
-                print(f"Transport Error: {e}")
 
             # Link Watchdog
             now = ticks_ms()
@@ -214,4 +210,4 @@ class SatelliteNetworkManager:
                             self.display.update_status, "LINK RESTORED", f"ID: {sid}"
                         )
 
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.5)
