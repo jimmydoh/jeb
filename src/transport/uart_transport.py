@@ -253,6 +253,10 @@ class UARTTransport:
     # Maximum size for internal receive buffer to prevent unbounded growth
     MAX_BUFFER_SIZE = 1024  # ample space for ~2-4 packets
 
+    # Ring buffer constants
+    RING_BUFFER_SIZE = 2048  # Fixed 2KB ring buffer
+    MAX_PACKET_SIZE = 256    # Maximum packet size for scanning and scratchpad
+
     # Overflow handling thresholds
     # When overflow occurs after extracting a packet, use these to manage remaining data
     MAX_DELIMITER_DISTANCE_THRESHOLD = MAX_BUFFER_SIZE // 2  # If next packet is beyond this, likely garbage
@@ -264,6 +268,20 @@ class UARTTransport:
 
         Parameters:
             uart_hw (UART): The UART hardware for physical I/O.
+                **CRITICAL REQUIREMENT**: uart_hw MUST operate in non-blocking mode
+                with a reliable `in_waiting` property implementation. If `in_waiting`
+                is not implemented correctly or returns inaccurate values, the fallback
+                to `readinto()` in `read_raw_into()` could block the entire asyncio
+                event loop for the duration of the UART timeout (typically 10ms-100ms).
+
+                Required uart_hw interface:
+                - `in_waiting`: Property that accurately returns the number of bytes
+                  available in the receive buffer without blocking.
+                - `readinto(buf)`: Method to read available bytes into a buffer.
+                - `read(n)`: Method to read n bytes from the buffer.
+                - `write(data)`: Method to write data to UART.
+                - `reset_input_buffer()`: Method to clear the receive buffer.
+
             command_map (dict, optional): Command string to byte mapping.
                 If None, an empty map is used (transport won't encode/decode commands).
             dest_map (dict, optional): Special destination string to byte mapping.
@@ -294,8 +312,16 @@ class UARTTransport:
             'ENCODING_FLOATS': 'floats'
         }
 
-        # Internal buffer for non-blocking receive
-        self._receive_buffer = bytearray()
+        # Fixed-Size Ring Buffer for Zero-Allocation Receive
+        self._buf_size = self.RING_BUFFER_SIZE
+        self._buffer = bytearray(self._buf_size)
+        self._mv = memoryview(self._buffer)
+        self._head = 0  # Write position
+        self._tail = 0  # Read position
+
+        # Linear Scratchpad for Packet Unwrapping
+        self._packet_buf = bytearray(self.MAX_PACKET_SIZE)
+        self._packet_mv = memoryview(self._packet_buf)
 
         # Relay task
         self._relay_task = None
@@ -309,6 +335,23 @@ class UARTTransport:
     def read_raw_into(self, buf):
         """Read available raw bytes into a buffer.
 
+        This method checks `in_waiting` before calling `readinto()` to ensure
+        non-blocking operation. The `in_waiting` check is critical for preventing
+        the asyncio event loop from blocking.
+
+        **IMPORTANT**: This implementation assumes that `self.uart.in_waiting` is
+        implemented correctly and returns accurate values. If `in_waiting` is not
+        reliable or not implemented, the fallback to `readinto()` could block the
+        entire asyncio loop for the duration of the UART timeout (default 10ms-100ms).
+
+        To ensure proper non-blocking behavior:
+        1. The uart_hw object must implement `in_waiting` as a non-blocking property
+           that accurately reflects the number of bytes available in the receive buffer.
+        2. The `readinto()` method should only be called when `in_waiting > 0` to
+           avoid potential blocking behavior.
+        3. If swapping to a different hardware interface, verify that it meets these
+           requirements or implement appropriate non-blocking wrappers.
+
         Parameters:
             buf (bytearray): Buffer to read into.
 
@@ -320,7 +363,43 @@ class UARTTransport:
             return self.uart.readinto(buf)
         return 0
 
-    def enable_relay_from(self, source_transport):
+    def _read_hw(self):
+        """Read UART data into ring buffer using zero-allocation readinto.
+
+        This method reads available UART data directly into the ring buffer
+        using memoryview slicing, avoiding any memory allocation or copying.
+        Handles ring buffer wrap-around automatically.
+        """
+        if not self.uart.in_waiting:
+            return
+
+        # Calculate available contiguous space in ring buffer
+        if self._tail > self._head:
+            # Space wraps around: can write from head to tail (minus 1 for full detection)
+            space = self._tail - self._head - 1
+        elif self._tail == self._head:
+            # Buffer Empty: We can use the whole contiguous chunk to the end
+            space = self._buf_size - self._head
+            # EXCEPTION: If head is 0, we can't fill the ENTIRE buffer (2048)
+            # because head would wrap to 0, matching tail (looks empty).
+            if self._head == 0:
+                space -= 1
+        else:
+            # Tail < Head: Write to end of physical buffer
+            space = self._buf_size - self._head
+
+        if space <= 0:
+            return  # Buffer full
+
+        # Read directly into ring buffer memoryview slice
+        try:
+            count = self.uart.readinto(self._mv[self._head : self._head + space])
+            if count and count > 0:
+                self._head = (self._head + count) % self._buf_size
+        except Exception:
+            pass  # Ignore read errors
+
+    def enable_relay_from(self, source_transport, heartbeat_callback=None):
         """Enable raw data relay from a source transport to this transport.
 
         Useful for daisy-chaining where data received on `source_transport`
@@ -331,12 +410,14 @@ class UARTTransport:
         """
         if self._relay_task:
             self._relay_task.cancel()
-        self._relay_task = asyncio.create_task(self._relay_worker(source_transport))
+        self._relay_task = asyncio.create_task(self._relay_worker(source_transport, heartbeat_callback))
 
-    async def _relay_worker(self, source_transport):
+    async def _relay_worker(self, source_transport, heartbeat_callback):
         """Background task to relay raw bytes."""
         buf = bytearray(64)
         while True:
+            if heartbeat_callback:
+                heartbeat_callback()
             # Read raw bytes from the source transport
             count = source_transport.read_raw_into(buf)
             if count > 0:
@@ -346,8 +427,11 @@ class UARTTransport:
                     self._tx_queue.put_nowait(data)
                 else:
                     self.uart.write(data)
-            # Yield to allow other tasks to run
-            await asyncio.sleep(0)
+                # Yield to event loop to maintain throughput
+                await asyncio.sleep(0)
+            else:
+                # Sleep 5ms when idle to reduce CPU usage and allow power saving
+                await asyncio.sleep(0.005)
 
     async def _tx_worker(self):
         """Dedicated task to drain the TX queue to hardware.
@@ -367,9 +451,10 @@ class UARTTransport:
             self._tx_queue.task_done()
 
     def clear_buffer(self):
-        """Clear the UART buffer and internal receive buffer."""
+        """Clear the UART buffer and internal ring buffer."""
         self.uart.reset_input_buffer()
-        self._receive_buffer.clear()
+        self._head = 0
+        self._tail = 0
 #endregion
 
 #region --- Protocol Methods ---
@@ -400,61 +485,81 @@ class UARTTransport:
     def receive(self):
         """Receive a message from UART if available.
 
-        Non-blocking stateful receive that reads available bytes and buffers them
-        internally. Returns a complete message when found, or None otherwise.
+        Non-blocking stateful receive that reads available bytes into a fixed-size
+        ring buffer. Returns a complete message when found, or None otherwise.
 
-        This implementation eliminates blocking read_until() calls that can stall
-        the event loop when processing garbage data without delimiters.
+        This implementation uses a zero-allocation ring buffer with memoryview slicing
+        to eliminate heap fragmentation and improve performance.
 
         Returns:
             Message or None: Received message if available and valid, None otherwise.
         """
-        packet = None
+        # 1. Pump hardware data into ring buffer
+        self._read_hw()
 
-        # Read from Hardware and add any bytes to the internal buffer
-        if self.uart.in_waiting:
-            data = self.uart.read(self.uart.in_waiting)
-            if data:
-                self._receive_buffer.extend(data)
+        # 2. Check if we have any data
+        if self._head == self._tail:
+            return None  # Buffer empty
 
-        # Check if we have a complete packet (terminated by 0x00) in the buffer
-        delimiter_idx = self._receive_buffer.find(b'\x00')
-        if delimiter_idx < 0:
-            # No complete packet yet
-            # SAFETY: Prevent buffer explosion from noise when no valid packets present
-            if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
-                print("⚠️ UART Buffer Overflow - Clearing garbage (no packets found)")
-                self._receive_buffer.clear()
-            return None
-        # Otherwise, we have at least one complete packet to process
-        packet = bytes(self._receive_buffer[:delimiter_idx])
-        # Remove extracted packet and delimiter from buffer
-        del self._receive_buffer[:delimiter_idx + 1]
+        # 3. Find delimiter (0x00) in ring buffer
+        # Scan from tail to head, handling wrap-around
+        bytes_available = (self._head - self._tail) % self._buf_size
 
-        # SAFETY: After processing a packet, check if buffer still too large
-        # This handles case where buffer has valid packet(s) plus excess garbage
-        if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
-            print("⚠️ UART Buffer Overflow - Removing excess data")
-            # First, discard oldest complete packets until we are back under the cap
-            while len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
-                next_delimiter_idx = self._receive_buffer.find(b'\x00')
-                if next_delimiter_idx < 0:
-                    # No complete packets left to discard; stop and fall back to tail retention
-                    break
-                # Drop the oldest complete packet (up to and including its delimiter)
-                del self._receive_buffer[:next_delimiter_idx + 1]
-            # If still too large (e.g., only partial/garbage data remains), keep only a bounded tail
-            if len(self._receive_buffer) > self.MAX_BUFFER_SIZE:
-                keep_bytes = min(self.PARTIAL_PACKET_BUFFER_SIZE, self.MAX_BUFFER_SIZE)
-                if len(self._receive_buffer) > keep_bytes:
-                    del self._receive_buffer[:-keep_bytes]
+        # Limit scan to MAX_PACKET_SIZE to prevent hanging on massive garbage data
+        scan_limit = min(bytes_available, self.MAX_PACKET_SIZE)
 
-        if not packet:
+        packet_len = 0
+        found_delimiter = False
+
+        for i in range(scan_limit):
+            idx = (self._tail + i) % self._buf_size
+            if self._buffer[idx] == 0x00:
+                found_delimiter = True
+                packet_len = i
+                break
+
+        if not found_delimiter:
+            # No delimiter found
+            # SAFETY: If buffer is nearly full and no delimiter, clear the buffer to prevent deadlock
+            # This is aggressive but necessary when flooded with garbage data
+            if bytes_available > self._buf_size - self.MAX_PACKET_SIZE:
+                # Buffer is critically full - reset it
+                self._head = 0
+                self._tail = 0
+            elif bytes_available >= self.MAX_PACKET_SIZE:
+                # Advance tail by a larger chunk to clear garbage faster
+                self._tail = (self._tail + 100) % self._buf_size
             return None
 
-        # 3. Decoding
+        # 4. Unwrap packet from ring buffer into linear scratchpad
+        # This uses fast memoryview slice assignment instead of Python loops
+
+        if packet_len > len(self._packet_buf):
+            # Packet too large - skip it
+            self._tail = (self._tail + packet_len + 1) % self._buf_size
+            return None
+
+        # Case A: Packet is contiguous (no wrap-around)
+        if self._tail + packet_len <= self._buf_size:
+            # Fast copy: Linear slice to linear slice
+            self._packet_mv[:packet_len] = self._mv[self._tail : self._tail + packet_len]
+        else:
+            # Case B: Packet wraps around end of ring buffer
+            # Copy in two chunks using fast slice assignment
+            first_chunk = self._buf_size - self._tail
+            second_chunk = packet_len - first_chunk
+
+            # Copy part 1: tail to end of buffer
+            self._packet_mv[:first_chunk] = self._mv[self._tail:]
+            # Copy part 2: start of buffer to remainder
+            self._packet_mv[first_chunk:packet_len] = self._mv[:second_chunk]
+
+        # 5. Advance tail past packet and delimiter
+        self._tail = (self._tail + packet_len + 1) % self._buf_size
+
+        # 6. Decode packet using linear scratchpad
         try:
-            decoded = cobs_decode(packet)
+            decoded = cobs_decode(self._packet_mv[:packet_len])
             if len(decoded) < 3:
                 return None
 
@@ -462,9 +567,9 @@ class UARTTransport:
             content = decoded[:-1]
 
             if calculate_crc8(content) != crc_rx:
-                return None # CRC Fail
+                return None  # CRC fail
 
-            # Parse Fields
+            # Parse fields
             dest_str, offset = _decode_destination(
                 content,
                 0,

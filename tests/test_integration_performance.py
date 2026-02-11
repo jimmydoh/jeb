@@ -56,7 +56,7 @@ class MockUART:
     @property
     def in_waiting(self):
         """Mock in_waiting property."""
-        return len(self.uart_manager.receive_buffer)
+        return self.uart_manager._in_waiting
 
     def read(self, n):
         """Mock read method."""
@@ -66,7 +66,19 @@ class MockUART:
             return b''
         data = bytes(self.uart_manager.receive_buffer[:n])
         del self.uart_manager.receive_buffer[:n]
+        self.uart_manager._in_waiting = len(self.uart_manager.receive_buffer)
         return data
+
+    def readinto(self, buf):
+        """Mock readinto method."""
+        # Read available bytes into the provided buffer
+        n = min(len(buf), len(self.uart_manager.receive_buffer))
+        if n == 0:
+            return 0
+        buf[:n] = self.uart_manager.receive_buffer[:n]
+        del self.uart_manager.receive_buffer[:n]
+        self.uart_manager._in_waiting = len(self.uart_manager.receive_buffer)
+        return n
 
 
 class MockUARTManager:
@@ -84,11 +96,15 @@ class MockUARTManager:
     @property
     def in_waiting(self):
         """Mock in_waiting property."""
-        return len(self.receive_buffer)
+        return self._in_waiting
 
     def read(self, n):
         """Mock read method - delegates to nested uart object."""
         return self.uart.read(n)
+
+    def readinto(self, buf):
+        """Mock readinto method - delegates to nested uart object."""
+        return self.uart.readinto(buf)
 
     def read_available(self):
         """Mock read_available method."""
@@ -162,6 +178,7 @@ def test_end_to_end_binary_flow():
 
     # SATELLITE SIDE: Receive the message
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
+    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
     msg_in = transport.receive()
 
     print(f"  Satellite received: {msg_in}")
@@ -247,6 +264,7 @@ def test_struct_unpack_ultimate_performance():
 
     # Receive
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
+    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
     msg_in = transport.receive()
 
     # Option 1: Using parse_values (converts to list)
@@ -292,6 +310,7 @@ def test_backward_compatibility():
     transport.send(msg_out)
 
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
+    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
     msg_in = transport.receive()
 
     print(f"  Sent: {msg_out}")
@@ -325,6 +344,7 @@ def test_mixed_commands():
         transport.send(msg_out)
 
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
+        mock_uart._in_waiting = len(mock_uart.sent_packets[0])
         msg_in = transport.receive()
 
         actual_type = "bytes" if isinstance(msg_in.payload, bytes) else "str"

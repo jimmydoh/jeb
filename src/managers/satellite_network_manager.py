@@ -9,59 +9,57 @@ from transport import Message
 
 class SatelliteNetworkManager:
     """Manages satellite discovery, health monitoring, and message handling.
-    
+
     Responsibilities:
     - Satellite discovery via ID assignment
     - Health monitoring and link watchdog
     - Message routing and handling
     - Satellite registry management
     """
-    
-    def __init__(self, transport, display, audio, watchdog_flags=None):
+
+    def __init__(self, transport, display, audio):
         """Initialize the satellite network manager.
-        
+
         Args:
             transport: UARTTransport instance for communication
             display: DisplayManager instance for status updates
             audio: AudioManager instance for audio feedback
-            watchdog_flags: Optional dict to set watchdog flag for this task
         """
         self.transport = transport
         self.display = display
         self.audio = audio
-        self.watchdog_flags = watchdog_flags
-        
+
         # Satellite Registry
         self.satellites = {}
         self.sat_telemetry = {}
-        
+
         # Debug state
         self.last_message_debug = ""
         self._debug_mode = False
-        
+
         # Task throttling: Single slot for status updates to prevent unbounded task spawning
         self._current_status_task = None
-    
+
     def set_debug_mode(self, debug_mode):
         """Enable or disable debug mode for message logging."""
         self._debug_mode = debug_mode
-    
+
     def _spawn_status_task(self, coro_func, *args, **kwargs):
         """Spawn a status update task with throttling to prevent unbounded task creation.
-        
+
         Only creates a new task if no status task is currently running, preventing
         memory issues from task flooding during satellite malfunctions.
-        
+
         This method accepts a coroutine factory (callable + args) instead of a
         coroutine object to avoid "coroutine was never awaited" warnings when
         throttling skips task creation.
-        
+
         Thread Safety: This method is called synchronously from the event loop in
         handle_message() (which is invoked by monitor_satellites()). Since asyncio
         is single-threaded, no locking is needed for the task tracking. The method
         itself executes synchronously but schedules asynchronous work via create_task().
         Do not call this method from multiple threads or outside the main event loop context.
-        
+
         Args:
             coro_func: Coroutine function to execute for status update
             *args: Positional arguments to pass to the coroutine function
@@ -69,57 +67,57 @@ class SatelliteNetworkManager:
         """
         if self._current_status_task is None or self._current_status_task.done():
             self._current_status_task = asyncio.create_task(coro_func(*args, **kwargs))
-    
+
     async def discover_satellites(self):
         """Triggers the ID assignment chain to discover satellites."""
         await self.display.update_status("SCANNING BUS...", "ASSIGNING IDs")
         # Reset local registry
         self.satellites = {}
-        
+
         # Broadcast to Industrial type (01) starting at index 00
         message = Message("ALL", "ID_ASSIGN", "0100")
         self.transport.send(message)
         await asyncio.sleep(0.5)
-    
+
     def get_sat(self, sid):
         """Retrieve a satellite by its ID.
-        
+
         Args:
             sid: Satellite ID
-            
+
         Returns:
             Satellite instance or None if not found
         """
         return self.satellites.get(sid)
-    
+
     def send_all(self, cmd, val):
         """Broadcast a command to all connected satellites.
-        
+
         Args:
             cmd: Command string (e.g., "LED", "DSP")
             val: Command value/payload
         """
         for sid in self.satellites:
             self.get_sat(sid).send_cmd(cmd, val)
-    
+
     def handle_message(self, message):
         """Processes incoming messages and updates satellite states.
-        
+
         Args:
             message: Message instance from transport layer
         """
         # Store message representation for debugging
         if self._debug_mode:
             self.last_message_debug = str(message)
-        
+
         try:
             sid = message.destination
             cmd = message.command
             payload = message.payload
-            
+
             # Import here to avoid circular dependency
             from utilities import parse_values, get_float
-            
+
             # Command Processing
             if cmd == "STATUS":
                 if sid in self.satellites:
@@ -177,19 +175,19 @@ class SatelliteNetworkManager:
                 )
         except (ValueError, IndexError) as e:
             print(f"Error handling message: {e}")
-    
-    async def monitor_satellites(self):
+
+    async def monitor_satellites(self, heartbeat_callback=None):
         """Background task to monitor inbound messages and satellite health.
-        
+
         This method should be run as an asyncio task. It handles:
         - Receiving and processing messages from satellites
         - Link watchdog to detect disconnected satellites
         """
         while True:
-            # Set watchdog flag to indicate this task is alive
-            if self.watchdog_flags is not None:
-                self.watchdog_flags["sat_network"] = True
-            
+            # Invoke heartbeat callback if provided (e.g., to feed a watchdog timer in the core manager)
+            if heartbeat_callback:
+                heartbeat_callback()
+
             # Message Handling via transport layer
             try:
                 # Receive message via transport (non-blocking)
@@ -199,7 +197,7 @@ class SatelliteNetworkManager:
             except ValueError as e:
                 # Buffer overflow or other error
                 print(f"Transport Error: {e}")
-            
+
             # Link Watchdog
             now = ticks_ms()
             for sid, sat in self.satellites.items():
@@ -215,5 +213,5 @@ class SatelliteNetworkManager:
                         self._spawn_status_task(
                             self.display.update_status, "LINK RESTORED", f"ID: {sid}"
                         )
-            
+
             await asyncio.sleep(0.01)

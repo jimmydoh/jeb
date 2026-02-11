@@ -42,6 +42,14 @@ POWER_UP = {
     ]
 }
 
+POWER_FAIL = {
+    'bpm': 150,
+    'sequence': [
+        ('G6', S), ('E6', S), ('C6', S),
+        ('G5', S), ('E5', S), ('C5', W)
+    ]
+}
+
 ALARM = {
     'bpm': 240,
     'sequence': [

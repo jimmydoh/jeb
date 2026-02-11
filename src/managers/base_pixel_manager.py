@@ -22,10 +22,18 @@ class AnimationSlot:
         self.priority = 0
 
     def set(self, anim_type, color, speed, start, duration, priority):
-        """Update slot properties in place."""
+        """Update slot properties in place.
+        
+        Args:
+            color: Can be a single color tuple (r,g,b), a list/tuple of colors,
+                   or None for effects like RAINBOW.
+                   Lists are converted to tuples for immutability.
+        """
         self.active = True
         self.type = anim_type
-        self.color = color
+        # Convert lists to tuples to prevent accidental mutation
+        # Tuples and None are kept as-is (already immutable)
+        self.color = tuple(color) if isinstance(color, list) else color
         self.speed = speed
         self.start = start
         self.duration = duration
@@ -172,6 +180,10 @@ class BasePixelManager:
 
                 # --- GLITCH ---
                 elif slot.type == "GLITCH":
+                    # TODO: GLITCH animation may have a bug - if slot.color is a list/tuple of colors,
+                    # line 183 assigns the entire collection to the pixel instead of randomly selecting
+                    # one color. This should probably be: self.pixels[idx] = random.choice(slot.color)
+                    # For now, this works when slot.color is a single color tuple.
                     if random.random() > 0.9:
                         if random.random() > 0.5:
                              self.pixels[idx] = (255, 255, 255)

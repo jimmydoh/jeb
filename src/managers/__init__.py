@@ -15,6 +15,7 @@ from .render_manager import RenderManager
 from .satellite_network_manager import SatelliteNetworkManager
 from .segment_manager import SegmentManager
 from .synth_manager import SynthManager
+from .watchdog_manager import WatchdogManager
 
 __all__ = [
     "AudioManager",
@@ -31,4 +32,5 @@ __all__ = [
     "SatelliteNetworkManager",
     "SegmentManager",
     "SynthManager",
+    "WatchdogManager"
 ]

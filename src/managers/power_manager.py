@@ -48,9 +48,10 @@ class PowerManager:
         self.sat_detect.pull = digitalio.Pull.UP # RJ45 Pins 7&8 bridge to GND
 
         # Scaling Factors
+        # TODO: Allow for calibration and custom resistor values via config file
         self.RATIO_20V = 0.1263  # 47k / 6.8k
         self.RATIO_5V = 0.5      # 10k / 10k
-        
+
         # Soft Start Configuration
         # Blanking time allows satellite input capacitors to charge before
         # voltage checks begin, preventing false brownout detection
@@ -101,7 +102,7 @@ class PowerManager:
     async def soft_start_satellites(self):
         """Powers up the expansion chain with a safety check."""
         import time
-        
+
         v = self.status
         if v["input" if "input" in self.sense_names else "0"] < 18.0:
             return False, "LOW INPUT VOLTAGE"
@@ -113,17 +114,17 @@ class PowerManager:
         # to detect short circuits immediately instead of waiting full delay
         total_delay = 0.5  # 500ms total ramp-up time
         check_interval = 0.015  # 15ms check interval
-        
+
         while time.monotonic() - start_time < total_delay:
             elapsed = time.monotonic() - start_time
-            
+
             # Only check for short circuit after blanking time has elapsed
             if elapsed >= self.SOFT_START_BLANKING_TIME:
                 v = self.status
                 if v["satbus" if "satbus" in self.sense_names else "1"] < 17.0:
                     self.sat_pwr.value = False
                     return False, "BUS BROWNOUT"
-            
+
             await asyncio.sleep(check_interval)
 
         return True, "OK"
