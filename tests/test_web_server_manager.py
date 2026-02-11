@@ -13,10 +13,10 @@ class MockWiFi:
     class Radio:
         connected = True
         ipv4_address = "192.168.1.100"
-        
+
         def connect(self, ssid, password, timeout=30):
             self.connected = True
-    
+
     radio = Radio()
 
 class MockSocketPool:
@@ -27,26 +27,26 @@ class MockServer:
     def __init__(self, pool, static_dir, debug=False):
         self.pool = pool
         self.routes = []
-    
+
     def route(self, path, method):
         def decorator(func):
             self.routes.append((path, method, func))
             return func
         return decorator
-    
+
     def start(self, host, port):
         pass
-    
+
     def poll(self):
         pass
-    
+
     def stop(self):
         pass
 
 class MockRequest:
     def __init__(self):
         self.query_params = {}
-    
+
     def json(self):
         return {}
 
@@ -81,7 +81,7 @@ WebServerManager = web_server_module.WebServerManager
 def test_initialization():
     """Test WebServerManager initialization."""
     print("Testing WebServerManager initialization...")
-    
+
     config = {
         "wifi_ssid": "TestNetwork",
         "wifi_password": "TestPassword123",
@@ -91,97 +91,97 @@ def test_initialization():
         "role": "CORE",
         "type_id": "00"
     }
-    
+
     manager = WebServerManager(config)
-    
+
     assert manager.wifi_ssid == "TestNetwork"
     assert manager.wifi_password == "TestPassword123"
     assert manager.port == 8080
     assert manager.enabled == True
     assert len(manager.logs) == 0
-    
+
     print("  ✓ Initialization test passed")
 
-
+@pytest.mark.asyncio
 async def test_wifi_connection():
     """Test WiFi connection functionality (async)."""
     print("\nTesting WiFi connection...")
-    
+
     config = {
         "wifi_ssid": "TestNetwork",
         "wifi_password": "TestPassword123",
         "web_server_enabled": True
     }
-    
+
     manager = WebServerManager(config)
     connected = await manager.connect_wifi()
-    
+
     assert connected == True
     assert manager.connected == True
-    
+
     print("  ✓ WiFi connection test passed")
 
 
 def test_logging():
     """Test log buffer functionality."""
     print("\nTesting log buffer...")
-    
+
     config = {
         "wifi_ssid": "TestNetwork",
         "wifi_password": "TestPassword123",
         "web_server_enabled": True
     }
-    
+
     manager = WebServerManager(config)
-    
+
     # Add logs
     manager.log("Test message 1")
     manager.log("Test message 2")
     manager.log("Test message 3")
-    
+
     assert len(manager.logs) == 3
     assert manager.logs[0]["message"] == "Test message 1"
     assert manager.logs[1]["message"] == "Test message 2"
     assert manager.logs[2]["message"] == "Test message 3"
-    
+
     # Test log rotation
     manager.max_logs = 2
     manager.log("Test message 4")
-    
+
     assert len(manager.logs) == 2
     assert manager.logs[0]["message"] == "Test message 3"
     assert manager.logs[1]["message"] == "Test message 4"
-    
+
     print("  ✓ Logging test passed")
 
 
 def test_directory_listing():
     """Test directory listing functionality."""
     print("\nTesting directory listing...")
-    
+
     config = {
         "wifi_ssid": "TestNetwork",
         "wifi_password": "TestPassword123",
         "web_server_enabled": True
     }
-    
+
     manager = WebServerManager(config)
-    
+
     try:
         # Test listing current directory
         result = manager._list_directory(".")
-        
+
         assert "path" in result
         assert "items" in result
         assert isinstance(result["items"], list)
-        
+
         # Verify items have required fields
         for item in result["items"]:
             assert "name" in item
             assert "path" in item
             assert "is_dir" in item
             assert "size" in item
-        
+
         print(f"  ✓ Directory listing test passed (found {len(result['items'])} items)")
     except Exception as e:
         print(f"  ⚠️ Directory listing test warning: {e}")
@@ -190,16 +190,16 @@ def test_directory_listing():
 def test_config_save():
     """Test configuration save functionality."""
     print("\nTesting config save...")
-    
+
     config = {
         "wifi_ssid": "TestNetwork",
         "wifi_password": "TestPassword123",
         "web_server_enabled": True,
         "debug_mode": False
     }
-    
+
     manager = WebServerManager(config)
-    
+
     # Save original config if it exists
     original_config = None
     config_path = "config.json"
@@ -208,18 +208,18 @@ def test_config_save():
             original_config = f.read()
     except FileNotFoundError:
         pass
-    
+
     try:
         # Modify config
         manager.config["debug_mode"] = True
         manager._save_config()
-        
+
         # Verify saved config
         with open(config_path, "r") as f:
             saved_config = json.load(f)
-        
+
         assert saved_config["debug_mode"] == True
-        
+
         print("  ✓ Config save test passed")
     finally:
         # Restore original config
@@ -237,16 +237,16 @@ def test_config_save():
 def test_html_generation():
     """Test HTML page generation."""
     print("\nTesting HTML generation...")
-    
+
     config = {
         "wifi_ssid": "TestNetwork",
         "wifi_password": "TestPassword123",
         "web_server_enabled": True
     }
-    
+
     manager = WebServerManager(config)
     html_result = manager._generate_html_page()
-    
+
     # Check if it's a generator or string
     if hasattr(html_result, '__iter__') and not isinstance(html_result, str):
         # It's a generator, consume it
@@ -254,17 +254,17 @@ def test_html_generation():
     else:
         # It's a string (fallback error page)
         html = html_result
-    
+
     # Verify HTML content
     assert "<!DOCTYPE html>" in html
     assert "JEB Field Service" in html or "Configuration Error" in html
-    
+
     # If we got the full HTML (not error page), check for more content
     if "Configuration Error" not in html:
         assert "/api/config/global" in html
         assert "/api/files" in html
         assert "/api/logs" in html
-        
+
         # Verify all tabs are present
         assert "System Status" in html
         assert "Configuration" in html
@@ -273,24 +273,24 @@ def test_html_generation():
         assert "Logs" in html
         assert "Console" in html
         assert "Actions" in html
-    
+
     print(f"  ✓ HTML generation test passed ({len(html)} bytes)")
 
 
 def test_route_registration():
     """Test HTTP route registration."""
     print("\nTesting route registration...")
-    
+
     config = {
         "wifi_ssid": "TestNetwork",
         "wifi_password": "TestPassword123",
         "web_server_enabled": True
     }
-    
+
     manager = WebServerManager(config)
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
-    
+
     # Verify all expected routes
     expected_routes = [
         '/',
@@ -306,19 +306,19 @@ def test_route_registration():
         '/api/actions/reorder-satellites',
         '/api/system/status'
     ]
-    
+
     registered_paths = [path for path, _, _ in manager.server.routes]
-    
+
     for expected in expected_routes:
         assert expected in registered_paths, f"Route {expected} not registered"
-    
+
     print(f"  ✓ Route registration test passed ({len(manager.server.routes)} routes)")
 
 
 def test_invalid_config():
     """Test initialization with invalid configuration."""
     print("\nTesting invalid configuration handling...")
-    
+
     # Test missing WiFi credentials
     try:
         config = {
@@ -338,7 +338,7 @@ def run_all_tests():
     print("="*60)
     print("   WebServerManager Unit Tests")
     print("="*60)
-    
+
     # Standard tests that don't require async
     tests = [
         test_initialization,
@@ -350,11 +350,11 @@ def run_all_tests():
         test_route_registration,
         test_invalid_config,
     ]
-    
+
     try:
         for test in tests:
             test()
-        
+
         print("\n" + "="*60)
         print("   ✓ All tests passed!")
         print("="*60)
