@@ -166,6 +166,45 @@ class MockUARTManager:
 from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
 
+def drain_tx_buffer(transport, mock_uart):
+    """Helper function to manually drain TX buffer for synchronous tests.
+    
+    Simulates what the async TX worker does, but synchronously.
+    """
+    while transport._tx_head != transport._tx_tail:
+        head = transport._tx_head
+        tail = transport._tx_tail
+        size = transport._tx_buffer_size
+        
+        # Determine contiguous chunk to write
+        if head > tail:
+            chunk = transport._tx_mv[tail:head]
+        else:
+            chunk = transport._tx_mv[tail:size]
+        
+        # Write to mock UART (convert memoryview to bytes)
+        transport.uart.write(bytes(chunk))
+        
+        # Advance tail
+        transport._tx_tail = (tail + len(chunk)) % size
+
+
+def receive_message_sync(transport):
+    """Helper function to manually receive a message for synchronous tests.
+    
+    Simulates what the async RX worker does, but synchronously.
+    Returns a message if available, None otherwise.
+    """
+    # First try to get from queue if workers have been run
+    msg = transport.receive_nowait()
+    if msg is not None:
+        return msg
+    
+    # Otherwise, manually process incoming data
+    transport._read_hw()
+    return transport._try_decode_one()
+
+
 def test_message_creation():
     """Test Message class creation and properties."""
     print("Testing Message creation...")
@@ -201,9 +240,13 @@ def test_uart_transport_send():
     mock_uart = MockUARTManager()
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
-    # Send a message
+    # Send a message (writes to TX buffer)
     msg = Message("ALL", "ID_ASSIGN", "0100")
     transport.send(msg)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
+    
+    # Manually drain TX buffer (simulates what async TX worker does)
+    drain_tx_buffer(transport, mock_uart)
 
     # Verify packet was sent
     assert len(mock_uart.sent_packets) == 1
@@ -232,14 +275,16 @@ def test_uart_transport_receive():
     # Use tuple for STATUS which expects ENCODING_NUMERIC_BYTES
     msg_out = Message("0101", "STATUS", (100, 200))
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     sent_packet = mock_uart.sent_packets[0]
 
     # Put the packet into receive buffer and update in_waiting
     mock_uart.receive_buffer.extend(sent_packet)
     mock_uart._in_waiting = len(sent_packet)
 
-    # Receive the message
-    msg = transport.receive()
+    # Receive the message (manually process incoming data)
+    msg = receive_message_sync(transport)
 
     assert msg is not None, "Should receive a message"
     assert msg.destination == "0101"
@@ -261,6 +306,8 @@ def test_uart_transport_receive_invalid_crc():
     # Create a valid packet then corrupt its CRC
     msg_out = Message("0101", "STATUS", "100,200")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     sent_packet = mock_uart.sent_packets[0]
 
     # Corrupt the CRC (change a byte before the terminator)
@@ -273,7 +320,7 @@ def test_uart_transport_receive_invalid_crc():
     mock_uart._in_waiting = len(corrupted_packet)
 
     # Try to receive the message
-    msg = transport.receive()
+    msg = receive_message_sync(transport)
 
     assert msg is None, "Should reject message with invalid CRC"
 
@@ -295,7 +342,7 @@ def test_uart_transport_receive_malformed():
     mock_uart._in_waiting = len(malformed_packet)
 
     # Try to receive the message
-    msg = transport.receive()
+    msg = receive_message_sync(transport)
 
     assert msg is None, "Should reject malformed message"
 
@@ -310,7 +357,7 @@ def test_uart_transport_receive_empty():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Try to receive when nothing is available
-    msg = transport.receive()
+    msg = receive_message_sync(transport)
 
     assert msg is None, "Should return None when no data available"
 
@@ -343,12 +390,14 @@ def test_transport_abstraction():
     # Use tuple for LED which expects ENCODING_NUMERIC_BYTES
     msg_out = Message("0101", "LED", (255, 128, 64, 32))
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
 
     # Simulate receiving the same message
     packet = mock_uart.sent_packets[0]
     mock_uart.receive_buffer.extend(packet)
     mock_uart._in_waiting = len(packet)
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     # Messages should match (transport handles CRC/framing transparently)
     assert msg_in is not None, "Should receive a message"
@@ -372,6 +421,8 @@ def test_receive_returns_none_for_incomplete_packet():
     # Send a message to get a valid packet
     msg_out = Message("0101", "STATUS", "100,200")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     sent_packet = mock_uart.sent_packets[0]
 
     # Test 1: Put only partial packet (without terminator) into receive buffer
@@ -380,7 +431,7 @@ def test_receive_returns_none_for_incomplete_packet():
     mock_uart._in_waiting = len(partial_packet)
 
     # Receive should return None immediately (not block waiting for terminator)
-    msg = transport.receive()
+    msg = receive_message_sync(transport)
     assert msg is None, "Should return None when packet is incomplete"
 
     # Test 2: Add the terminator byte
@@ -388,7 +439,7 @@ def test_receive_returns_none_for_incomplete_packet():
     mock_uart._in_waiting = 1
 
     # Now receive should return the complete message
-    msg = transport.receive()
+    msg = receive_message_sync(transport)
     assert msg is not None, "Should receive complete message after terminator arrives"
     assert msg.destination == "0101"
     assert msg.command == "STATUS"
@@ -407,6 +458,8 @@ def test_receive_assembles_fragmented_packets():
     # Use tuple for LED which expects ENCODING_NUMERIC_BYTES
     msg_out = Message("0101", "LED", (255, 128, 64, 32))
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     sent_packet = mock_uart.sent_packets[0]
 
     # Simulate packet arriving in 3 fragments
@@ -420,19 +473,19 @@ def test_receive_assembles_fragmented_packets():
     # First fragment - should return None
     mock_uart.receive_buffer.extend(fragments[0])
     mock_uart._in_waiting = len(fragments[0])
-    msg = transport.receive()
+    msg = receive_message_sync(transport)
     assert msg is None, "Should return None after first fragment"
 
     # Second fragment - should return None
     mock_uart.receive_buffer.extend(fragments[1])
     mock_uart._in_waiting = len(fragments[1])
-    msg = transport.receive()
+    msg = receive_message_sync(transport)
     assert msg is None, "Should return None after second fragment"
 
     # Third fragment - should return complete message
     mock_uart.receive_buffer.extend(fragments[2])
     mock_uart._in_waiting = len(fragments[2])
-    msg = transport.receive()
+    msg = receive_message_sync(transport)
     assert msg is not None, "Should receive complete message after all fragments"
     assert msg.destination == "0101"
     assert msg.command == "LED"
@@ -452,7 +505,9 @@ def test_multiple_packets_in_buffer():
     msg1 = Message("0101", "STATUS", "100")
     msg2 = Message("0102", "LED", "255,0,0,0")
     transport.send(msg1)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     transport.send(msg2)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
 
     packet1 = mock_uart.sent_packets[0]
     packet2 = mock_uart.sent_packets[1]
@@ -462,7 +517,7 @@ def test_multiple_packets_in_buffer():
     mock_uart._in_waiting = len(packet1 + packet2)
 
     # First receive should get first packet
-    received1 = transport.receive()
+    received1 = receive_message_sync(transport)
     assert received1 is not None, "Should receive first packet"
     assert received1.destination == "0101"
     assert received1.command == "STATUS"
@@ -471,13 +526,13 @@ def test_multiple_packets_in_buffer():
     # (both packets were read from UART into internal buffer on first receive() call)
 
     # Second receive should get second packet (already in internal buffer)
-    received2 = transport.receive()
+    received2 = receive_message_sync(transport)
     assert received2 is not None, "Should receive second packet"
     assert received2.destination == "0102"
     assert received2.command == "LED"
 
     # Third receive should return None
-    received3 = transport.receive()
+    received3 = receive_message_sync(transport)
     assert received3 is None, "Should return None when no more packets"
 
     print("✓ Multiple packets in buffer test passed")
@@ -496,7 +551,7 @@ def test_receive_buffer_overflow_protection():
     mock_uart._in_waiting = len(garbage_data)
 
     # First receive should detect overflow and handle it gracefully
-    msg = transport.receive()
+    msg = receive_message_sync(transport)
     assert msg is None, "Should return None when buffer overflows"
 
     # Ring buffer will have consumed what it can (up to 2KB) and started advancing tail
@@ -505,13 +560,14 @@ def test_receive_buffer_overflow_protection():
     # Now send a valid packet - system should recover
     msg_valid = Message("0101", "STATUS", "100")
     transport.send(msg_valid)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     valid_packet = mock_uart.sent_packets[0]
 
     mock_uart.receive_buffer.extend(valid_packet)
     mock_uart._in_waiting = len(valid_packet)
 
     # Should be able to receive valid packet after recovery
-    received = transport.receive()
+    received = receive_message_sync(transport)
     assert received is not None, "Should receive valid packet after overflow recovery"
     assert received.destination == "0101"
     assert received.command == "STATUS"
@@ -537,6 +593,7 @@ def test_buffer_overflow_preserves_valid_packets():
     # Send all messages to get valid packets
     for msg in messages:
         transport.send(msg)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
 
     valid_packets = mock_uart.sent_packets[:]
     mock_uart.sent_packets.clear()
@@ -555,7 +612,7 @@ def test_buffer_overflow_preserves_valid_packets():
     # Receive messages - should be able to process many of them despite overflow
     received_count = 0
     while True:
-        msg = transport.receive()
+        msg = receive_message_sync(transport)
         if msg is None:
             break
         received_count += 1
@@ -580,6 +637,7 @@ def test_ring_buffer_wrapped_packet():
     # Create a valid packet
     msg_out = Message("0101", "LED", (255, 128, 64, 32))
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     sent_packet = mock_uart.sent_packets[0]
     packet_len = len(sent_packet)
 
@@ -598,7 +656,7 @@ def test_ring_buffer_wrapped_packet():
     # Receive may need multiple calls if packet is fragmented by readinto()
     msg = None
     for attempt in range(5):  # Try up to 5 times
-        msg = transport.receive()
+        msg = receive_message_sync(transport)
         if msg is not None:
             break
     
@@ -625,6 +683,7 @@ def test_ring_buffer_multiple_wrapped_packets():
     
     for msg in messages:
         transport.send(msg)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     
     packets = mock_uart.sent_packets[:]
     mock_uart.sent_packets.clear()
@@ -642,7 +701,7 @@ def test_ring_buffer_multiple_wrapped_packets():
     # Receive all packets
     received = []
     for _ in range(len(messages)):
-        msg = transport.receive()
+        msg = receive_message_sync(transport)
         if msg:
             received.append(msg)
     
@@ -676,7 +735,7 @@ def test_ring_buffer_full_recovery():
     # Try to receive - should detect buffer getting too full with no delimiters
     # May need multiple receive() calls to fully process and reset
     for _ in range(5):
-        msg = transport.receive()
+        msg = receive_message_sync(transport)
         if msg is None:
             bytes_in_buffer = (transport._rx_head - transport._rx_tail) % transport._rx_buf_size
             if bytes_in_buffer < 256:  # Buffer has been cleared/managed
@@ -688,6 +747,7 @@ def test_ring_buffer_full_recovery():
     # Now send a valid packet - system should be able to receive it
     msg_valid = Message("0101", "STATUS", (200,))  # Use tuple for numeric byte payload
     transport.send(msg_valid)
+    drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     valid_packet = mock_uart.sent_packets[0]
     
     # Clear any remaining garbage first for clean test
@@ -697,7 +757,7 @@ def test_ring_buffer_full_recovery():
     mock_uart._in_waiting = len(valid_packet)
     
     # Should receive the valid packet
-    received = transport.receive()
+    received = receive_message_sync(transport)
     assert received is not None, "Should receive valid packet after buffer overflow recovery"
     assert received.destination == "0101"
     assert received.command == "STATUS"
