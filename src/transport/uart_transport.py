@@ -689,10 +689,10 @@ class UARTTransport:
 
         try:
             self._write_to_tx_buffer(packet)
+            return True
         except BufferError as e:
             print(f"TX Buffer Error: {e}")
-            # Optionally, we could implement a retry mechanism here or drop the packet
-            # For now, we just log the error and drop the packet
+            return False
 
     async def receive(self):
         """Asynchronously receive a message from the RX queue.

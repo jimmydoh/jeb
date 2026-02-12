@@ -95,11 +95,15 @@ class SatelliteFirmware:
 
             # Forward new index downstream
             msg_out = Message("ALL", CMD_ID_ASSIGN, self.id)
-            self.transport_down.send(msg_out)
+            if not self.transport_down.send(msg_out):
+                # Ignore send failure, will retry on next status update or command
+                pass
         else:
             # Pass original downstream
             msg_out = Message("ALL", CMD_ID_ASSIGN, val)
-            self.transport_down.send(msg_out)
+            if not self.transport_down.send(msg_out):
+                # Ignore send failure, will retry on next status update or command
+                pass
 
     async def monitor_connection(self):
         """Background task to manage the downstream RJ45 power pass-through."""
@@ -115,21 +119,29 @@ class SatelliteFirmware:
             # Scenario: Physical link detected but power is currently OFF
             if self.power.satbus_connected and not self.power.sat_pwr.value:
                 msg_out = Message(self.id, "LOG", "LINK_DETECTED:INIT_PWR")
-                self.transport_up.send(msg_out)
+                if not self.transport_up.send(msg_out):
+                    # Ignore send failure, non critical logging message
+                    pass
                 # Perform soft-start to protect the bus
                 success, error = await self.power.soft_start_satellites()
                 if success:
                     msg_out = Message(self.id, "LOG", "LINK_ACTIVE")
-                    self.transport_up.send(msg_out)
+                    if not self.transport_up.send(msg_out):
+                        # Ignore send failure, non critical logging message
+                        pass
                 else:
                     msg_out = Message(self.id, "ERROR", f"PWR_FAILED:{error}")
-                    self.transport_up.send(msg_out)
+                    if not self.transport_up.send(msg_out):
+                        # TODO: Implement retry logic for power fail message
+                        pass
 
             # Scenario: Physical link lost while power is ON
             elif not self.power.satbus_connected and self.power.sat_pwr.value:
                 self.power.emergency_kill() # Immediate hardware cut-off
                 msg_out = Message(self.id, "ERROR", "LINK_LOST")
-                self.transport_up.send(msg_out)
+                if not self.transport_up.send(msg_out):
+                    # TODO: Implement retry logic for link lost message
+                    pass
 
             await asyncio.sleep(0.5)
 
@@ -155,34 +167,41 @@ class SatelliteFirmware:
 
             # Send periodic voltage reports upstream every 5 seconds
             if now - last_broadcast > 5.0:
-                self.transport_up.send(
+                if not self.transport_up.send(
                     Message(
                         self.id,
                         "POWER",
                         [v['in'], v['bus'], v['log']]
                     )
-                )
-                last_broadcast = now
+                ):
+                    # Ignore send failure, will retry on next status update or command
+                    pass
+                else:
+                    last_broadcast = now
 
             # Send Error Message for Logic rail sagging
             if v["log"] < 4.7:
-                self.transport_up.send(
+                if not self.transport_up.send(
                     Message(
                         self.id,
                         "ERROR",
                         f"LOGIC_BROWNOUT:{v['log']}V"
                     )
-                )
+                ):
+                    # TODO: Implement retry logic for critical error messages like brownouts
+                    pass
 
             # Send Error Message for Downstream Bus Failure
             if self.power.sat_pwr.value and v["bus"] < 17.0:
-                self.transport_up.send(
+                if not self.transport_up.send(
                     Message(
                         self.id,
                         "ERROR",
                         "BUS_SHUTDOWN:LOW_V"
                     )
-                )
+                ):
+                    # TODO: Implement retry logic for critical error messages like bus shutdown
+                    pass
 
             await asyncio.sleep(0.5)
 
@@ -228,7 +247,7 @@ class SatelliteFirmware:
         """
         Main async loop for handling communication and tasks.
         """
-        # Start the trasnport tasks
+        # Start the transport tasks
         self.transport_up.start()
         self.transport_down.start()
         self.transport_up.enable_relay_from(
@@ -255,16 +274,24 @@ class SatelliteFirmware:
             if not self.id: # Initial Discovery Phase
                 if time.monotonic() - self.last_tx > 3.0:
                     msg_out = Message("SAT", "NEW_SAT", self.sat_type_id)
-                    self.transport_up.send(msg_out)
-                    self.last_tx = time.monotonic()
+                    if not self.transport_up.send(msg_out):
+                        await asyncio.sleep(0.5)  # This prevents flooding the transport with messages
+                    else:
+                        self.last_tx = time.monotonic()
             else: # Normal Operation
                 if self._status_event.is_set() or time.monotonic() - self.last_tx > 2.0:
                     # Use get_status_bytes() to avoid string allocation overhead
                     # Message class supports both str and bytes payloads
                     msg_out = Message(self.id, "STATUS", self._get_status_bytes())
-                    self.transport_up.send(msg_out)
-                    self.last_tx = time.monotonic()
-                    self._status_event.clear()
+                    if not self.transport_up.send(msg_out):
+                        if self._status_event.is_set():
+                            # Continue to try again immediately
+                            continue
+                        else:
+                            await asyncio.sleep(0.01)  # quick retry for transient send failures
+                    else:
+                        self.last_tx = time.monotonic()
+                        self._status_event.clear()
 
             # RX FROM UPSTREAM -> CMD PROCESSING & TX TO DOWNSTREAM
             try:
@@ -275,7 +302,8 @@ class SatelliteFirmware:
                     if message.destination == self.id or message.destination == "ALL":
                         await self._process_local_cmd(message.command, message.payload)
                     # Forward message downstream
-                    self.transport_down.send(message)
+                    if not self.transport_down.send(message):
+                        await asyncio.sleep(0.01)  # Short delay to prevent flooding if downstream is congested
             except ValueError as e:
                 # Buffer overflow or other error
                 print(f"Transport Error: {e}")

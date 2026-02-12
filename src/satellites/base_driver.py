@@ -6,6 +6,8 @@ used by the Satellite Network Manager to store
 state without hardware init.
 """
 
+import asyncio
+
 from adafruit_ticks import ticks_ms
 
 from transport import Message
@@ -35,19 +37,51 @@ class SatelliteDriver:
         self.last_tx = 0
         self.last_seen = 0
         self.is_active = True
-
+        self._retry_tasks = []
+        self._retry_task_max = 5
 
     def update_heartbeat(self):
         """Update the last seen timestamp."""
         self.last_seen = ticks_ms()
         self.is_active = True
 
-    def send_cmd(self, cmd, val):
-        """Send a formatted command from this satellite to the core.
+    async def _retry_send(self, message, retry_count=5, retry_delay=0.05):
+        """Retry sending a message with a delay between attempts.
+
+        Parameters:
+            message (Message): The message to send.
+            retry_count (int): Maximum number of retry attempts.
+            retry_delay (float): Delay in seconds between retries.
+        """
+        for _ in range(retry_count):
+            if self.transport.send(message):
+                return True
+            await asyncio.sleep(retry_delay)
+        return False
+
+    def _cleanup_task(self, task):
+        """Callback to remove completed tasks from the retry list."""
+        try:
+            self._retry_tasks.remove(task)
+        except ValueError:
+            pass  # Task might have been removed already, which is fine
+
+    def send_cmd(self, cmd, val, retry_count=5, retry_delay=0.05):
+        """
+        Send a formatted command via the transport layer,
+        targetting this satellite's real hardware via self.id.
 
          Parameters:
             cmd (str): Command type - LED | DSP.
             val (str): Command value.
         """
         message = Message(self.id, cmd, val)
-        self.transport.send(message)
+        if not self.transport.send(message):
+            if len(self._retry_tasks) < self._retry_task_max:
+                task = asyncio.create_task(
+                    self._retry_send(message, retry_count, retry_delay)
+                )
+                task.add_done_callback(self._cleanup_task)
+                self._retry_tasks.append(task)
+            else:
+                print(f"Warning: Max retry tasks reached for {self.id}. Dropping message: {message}")

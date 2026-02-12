@@ -69,15 +69,18 @@ class SatelliteNetworkManager:
         if self._current_status_task is None or self._current_status_task.done():
             self._current_status_task = asyncio.create_task(coro_func(*args, **kwargs))
 
-    async def discover_satellites(self):
+    async def discover_satellites(self, sat_type_id="01"):
         """Triggers the ID assignment chain to discover satellites."""
         await self.display.update_status("SCANNING BUS...", "ASSIGNING IDs")
         # Reset local registry
         self.satellites = {}
 
-        # Broadcast to Industrial type (01) starting at index 00
-        message = Message("ALL", "ID_ASSIGN", "0100")
-        self.transport.send(message)
+        # Broadcast to discovered type, starting at index 00
+        message = Message("ALL", "ID_ASSIGN", f"{sat_type_id}00")
+        while not self.transport.send(message):
+            # If the send fails (e.g., buffer full), wait briefly and retry.
+            # This prevents flooding the transport with messages
+            await asyncio.sleep(0.5)
         await asyncio.sleep(0.5)
 
     def get_sat(self, sid):
@@ -100,6 +103,7 @@ class SatelliteNetworkManager:
         """
         for sid in self.satellites:
             self.get_sat(sid).send_cmd(cmd, val)
+
 
     async def monitor_messages(self):
         """
@@ -132,6 +136,7 @@ class SatelliteNetworkManager:
                             self._spawn_status_task(
                                 self.display.update_status, "SAT RECONNECTED", f"ID: {sid}"
                             )
+                            # TODO: Improve this logic to handle all sat types based on capability
                             if self.satellites[sid].sat_type_name == "INDUSTRIAL":
                                 self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
                                 asyncio.create_task(
@@ -173,8 +178,7 @@ class SatelliteNetworkManager:
                     self._spawn_status_task(
                         self.display.update_status, "SAT CONNECTED", f"TYPE {payload} FOUND"
                     )
-                    msg_out = Message("ALL", "ID_ASSIGN", f"{payload}00")
-                    self.transport.send(msg_out)
+                    self.discover_satellites(payload)
                 else:
                     self._spawn_status_task(
                         self.display.update_status, "UNKNOWN COMMAND", f"{sid} sent {cmd}"
