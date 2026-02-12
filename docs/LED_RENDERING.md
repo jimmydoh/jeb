@@ -48,6 +48,28 @@ async def render_loop(self):
 3. **Separation of Concerns**: Animation logic updates memory buffers, rendering handles hardware writes
 4. **Predictable Performance**: Known frame timing makes animation development easier
 5. **Event Loop Protection**: Minimum sleep duration ensures I/O tasks can run even when lagging
+6. **Adaptive Performance**: Automatically adjusts frame rate when system cannot keep up
+
+### Adaptive Frame Rate
+
+The render manager includes automatic frame rate adaptation to handle performance constraints:
+
+**Backoff Mechanism**: When the system consistently lags (5+ consecutive frames):
+- Reduces `target_frame_rate` by 10% (BACKOFF_FACTOR = 0.9)
+- Continues reducing until reaching minimum of 10 Hz (MIN_FRAME_RATE)
+- Resets lag counter after each adjustment
+
+**Recovery Mechanism**: When the system consistently keeps up (20+ consecutive good frames):
+- Increases `target_frame_rate` by 5% (RECOVERY_FACTOR = 1.05)
+- Continues increasing until reaching default of 60 Hz (DEFAULT_FRAME_RATE)
+- Resets good frame counter after each adjustment
+
+**Benefits**:
+- Automatically handles varying system load
+- Prevents prolonged event loop starvation
+- Gracefully degrades under heavy load
+- Recovers performance when load decreases
+- Maintains smooth animations at sustainable rate
 
 ### Animation Flow
 

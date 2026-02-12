@@ -10,6 +10,11 @@ class RenderManager:
     DEFAULT_FRAME_RATE = 60  # Default frame rate in Hz
     DRIFT_ADJUSTMENT_FACTOR = 0.1  # 10% adjustment for gradual sync correction
     MIN_SLEEP_DURATION = 0.005  # Minimum sleep to prevent event loop starvation
+    MIN_FRAME_RATE = 10  # Minimum frame rate when backing off (Hz)
+    BACKOFF_THRESHOLD = 5  # Number of consecutive lag frames before backing off
+    BACKOFF_FACTOR = 0.9  # Reduce frame rate by 10% when backing off
+    RECOVERY_THRESHOLD = 20  # Number of consecutive good frames before recovering
+    RECOVERY_FACTOR = 1.05  # Increase frame rate by 5% when recovering
 
     def __init__(self, pixel_object, sync_role="NONE", network_manager=None):
         """
@@ -33,12 +38,19 @@ class RenderManager:
         self.last_sync_broadcast = 0.0
         self.sleep_adjustment = 0.0  # For gradual drift correction
 
+        # Adaptive frame rate tracking
+        self.consecutive_lag_frames = 0
+        self.consecutive_good_frames = 0
+
     def add_animator(self, manager):
         """Register a manager that needs its .animate_loop(step=True) called."""
         self._animators.append(manager)
 
     async def run(self, heartbeat_callback=None):
-        """The main render loop (default 60Hz, configurable via target_frame_rate)."""
+        """The main render loop (default 60Hz, configurable via target_frame_rate).
+        
+        Automatically adapts frame rate when unable to keep up with target timing.
+        """
         next_frame_time = time.monotonic()
 
         while True:
@@ -76,10 +88,35 @@ class RenderManager:
 
             if sleep_duration > 0:
                 await asyncio.sleep(sleep_duration)
+                # Track good frames for potential recovery
+                self.consecutive_good_frames += 1
+                self.consecutive_lag_frames = 0
+                
+                # Gradually recover frame rate if consistently keeping up
+                if self.consecutive_good_frames >= self.RECOVERY_THRESHOLD:
+                    if self.target_frame_rate < self.DEFAULT_FRAME_RATE:
+                        self.target_frame_rate = min(
+                            self.target_frame_rate * self.RECOVERY_FACTOR,
+                            self.DEFAULT_FRAME_RATE
+                        )
+                        self.consecutive_good_frames = 0
             else:
                 # Lagging: Reset target and enforce minimum sleep to prevent event loop starvation
                 next_frame_time = now
                 await asyncio.sleep(self.MIN_SLEEP_DURATION)
+                
+                # Track lag frames for potential backoff
+                self.consecutive_lag_frames += 1
+                self.consecutive_good_frames = 0
+                
+                # Gradually reduce frame rate if consistently lagging
+                if self.consecutive_lag_frames >= self.BACKOFF_THRESHOLD:
+                    if self.target_frame_rate > self.MIN_FRAME_RATE:
+                        self.target_frame_rate = max(
+                            self.target_frame_rate * self.BACKOFF_FACTOR,
+                            self.MIN_FRAME_RATE
+                        )
+                        self.consecutive_lag_frames = 0
 
     def apply_sync(self, core_frame):
         """Called by SLAVE devices when they receive a SYNC packet.

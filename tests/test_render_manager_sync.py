@@ -21,6 +21,11 @@ class RenderManager:
     DEFAULT_FRAME_RATE = 60  # Default frame rate in Hz
     DRIFT_ADJUSTMENT_FACTOR = 0.1  # 10% adjustment for gradual sync correction
     MIN_SLEEP_DURATION = 0.005  # Minimum sleep to prevent event loop starvation
+    MIN_FRAME_RATE = 10  # Minimum frame rate when backing off (Hz)
+    BACKOFF_THRESHOLD = 5  # Number of consecutive lag frames before backing off
+    BACKOFF_FACTOR = 0.9  # Reduce frame rate by 10% when backing off
+    RECOVERY_THRESHOLD = 20  # Number of consecutive good frames before recovering
+    RECOVERY_FACTOR = 1.05  # Increase frame rate by 5% when recovering
 
     def __init__(self, pixel_object, watchdog_flags=None, sync_role="NONE", network_manager=None):
         """
@@ -45,6 +50,10 @@ class RenderManager:
         self.frame_counter = 0
         self.last_sync_broadcast = 0.0
         self.sleep_adjustment = 0.0  # For gradual drift correction
+
+        # Adaptive frame rate tracking
+        self.consecutive_lag_frames = 0
+        self.consecutive_good_frames = 0
 
     def add_animator(self, manager):
         """Register a manager that needs its .animate_loop(step=True) called."""
