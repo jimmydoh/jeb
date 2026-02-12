@@ -54,14 +54,23 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
 
         # Init Segment Display
-        self.segment = SegmentManager(self.i2c)
+        self.segment = SegmentManager(
+            self.i2c,
+            device_addresses=[
+                Pins.I2C_ADDRESSES.get("SEGMENT_LEFT", 0x70),
+                Pins.I2C_ADDRESSES.get("SEGMENT_RIGHT", 0x71)
+            ]
+        )
 
         # Init HID
         self.hid = HIDManager(
-            latching_toggles=Pins.EXPANDER_LATCHING,
-            momentary_toggles=Pins.EXPANDER_MOMENTARY,
             encoders=Pins.ENCODERS,
             matrix_keypads=Pins.MATRIX_KEYPADS,
+            mcp_i2c=self.i2c,
+            mcp_i2c_address=Pins.I2C_ADDRESSES.get("EXPANDER"),
+            mcp_int_pin=Pins.EXPANDER_INT,
+            expanded_latching_toggles=Pins.EXPANDER_LATCHING,
+            expanded_momentary_toggles=Pins.EXPANDER_MOMENTARY,
             monitor_only=False
         )
 

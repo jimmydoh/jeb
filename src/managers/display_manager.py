@@ -8,9 +8,9 @@ from adafruit_display_text import label
 
 class DisplayManager:
     """Manages displayio objects and hardware for the JEB Master OLED."""
-    def __init__(self, i2c_bus):
+    def __init__(self, i2c_bus, device_address=0x3C):
         displayio.release_displays()
-        self.display_bus = displayio.I2CDisplay(i2c_bus, device_address=0x3C)
+        self.display_bus = displayio.I2CDisplay(i2c_bus, device_address=device_address)
         self.hw = adafruit_displayio_ssd1306.SSD1306(self.display_bus, width=128, height=64)
 
         # Root group for all UI layers

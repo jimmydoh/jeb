@@ -52,6 +52,12 @@ class Pins:
                 cls.EXPANDER.BUTTON_D
             ]
 
+            # I2C Address Map
+            cls.I2C_ADDRESSES = {
+                "OLED": 0x3C,
+                "EXPANDER": 0x20
+            }
+
         elif profile == "SAT" and type_id == "01":
             # INDUSTRIAL SATELLITE - Type 01
             cls.UART_RX = getattr(board, "GP0")
@@ -115,6 +121,13 @@ class Pins:
                 cls.EXPANDER.MOMENTARY_1_UP,
                 cls.EXPANDER.MOMENTARY_1_DOWN
             ]
+
+            # I2C Address Map
+            cls.I2C_ADDRESSES = {
+                "SEGMENT_LEFT": 0x70,
+                "SEGMENT_RIGHT": 0x71,
+                "EXPANDER": 0x20
+            }
 
         else:
             print(f"❗Unknown profile/type_id for Pins: {profile}/{type_id}. No pins assigned.❗")

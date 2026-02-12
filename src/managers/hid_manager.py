@@ -1,17 +1,6 @@
 """Class to manage Master Box hardware inputs."""
 
-import digitalio
-import keypad
-import rotaryio
-
-try:
-    from adafruit_mcp230xx.mcp23017 import MCP23017
-except ImportError:
-    MCP23017 = None
-
 from adafruit_ticks import ticks_ms, ticks_diff
-
-from utilities import MCPKeys
 
 class HIDManager:
     """
@@ -56,7 +45,9 @@ class HIDManager:
                  encoders=None,
                  matrix_keypads=None,
                  estop_pin=None,
+                 mcp_chip=None,
                  mcp_i2c=None,
+                 mcp_i2c_address=None,
                  mcp_int_pin=None,
                  expanded_buttons=None,
                  expanded_latching_toggles=None,
@@ -123,94 +114,135 @@ class HIDManager:
 
         #region --- Initialize Hardware Interfaces ---
         if not self.monitor_only:
-            # Buttons Hardware
-            self._buttons = keypad.Keys(
-                buttons,
-                value_when_pressed=False,
-                pull=True
-            ) if buttons else None
+            # Check for import of keypad module
+            try:
+                if (
+                    buttons or
+                    latching_toggles or
+                    momentary_toggles or
+                    encoders or
+                    matrix_keypads
+                ):
+                    import keypad
 
-            # Latching Toggles Hardware
-            self._latching_toggles = keypad.Keys(
-                latching_toggles,
-                value_when_pressed=False,
-                pull=True
-            ) if latching_toggles else None
+                    # Buttons Hardware
+                    self._buttons = keypad.Keys(
+                        buttons,
+                        value_when_pressed=False,
+                        pull=True
+                    ) if buttons else None
 
-            # Momentary Toggles
-            # Flatten the list of pairs for keypad.Keys
-            flat_momentary_pins = []
-            for pair in momentary_toggles or []:
-                flat_momentary_pins.extend(pair)
-            self._momentary_toggles = keypad.Keys(
-                flat_momentary_pins,
-                value_when_pressed=False,
-                pull=True
-            ) if momentary_toggles else None
+                    # Latching Toggles Hardware
+                    self._latching_toggles = keypad.Keys(
+                        latching_toggles,
+                        value_when_pressed=False,
+                        pull=True
+                    ) if latching_toggles else None
 
-            # Encoders
-            self._encoders = []
-            encoder_button_pins = []
-            for e in encoders:
-                encoder = rotaryio.IncrementalEncoder(e[0], e[1])
-                if len(e) > 2 and e[2] is not None:
-                    encoder_button_pins.append(e[2])
-                self._encoders.append(encoder)
-            self._encoder_buttons = keypad.Keys(
-                encoder_button_pins,
-                value_when_pressed=False,
-                pull=True
-            ) if encoder_button_pins else None
+                    # Momentary Toggles
+                    # Flatten the list of pairs for keypad.Keys
+                    flat_momentary_pins = []
+                    for pair in momentary_toggles or []:
+                        flat_momentary_pins.extend(pair)
+                    self._momentary_toggles = keypad.Keys(
+                        flat_momentary_pins,
+                        value_when_pressed=False,
+                        pull=True
+                    ) if momentary_toggles else None
 
-            # Matrix Keypads
-            self._matrix_keypads = []
-            for mk in matrix_keypads:
-                _, row_pins, col_pins = mk
-                self._matrix_keypads.append(keypad.Keypad(
-                    row_pins,
-                    col_pins
-                    ))
+                    if encoders:
+                        try:
+                            import rotaryio
+                            # Encoders
+                            self._encoders = []
+                            encoder_button_pins = []
+                            for e in encoders:
+                                encoder = rotaryio.IncrementalEncoder(e[0], e[1])
+                                if len(e) > 2 and e[2] is not None:
+                                    encoder_button_pins.append(e[2])
+                                self._encoders.append(encoder)
+                            self._encoder_buttons = keypad.Keys(
+                                encoder_button_pins,
+                                value_when_pressed=False,
+                                pull=True
+                            ) if encoder_button_pins else None
+                        except ImportError:
+                            print("❗Error: 'rotaryio' module not found. Encoders will not be initialized.❗")
+
+                    # Matrix Keypads
+                    self._matrix_keypads = []
+                    for mk in matrix_keypads:
+                        _, row_pins, col_pins = mk
+                        self._matrix_keypads.append(keypad.Keypad(
+                            row_pins,
+                            col_pins
+                            ))
+            except ImportError:
+                print("❗Error: 'keypad' module not found. Hardware inputs will not be initialized.❗")
 
             # E-Stop
             self._estop = None
             if estop_pin is not None:
-                self._estop = digitalio.DigitalInOut(estop_pin)
-                self._estop.pull = digitalio.Pull.UP
+                try:
+                    import digitalio
+                    self._estop = digitalio.DigitalInOut(estop_pin)
+                    self._estop.pull = digitalio.Pull.UP
+                except ImportError:
+                    print("❗Error: 'digitalio' module not found. E-Stop input will not be initialized.❗")
 
-            # MCP23017 Expanded Inputs
-            self._mcp = None
-            self._mcp_int = None
-            if MCP23017 and mcp_i2c:
-                self._mcp = MCP23017(mcp_i2c, address=0x20)
+            # MCP230xx Expanded Inputs
+            # Check for all required parameters
+            if mcp_chip and mcp_i2c and mcp_i2c_address:
+                self._mcp = None
+                self._mcp_int = None
+                if mcp_chip == "MCP23017":
+                    try:
+                        from adafruit_mcp230xx.mcp23017 import MCP23017
+                        self._mcp = MCP23017(mcp_i2c, mcp_i2c_address)
+                    except ImportError:
+                        MCP23017 = None
+                if mcp_chip == "MCP23008":
+                    try:
+                        from adafruit_mcp230xx.mcp23008 import MCP23008
+                        self._mcp = MCP23008(mcp_i2c, mcp_i2c_address)
+                    except ImportError:
+                        MCP23008 = None
                 if mcp_int_pin:
                     self._mcp_int = mcp_int_pin
 
-            if self._mcp and expanded_buttons:
-                self._expanded_buttons_keys = MCPKeys(
-                    self._mcp,
-                    expanded_buttons,
-                    value_when_pressed=False,
-                    pull=True
-                )
+                if MCP23017 or MCP23008:
+                    print(f"✅ MCP Chip '{mcp_chip}' initialized at address {hex(mcp_i2c_address)}. Expanded inputs will be available. ✅")
+                    try:
+                        from utilities import MCPKeys
 
-            if self._mcp and expanded_latching_toggles:
-                self._expanded_latching_keys = MCPKeys(
-                    self._mcp,
-                    expanded_latching_toggles,
-                    value_when_pressed=False,
-                    pull=True
-                )
+                        if MCPKeys and self._mcp and expanded_buttons:
+                            self._expanded_buttons_keys = MCPKeys(
+                                self._mcp,
+                                expanded_buttons,
+                                value_when_pressed=False,
+                                pull=True
+                            )
 
-            if self._mcp and expanded_momentary_toggles:
-                flat_expanded_momentary_pins = []
-                for pair in expanded_momentary_toggles:
-                    flat_expanded_momentary_pins.extend(pair)
-                self._expanded_momentary_keys = MCPKeys(
-                    self._mcp,
-                    flat_expanded_momentary_pins,
-                    value_when_pressed=False,
-                    pull=True
-                )
+                        if MCPKeys and self._mcp and expanded_latching_toggles:
+                            self._expanded_latching_keys = MCPKeys(
+                                self._mcp,
+                                expanded_latching_toggles,
+                                value_when_pressed=False,
+                                pull=True
+                            )
+
+                        if MCPKeys and self._mcp and expanded_momentary_toggles:
+                            flat_expanded_momentary_pins = []
+                            for pair in expanded_momentary_toggles:
+                                flat_expanded_momentary_pins.extend(pair)
+                            self._expanded_momentary_keys = MCPKeys(
+                                self._mcp,
+                                flat_expanded_momentary_pins,
+                                value_when_pressed=False,
+                                pull=True
+                            )
+                    except ImportError:
+                        print("❗Error: 'MCPKeys' class not found. Expanded inputs will not be initialized.❗")
         #endregion
 
     #region --- Button Handling ---
