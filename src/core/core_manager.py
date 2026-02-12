@@ -9,21 +9,21 @@ import busio
 import neopixel
 from adafruit_ticks import ticks_ms, ticks_diff
 
-from managers import (
-    AudioManager,
-    BuzzerManager,
-    DataManager,
-    DisplayManager,
-    HIDManager,
-    LEDManager,
-    MatrixManager,
-    PowerManager,
-    RenderManager,
-    SatelliteNetworkManager,
-    SynthManager,
-    WatchdogManager
-)
+from managers import PowerManager, WatchdogManager
+
+from managers.audio_manager import AudioManager
+from managers.buzzer_manager import BuzzerManager
+from managers.data_manager import DataManager
+from managers.display_manager import DisplayManager
+from managers.hid_manager import HIDManager
+from managers.led_manager import LEDManager
+from managers.matrix_manager import MatrixManager
+from managers.render_manager import RenderManager
+from managers.satellite_network_manager import SatelliteNetworkManager
+from managers.synth_manager import SynthManager
+
 from modes import AVAILABLE_MODES, BaseMode
+
 from transport import (
     UARTTransport,
     COMMAND_MAP,

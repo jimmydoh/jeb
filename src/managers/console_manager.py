@@ -5,7 +5,8 @@ import busio
 import microcontroller
 import supervisor
 
-from managers import BuzzerManager
+from managers.buzzer_manager import BuzzerManager
+
 from utilities import Pins,tones
 
 

@@ -22,12 +22,11 @@ from transport import (
     LED_COMMANDS,
     DSP_COMMANDS,
 )
-from managers import (
-    HIDManager,
-    LEDManager,
-    RenderManager,
-    SegmentManager
-)
+from managers.hid_manager import HIDManager
+from managers.led_manager import LEDManager
+from managers.render_manager import RenderManager
+from managers.segment_manager import SegmentManager
+
 from .base_firmware import SatelliteFirmware
 
 TYPE_ID = "01"

@@ -6,7 +6,8 @@ when running on the Core. This class represents the Core's view of a remote
 Industrial Satellite and does not include hardware-specific code.
 """
 
-from managers import HIDManager
+from managers.hid_manager import HIDManager
+
 from utilities import Pins
 
 from .base_driver import SatelliteDriver

@@ -12,6 +12,7 @@ from adafruit_ticks import ticks_ms
 import busio
 
 from managers import PowerManager, WatchdogManager
+
 from transport import (
     Message,
     UARTTransport,
