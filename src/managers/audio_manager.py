@@ -20,6 +20,7 @@ class AudioManager:
         required_voices = AudioChannels.get_required_voice_count()
         
         # Use provided voice_count if specified, otherwise use required minimum
+        # This maintains backward compatibility while ensuring sufficient voices
         if voice_count is None:
             voice_count = required_voices
         elif voice_count < required_voices:
