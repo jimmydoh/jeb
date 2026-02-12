@@ -1,6 +1,7 @@
 """Class to manage Master Box hardware inputs."""
 
 from adafruit_ticks import ticks_ms, ticks_diff
+import keypad
 
 class HIDManager:
     """
@@ -114,71 +115,58 @@ class HIDManager:
 
         #region --- Initialize Hardware Interfaces ---
         if not self.monitor_only:
-            # Check for import of keypad module
-            try:
-                if (
-                    buttons or
-                    latching_toggles or
-                    momentary_toggles or
-                    encoders or
-                    matrix_keypads
-                ):
-                    import keypad
+            # Buttons Hardware
+            self._buttons = keypad.Keys(
+                buttons,
+                value_when_pressed=False,
+                pull=True
+            ) if buttons else None
 
-                    # Buttons Hardware
-                    self._buttons = keypad.Keys(
-                        buttons,
+            # Latching Toggles Hardware
+            self._latching_toggles = keypad.Keys(
+                latching_toggles,
+                value_when_pressed=False,
+                pull=True
+            ) if latching_toggles else None
+
+            # Momentary Toggles
+            # Flatten the list of pairs for keypad.Keys
+            flat_momentary_pins = []
+            for pair in momentary_toggles or []:
+                flat_momentary_pins.extend(pair)
+            self._momentary_toggles = keypad.Keys(
+                flat_momentary_pins,
+                value_when_pressed=False,
+                pull=True
+            ) if momentary_toggles else None
+
+            if encoders:
+                try:
+                    import rotaryio
+                    # Encoders
+                    self._encoders = []
+                    encoder_button_pins = []
+                    for e in encoders:
+                        encoder = rotaryio.IncrementalEncoder(e[0], e[1])
+                        if len(e) > 2 and e[2] is not None:
+                            encoder_button_pins.append(e[2])
+                        self._encoders.append(encoder)
+                    self._encoder_buttons = keypad.Keys(
+                        encoder_button_pins,
                         value_when_pressed=False,
                         pull=True
-                    ) if buttons else None
+                    ) if encoder_button_pins else None
+                except ImportError:
+                    print("❗Error: 'rotaryio' module not found. Encoders will not be initialized.❗")
 
-                    # Latching Toggles Hardware
-                    self._latching_toggles = keypad.Keys(
-                        latching_toggles,
-                        value_when_pressed=False,
-                        pull=True
-                    ) if latching_toggles else None
-
-                    # Momentary Toggles
-                    # Flatten the list of pairs for keypad.Keys
-                    flat_momentary_pins = []
-                    for pair in momentary_toggles or []:
-                        flat_momentary_pins.extend(pair)
-                    self._momentary_toggles = keypad.Keys(
-                        flat_momentary_pins,
-                        value_when_pressed=False,
-                        pull=True
-                    ) if momentary_toggles else None
-
-                    if encoders:
-                        try:
-                            import rotaryio
-                            # Encoders
-                            self._encoders = []
-                            encoder_button_pins = []
-                            for e in encoders:
-                                encoder = rotaryio.IncrementalEncoder(e[0], e[1])
-                                if len(e) > 2 and e[2] is not None:
-                                    encoder_button_pins.append(e[2])
-                                self._encoders.append(encoder)
-                            self._encoder_buttons = keypad.Keys(
-                                encoder_button_pins,
-                                value_when_pressed=False,
-                                pull=True
-                            ) if encoder_button_pins else None
-                        except ImportError:
-                            print("❗Error: 'rotaryio' module not found. Encoders will not be initialized.❗")
-
-                    # Matrix Keypads
-                    self._matrix_keypads = []
-                    for mk in matrix_keypads:
-                        _, row_pins, col_pins = mk
-                        self._matrix_keypads.append(keypad.Keypad(
-                            row_pins,
-                            col_pins
-                            ))
-            except ImportError:
-                print("❗Error: 'keypad' module not found. Hardware inputs will not be initialized.❗")
+            # Matrix Keypads
+            self._matrix_keypads = []
+            for mk in matrix_keypads:
+                _, row_pins, col_pins = mk
+                self._matrix_keypads.append(keypad.Keypad(
+                    row_pins,
+                    col_pins
+                    ))
 
             # E-Stop
             self._estop = None
