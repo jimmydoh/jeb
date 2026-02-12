@@ -1,6 +1,7 @@
 # File: src/utilities/__init__.py
 """Utility modules for JEB."""
 
+from .audio_channels import AudioChannels
 from .cobs import cobs_encode, cobs_decode
 from .context import HardwareContext
 from .crc import calculate_crc8, verify_crc8
@@ -13,6 +14,7 @@ from .pins import Pins
 from .synth_registry import Waveforms, Envelopes, Patches
 
 __all__ = [
+    'AudioChannels',
     'cobs_encode',
     'cobs_decode',
     'calculate_crc8',
