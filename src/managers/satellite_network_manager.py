@@ -72,8 +72,6 @@ class SatelliteNetworkManager:
     async def discover_satellites(self, sat_type_id="01"):
         """Triggers the ID assignment chain to discover satellites."""
         await self.display.update_status("SCANNING BUS...", "ASSIGNING IDs")
-        # Reset local registry
-        self.satellites = {}
 
         # Broadcast to discovered type, starting at index 00
         message = Message("ALL", "ID_ASSIGN", f"{sat_type_id}00")

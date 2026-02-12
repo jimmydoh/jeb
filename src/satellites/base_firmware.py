@@ -90,20 +90,30 @@ class SatelliteFirmware:
         current_index = int(val[2:])
 
         if type_prefix == self.sat_type_id:
-            new_index = current_index + 1
-            self.id = f"{type_prefix}{new_index:02d}"
+            if self.id:
+                # I already have an ID, add 1 to my self.id index and broadcast downstream
+                new_index = int(self.id[2:]) + 1
+            else:
+                # I don't have an ID yet, use the current index
+                new_index = current_index + 1
+                self.id = f"{type_prefix}{new_index:02d}"
 
-            # Forward new index downstream
+            # Send back a HELLO
+            if not self.transport_up.send(Message(self.id, "HELLO", self.sat_type_name)):
+                # Ignore send failure, will retry on next status update or command
+                print(f"Failed to send HELLO message for ID assignment of {self.id}")
+
+            # Forward downstream
             msg_out = Message("ALL", CMD_ID_ASSIGN, self.id)
             if not self.transport_down.send(msg_out):
                 # Ignore send failure, will retry on next status update or command
-                pass
+                print(f"Failed to forward ID assignment of {self.id} downstream")
         else:
             # Pass original downstream
             msg_out = Message("ALL", CMD_ID_ASSIGN, val)
             if not self.transport_down.send(msg_out):
                 # Ignore send failure, will retry on next status update or command
-                pass
+                print(f"Failed to forward ID assignment of {self.id} downstream")
 
     async def monitor_connection(self):
         """Background task to manage the downstream RJ45 power pass-through."""
