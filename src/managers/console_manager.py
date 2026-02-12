@@ -7,7 +7,8 @@ import supervisor
 
 from managers.buzzer_manager import BuzzerManager
 
-from utilities import Pins,tones
+from utilities.pins import Pins
+from utilities import tones
 
 
 class ConsoleManager():

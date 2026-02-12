@@ -191,7 +191,7 @@ else:
         app = CoreManager(config=config)
 
     elif role == "SAT" and type_id == "01":
-        from satellites import IndustrialSatelliteFirmware
+        from satellites.sat_01_firmware import IndustrialSatelliteFirmware
         app = IndustrialSatelliteFirmware()
 
     else:

@@ -201,7 +201,7 @@ class HIDManager:
                 if MCP23017 or MCP23008:
                     print(f"✅ MCP Chip '{mcp_chip}' initialized at address {hex(mcp_i2c_address)}. Expanded inputs will be available. ✅")
                     try:
-                        from utilities import MCPKeys
+                        from utilities.mcp_keys import MCPKeys
 
                         if MCPKeys and self._mcp and expanded_buttons:
                             self._expanded_buttons_keys = MCPKeys(

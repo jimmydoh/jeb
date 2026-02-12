@@ -10,13 +10,11 @@ import asyncio
 import busio
 import neopixel
 
-from utilities import (
-    JEBPixel,
-    Pins,
-    parse_values,
-    get_int,
-)
-from transport import (
+from utilities.jeb_pixel import JEBPixel
+from utilities.pins import Pins
+from utilities.payload_parser import parse_values, get_int
+
+from transport.protocol import (
     CMD_SYNC_FRAME,
     CMD_SETENC,
     LED_COMMANDS,

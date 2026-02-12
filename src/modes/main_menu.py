@@ -3,7 +3,8 @@
 
 import asyncio
 
-from utilities import Palette,tones
+from utilities.palette import Palette
+from utilities import tones
 
 from .utility_mode import UtilityMode
 
@@ -22,11 +23,11 @@ class MainMenu(UtilityMode):
 
     def _build_menu_items(self):
         """Dynamically build menu based on AVAILABLE_MODES and connected hardware.
-        
+
         This method accesses self.core.modes which is a Dict[str, Type[BaseMode]]
         mapping mode IDs to mode classes. Each mode class has a METADATA attribute
         describing its requirements and configuration.
-        
+
         Returns:
             List[Tuple[str, dict]]: List of (mode_id, metadata) tuples for modes
                                      that have their requirements met.

@@ -8,7 +8,7 @@ Industrial Satellite and does not include hardware-specific code.
 
 from managers.hid_manager import HIDManager
 
-from utilities import Pins
+from utilities.pins import Pins
 
 from .base_driver import SatelliteDriver
 

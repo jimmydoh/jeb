@@ -13,9 +13,10 @@ import busio
 
 from managers import PowerManager, WatchdogManager
 
-from transport import (
-    Message,
-    UARTTransport,
+from transport import Message, UARTTransport
+
+from transport.protocol import (
+    CMD_HELLO,
     CMD_ID_ASSIGN,
     CMD_REBOOT,
     COMMAND_MAP,
@@ -23,7 +24,8 @@ from transport import (
     MAX_INDEX_VALUE,
     PAYLOAD_SCHEMAS
 )
-from utilities import Pins
+
+from utilities.pins import Pins
 
 class SatelliteFirmware:
     """
@@ -133,7 +135,7 @@ class SatelliteFirmware:
                 self.id = f"{type_prefix}{new_index:02d}"
 
             # Send back a HELLO
-            if not self.transport_up.send(Message(self.id, "HELLO", self.sat_type_name)):
+            if not self.transport_up.send(Message(self.id, CMD_HELLO, self.sat_type_name)):
                 # Ignore send failure, will retry on next status update or command
                 print(f"Failed to send HELLO message for ID assignment of {self.id}")
 

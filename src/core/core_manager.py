@@ -22,19 +22,18 @@ from managers.render_manager import RenderManager
 from managers.satellite_network_manager import SatelliteNetworkManager
 from managers.synth_manager import SynthManager
 
-from modes import AVAILABLE_MODES, BaseMode
+from modes import AVAILABLE_MODES, DEFAULT_METADATA
 
-from transport import (
-    UARTTransport,
+from transport import UARTTransport
+from transport.protocol import (
     COMMAND_MAP,
     DEST_MAP,
     MAX_INDEX_VALUE,
     PAYLOAD_SCHEMAS,
 )
-from utilities import (
-    JEBPixel,
-    Pins,
-)
+
+from utilities.jeb_pixel import JEBPixel
+from utilities.pins import Pins
 
 class CoreManager:
     """Class to hold global state for the master controller.
@@ -172,7 +171,7 @@ class CoreManager:
             try:
                 # Attempt to inspect/register the mode
                 self._mode_registry[mode_class.__name__] = mode_class
-                meta = getattr(mode_class, "METADATA", BaseMode.METADATA)
+                meta = getattr(mode_class, "METADATA", DEFAULT_METADATA)
                 self.modes[meta["id"]] = mode_class
             except Exception as e:
                 print(f"FAILED TO LOAD MODE {mode_class}: {e}")

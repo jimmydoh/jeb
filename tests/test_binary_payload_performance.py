@@ -140,7 +140,8 @@ class MockUARTManager:
 
 
 # Now import the transport classes
-from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+from transport import Message, UARTTransport
+from transport.protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
 # Import test helpers
 from test_helpers import drain_tx_buffer, receive_message_sync

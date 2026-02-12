@@ -6,7 +6,7 @@ import time
 import math
 import random
 
-from utilities import Palette
+from utilities.palette import Palette
 
 class AnimationSlot:
     """Reusable animation slot to avoid object churn."""
@@ -23,7 +23,7 @@ class AnimationSlot:
 
     def set(self, anim_type, color, speed, start, duration, priority):
         """Update slot properties in place.
-        
+
         Args:
             color: Can be a single color tuple (r,g,b), a list/tuple of colors,
                    or None for effects like RAINBOW.

@@ -5,7 +5,7 @@ import asyncio
 import random
 import math
 
-from utilities import Palette
+from utilities.palette import Palette
 
 from .game_mode import GameMode
 

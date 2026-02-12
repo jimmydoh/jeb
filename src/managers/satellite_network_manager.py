@@ -3,10 +3,9 @@
 import asyncio
 from adafruit_ticks import ticks_ms, ticks_diff
 
-from satellites import IndustrialSatelliteDriver
 from transport import Message
-from utilities import parse_values, get_float
 
+from utilities.payload_parser import parse_values, get_float
 
 class SatelliteNetworkManager:
     """Manages satellite discovery, health monitoring, and message handling.
@@ -180,12 +179,15 @@ class SatelliteNetworkManager:
         if sid in self.satellites:
             self.satellites[sid].update_heartbeat()
         else:
-            if val == "INDUSTRIAL":
+            # Identify type from the first 2 characters of the SID (e.g., "0100" -> "01" type)
+            sat_type_id = sid[:2]
+            if sat_type_id == "01":
+                from satellites.sat_01_driver import IndustrialSatelliteDriver
                 self.satellites[sid] = IndustrialSatelliteDriver(
                     sid, self.transport
                 )
             self._spawn_status_task(
-                self.display.update_status, "NEW SAT", f"{sid} sent HELLO."
+                self.display.update_status, "NEW SAT", f"{sid} sent HELLO {val}."
             )
 
     async def _handle_new_sat_command(self, sid, val):
