@@ -12,7 +12,16 @@ from adafruit_ticks import ticks_ms
 import busio
 
 from managers import PowerManager, WatchdogManager
-from transport import Message, UARTTransport, CMD_ID_ASSIGN, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+from transport import (
+    Message,
+    UARTTransport,
+    CMD_ID_ASSIGN,
+    CMD_REBOOT,
+    COMMAND_MAP,
+    DEST_MAP,
+    MAX_INDEX_VALUE,
+    PAYLOAD_SCHEMAS
+)
 from utilities import Pins
 
 class SatelliteFirmware:
@@ -75,11 +84,12 @@ class SatelliteFirmware:
         self.transport_down = UARTTransport(uart_down_hw, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
         self._system_handlers = {
-            CMD_ID_ASSIGN: self._handle_id_assign
+            CMD_ID_ASSIGN: self._handle_id_assign,
+            CMD_REBOOT: self._handle_reboot_command
         }
 
         self.watchdog = WatchdogManager(
-            task_names=["power", "connection", "relay"],
+            task_names=[],
             timeout=5.0
         )
 
@@ -137,6 +147,21 @@ class SatelliteFirmware:
             if not self.transport_down.send(msg_out):
                 # Ignore send failure, will retry on next status update or command
                 print(f"Failed to forward ID assignment of {self.id} downstream")
+
+    async def _handle_reboot_command(self, val):
+        # Log reboot and reason if provided to console and send LOG upstream before rebooting
+        reason = val.decode('utf-8') if isinstance(val, bytes) else str(val)
+        if reason:
+            print(f"Reboot command received with reason: {reason}. Rebooting now...")
+            log_msg = f"REBOOT_CMD: {reason}"
+        else:
+            print("Reboot command received. Rebooting now...")
+            log_msg = "REBOOT_CMD: No reason provided"
+        if not self.transport_up.send(Message(self.id, "LOG", log_msg)):
+            # Ignore send failure, non critical logging message
+            print(f"Failed to send reboot log message upstream for {self.id}")
+        # Use the WatchdogManager to reboot (1 second delay)
+        self.watchdog.force_reboot()
 
     async def monitor_connection(self):
         """Background task to manage the downstream RJ45 power pass-through."""
@@ -272,6 +297,73 @@ class SatelliteFirmware:
             await handler(val)
             return
 
+    async def _task_tx_upstream(self):
+        """
+        Handle periodic status updates and initial discovery transmission logic.
+        """
+        while True:
+            self.watchdog.check_in("tx_upstream")
+
+            # Initial Discovery Phase: Broadcast NEW_SAT message until ID is assigned
+            if not self.id:
+                if time.monotonic() - self.last_tx > 3.0:
+                    msg_out = Message("SAT", "NEW_SAT", self.sat_type_id)
+                    if self.transport_up.send(msg_out):
+                        self.last_tx = time.monotonic()
+                    else:
+                        # Back off slightly on send failure
+                        await asyncio.sleep(0.5)
+
+            # Normal Operation: Send STATUS message when triggered or every 2 seconds
+            else:
+                # Check if update needed (event trigger or timeout)
+                if self._status_event.is_set() or time.monotonic() - self.last_tx > 2.0:
+                    # Use get_status_bytes() to avoid string allocation overhead
+                    msg_out = Message(self.id, "STATUS", self._get_status_bytes())
+
+                    if self.transport_up.send(msg_out):
+                        self.last_tx = time.monotonic()
+                        self._status_event.clear()
+                    elif self._status_event.is_set():
+                        # If triggered by event but failed, retry quickly
+                        await asyncio.sleep(0.05)
+                        continue
+
+            # Base loop delay to yield to other tasks
+            await asyncio.sleep(0.1)
+
+    async def _task_rx_upstream(self):
+        """
+        Handle incoming upstream messages.
+
+        Performs two key functions:
+        1. Checks if message is for this device and processes it.
+        2. Application-Level Relay: Forwards *all* messages downstream to maintain the chain.
+        """
+        while True:
+            self.watchdog.check_in("rx_upstream")
+            try:
+                # Receive message via transport (async wait)
+                # This yields efficiently until a complete message is ready
+                message = await self.transport_up.receive()
+
+                if message:
+                    # 1. Local Processing
+                    # Process if addressed to us (ID match) or broadcast (ALL)
+                    if message.destination == self.id or message.destination == "ALL":
+                        await self._process_local_cmd(message.command, message.payload)
+                    if not message.destination == self.id:
+                        # 2. Forward Downstream (Application-level Relay)
+                        # We forward the message object downstream.
+                        if not self.transport_down.send(message):
+                            # Short delay if downstream buffer full, to avoid tight loop
+                            await asyncio.sleep(0.01)
+            except ValueError as e:
+                # Buffer overflow or CRC error
+                print(f"Transport Error: {e}")
+            except Exception as e:
+                print(f"Transport Unexpected Error: {e}")
+
     async def custom_start(self):
         """Custom startup sequence for the satellite. Override in subclasses."""
         raise NotImplementedError("custom_start() must be implemented by satellite subclasses.")
@@ -280,67 +372,37 @@ class SatelliteFirmware:
         """
         Main async loop for handling communication and tasks.
         """
+        # Register core watchdog flags for main tasks
+        self.watchdog.register_flags(
+            [
+                "power",
+                "connection",
+                "relay",
+                "tx_upstream",
+                "rx_upstream"
+            ]
+        )
+
         # Start the transport tasks
         self.transport_up.start()
         self.transport_down.start()
+
+        # Start transparent relay from downstream to upstream with watchdog check-in
         self.transport_up.enable_relay_from(
             self.transport_down,
             heartbeat_callback=lambda: self.watchdog.check_in("relay")
         )
 
-        # Start monitoring tasks
-        asyncio.create_task(self.monitor_power())
-        asyncio.create_task(self.monitor_connection())
+        tasks = [
+            self.monitor_power(),
+            self.monitor_connection(),
+            self._task_tx_upstream(),
+            self._task_rx_upstream(),
+            self.monitor_watchdog_feed()
+        ]
 
-        # Sat specific tasks
-        await self.custom_start()
+        # Add satellite-specific tasks from custom_start()
+        tasks.extend(await self.custom_start())
 
-        asyncio.create_task(self.monitor_watchdog_feed())
-
-        # Primary satellite loop
-        while True:
-            # Local status tasks
-            # Set LEDs based on power status
-            # Add visuals for local errors / status
-
-            # TX TO UPSTREAM
-            if not self.id: # Initial Discovery Phase
-                if time.monotonic() - self.last_tx > 3.0:
-                    msg_out = Message("SAT", "NEW_SAT", self.sat_type_id)
-                    if not self.transport_up.send(msg_out):
-                        await asyncio.sleep(0.5)  # This prevents flooding the transport with messages
-                    else:
-                        self.last_tx = time.monotonic()
-            else: # Normal Operation
-                if self._status_event.is_set() or time.monotonic() - self.last_tx > 2.0:
-                    # Use get_status_bytes() to avoid string allocation overhead
-                    # Message class supports both str and bytes payloads
-                    msg_out = Message(self.id, "STATUS", self._get_status_bytes())
-                    if not self.transport_up.send(msg_out):
-                        if self._status_event.is_set():
-                            # Continue to try again immediately
-                            continue
-                        else:
-                            await asyncio.sleep(0.01)  # quick retry for transient send failures
-                    else:
-                        self.last_tx = time.monotonic()
-                        self._status_event.clear()
-
-            # RX FROM UPSTREAM -> CMD PROCESSING & TX TO DOWNSTREAM
-            try:
-                # Receive message via transport (non-blocking)
-                message = self.transport_up.receive()
-                if message:
-                    # Process if addressed to us or broadcast
-                    if message.destination == self.id or message.destination == "ALL":
-                        await self._process_local_cmd(message.command, message.payload)
-                    # Forward message downstream
-                    if not self.transport_down.send(message):
-                        await asyncio.sleep(0.01)  # Short delay to prevent flooding if downstream is congested
-            except ValueError as e:
-                # Buffer overflow or other error
-                print(f"Transport Error: {e}")
-            except Exception as e:
-                print(f"Transport Unexpected Error: {e}")
-
-            await asyncio.sleep(0.01)
+        # Run all tasks concurrently
+        await asyncio.gather(*tasks)

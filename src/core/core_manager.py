@@ -478,11 +478,19 @@ class CoreManager:
 
         # Continue with other background tasks after power integrity is confirmed
         self.watchdog.register_flags(["sat_network"])
-        asyncio.create_task( # Satellite Network Management and Message Handling
+        asyncio.create_task( # Satellite Network Management
             self.sat_network.monitor_satellites(
                 heartbeat_callback=lambda: self.watchdog.check_in("sat_network")
             )
         )
+
+        self.watchdog.register_flags(["sat_messages"])
+        asyncio.create_task(
+            self.sat_network.monitor_messages(
+                heartbeat_callback=lambda: self.watchdog.check_in("sat_messages")
+            )
+        )
+
         self.watchdog.register_flags(["render"])
         asyncio.create_task( # Centralized Render Loop
             self.renderer.run(

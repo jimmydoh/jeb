@@ -13,6 +13,8 @@ class WatchdogManager:
         # Initialize flags for all tasks as False
         self._flags = {name: False for name in task_names}
 
+        self._rebooting = False  # Flag to indicate if a reboot is in progress
+
         # Enable the hardware watchdog if a timeout is provided
         if timeout:
             microcontroller.watchdog.timeout = timeout
@@ -42,9 +44,16 @@ class WatchdogManager:
         Returns True if fed, False if a task is hanging (which will eventually cause a reset).
         """
         if all(self._flags.values()):
-            microcontroller.watchdog.feed()
+            if not self._rebooting:
+                microcontroller.watchdog.feed()
             # Reset flags for the next cycle
             for name in self._flags:
                 self._flags[name] = False
             return True
         return False
+
+    def force_reboot(self):
+        """Force a reboot by not feeding the watchdog."""
+        microcontroller.watchdog.timeout = 1  # Set a very short timeout
+        microcontroller.watchdog.mode = microcontroller.watchdog.WatchDogMode.RESET
+        self._rebooting = True

@@ -145,14 +145,14 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
     async def custom_start(self):
         """Custom startup sequence for the Industrial Satellite."""
 
-        # Register the HID with the watchdog and start it
+        # Register additional watchdog flags
         self.watchdog.register_flags(["hw_hid"])
-        asyncio.create_task(self.monitor_hw_hid())
-
-        # Register renderer with the watchdog and start it with heartbeat callback
         self.watchdog.register_flags(["render"])
-        asyncio.create_task(
+
+        # Return list of background tasks to run concurrently with the main loop
+        return [
+            self.monitor_hw_hid(),
             self.renderer.run(
                 heartbeat_callback=lambda: self.watchdog.check_in("render")
             )
-        )
+        ]

@@ -37,6 +37,7 @@ class SatelliteDriver:
         self.last_tx = 0
         self.last_seen = 0
         self.is_active = True
+        self.was_offline = False
         self._retry_tasks = []
         self._retry_task_max = 5
 
