@@ -83,6 +83,29 @@ class SatelliteFirmware:
             timeout=5.0
         )
 
+    def __init_subclass__(cls, **kwargs):
+        """
+        Enforce implementation of required methods in subclasses.
+        This runs at class definition time (import time), providing early feedback.
+        """
+        super().__init_subclass__(**kwargs)
+
+        # List of methods that must be overridden by the subclass
+        required_methods = [
+            "_get_status_bytes",
+            "custom_start"
+        ]
+
+        for method in required_methods:
+            # Check if method exists and if it is different from the base class implementation
+            if (not hasattr(cls, method)
+                or getattr(cls, method)
+                is getattr(SatelliteFirmware, method)
+            ):
+                raise TypeError(
+                    f"Satellite subclass '{cls.__name__}' must implement method '{method}'"
+                )
+
     async def _handle_id_assign(self, val):
         if isinstance(val, bytes):
             val = val.decode('utf-8')
