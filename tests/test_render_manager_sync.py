@@ -16,10 +16,11 @@ class MockPixelObject:
 # Minimal RenderManager implementation for testing
 class RenderManager:
     """
-    Manages the centralized 60Hz render loop, frame sync, and hardware writes.
+    Manages the centralized render loop (default 60Hz), frame sync, and hardware writes.
     """
-    RENDER_FRAME_TIME = 1.0 / 60.0
+    DEFAULT_FRAME_RATE = 60  # Default frame rate in Hz
     DRIFT_ADJUSTMENT_FACTOR = 0.1  # 10% adjustment for gradual sync correction
+    MIN_SLEEP_DURATION = 0.005  # Minimum sleep to prevent event loop starvation
 
     def __init__(self, pixel_object, watchdog_flags=None, sync_role="NONE", network_manager=None):
         """
@@ -33,6 +34,9 @@ class RenderManager:
         self.watchdog = watchdog_flags
         self.sync_role = sync_role
         self.network = network_manager
+
+        # Mutable frame rate settings
+        self.target_frame_rate = self.DEFAULT_FRAME_RATE
 
         # List of managers to step() every frame (e.g., LEDManager, MatrixManager)
         self._animators = []
@@ -60,12 +64,13 @@ class RenderManager:
                 # Small drift: gradually adjust via sleep time modification
                 # If satellite is ahead (drift > 0), sleep MORE to slow down
                 # If satellite is behind (drift < 0), sleep LESS to speed up
+                frame_time = 1.0 / self.target_frame_rate
                 if drift > 0:
                     # Satellite ahead: slow down by sleeping more
-                    adjustment = self.DRIFT_ADJUSTMENT_FACTOR * self.RENDER_FRAME_TIME
+                    adjustment = self.DRIFT_ADJUSTMENT_FACTOR * frame_time
                 else:
                     # Satellite behind: speed up by sleeping less
-                    adjustment = -self.DRIFT_ADJUSTMENT_FACTOR * self.RENDER_FRAME_TIME
+                    adjustment = -self.DRIFT_ADJUSTMENT_FACTOR * frame_time
                 self.sleep_adjustment = adjustment
 
 
@@ -106,7 +111,8 @@ def test_sync_small_drift_nudge_ahead():
     assert renderer.frame_counter == 102, f"Expected frame_counter to remain 102, got {renderer.frame_counter}"
 
     # Should set positive adjustment (slow down by sleeping more)
-    expected_adjustment = renderer.DRIFT_ADJUSTMENT_FACTOR * renderer.RENDER_FRAME_TIME
+    frame_time = 1.0 / renderer.target_frame_rate
+    expected_adjustment = renderer.DRIFT_ADJUSTMENT_FACTOR * frame_time
     assert abs(renderer.sleep_adjustment - expected_adjustment) < 1e-9, \
         f"Expected sleep_adjustment to be {expected_adjustment}, got {renderer.sleep_adjustment}"
 
@@ -130,7 +136,8 @@ def test_sync_small_drift_nudge_behind():
     assert renderer.frame_counter == 100, f"Expected frame_counter to remain 100, got {renderer.frame_counter}"
 
     # Should set negative adjustment (speed up by sleeping less)
-    expected_adjustment = -renderer.DRIFT_ADJUSTMENT_FACTOR * renderer.RENDER_FRAME_TIME
+    frame_time = 1.0 / renderer.target_frame_rate
+    expected_adjustment = -renderer.DRIFT_ADJUSTMENT_FACTOR * frame_time
     assert abs(renderer.sleep_adjustment - expected_adjustment) < 1e-9, \
         f"Expected sleep_adjustment to be {expected_adjustment}, got {renderer.sleep_adjustment}"
 
@@ -222,7 +229,7 @@ def test_adjustment_values():
     pixels = MockPixelObject()
     renderer = RenderManager(pixels, sync_role="SLAVE")
 
-    frame_time = renderer.RENDER_FRAME_TIME
+    frame_time = 1.0 / renderer.target_frame_rate
     expected_magnitude = renderer.DRIFT_ADJUSTMENT_FACTOR * frame_time
 
     # Test ahead (positive adjustment to slow down by sleeping more)

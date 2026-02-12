@@ -5,10 +5,11 @@ from adafruit_ticks import ticks_ms
 
 class RenderManager:
     """
-    Manages the centralized 60Hz render loop, frame sync, and hardware writes.
+    Manages the centralized render loop (default 60Hz), frame sync, and hardware writes.
     """
-    RENDER_FRAME_TIME = 1.0 / 60.0
+    DEFAULT_FRAME_RATE = 60  # Default frame rate in Hz
     DRIFT_ADJUSTMENT_FACTOR = 0.1  # 10% adjustment for gradual sync correction
+    MIN_SLEEP_DURATION = 0.005  # Minimum sleep to prevent event loop starvation
 
     def __init__(self, pixel_object, sync_role="NONE", network_manager=None):
         """
@@ -20,6 +21,9 @@ class RenderManager:
         self.pixels = pixel_object
         self.sync_role = sync_role
         self.network = network_manager
+
+        # Mutable frame rate settings
+        self.target_frame_rate = self.DEFAULT_FRAME_RATE
 
         # List of managers to step() every frame (e.g., LEDManager, MatrixManager)
         self._animators = []
@@ -34,7 +38,7 @@ class RenderManager:
         self._animators.append(manager)
 
     async def run(self, heartbeat_callback=None):
-        """The main 60Hz loop."""
+        """The main render loop (default 60Hz, configurable via target_frame_rate)."""
         next_frame_time = time.monotonic()
 
         while True:
@@ -60,7 +64,8 @@ class RenderManager:
                     self.last_sync_broadcast = now
 
             # 5. Fixed Time Step Timing
-            next_frame_time += self.RENDER_FRAME_TIME
+            frame_time = 1.0 / self.target_frame_rate
+            next_frame_time += frame_time
             now = time.monotonic()
             sleep_duration = next_frame_time - now
 
@@ -72,9 +77,9 @@ class RenderManager:
             if sleep_duration > 0:
                 await asyncio.sleep(sleep_duration)
             else:
-                # Lagging: Yield but reset target to prevent death spiral
+                # Lagging: Reset target and enforce minimum sleep to prevent event loop starvation
                 next_frame_time = now
-                await asyncio.sleep(0)
+                await asyncio.sleep(self.MIN_SLEEP_DURATION)
 
     def apply_sync(self, core_frame):
         """Called by SLAVE devices when they receive a SYNC packet.
@@ -100,10 +105,11 @@ class RenderManager:
                 # Small drift: gradually adjust via sleep time modification
                 # If satellite is ahead (drift > 0), sleep MORE to slow down
                 # If satellite is behind (drift < 0), sleep LESS to speed up
+                frame_time = 1.0 / self.target_frame_rate
                 if drift > 0:
                     # Satellite ahead: slow down by sleeping more
-                    adjustment = self.DRIFT_ADJUSTMENT_FACTOR * self.RENDER_FRAME_TIME
+                    adjustment = self.DRIFT_ADJUSTMENT_FACTOR * frame_time
                 else:
                     # Satellite behind: speed up by sleeping less
-                    adjustment = -self.DRIFT_ADJUSTMENT_FACTOR * self.RENDER_FRAME_TIME
+                    adjustment = -self.DRIFT_ADJUSTMENT_FACTOR * frame_time
                 self.sleep_adjustment = adjustment

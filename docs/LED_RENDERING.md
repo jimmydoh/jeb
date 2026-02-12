@@ -5,10 +5,11 @@ This document describes the LED rendering architecture and frame synchronization
 ## Overview
 
 The JEB system implements a centralized LED rendering architecture where:
-- Each device (Core and Satellites) has a dedicated `render_loop()` that runs at 60Hz
+- Each device (Core and Satellites) has a dedicated `render_loop()` that runs at a configurable frame rate (default 60Hz)
 - The render loop is the ONLY place where `pixels.show()` is called (hardware write)
 - LED animations update memory buffers asynchronously
 - Frame sync protocol allows coordinated animations across devices
+- Minimum sleep duration prevents event loop starvation during lag
 
 ## Architecture
 
@@ -17,31 +18,36 @@ The JEB system implements a centralized LED rendering architecture where:
 Both CoreManager and Satellite firmware implement the same rendering pattern:
 
 ```python
-# Render loop configuration - runs at 60Hz for smooth LED updates
-RENDER_FRAME_TIME = 1.0 / 60.0  # ~0.0167 seconds per frame
+# Render loop configuration - default 60Hz, mutable via target_frame_rate
+DEFAULT_FRAME_RATE = 60  # Default frame rate in Hz
+MIN_SLEEP_DURATION = 0.005  # Minimum sleep to prevent event loop starvation
 
 async def render_loop(self):
     """Centralized hardware write task for NeoPixel LEDs.
     
     This is the ONLY place where self.root_pixels.show() should be called.
-    Runs at 60Hz to provide smooth, flicker-free LED updates while preventing
-    race conditions from multiple async tasks writing to the hardware simultaneously.
+    Runs at configurable frame rate (default 60Hz) to provide smooth, flicker-free 
+    LED updates while preventing race conditions from multiple async tasks writing 
+    to the hardware simultaneously.
     """
     while True:
         # Write the current buffer state to hardware
         self.root_pixels.show()
         # Increment local frame counter for sync tracking
         self.frame_counter += 1
-        # Run at configured frame rate (default 60Hz)
-        await asyncio.sleep(self.RENDER_FRAME_TIME)
+        # Calculate frame time based on target frame rate
+        frame_time = 1.0 / self.target_frame_rate
+        # Enforce minimum sleep to prevent event loop starvation when lagging
+        await asyncio.sleep(max(frame_time, self.MIN_SLEEP_DURATION))
 ```
 
 ### Why Centralized Rendering?
 
 1. **Prevents Race Conditions**: Only one task writes to hardware, eliminating interleaved partial updates
-2. **Smooth Animation**: Consistent 60Hz refresh rate provides flicker-free updates
+2. **Smooth Animation**: Consistent frame refresh rate provides flicker-free updates
 3. **Separation of Concerns**: Animation logic updates memory buffers, rendering handles hardware writes
 4. **Predictable Performance**: Known frame timing makes animation development easier
+5. **Event Loop Protection**: Minimum sleep duration ensures I/O tasks can run even when lagging
 
 ### Animation Flow
 
@@ -141,13 +147,29 @@ To create synchronized animations:
 
 ## Key Design Decisions
 
-### 60Hz Frame Rate
+### Configurable Frame Rate (Default 60Hz)
 
-- **Why 60Hz?**: 
+- **Default 60Hz**: 
   - Smooth animations (standard video frame rate)
   - Fast enough for responsive UI
   - Low enough CPU overhead for CircuitPython
   - Matches common display refresh rates
+- **Mutable target_frame_rate**: 
+  - Allows runtime adjustment based on performance constraints
+  - Can be reduced when system is under heavy load
+  - Provides flexibility for different animation requirements
+
+### Minimum Sleep Duration (0.005s)
+
+- **Event Loop Starvation Prevention**: 
+  - When lagging (frame time exceeded), enforces minimum 0.005s sleep
+  - Ensures networking, watchdog, and I/O tasks get CPU time
+  - Prevents tight loop that could starve other async tasks
+  - More conservative than `asyncio.sleep(0)` which yields immediately
+- **Performance Balance**:
+  - 0.005s (5ms) is long enough to allow meaningful I/O
+  - Short enough to maintain reasonable responsiveness when lagging
+  - Prevents cascading delays in distributed systems
 
 ### Advisory Sync (Not Blocking)
 
