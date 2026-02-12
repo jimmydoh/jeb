@@ -99,7 +99,9 @@ class RenderManager:
                             self.target_frame_rate * self.RECOVERY_FACTOR,
                             self.DEFAULT_FRAME_RATE
                         )
+                        # Reset both counters after adjustment for clean slate
                         self.consecutive_good_frames = 0
+                        self.consecutive_lag_frames = 0
             else:
                 # Lagging: Reset target and enforce minimum sleep to prevent event loop starvation
                 next_frame_time = now
@@ -116,7 +118,9 @@ class RenderManager:
                             self.target_frame_rate * self.BACKOFF_FACTOR,
                             self.MIN_FRAME_RATE
                         )
+                        # Reset both counters after adjustment for clean slate
                         self.consecutive_lag_frames = 0
+                        self.consecutive_good_frames = 0
 
     def apply_sync(self, core_frame):
         """Called by SLAVE devices when they receive a SYNC packet.
