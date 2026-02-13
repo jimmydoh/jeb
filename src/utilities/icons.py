@@ -194,6 +194,17 @@ class Icons:
         0,0,0,0,0,0,0,0
     ]
 
+    PONG = [
+        1, 1, 0, 0, 0, 0, 1, 1,  # Top bat (red)
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 5, 0, 0,  # Ball (white)
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 5, 0, 0, 0, 0, 0,  # Ball trail (white)
+        0, 0, 0, 0, 0, 0, 0, 0,
+        4, 4, 0, 0, 0, 0, 4, 4   # Bottom bat (green)
+    ]
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "SIMON": SIMON,
@@ -201,6 +212,7 @@ class Icons:
         "IND": IND,
         "SUCCESS": SUCCESS,
         "FAILURE": FAILURE,
+        "PONG": PONG,
         "0": ZERO,
         "1": ONE,
         "2": TWO,

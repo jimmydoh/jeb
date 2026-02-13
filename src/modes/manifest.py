@@ -92,6 +92,22 @@ MODE_REGISTRY = {
         "icon": "factory",
         "requires": ["INDUSTRIAL"],
         "settings": []
+    },
+    "PONG": {
+        "id": "PONG",
+        "name": "MINI PONG",
+        "module_path": "modes.pong",
+        "class_name": "PongMode",
+        "icon": "pong",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY", "NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
     }
 }
 
