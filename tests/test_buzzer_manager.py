@@ -125,6 +125,9 @@ buzzer_manager_module = importlib.util.module_from_spec(buzzer_spec)
 buzzer_spec.loader.exec_module(buzzer_manager_module)
 BuzzerManager = buzzer_manager_module.BuzzerManager
 
+# Import Waveforms for testing
+from utilities.synth_registry import Waveforms
+
 
 def test_buzzer_initialization():
     """Test BuzzerManager initialization."""
@@ -255,8 +258,6 @@ def test_stop_is_async():
 def test_engine_uses_square_wave():
     """Test that buzzer uses square wave by default."""
     print("\nTesting engine uses square wave...")
-    
-    from utilities.synth_registry import Waveforms
     
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
