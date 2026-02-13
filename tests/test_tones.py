@@ -4,11 +4,19 @@
 import sys
 import os
 
-# Add src/utilities to path for direct module import
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities'))
+# Mock CircuitPython modules before any imports
+class MockModule:
+    """Mock module that allows any attribute access."""
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
 
-# Import tones module directly
-import tones
+sys.modules['synthio'] = MockModule()
+
+# Add src to path for module import
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+# Import tones module
+from utilities import tones
 
 
 def test_note_frequencies_defined():
