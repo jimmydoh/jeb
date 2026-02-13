@@ -32,7 +32,7 @@ class MainMenu(UtilityMode):
         for mode_id, meta in self.core.mode_registry.items():
 
             # Skip system modes (like Main Menu itself, or Debug if not needed)
-            if mode_id in ["MAIN_MENU", "DASHBOARD"]:
+            if mode_id in ["MAINMENU", "DASHBOARD"]:
                 continue
 
             # Check requirements
