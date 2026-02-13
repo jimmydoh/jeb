@@ -6,6 +6,8 @@ import random
 from adafruit_ticks import ticks_ms, ticks_diff
 
 from utilities.palette import Palette
+from utilities import tones
+
 from .game_mode import GameMode
 
 class Simon(GameMode):
@@ -307,6 +309,6 @@ class Simon(GameMode):
         )
         await self.core.audio.stop_all()
         await self.core.buzzer.stop()
-        await self.core.buzzer.play_sequence(self.core.tones.GAME_OVER)
+        await self.core.buzzer.play_sequence(tones.GAME_OVER)
         await asyncio.sleep(2)
         return await self.game_over()
