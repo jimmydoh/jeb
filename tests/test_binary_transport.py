@@ -4,11 +4,18 @@
 import sys
 import os
 
+# Mock CircuitPython modules before any imports
+class MockModule:
+    """Mock module that allows any attribute access."""
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+sys.modules['synthio'] = MockModule()
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# Mock the COBS functions
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities'))
+# Import the COBS functions from utilities package
 from utilities import cobs_encode, cobs_decode
 
 
@@ -31,15 +38,6 @@ def calculate_crc8(data):
             crc &= 0xFF
 
     return crc
-
-
-# Mock utilities module
-class MockUtilities:
-    cobs_encode = staticmethod(cobs_encode)
-    cobs_decode = staticmethod(cobs_decode)
-    calculate_crc8 = staticmethod(calculate_crc8)
-
-sys.modules['utilities'] = MockUtilities()
 
 
 # Mock the UARTManager

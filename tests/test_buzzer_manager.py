@@ -106,6 +106,11 @@ class MockAudiopwmio:
 sys.modules['audiopwmio'] = MockAudiopwmio()
 
 
+# Import packages first to establish them as packages
+import utilities
+import utilities.synth_registry
+import managers
+
 # Import BuzzerManager directly using importlib to bypass managers/__init__.py
 import importlib.util
 spec = importlib.util.spec_from_file_location(

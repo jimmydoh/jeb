@@ -3,7 +3,6 @@
 
 import sys
 import os
-import importlib.util
 
 # Mock CircuitPython modules before any imports
 class MockModule:
@@ -16,13 +15,18 @@ sys.modules['synthio'] = MockModule()
 # Add src to path for module import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# Import tones module using importlib to bypass package issues
+# Import utilities package first to establish it as a package
+import utilities
+# Import synth_registry to ensure dependencies are loaded
+import utilities.synth_registry
+
+# Now import tones using importlib to bypass standard import caching issues
+import importlib.util
 spec = importlib.util.spec_from_file_location(
-    "tones",
+    "utilities.tones",
     os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities', 'tones.py')
 )
 tones_module = importlib.util.module_from_spec(spec)
-sys.modules['tones'] = tones_module
 spec.loader.exec_module(tones_module)
 tones = tones_module
 

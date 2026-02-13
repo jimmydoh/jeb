@@ -27,13 +27,6 @@ def calculate_crc8(data):
             crc &= 0xFF
     return crc
 
-class MockUtilities:
-    cobs_encode = staticmethod(cobs.cobs_encode)
-    cobs_decode = staticmethod(cobs.cobs_decode)
-    calculate_crc8 = staticmethod(calculate_crc8)
-
-sys.modules['utilities'] = MockUtilities()
-
 # Import payload parser functions
 parse_values = payload_parser.parse_values
 get_int = payload_parser.get_int

@@ -5,23 +5,22 @@ import sys
 import os
 import struct
 
+# Mock CircuitPython modules before any imports
+class MockModule:
+    """Mock module that allows any attribute access."""
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+sys.modules['synthio'] = MockModule()
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# Import payload_parser functions directly before mocking utilities
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities'))
+# Import payload_parser functions from utilities package
 from utilities.payload_parser import parse_values, unpack_bytes, get_int
 
 # Mock the COBS functions
 from utilities import cobs_encode, cobs_decode, calculate_crc8
-
-# Mock utilities module
-class MockUtilities:
-    cobs_encode = staticmethod(cobs_encode)
-    cobs_decode = staticmethod(cobs_decode)
-    calculate_crc8 = staticmethod(calculate_crc8)
-
-sys.modules['utilities'] = MockUtilities()
 
 
 # Mock the UARTManager
