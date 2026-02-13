@@ -66,7 +66,7 @@ class RelayManager:
             for i in targets:
                 self.relays[i].value = False
                 self.relay_states[i] = False
-            if cycles > 1:  # Add pause between cycles (except after last cycle)
+            if _ < cycles - 1:  # Add pause between cycles (except after last cycle)
                 await asyncio.sleep(duration)
     
     async def trigger_simultaneous(self, indices=None, duration=0.1, cycles=1):
@@ -91,7 +91,7 @@ class RelayManager:
                 if 0 <= i < self.num_relays:
                     self.relays[i].value = False
                     self.relay_states[i] = False
-            if cycles > 1:
+            if _ < cycles - 1:
                 await asyncio.sleep(duration)
     
     async def trigger_progressive(self, indices=None, duration=0.1, delay=0.05, cycles=1):
@@ -117,7 +117,7 @@ class RelayManager:
                 if 0 <= i < self.num_relays:
                     self.relays[i].value = False
                     self.relay_states[i] = False
-            if cycles > 1:
+            if _ < cycles - 1:
                 await asyncio.sleep(duration)
     
     async def trigger_random(self, indices=None, duration=0.1, timeframe=1.0, cycles=1):
@@ -157,7 +157,7 @@ class RelayManager:
                     self.relays[i].value = False
                     self.relay_states[i] = False
             
-            if cycles > 1:
+            if _ < cycles - 1:
                 await asyncio.sleep(duration)
     
     def slave_to_led(self, relay_index, led_manager, led_index):
@@ -251,7 +251,7 @@ class RelayManager:
             if indices_str == "ALL":
                 indices = None
             else:
-                indices = [get_int(values, i) for i in range(len(values)) if i > 0]
+                indices = [get_int(values, i) for i in range(1, len(values) - 2)]
             duration = get_float(values, len(values)-2, 0.1)
             cycles = get_int(values, len(values)-1, 1)
             await self.trigger_simultaneous(indices=indices, duration=duration, cycles=cycles)
@@ -262,7 +262,7 @@ class RelayManager:
             if indices_str == "ALL":
                 indices = None
             else:
-                indices = [get_int(values, i) for i in range(len(values)) if i > 1]
+                indices = [get_int(values, i) for i in range(1, len(values) - 3)]
             duration = get_float(values, len(values)-3, 0.1)
             delay = get_float(values, len(values)-2, 0.05)
             cycles = get_int(values, len(values)-1, 1)
@@ -274,7 +274,7 @@ class RelayManager:
             if indices_str == "ALL":
                 indices = None
             else:
-                indices = [get_int(values, i) for i in range(len(values)) if i > 1]
+                indices = [get_int(values, i) for i in range(1, len(values) - 3)]
             duration = get_float(values, len(values)-3, 0.1)
             timeframe = get_float(values, len(values)-2, 1.0)
             cycles = get_int(values, len(values)-1, 1)
