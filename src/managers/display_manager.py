@@ -11,20 +11,28 @@ class DisplayManager:
     
     Display Layout System:
     ----------------------
-    The display supports two layout modes:
+    The display supports three layout modes:
     
-    1. STANDARD LAYOUT (default): Three-zone design
+    1. LEGACY LAYOUT (default on initialization): Backward compatible
+       - Preserves original behavior with status labels and viewport
+       - Ensures existing modes work without modification
+    
+    2. STANDARD LAYOUT (recommended for new modes): Three-zone design
        - Header (top ~15px): System stats, mode indicators
        - Main/Central (middle ~35px): Mode content, status messages
        - Footer (bottom ~14px): Logs, console messages
        
-    2. CUSTOM LAYOUT: Full display control for modes requiring bespoke UI
+    3. CUSTOM LAYOUT: Full display control for modes requiring bespoke UI
        - Modes can overlay or completely replace the standard layout
        - Useful for games or utilities with specific display needs
     
     Usage:
     ------
-    Standard layout (recommended for most modes):
+    Legacy layout (automatic for existing modes):
+        display.update_status("Message", "Sub message")
+        display.load_view("dashboard")
+    
+    Standard layout (recommended for new modes):
         display.use_standard_layout()
         display.update_status("Main message", "Sub message")
         display.update_header("CPU: 45%")
@@ -46,7 +54,7 @@ class DisplayManager:
         self.hw.root_group = self.root
 
         # Track current layout mode
-        self._layout_mode = None  # "standard" or "custom"
+        self._layout_mode = None  # "legacy", "standard", or "custom"
         
         # ===== STANDARD LAYOUT COMPONENTS =====
         # Header zone (top, ~15px height): System stats, mode indicators
