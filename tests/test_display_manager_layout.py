@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Tests for DisplayManager layout system.
 
 These tests validate the new flexible layout system including standard
@@ -7,6 +8,7 @@ and custom layout modes, as well as backward compatibility with legacy mode.
 import unittest
 from unittest.mock import Mock, MagicMock, patch
 import sys
+import os
 
 # Mock CircuitPython modules that might be imported
 sys.modules['displayio'] = MagicMock()
@@ -37,14 +39,19 @@ sys.modules['watchdog'] = MagicMock()
 sys.modules['time'] = MagicMock()
 sys.modules['gc'] = MagicMock()
 
+# Add src/managers to path for direct module import
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'managers'))
+
+# Import DisplayManager module directly
+import display_manager
+DisplayManager = display_manager.DisplayManager
+
 class TestDisplayManagerLayoutSystem(unittest.TestCase):
     """Test DisplayManager layout modes and zone management."""
     
     def setUp(self):
         """Set up test fixtures."""
-        # Import after mocking dependencies
-        from src.managers.display_manager import DisplayManager
-        
+        # Use the already imported DisplayManager
         # Mock I2C bus
         self.mock_i2c = Mock()
         
@@ -234,7 +241,7 @@ class TestDisplayManagerZonePositions(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        from src.managers.display_manager import DisplayManager
+        # Use the already imported DisplayManager
         self.mock_i2c = Mock()
         self.display = DisplayManager(self.mock_i2c)
     
