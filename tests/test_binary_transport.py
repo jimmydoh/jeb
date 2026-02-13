@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Mock the COBS functions
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities'))
-from utilities.cobs import cobs_encode, cobs_decode
+from utilities import cobs_encode, cobs_decode
 
 
 def calculate_crc8(data):
