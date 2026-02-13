@@ -15,20 +15,20 @@ class MainMenu(UtilityMode):
         self.state = "DASHBOARD"
 
     def _build_menu_items(self):
-        """Dynamically build menu based on AVAILABLE_MODES and connected hardware.
+        """Dynamically build menu based on mode registry and connected hardware.
 
-        This method accesses self.core.modes which is a Dict[str, Type[BaseMode]]
-        mapping mode IDs to mode classes. Each mode class has a METADATA attribute
-        describing its requirements and configuration.
+        This method accesses self.core.mode_registry which is a Dict[str, dict]
+        mapping mode IDs to metadata dictionaries. Each metadata dict contains
+        module_path, class_name, requirements, settings, and other configuration.
+        Mode classes are lazily loaded via _load_mode_class() when needed.
 
         Returns:
-            List[Tuple[str, dict]]: List of (mode_id, metadata) tuples for modes
-                                     that have their requirements met.
+            List[str]: List of mode_id strings for modes that have their requirements met.
         """
         items = []
 
         # Sort by name or predefined order if you wish
-        # self.core.modes is Dict[mode_id: str, mode_class: Type[BaseMode]]
+        # self.core.mode_registry is Dict[mode_id: str, metadata: dict]
         for mode_id, meta in self.core.mode_registry.items():
 
             # Skip system modes (like Main Menu itself, or Debug if not needed)
