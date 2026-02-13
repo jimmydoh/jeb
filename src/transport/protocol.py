@@ -20,11 +20,30 @@ CMD_ERROR = "ERROR"
 CMD_LOG = "LOG"
 CMD_SYNC_FRAME = "SYNC_FRAME"
 CMD_POWER = "POWER"
+CMD_REBOOT = "REBOOT"
+CMD_HELLO = "HELLO"
+
+# LED Commands
+CMD_LED = "LED"
+CMD_LEDFLASH = "LEDFLASH"
+CMD_LEDBREATH = "LEDBREATH"
+CMD_LEDCYLON = "LEDCYLON"
+CMD_LEDCENTRI = "LEDCENTRI"
+CMD_LEDRAINBOW = "LEDRAINBOW"
+CMD_LEDGLITCH = "LEDGLITCH"
+
+# Display Commands
+CMD_DSP = "DSP"
+CMD_DSPCORRUPT = "DSPCORRUPT"
+CMD_DSPMATRIX = "DSPMATRIX"
+
+# Encoder Commands
 CMD_SETENC = "SETENC"
 
 # --- Command Mapping ---
 COMMAND_MAP = {
     # System & Discovery
+    CMD_HELLO: 0xAA,
     CMD_PING: 0x01,
     CMD_ACK: 0x02,
     CMD_NACK: 0x03,
@@ -35,6 +54,7 @@ COMMAND_MAP = {
     CMD_LOG: 0x08,
     CMD_SYNC_FRAME: 0x09,
     CMD_POWER: 0x0A,
+    CMD_REBOOT: 0x0B,
 
     # LED commands
     "LED": 0x10,
@@ -52,6 +72,8 @@ COMMAND_MAP = {
 
     # Encoder commands
     CMD_SETENC: 0x30,
+
+
 }
 
 # Special destination IDs
@@ -100,12 +122,14 @@ ENCODING_FLOATS = 'floats'
 #   'desc': Human-readable description
 #   'count': (optional) Expected number of values for validation
 PAYLOAD_SCHEMAS = {
-    # Core commands - these use text IDs that must not be interpreted as numbers
+    # Core commands
+    CMD_HELLO: {'type': ENCODING_RAW_TEXT, 'desc': 'Hello message with optional text'},
     "ID_ASSIGN": {'type': ENCODING_RAW_TEXT, 'desc': 'Device ID string like "0100"'},
     "NEW_SAT": {'type': ENCODING_RAW_TEXT, 'desc': 'Satellite type ID like "01"'},
     "ERROR": {'type': ENCODING_RAW_TEXT, 'desc': 'Error description text'},
     "LOG": {'type': ENCODING_RAW_TEXT, 'desc': 'Log message text'},
     "SYNC_FRAME": {'type': ENCODING_FLOATS, 'desc': 'Frame sync: frame_number,time_seconds'},
+    "REBOOT": {'type': ENCODING_RAW_TEXT, 'desc': 'Reboot command with optional reason text'},
 
     # LED commands - RGB values plus parameters (variable count OK)
     "LED": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness bytes'},

@@ -7,14 +7,14 @@ import time
 
 from adafruit_ht16k33.segments import Seg14x4
 
-from utilities import parse_values, get_float, get_str
+from utilities.payload_parser import parse_values, get_float, get_str
 
 class SegmentManager:
     """Manages dual 14-segment displays."""
-    def __init__(self, i2c):
-        self._display_right = Seg14x4(i2c, address=0x70)
+    def __init__(self, i2c, device_addresses=[0x70, 0x71]):
+        self._display_right = Seg14x4(i2c, address=device_addresses[0])
         self._display_right.brightness = 0.5
-        self._display_left = Seg14x4(i2c, address=0x71)
+        self._display_left = Seg14x4(i2c, address=device_addresses[1])
         self._display_left.brightness = 0.5
 
         self._display_task = None

@@ -37,15 +37,6 @@ def calculate_crc8(data):
     return crc
 
 
-# Mock utilities module
-class MockUtilities:
-    cobs_encode = staticmethod(cobs.cobs_encode)
-    cobs_decode = staticmethod(cobs.cobs_decode)
-    calculate_crc8 = staticmethod(calculate_crc8)
-
-sys.modules['utilities'] = MockUtilities()
-
-
 # Mock the UARTManager
 class MockUART:
     """Mock UART object for testing."""
@@ -146,6 +137,46 @@ class MockUARTManager:
 from transport import Message, UARTTransport
 
 
+def drain_tx_buffer(transport, mock_uart):
+    """Helper function to manually drain TX buffer for synchronous tests.
+    
+    Simulates what the async TX worker does, but synchronously.
+    """
+    while transport._tx_head != transport._tx_tail:
+        head = transport._tx_head
+        tail = transport._tx_tail
+        size = transport._tx_buffer_size
+        
+        # Determine contiguous chunk to write
+        if head > tail:
+            chunk = transport._tx_mv[tail:head]
+        else:
+            chunk = transport._tx_mv[tail:size]
+        
+        # Write to mock UART (convert memoryview to bytes)
+        transport.uart.write(bytes(chunk))
+        
+        # Advance tail
+        transport._tx_tail = (tail + len(chunk)) % size
+
+
+def receive_message_sync(transport):
+    """Helper function to manually receive a message for synchronous tests.
+    
+    Simulates what the async RX worker does, but synchronously.
+    Returns a message if available, None otherwise.
+    """
+    # First try to get from queue if workers have been run
+    msg = transport.receive_nowait()
+    if msg is not None:
+        return msg
+    
+    # Otherwise, manually process incoming data
+    transport._read_hw()
+    return transport._try_decode_one()
+
+
+
 def test_custom_command_set():
     """Test transport with a completely different command set (e.g., robotics project)."""
     print("\nTesting transport with custom robotics command set...")
@@ -174,6 +205,7 @@ def test_custom_command_set():
     # Send a robotics command
     msg = Message("BROADCAST", "MOVE_FORWARD", "100,50")
     transport.send(msg)
+    drain_tx_buffer(transport, mock_uart)
     
     # Verify it was sent
     assert len(mock_uart.sent_packets) == 1
@@ -181,7 +213,7 @@ def test_custom_command_set():
     # Receive it back
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    received = transport.receive()
+    received = receive_message_sync(transport)
     
     assert received is not None
     assert received.destination == "BROADCAST"
@@ -213,11 +245,12 @@ def test_minimal_command_set():
     # Send a sensor command
     msg = Message("ALL", "READ", "TEMP")
     transport.send(msg)
+    drain_tx_buffer(transport, mock_uart)
     
     # Verify it was sent and received
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    received = transport.receive()
+    received = receive_message_sync(transport)
     
     assert received is not None
     assert received.command == "READ"

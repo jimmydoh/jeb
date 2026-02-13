@@ -1,0 +1,6 @@
+{
+    "wifi_ssid": "TestNetwork",
+    "wifi_password": "TestPassword123",
+    "web_server_enabled": true,
+    "debug_mode": true
+}

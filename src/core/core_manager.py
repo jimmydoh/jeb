@@ -9,32 +9,32 @@ import busio
 import neopixel
 from adafruit_ticks import ticks_ms, ticks_diff
 
-from managers import (
-    AudioManager,
-    BuzzerManager,
-    DataManager,
-    DisplayManager,
-    HIDManager,
-    LEDManager,
-    MatrixManager,
-    PowerManager,
-    RenderManager,
-    SatelliteNetworkManager,
-    SynthManager,
-    WatchdogManager
-)
-from modes import AVAILABLE_MODES, BaseMode
-from transport import (
-    UARTTransport,
+from managers import PowerManager, WatchdogManager
+
+from managers.audio_manager import AudioManager
+from managers.buzzer_manager import BuzzerManager
+from managers.data_manager import DataManager
+from managers.display_manager import DisplayManager
+from managers.hid_manager import HIDManager
+from managers.led_manager import LEDManager
+from managers.matrix_manager import MatrixManager
+from managers.render_manager import RenderManager
+from managers.satellite_network_manager import SatelliteNetworkManager
+from managers.synth_manager import SynthManager
+
+from modes.manifest import MODE_REGISTRY
+
+from transport import UARTTransport
+from transport.protocol import (
     COMMAND_MAP,
     DEST_MAP,
     MAX_INDEX_VALUE,
     PAYLOAD_SCHEMAS,
 )
-from utilities import (
-    JEBPixel,
-    Pins,
-)
+
+from utilities.jeb_pixel import JEBPixel
+from utilities.pins import Pins
+from utilities import tones
 
 class CoreManager:
     """Class to hold global state for the master controller.
@@ -95,7 +95,7 @@ class CoreManager:
             Pins.UART_TX,
             Pins.UART_RX,
             baudrate=config.get("uart_baudrate", 115200),
-            receiver_buffer_size=config.get("uart_buffer_size", 512),
+            receiver_buffer_size=config.get("uart_buffer_size", 1024),
             timeout=0.01,
         )
 
@@ -105,7 +105,7 @@ class CoreManager:
         )
 
         # Init Basic Audio (Buzzer)
-        self.buzzer = BuzzerManager(Pins.BUZZER, volume=0.5)
+        self.buzzer = BuzzerManager(Pins.BUZZER)
 
         # Init Primary Audio (I2S) and Synthesizer
         self.audio = AudioManager(
@@ -121,10 +121,12 @@ class CoreManager:
         self.audio.attach_synth(self.synth.source)  # Connect synth to audio mixer
 
         # Init Display (OLED)
-        self.display = DisplayManager(self.i2c)
+        self.display = DisplayManager(self.i2c, device_address=Pins.I2C_ADDRESSES["OLED"])
         self.hid = HIDManager(
             encoders=Pins.ENCODERS,
+            mcp_chip="MCP23008",
             mcp_i2c=self.i2c,
+            mcp_i2c_address=Pins.I2C_ADDRESSES.get("EXPANDER"),
             mcp_int_pin=Pins.EXPANDER_INT,
             expanded_buttons=Pins.EXPANDER_BUTTONS,
         )
@@ -160,22 +162,15 @@ class CoreManager:
         self.renderer.add_animator(self.leds)
         self.renderer.add_animator(self.matrix)
 
-        # System State
-        self._mode_registry = {}
+        # System Modes
+        self.mode_registry = MODE_REGISTRY
+        self.loaded_modes = {} # Cache for instantiated mode classes
+        self.mode = "DASHBOARD" # Start in main menu mode
 
-        # modes: Public registry mapping mode IDs to mode classes
-        # See class docstring for detailed structure documentation
-        self.modes = {}
-        for mode_class in AVAILABLE_MODES:
-            # Store by class name for registry access
-            self._mode_registry[mode_class.__name__] = mode_class
-            # Store by mode ID for efficient lookup in main loop
-            # Safely access METADATA, defaulting if missing
-            meta = getattr(mode_class, "METADATA", BaseMode.METADATA)
-            self.modes[meta["id"]] = mode_class
-        self.mode = "DASHBOARD"
-
-        # Track e-stop 'Meltdown'
+        # --- SAFETY EVENTS ---
+        self.estop_event = asyncio.Event()
+        self.abort_event = asyncio.Event()
+        self.target_sat_event = asyncio.Event()
         self.meltdown = False
 
     def _get_mode(self, mode_name):
@@ -190,12 +185,63 @@ class CoreManager:
         Raises:
             KeyError: If the mode is not found in the registry
         """
-        if mode_name not in self._mode_registry:
-            available = ", ".join(sorted(self._mode_registry.keys()))
+        if mode_name not in [mode["id"] for mode in self.mode_registry]:
+            available = ", ".join(sorted([mode["id"] for mode in self.mode_registry]))
             raise KeyError(
                 f"Mode '{mode_name}' not found in registry. Available modes: {available}"
             )
-        return self._mode_registry[mode_name]
+        return next(mode for mode in self.mode_registry if mode["id"] == mode_name)
+
+    def _get_mode_metadata(self, mode_id):
+        """Get mode metadata from the registry.
+
+        Args:
+            mode_id: The unique identifier of the mode
+        Returns:
+            A dictionary containing the mode's metadata
+        Raises:
+            KeyError: If the mode_id is not found in the registry
+        """
+        if mode_id not in self.mode_registry:
+            raise KeyError(f"Mode ID '{mode_id}' not found in registry.")
+        return self.mode_registry[mode_id]
+
+    def _load_mode_class(self, mode_id):
+        """Dynamically load a mode class from the registry.
+
+        Args:
+            mode_id: The unique identifier of the mode to load
+
+        Returns:
+            The mode class
+
+        Raises:
+            ImportError: If the module or class cannot be imported
+            KeyError: If the mode_id is not in the registry
+        """
+        if mode_id in self.loaded_modes:
+            return self.loaded_modes[mode_id]
+
+        if mode_id not in self.mode_registry:
+            available = ", ".join(sorted(self.mode_registry.keys()))
+            raise KeyError(
+                f"Mode ID '{mode_id}' not found in registry. Available modes: {available}"
+            )
+
+        meta = self.mode_registry[mode_id]
+        module_path = meta["module_path"]
+        class_name = meta["class_name"]
+
+        try:
+            # Dynamic Import
+            module = __import__(module_path, None, None, [class_name])
+            mode_class = getattr(module, class_name)
+            self.loaded_modes[mode_id] = mode_class
+            return mode_class
+        except ImportError as e:
+            raise ImportError(f"Failed to import module '{module_path}' for mode '{mode_id}': {e}") from e
+        except AttributeError as e:
+            raise ImportError(f"Module '{module_path}' does not have class '{class_name}' for mode '{mode_id}': {e}") from e
 
     # Satellite Network Delegation Properties
     @property
@@ -242,51 +288,95 @@ class CoreManager:
             mode_coroutine (coroutine): The main game or mode coroutine to run.
             target_sat (Satellite, optional): Specific satellite to monitor.
         """
-        # Create the game as a background task
+        # Create the mode and monitor event tasks
         sub_task = asyncio.create_task(mode_instance.execute())
+        estop_task = asyncio.create_task(self.estop_event.wait())
+        abort_task = asyncio.create_task(self.abort_event.wait())
 
-        while not sub_task.done():
-            # Feed the watchdog only if all critical tasks are alive
-            self.watchdog.safe_feed()
+        if target_sat:
+            target_sat_monitor_task = asyncio.create_task(self.monitor_satellite(target_sat))
+            target_sat_task = asyncio.create_task(self.target_sat_event.wait())
 
-            # E-Stop engaged
-            if self.meltdown:
-                sub_task.cancel()
-                await self.cleanup_task(sub_task)
-                return "ESTOP_ABORT"
+        # Clear events before starting
+        self.abort_event.clear()
+        self.target_sat_event.clear()
 
-            # Long-press Button D to abort
-            if self.hid.is_button_pressed(3, long=True, duration=5000):
-                sub_task.cancel()
-                await self.display.update_status("USER ABORT", "EXITING MODE...")
-                await self.cleanup_task(sub_task)
-                return "MANUAL_ABORT"
+        # Wait for the first of the mode completion or any safety event
+        tasks_to_wait = [sub_task, estop_task, abort_task]
+        if target_sat:
+            tasks_to_wait.extend([target_sat_monitor_task, target_sat_task])
 
-            # Target satellite unplugged
-            # (if applicable)
-            if target_sat and not target_sat.is_active:
-                sub_task.cancel()
-                await self.cleanup_task(sub_task)
-                return "LINK_LOST"
-            await asyncio.sleep(0.1)
-        return "SUCCESS"
+        done, pending = await asyncio.wait(
+            tasks_to_wait,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        # Cleanup: Cancel any pending tasks
+        for task in pending:
+            task.cancel()
+
+        if target_sat:
+            # Ensure the satellite monitor task is also cancelled
+            target_sat_monitor_task.cancel()
+
+        # Determine the result based on which task completed
+        if estop_task in done:
+            await self.display.update_status("ESTOP ENGAGED", "EXITING MODE...")
+            return "ESTOP_ABORT"
+        elif abort_task in done:
+            await self.display.update_status("USER ABORT", "EXITING MODE...")
+            return "MANUAL_ABORT"
+        elif target_sat_task in done:
+            await self.display.update_status("LINK LOST", "EXITING MODE...")
+            return "LINK_LOST"
+
+        if sub_task in done:
+            # Propagate any exceptions from the mode task
+            try:
+                result = sub_task.result()  # Get the result or exception
+                return result if result else "SUCCESS"
+            except Exception as e:
+                print(f"Error in mode execution: {e}")
+                await self.display.update_status("MODE ERROR", "CHECK LOGS")
+                return "MODE_ERROR"
+
+        return "UNKNOWN_EXIT"
 
     # --- Background Tasks ---
     async def monitor_estop(self):
-        """Background task to monitor the E-Stop button (gameplay interaction).
+        """
+        Background task to monitor the E-Stop button.
+        Used for Gameplay elements only - NOT A SAFETY FEATURE.
 
         Engaging the E-Stop triggers meltdown mode with audio alarms.
 
-        Releasing the E-Stop resets the system.
+        Releasing the E-Stop returns to the normal state.
+
+        TODO: Decision - get rid of this altogether and just use the button
+        for manual aborts in modes? The meltdown state is fun but may not be
+        worth the complexity. Also prevents the button from being used as
+        an actual gameplay element if it's tied to a global meltdown state.
         """
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("estop")
 
-            if not self.hid.estop and not self.meltdown:
+            if self.meltdown:
+                if not self.hid.estop: # User reset the button
+                    self.meltdown = False
+                    self.estop_event.clear()  # Reset the event for future use
+                    await self.audio.play("system_reset.wav")
+                    await self.display.update_status("SAFETY RESET", "PLEASE STAND BY")
+                    await asyncio.sleep(2)
+                else:
+                    # Still in meltdown, continue strobing and waiting for reset
+                    await asyncio.sleep(0.05)
+                    continue
+            elif self.hid.estop:
+                # E-Stop has been engaged, trigger meltdown
                 self.meltdown = True
+                self.estop_event.set()  # Signal to any listening tasks that E-Stop is engaged
                 self.sat_network.send_all("LED", "ALL,0,0,0")  # Kill all LEDs
-
                 # Audio Alarms
                 await self.audio.play(
                     "background_winddown.wav", channel=self.audio.CH_ATMO, loop=False
@@ -298,22 +388,9 @@ class CoreManager:
                 await self.audio.play(
                     "voice_meltdown.wav", channel=self.audio.CH_VOICE, loop=True
                 )
-
-                # High Contrast Warning on OLED
                 self.display.update_status("!!! EMERGENCY STOP !!!", "PULL UP TO RESET")
 
-                # Strobe the neobar and satellite LEDs
-                while not self.hid.estop:  # While button is still latched down
-                    self.watchdog.check_in("estop")  # Signal that we are alive and waiting
-                    # TODO Implement alarm LED strobing
-                    await asyncio.sleep(0.2)
-
-                # Once button is twisted/reset
-                self.meltdown = False
-                await self.audio.play("system_reset.wav")
-                await self.display.update_status("SAFETY RESET", "PLEASE STAND BY")
-                await asyncio.sleep(2)
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.05)
 
     async def monitor_power(self):
         """Background task to watch for brownouts or disconnects."""
@@ -375,16 +452,39 @@ class CoreManager:
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("hw_hid")
-
             self.hid.hw_update()
-            await asyncio.sleep(0.01)
+
+            if self.hid.is_button_pressed(3, long=True, duration=5000):
+                # Long-press Button D to trigger manual abort
+                self.abort_event.set()
+
+            await asyncio.sleep(0.02) # Poll at 50Hz
+
+    async def monitor_satellite(self, sat):
+        """
+        Background task to monitor a specific satellite.
+        """
+        if not sat:
+            await asyncio.Event().wait()  # Wait indefinitely if no satellite provided
+            return
+
+        while sat.is_active:
+            await asyncio.sleep(0.5)  # Poll at 2Hz to save CPU
+
+        self.target_sat_event.set()  # Signal that the target satellite has been disconnected
+
+    async def monitor_watchdog_feed(self):
+        """Background task to feed the watchdog if all systems are healthy."""
+        while True:
+            self.watchdog.safe_feed()
+            await asyncio.sleep(1)  # Feed the watchdog every second
 
     async def start(self):
         """Main async loop for the Master Controller."""
         # --- POWER ON SELF TEST ---
         # Check power integrity before starting main application loop
         if self.power.check_power_integrity():
-            self.buzzer.play_song("POWER_UP")
+            self.buzzer.play_sequence(tones.POWER_UP)
             print("Power integrity check passed. Starting system...")
             await self.display.update_status("POWER OK", "STARTING SYSTEM...")
             await asyncio.sleep(1)
@@ -409,7 +509,7 @@ class CoreManager:
             asyncio.create_task(self.monitor_hw_hid())
 
         else:
-            self.buzzer.play_song("POWER_FAIL")
+            self.buzzer.play_sequence(tones.POWER_FAIL)
             print("Power integrity check failed! Check power supply and connections.")
             await self.display.update_status("POWER ERROR", "CHECK CONNECTIONS")
             # Do not start main loop if power is not stable
@@ -418,17 +518,27 @@ class CoreManager:
 
         # Continue with other background tasks after power integrity is confirmed
         self.watchdog.register_flags(["sat_network"])
-        asyncio.create_task( # Satellite Network Management and Message Handling
+        asyncio.create_task( # Satellite Network Management
             self.sat_network.monitor_satellites(
                 heartbeat_callback=lambda: self.watchdog.check_in("sat_network")
             )
         )
+
+        self.watchdog.register_flags(["sat_messages"])
+        asyncio.create_task(
+            self.sat_network.monitor_messages(
+                heartbeat_callback=lambda: self.watchdog.check_in("sat_messages")
+            )
+        )
+
         self.watchdog.register_flags(["render"])
         asyncio.create_task( # Centralized Render Loop
             self.renderer.run(
                 heartbeat_callback=lambda: self.watchdog.check_in("render")
             )
         )
+
+        asyncio.create_task(self.monitor_watchdog_feed())  # Start watchdog feed loop
 
         # --- Experimental / Future Use ---
         #self.watchdog.register_flags(["estop"])
@@ -439,26 +549,22 @@ class CoreManager:
         # TODO Add boot animation and audio
 
         while True:
-            # Feed the watchdog only if all critical tasks are alive
-            self.watchdog.safe_feed()
-
             # Meltdown state pauses the menu selection
             while self.meltdown:
-                self.watchdog.safe_feed()
                 await asyncio.sleep(0.1)
 
             # --- GENERIC MODE RUNNER ---
-            # Check if the mode is in self.modes (Dict[mode_id: str, mode_class: Type[BaseMode]])
-            if self.mode in self.modes:
-                mode_class = self.modes[self.mode]
-                # Access the mode's METADATA class attribute (documented in BaseMode)
-                meta = mode_class.METADATA
+            # Check if the mode is in self.mode_registry
+            if self.mode in self.mode_registry:
+                # Retrieve mode requirements
+                meta = self.mode_registry[self.mode]
+                requirements = meta.get("requires", [])
 
                 # Check Dependencies
                 target_sat = None
                 requirements_met = True
 
-                for req in meta.get("requires", []):
+                for req in requirements:
                     if req == "CORE":
                         continue
                     found = False
@@ -473,6 +579,18 @@ class CoreManager:
                         break
 
                 if requirements_met:
+
+                    # LAZY LOAD THE MODE CLASS
+                    try:
+                        mode_class = self._load_mode_class(self.mode)
+                    except (ImportError, KeyError) as e:
+                        print(f"Error loading mode '{self.mode}': {e}")
+                        await self.display.update_status("MODE LOAD ERROR", self.mode)
+                        await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
+                        await asyncio.sleep(2)
+                        self.mode = "DASHBOARD"  # Return to dashboard if mode fails to load
+                        continue
+
                     mode_instance = mode_class(self)
 
                     if target_sat:
@@ -520,7 +638,7 @@ class CoreManager:
                 else:
                     print(f"Cannot start {self.mode}: Missing Dependency")
                     await self.display.update_status(
-                        "REQUIREMENT NOT MET", f"NEED {', '.join(meta.get('requires', []))}"
+                        "REQUIREMENT MISSING", f"NEED: {', '.join(requirements)}"
                     )
                     await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
                     await asyncio.sleep(2)

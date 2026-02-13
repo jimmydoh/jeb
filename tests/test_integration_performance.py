@@ -39,14 +39,6 @@ def calculate_crc8(data):
 
     return crc
 
-# Mock utilities module
-class MockUtilities:
-    cobs_encode = staticmethod(cobs.cobs_encode)
-    cobs_decode = staticmethod(cobs.cobs_decode)
-    calculate_crc8 = staticmethod(calculate_crc8)
-
-sys.modules['utilities'] = MockUtilities()
-
 # Mock the UARTManager
 class MockUART:
     """Mock UART object for testing."""
@@ -135,7 +127,11 @@ class MockUARTManager:
         self.reset_input_buffer()
 
 # Import transport
-from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+from transport import Message, UARTTransport
+from transport.protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+
+# Import test helpers
+from test_helpers import drain_tx_buffer, receive_message_sync
 
 def simulate_led_command_processing(payload):
     """Simulate firmware processing of LED command with binary payload."""
@@ -172,14 +168,15 @@ def test_end_to_end_binary_flow():
     # Send LED command: LED 0, RGB(255, 128, 64), 2.0s duration, 0.8 brightness, priority 3
     msg_out = Message("0101", "LED", "0,255,128,64")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     print(f"  Master sent: {msg_out}")
     print(f"  Wire format: {mock_uart.sent_packets[0].hex()}")
 
     # SATELLITE SIDE: Receive the message
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
-    msg_in = transport.receive()
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
+    msg_in = receive_message_sync(transport)
 
     print(f"  Satellite received: {msg_in}")
     print(f"  Payload type: {type(msg_in.payload)}")
@@ -261,11 +258,12 @@ def test_struct_unpack_ultimate_performance():
     # Send LED command
     msg_out = Message("0101", "LED", "10,20,30,40,50,60,70")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     # Receive
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
-    msg_in = transport.receive()
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
+    msg_in = receive_message_sync(transport)
 
     # Option 1: Using parse_values (converts to list)
     values_list = parse_values(msg_in.payload)
@@ -308,10 +306,11 @@ def test_backward_compatibility():
     # Text command: DSP with message
     msg_out = Message("0101", "DSP", "HELLO WORLD")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
-    msg_in = transport.receive()
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
+    msg_in = receive_message_sync(transport)
 
     print(f"  Sent: {msg_out}")
     print(f"  Received payload type: {type(msg_in.payload)}")
@@ -342,10 +341,11 @@ def test_mixed_commands():
 
         msg_out = Message("0101", cmd, payload)
         transport.send(msg_out)
+        drain_tx_buffer(transport, mock_uart)
 
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-        mock_uart._in_waiting = len(mock_uart.sent_packets[0])
-        msg_in = transport.receive()
+        mock_uart._in_waiting = len(mock_uart.receive_buffer)
+        msg_in = receive_message_sync(transport)
 
         actual_type = "bytes" if isinstance(msg_in.payload, bytes) else "str"
 

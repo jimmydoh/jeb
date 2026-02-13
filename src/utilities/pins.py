@@ -10,8 +10,8 @@ class Pins:
         if profile == "CORE" and type_id == "00":
             cls.UART_TX = getattr(board, "GP0")
             cls.UART_RX = getattr(board, "GP1")
-            cls.ENCODER_1_A = getattr(board, "GP02")
-            cls.ENCODER_1_B = getattr(board, "GP03")
+            cls.ENCODER_1_A = getattr(board, "GP2")
+            cls.ENCODER_1_B = getattr(board, "GP3")
             cls.I2C_SDA = getattr(board, "GP4")
             cls.I2C_SCL = getattr(board, "GP5")
             cls.LED_CONTROL = getattr(board, "GP6")
@@ -20,7 +20,7 @@ class Pins:
             #SPARE GP9 (secondary UART RX)
             cls.BUZZER = getattr(board, "GP10")
             cls.EXPANDER_INT = getattr(board, "GP11")
-            # SPARE GP12
+            cls.ENCODER_PUSH = getattr(board, "GP12")
             # SPARE GP13
             cls.MOSFET_CONTROL = getattr(board, "GP14")
             cls.SATBUS_DETECT = getattr(board, "GP15")
@@ -33,12 +33,13 @@ class Pins:
             cls.I2S_SD  = getattr(board, "GP22")
             # GP23 - Internal Pico - Power Circuitry
             # GP24 - Internal Pico - VBUS Sense
-            cls.ENCODER_PUSH = getattr(board, "GP25")
+            # GP25 - User LED
             cls.ADC_SENSE_A = getattr(board, "GP26") # Pre-MOSFET 20V Input
             cls.ADC_SENSE_B = getattr(board, "GP27") # Post-MOSFET 20V Bus
             cls.ADC_SENSE_C = getattr(board, "GP28") # 5V Logic Rail
             cls.ADC_SENSE_D = getattr(board, "GP29") # 5V LED Rail
-            cls.EXPANDER = cls.Expander.initialize(profile=profile, type_id=type_id)
+            cls.Expander.initialize(profile=profile, type_id=type_id)
+            cls.EXPANDER = cls.Expander
 
             # Helper arrays
             cls.ENCODER_1 = [cls.ENCODER_1_A, cls.ENCODER_1_B, cls.ENCODER_PUSH]
@@ -51,12 +52,18 @@ class Pins:
                 cls.EXPANDER.BUTTON_D
             ]
 
+            # I2C Address Map
+            cls.I2C_ADDRESSES = {
+                "OLED": 0x3C,
+                "EXPANDER": 0x20
+            }
+
         elif profile == "SAT" and type_id == "01":
             # INDUSTRIAL SATELLITE - Type 01
             cls.UART_RX = getattr(board, "GP0")
             cls.UART_TX = getattr(board, "GP1")
-            cls.ENCODER_1_A = getattr(board, "GP02")
-            cls.ENCODER_1_B = getattr(board, "GP03")
+            cls.ENCODER_1_A = getattr(board, "GP2")
+            cls.ENCODER_1_B = getattr(board, "GP3")
             cls.I2C_SDA = getattr(board, "GP4")
             cls.I2C_SCL = getattr(board, "GP5")
             cls.LED_CONTROL = getattr(board, "GP6")
@@ -65,7 +72,7 @@ class Pins:
             cls.UART_DOWN_RX = getattr(board, "GP9")
             cls.BUZZER = getattr(board, "GP10")
             cls.EXPANDER_INT = getattr(board, "GP11")
-            # SPARE GP12
+            cls.ENCODER_PUSH = getattr(board, "GP12")
             # SPARE GP13
             cls.MOSFET_CONTROL = getattr(board, "GP14")
             cls.SATBUS_DETECT = getattr(board, "GP15")
@@ -78,7 +85,7 @@ class Pins:
             # SPARE cls.I2S_SD  = getattr(board, "GP22")
             # GP23 - Internal Pico - Power Circuitry
             # GP24 - Internal Pico - VBUS Sense
-            cls.ENCODER_PUSH = getattr(board, "GP25")
+            # GP25 - User LED
             cls.ADC_SENSE_A = getattr(board, "GP26") # Pre-MOSFET 20V Input
             cls.ADC_SENSE_B = getattr(board, "GP27") # Post-MOSFET 20V Bus
             cls.ADC_SENSE_C = getattr(board, "GP28") # 5V Main Rail
@@ -114,6 +121,13 @@ class Pins:
                 cls.EXPANDER.MOMENTARY_1_UP,
                 cls.EXPANDER.MOMENTARY_1_DOWN
             ]
+
+            # I2C Address Map
+            cls.I2C_ADDRESSES = {
+                "SEGMENT_LEFT": 0x70,
+                "SEGMENT_RIGHT": 0x71,
+                "EXPANDER": 0x20
+            }
 
         else:
             print(f"❗Unknown profile/type_id for Pins: {profile}/{type_id}. No pins assigned.❗")

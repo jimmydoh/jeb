@@ -5,6 +5,7 @@ import asyncio
 import audiobusio
 import audiocore
 import audiomixer
+from utilities.audio_channels import AudioChannels
 
 # Maximum file size (in bytes) for preloading into RAM
 # Files larger than this will be streamed from disk to prevent MemoryError
@@ -12,8 +13,22 @@ MAX_PRELOAD_SIZE_BYTES = 20 * 1024  # 20KB
 
 class AudioManager:
     """Manages audio playback and mixing."""
-    def __init__(self, sck, ws, sd, voice_count=4, root_data_dir="/"):
+    def __init__(self, sck, ws, sd, voice_count=None, root_data_dir="/"):
         self.root_data_dir = root_data_dir
+        
+        # Determine required voice count from channel definitions
+        required_voices = AudioChannels.get_required_voice_count()
+        
+        # Use provided voice_count if specified, otherwise use required minimum
+        # This maintains backward compatibility while ensuring sufficient voices
+        if voice_count is None:
+            voice_count = required_voices
+        elif voice_count < required_voices:
+            raise ValueError(
+                f"voice_count ({voice_count}) must be at least {required_voices} "
+                f"to support all defined audio channels"
+            )
+        
         self.audio = audiobusio.I2SOut(sck, ws, sd)
         self.mixer = audiomixer.Mixer(
             voice_count=voice_count,
@@ -25,10 +40,10 @@ class AudioManager:
         self.audio.play(self.mixer)
 
         # Channel Aliases for code readability
-        self.CH_ATMO = 0
-        self.CH_SFX  = 1
-        self.CH_VOICE = 2
-        self.CH_SYNTH = 3
+        self.CH_ATMO = AudioChannels.CH_ATMO
+        self.CH_SFX  = AudioChannels.CH_SFX
+        self.CH_VOICE = AudioChannels.CH_VOICE
+        self.CH_SYNTH = AudioChannels.CH_SYNTH
 
         # Cache for frequently used small sound files
         # Format: {"filename": RawSampleObject}

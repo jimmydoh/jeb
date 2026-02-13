@@ -10,25 +10,22 @@ import asyncio
 import busio
 import neopixel
 
-from utilities import (
-    JEBPixel,
-    Pins,
-    parse_values,
-    get_int,
-)
-from transport import (
+from utilities.jeb_pixel import JEBPixel
+from utilities.pins import Pins
+from utilities.payload_parser import parse_values, get_int
+
+from transport.protocol import (
     CMD_SYNC_FRAME,
     CMD_SETENC,
     LED_COMMANDS,
     DSP_COMMANDS,
 )
-from managers import (
-    HIDManager,
-    LEDManager,
-    RenderManager,
-    SegmentManager,
-)
-from .base import SatelliteFirmware
+from managers.hid_manager import HIDManager
+from managers.led_manager import LEDManager
+from managers.render_manager import RenderManager
+from managers.segment_manager import SegmentManager
+
+from .base_firmware import SatelliteFirmware
 
 TYPE_ID = "01"
 TYPE_NAME = "INDUSTRIAL"
@@ -54,14 +51,23 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
 
         # Init Segment Display
-        self.segment = SegmentManager(self.i2c)
+        self.segment = SegmentManager(
+            self.i2c,
+            device_addresses=[
+                Pins.I2C_ADDRESSES.get("SEGMENT_LEFT", 0x70),
+                Pins.I2C_ADDRESSES.get("SEGMENT_RIGHT", 0x71)
+            ]
+        )
 
         # Init HID
         self.hid = HIDManager(
-            latching_toggles=Pins.EXPANDER_LATCHING,
-            momentary_toggles=Pins.EXPANDER_MOMENTARY,
             encoders=Pins.ENCODERS,
             matrix_keypads=Pins.MATRIX_KEYPADS,
+            mcp_i2c=self.i2c,
+            mcp_i2c_address=Pins.I2C_ADDRESSES.get("EXPANDER"),
+            mcp_int_pin=Pins.EXPANDER_INT,
+            expanded_latching_toggles=Pins.EXPANDER_LATCHING,
+            expanded_momentary_toggles=Pins.EXPANDER_MOMENTARY,
             monitor_only=False
         )
 
@@ -122,13 +128,28 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
     def _get_status_bytes(self):
         return self.hid.get_status_bytes()
 
+#region --- Async Background Tasks ---
+    async def monitor_hw_hid(self):
+        """Background task to poll hardware inputs."""
+        while True:
+            # Set watchdog flag to indicate this task is alive
+            self.watchdog.check_in("hw_hid")
+            if self.hid.hw_update():
+                self.trigger_status_update()  # Trigger status update on state change
+            await asyncio.sleep(0.01) # Poll at 100Hz
+#endregion
+
     async def custom_start(self):
         """Custom startup sequence for the Industrial Satellite."""
-        self.watchdog.register_flags(["render"])  # Register render task with the watchdog
-        asyncio.create_task( # Start the RenderManager loop
+
+        # Register additional watchdog flags
+        self.watchdog.register_flags(["hw_hid"])
+        self.watchdog.register_flags(["render"])
+
+        # Return list of background tasks to run concurrently with the main loop
+        return [
+            self.monitor_hw_hid(),
             self.renderer.run(
                 heartbeat_callback=lambda: self.watchdog.check_in("render")
             )
-        )
-
-        #TODO: Do we need a hid monitor for the sats?
+        ]

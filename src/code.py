@@ -25,6 +25,7 @@ Test with multiple chained satellites.
 import asyncio
 import json
 import os
+import storage
 import time
 
 import supervisor
@@ -34,10 +35,12 @@ import supervisor
 # Instead, check if /sd directory exists in the filesystem
 # TODO: Fix this - I believe the /sd dir will exist regardless
 def is_sd_mounted():
-    """Check if SD card is mounted by checking for /sd directory via stat."""
+    """Check if SD card is mounted by verifying the mount point."""
     try:
-        os.stat('/sd')
-        return True
+        # storage.getmount returns the filesystem object mounted at path
+        # or None if nothing is mounted.
+        mount = storage.getmount('/sd')
+        return mount is not None
     except OSError:
         return False
 
@@ -65,7 +68,9 @@ def load_config():
         "uart_buffer_size": 512,  # Default UART buffer size
         "mount_sd_card": False,  # Whether to initialize SD card
         "debug_mode": False,  # Debug mode off by default
-        "test_mode": True  # Test mode on by default (real hardware should set to False)
+        "test_mode": True,  # Test mode on by default (real hardware should set to False)
+        "web_server_enabled": False,  # Web server disabled by default
+        "web_server_port": 80  # Default HTTP port
     }
     try:
         if file_exists("config.json"):
@@ -140,6 +145,28 @@ except ImportError:
     print("⚠️ Updater module not available")
 
 
+# --- WEB SERVER STARTUP (if enabled) ---
+web_server = None
+if config.get("web_server_enabled", False):
+    try:
+        from managers.web_server_manager import WebServerManager
+
+        # Check if WiFi is configured
+        if config.get("wifi_ssid") and config.get("wifi_password"):
+            print("\n" + "="*50)
+            print("   WEB SERVER INITIALIZATION")
+            print("="*50)
+            web_server = WebServerManager(config)
+            print("Web server manager initialized - will start with app")
+        else:
+            print("⚠️ WiFi credentials not configured - web server disabled")
+            print("Configure wifi_ssid and wifi_password in config.json")
+    except ImportError:
+        print("⚠️ WebServerManager not available - check dependencies")
+    except Exception as e:
+        print(f"⚠️ Web server initialization error: {e}")
+
+
 # --- APPLICATION RUN ---
 app = None
 
@@ -156,7 +183,7 @@ config["root_data_dir"] = ROOT_DATA_DIR
 
 if test_mode:
     print("⚠️ Running in TEST MODE. No main application will be loaded. ⚠️")
-    from managers import ConsoleManager
+    from managers.console_manager import ConsoleManager
     app = ConsoleManager(role, type_id)
 else:
     if role == "CORE" and type_id == "00":
@@ -164,7 +191,7 @@ else:
         app = CoreManager(config=config)
 
     elif role == "SAT" and type_id == "01":
-        from satellites import IndustrialSatelliteFirmware
+        from satellites.sat_01_firmware import IndustrialSatelliteFirmware
         app = IndustrialSatelliteFirmware()
 
     else:
@@ -181,7 +208,28 @@ if __name__ == "__main__":
                 time.sleep(1)
         else:
             print(f"Starting main app loop for {type_name} ")
-            asyncio.run(app.start())
+
+            # If web server is enabled, run both app and web server concurrently
+            if web_server is not None:
+                async def run_both():
+                    """Run both the main app and web server concurrently."""
+                    app_task = asyncio.create_task(app.start())
+                    web_task = asyncio.create_task(web_server.start())
+
+                    # Use return_exceptions=True to capture errors without stopping other tasks
+                    results = await asyncio.gather(app_task, web_task, return_exceptions=True)
+
+                    # Check for exceptions in either task
+                    for i, result in enumerate(results):
+                        if isinstance(result, Exception):
+                            task_name = "app" if i == 0 else "web_server"
+                            print(f"Task {task_name} failed with error: {result}")
+                            import traceback
+                            traceback.print_exception(type(result), result, result.__traceback__)
+
+                asyncio.run(run_both())
+            else:
+                asyncio.run(app.start())
     except Exception as e:
         print(f"🚨⛔ CRITICAL CRASH: {e}")
         import traceback

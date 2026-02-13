@@ -5,7 +5,9 @@ import asyncio
 import random
 from adafruit_ticks import ticks_ms, ticks_diff
 
-from utilities import Palette
+from utilities.palette import Palette
+from utilities import tones
+
 from .game_mode import GameMode
 
 class Simon(GameMode):
@@ -18,28 +20,6 @@ class Simon(GameMode):
     Sequence length: 6‐13, tone duration 0.32 seconds, pause between tones 0.05 seconds
     Sequence length: 14‐31, tone duration 0.22 seconds, pause between tones 0.05 seconds
     """
-
-    METADATA = {
-        "id": "SIMON",
-        "name": "SIMON",
-        "icon": "SIMON",
-        "settings": [
-            {
-                "key": "mode",
-                "label": "MODE",
-                "options": ["CLASSIC", "REVERSE", "BLIND"],
-                "default": "CLASSIC"
-            },
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["EASY","NORMAL", "HARD", "INSANE"],
-                "default": "NORMAL"
-            }
-        ],
-        "requires": ["CORE"] # Always Available
-    }
-
     def __init__(self, core):
         super().__init__(core, "SIMON", "Classic Simon Memory Game")
         # Map 0-3 inputs to colors
@@ -146,7 +126,7 @@ class Simon(GameMode):
                     )
 
                 # Audio: Play tone (non-blocking for better timing)
-                await self.core.buzzer.tone(
+                await self.core.buzzer.play_note(
                     self.colors_tones[val],
                     duration=final_speed
                 )
@@ -221,7 +201,7 @@ class Simon(GameMode):
                                 anim_mode="FLASH",
                                 speed=1.0 / self.speed_factor
                             )
-                            await self.core.buzzer.tone(
+                            await self.core.buzzer.play_note(
                                 self.colors_tones[i]
                             )
 
@@ -267,19 +247,25 @@ class Simon(GameMode):
                 speed=0.08,
                 duration=0.48
             )
-            await self.core.buzzer.play_sequence([
-                (self.colors_tones[sequence[-1]], 0.02),
-                ("-", 0.01),
-                (self.colors_tones[sequence[-1]], 0.07),
-                ("-", 0.01),
-                (self.colors_tones[sequence[-1]], 0.07),
-                ("-", 0.01),
-                (self.colors_tones[sequence[-1]], 0.07),
-                ("-", 0.01),
-                (self.colors_tones[sequence[-1]], 0.07),
-                ("-", 0.01),
-                (self.colors_tones[sequence[-1]], 0.07),
-            ])
+
+            await self.core.buzzer.play_sequence(
+                {
+                    "bpm": 120,
+                    "sequence": [
+                        (self.colors_tones[sequence[-1]], 0.02),
+                        ("-", 0.01),
+                        (self.colors_tones[sequence[-1]], 0.07),
+                        ("-", 0.01),
+                        (self.colors_tones[sequence[-1]], 0.07),
+                        ("-", 0.01),
+                        (self.colors_tones[sequence[-1]], 0.07),
+                        ("-", 0.01),
+                        (self.colors_tones[sequence[-1]], 0.07),
+                        ("-", 0.01),
+                        (self.colors_tones[sequence[-1]], 0.07),
+                    ]
+                }
+            )
 
             # Calculate score based on speed (faster is better)
             round_duration = ticks_diff(ticks_ms(), input_phase_start)
@@ -323,6 +309,6 @@ class Simon(GameMode):
         )
         await self.core.audio.stop_all()
         await self.core.buzzer.stop()
-        await self.core.buzzer.play_song("GAME_OVER")
+        await self.core.buzzer.play_sequence(tones.GAME_OVER)
         await asyncio.sleep(2)
         return await self.game_over()

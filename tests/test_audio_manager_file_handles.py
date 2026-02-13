@@ -90,12 +90,45 @@ class MockAudioMixer:
     Mixer = MockMixer
 
 
+# Mock more modules
+class MockModule:
+    """Mock module that allows any attribute access."""
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+sys.modules['digitalio'] = MockModule()
+sys.modules['board'] = MockModule()
+sys.modules['busio'] = MockModule()
+sys.modules['adafruit_mcp230xx'] = MockModule()
+sys.modules['adafruit_mcp230xx.mcp23017'] = MockModule()
+sys.modules['adafruit_ticks'] = MockModule()
+sys.modules['microcontroller'] = MockModule()
+sys.modules['neopixel'] = MockModule()
+sys.modules['displayio'] = MockModule()
+sys.modules['usb_hid'] = MockModule()
+sys.modules['adafruit_display_text'] = MockModule()
+sys.modules['adafruit_display_text.label'] = MockModule()
+sys.modules['adafruit_ssd1306'] = MockModule()
+sys.modules['terminalio'] = MockModule()
+sys.modules['adafruit_hid'] = MockModule()
+sys.modules['adafruit_hid.keyboard'] = MockModule()
+sys.modules['adafruit_hid.keycode'] = MockModule()
+sys.modules['adafruit_hid.consumer_control'] = MockModule()
+sys.modules['adafruit_hid.consumer_control_code'] = MockModule()
+sys.modules['pwmio'] = MockModule()
+sys.modules['analogio'] = MockModule()
+sys.modules['synthio'] = MockModule()
+sys.modules['adafruit_led_animation'] = MockModule()
+sys.modules['adafruit_led_animation.animation'] = MockModule()
+sys.modules['adafruit_led_animation.animation.solid'] = MockModule()
+
 # Replace the imports
 sys.modules['audiobusio'] = MockAudioBusIO
 sys.modules['audiocore'] = MockAudioCore
 sys.modules['audiomixer'] = MockAudioMixer
 
 # Now import the AudioManager
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'managers'))
 from audio_manager import AudioManager
 

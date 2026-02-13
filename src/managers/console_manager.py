@@ -5,8 +5,10 @@ import busio
 import microcontroller
 import supervisor
 
-from managers import BuzzerManager
-from utilities import Pins,tones
+from managers.buzzer_manager import BuzzerManager
+
+from utilities.pins import Pins
+from utilities import tones
 
 
 class ConsoleManager():
@@ -53,7 +55,7 @@ class ConsoleManager():
         print("Initializing BuzzerManager on GP10...")
 
         try:
-            buzzer = BuzzerManager(Pins.BUZZER, volume=0.5, testing=True)
+            buzzer = BuzzerManager(Pins.BUZZER)
         except Exception as e:
             print(f"FAILED to init buzzer: {e}")
             return
@@ -77,20 +79,22 @@ class ConsoleManager():
 
             if choice == "0":
                 buzzer.stop()
-                buzzer.buzzer.deinit()
                 break
 
             elif choice == "1":
                 print("Playing 440Hz...")
-                buzzer.tone(440, 1.0)
+                buzzer.play_note(440, 1.0)
 
             elif choice == "2":
                 print("Playing Scale...")
-                scale = [
-                    ('C4', 0.2), ('D4', 0.2), ('E4', 0.2), ('F4', 0.2),
-                    ('G4', 0.2), ('A4', 0.2), ('B4', 0.2), ('C5', 0.4)
-                ]
-                buzzer.play_song({'sequence': scale, 'bpm': 120})
+                sequence_data = {
+                    'bpm': 120,
+                    'sequence': [
+                        ('C4', 0.2), ('D4', 0.2), ('E4', 0.2), ('F4', 0.2),
+                        ('G4', 0.2), ('A4', 0.2), ('B4', 0.2), ('C5', 0.4)
+                    ]
+                }
+                buzzer.play_sequence(sequence_data)
 
             else:
                 # 3. Handle Dynamic Selection
@@ -104,7 +108,7 @@ class ConsoleManager():
                     if 0 <= preset_index < len(presets):
                         name, data = presets[preset_index]
                         print(f"Playing {name}...")
-                        buzzer.play_song(data)
+                        buzzer.play_sequence(data)
                     else:
                         print("Invalid selection.")
 

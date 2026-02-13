@@ -39,29 +39,20 @@ class BaseMode:
                 }
             ]
         }
-    
+
     Access Pattern:
         Modes are registered in CoreManager.modes as:
             Dict[mode_id, mode_class]
-        
+
         To access mode metadata from a registered mode:
             meta = self.core.modes[mode_id].METADATA
             mode_name = meta["name"]
             requirements = meta["requires"]
     """
 
-    # Default Metadata
-    METADATA = {
-        "id": "UNKNOWN",
-        "name": "Unknown Mode",
-        "icon": "DEFAULT",
-        "requires": ["CORE"],
-        "settings": []
-    }
-
     def __init__(self, core, name="MODE", description=""):
         self.core = core
-        self.name = name if name else self.METADATA["name"]
+        self.name = name
         self.description = description
         self.variant = "DEFAULT"
 

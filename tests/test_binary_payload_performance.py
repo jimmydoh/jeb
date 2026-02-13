@@ -5,45 +5,22 @@ import sys
 import os
 import struct
 
+# Mock CircuitPython modules before any imports
+class MockModule:
+    """Mock module that allows any attribute access."""
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+sys.modules['synthio'] = MockModule()
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# Import payload_parser functions directly before mocking utilities
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities'))
-from payload_parser import parse_values, unpack_bytes, get_int
+# Import payload_parser functions from utilities package
+from utilities.payload_parser import parse_values, unpack_bytes, get_int
 
 # Mock the COBS functions
-import cobs
-
-
-def calculate_crc8(data):
-    """Calculate CRC-8 checksum."""
-    crc = 0x00
-    polynomial = 0x07
-
-    # Handle both str and bytes input
-    if isinstance(data, str):
-        data = data.encode('utf-8')
-
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            if crc & 0x80:
-                crc = (crc << 1) ^ polynomial
-            else:
-                crc <<= 1
-            crc &= 0xFF
-
-    return crc
-
-
-# Mock utilities module
-class MockUtilities:
-    cobs_encode = staticmethod(cobs.cobs_encode)
-    cobs_decode = staticmethod(cobs.cobs_decode)
-    calculate_crc8 = staticmethod(calculate_crc8)
-
-sys.modules['utilities'] = MockUtilities()
+from utilities import cobs_encode, cobs_decode, calculate_crc8
 
 
 # Mock the UARTManager
@@ -140,7 +117,11 @@ class MockUARTManager:
 
 
 # Now import the transport classes
-from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+from transport import Message, UARTTransport
+from transport.protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+
+# Import test helpers
+from test_helpers import drain_tx_buffer, receive_message_sync
 
 def test_binary_payload_returns_bytes():
     """Test that binary payloads are returned as bytes, not strings."""
@@ -153,11 +134,12 @@ def test_binary_payload_returns_bytes():
     # Send a message with numeric payload (will be encoded as binary)
     msg_out = Message("0101", "LED", "0,255,128,64")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     # Receive it back
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     assert msg_in is not None, "Should receive a message"
     # Without schema, text payloads remain as strings if printable
@@ -180,11 +162,12 @@ def test_text_payload_returns_string():
     # Send a message with text payload
     msg_out = Message("0101", "DSP", "HELLO")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     # Receive it back
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
-    mock_uart._in_waiting = len(mock_uart.sent_packets[0])
-    msg_in = transport.receive()
+    mock_uart._in_waiting = len(mock_uart.receive_buffer)
+    msg_in = receive_message_sync(transport)
 
     assert msg_in is not None, "Should receive a message"
     assert isinstance(msg_in.payload, str), f"Expected str, got {type(msg_in.payload)}"
@@ -270,11 +253,12 @@ def test_no_string_boomerang():
     # Send LED command with 4 values using tuple for binary encoding
     msg_out = Message("0101", "LED", (0, 255, 128, 64))
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     # Receive it
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     # With ENCODING_NUMERIC_BYTES schema, payload is returned as tuple directly
     # (no string conversion - that's the fix!)
@@ -308,10 +292,11 @@ def test_heap_efficiency():
 
     msg_out = Message("0101", "LED", (10, 20, 30, 40))
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
 
     mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     # The payload is now tuple - no intermediate string objects created!
     assert isinstance(msg_in.payload, tuple), f"Expected tuple, got {type(msg_in.payload)}"

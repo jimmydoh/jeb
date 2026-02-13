@@ -3,7 +3,8 @@
 
 import asyncio
 
-from utilities import Palette, Icons
+from utilities.palette import Palette
+from utilities.icons import Icons
 
 from .base_pixel_manager import BasePixelManager
 
@@ -20,19 +21,19 @@ class MatrixManager(BasePixelManager):
         if y % 2 == 0:
             return (y * 8) + x
         return (y * 8) + (7 - x)
-    
+
     def _get_dimmed_color(self, base_color, brightness):
         """
         Stateless brightness calculation.
         Sacrifices a tiny amount of CPU speed for significantly better memory stability.
-        
+
         Args:
             base_color: Tuple of (r, g, b) values
             brightness: Float from 0.0 to 1.0
-            
+
         Returns:
             Tuple of brightness-adjusted (r, g, b) values
-            
+
         Note:
             On RP2350 (150MHz+), this math is incredibly fast. Removed the cache
             to prevent heap fragmentation in CircuitPython's non-compacting GC.
@@ -41,7 +42,7 @@ class MatrixManager(BasePixelManager):
             return base_color
         if brightness <= 0.0:
             return (0, 0, 0)
-            
+
         # On RP2350, this math is incredibly fast
         return (
             int(base_color[0] * brightness),
@@ -51,7 +52,7 @@ class MatrixManager(BasePixelManager):
 
     def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None):
         """Sets a specific pixel on the matrix.
-        
+
         Note: The 'show' parameter is deprecated and ignored.
         Hardware writes are now centralized in CoreManager.render_loop().
         """
@@ -65,7 +66,7 @@ class MatrixManager(BasePixelManager):
 
     def fill(self, color, show=True, anim_mode=None, speed=1.0, duration=None):
         """Fills the entire matrix with a single color or simple animation.
-        
+
         Note: The 'show' parameter is deprecated and ignored.
         Hardware writes are now centralized in CoreManager.render_loop().
         """
@@ -82,7 +83,7 @@ class MatrixManager(BasePixelManager):
         """
         Internal method to perform SLIDE_LEFT animation.
         Runs as a background task to avoid blocking the caller.
-        
+
         Note: Hardware writes are now centralized in CoreManager.render_loop().
         """
         try:

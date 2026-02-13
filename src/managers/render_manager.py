@@ -5,10 +5,16 @@ from adafruit_ticks import ticks_ms
 
 class RenderManager:
     """
-    Manages the centralized 60Hz render loop, frame sync, and hardware writes.
+    Manages the centralized render loop (default 60Hz), frame sync, and hardware writes.
     """
-    RENDER_FRAME_TIME = 1.0 / 60.0
+    DEFAULT_FRAME_RATE = 60  # Default frame rate in Hz
     DRIFT_ADJUSTMENT_FACTOR = 0.1  # 10% adjustment for gradual sync correction
+    MIN_SLEEP_DURATION = 0.005  # Minimum sleep to prevent event loop starvation
+    MIN_FRAME_RATE = 10  # Minimum frame rate when backing off (Hz)
+    BACKOFF_THRESHOLD = 5  # Number of consecutive lag frames before backing off
+    BACKOFF_FACTOR = 0.9  # Reduce frame rate by 10% when backing off
+    RECOVERY_THRESHOLD = 20  # Number of consecutive good frames before recovering
+    RECOVERY_FACTOR = 1.05  # Increase frame rate by 5% when recovering
 
     def __init__(self, pixel_object, sync_role="NONE", network_manager=None):
         """
@@ -21,6 +27,9 @@ class RenderManager:
         self.sync_role = sync_role
         self.network = network_manager
 
+        # Mutable frame rate settings
+        self.target_frame_rate = self.DEFAULT_FRAME_RATE
+
         # List of managers to step() every frame (e.g., LEDManager, MatrixManager)
         self._animators = []
 
@@ -29,12 +38,19 @@ class RenderManager:
         self.last_sync_broadcast = 0.0
         self.sleep_adjustment = 0.0  # For gradual drift correction
 
+        # Adaptive frame rate tracking
+        self.consecutive_lag_frames = 0
+        self.consecutive_good_frames = 0
+
     def add_animator(self, manager):
         """Register a manager that needs its .animate_loop(step=True) called."""
         self._animators.append(manager)
 
     async def run(self, heartbeat_callback=None):
-        """The main 60Hz loop."""
+        """The main render loop (default 60Hz, configurable via target_frame_rate).
+        
+        Automatically adapts frame rate when unable to keep up with target timing.
+        """
         next_frame_time = time.monotonic()
 
         while True:
@@ -60,7 +76,8 @@ class RenderManager:
                     self.last_sync_broadcast = now
 
             # 5. Fixed Time Step Timing
-            next_frame_time += self.RENDER_FRAME_TIME
+            frame_time = 1.0 / self.target_frame_rate
+            next_frame_time += frame_time
             now = time.monotonic()
             sleep_duration = next_frame_time - now
 
@@ -71,10 +88,39 @@ class RenderManager:
 
             if sleep_duration > 0:
                 await asyncio.sleep(sleep_duration)
+                # Track good frames for potential recovery
+                self.consecutive_good_frames += 1
+                self.consecutive_lag_frames = 0
+                
+                # Gradually recover frame rate if consistently keeping up
+                if self.consecutive_good_frames >= self.RECOVERY_THRESHOLD:
+                    if self.target_frame_rate < self.DEFAULT_FRAME_RATE:
+                        self.target_frame_rate = min(
+                            self.target_frame_rate * self.RECOVERY_FACTOR,
+                            self.DEFAULT_FRAME_RATE
+                        )
+                        # Reset both counters after adjustment for clean slate
+                        self.consecutive_good_frames = 0
+                        self.consecutive_lag_frames = 0
             else:
-                # Lagging: Yield but reset target to prevent death spiral
+                # Lagging: Reset target and enforce minimum sleep to prevent event loop starvation
                 next_frame_time = now
-                await asyncio.sleep(0)
+                await asyncio.sleep(self.MIN_SLEEP_DURATION)
+                
+                # Track lag frames for potential backoff
+                self.consecutive_lag_frames += 1
+                self.consecutive_good_frames = 0
+                
+                # Gradually reduce frame rate if consistently lagging
+                if self.consecutive_lag_frames >= self.BACKOFF_THRESHOLD:
+                    if self.target_frame_rate > self.MIN_FRAME_RATE:
+                        self.target_frame_rate = max(
+                            self.target_frame_rate * self.BACKOFF_FACTOR,
+                            self.MIN_FRAME_RATE
+                        )
+                        # Reset both counters after adjustment for clean slate
+                        self.consecutive_lag_frames = 0
+                        self.consecutive_good_frames = 0
 
     def apply_sync(self, core_frame):
         """Called by SLAVE devices when they receive a SYNC packet.
@@ -100,10 +146,11 @@ class RenderManager:
                 # Small drift: gradually adjust via sleep time modification
                 # If satellite is ahead (drift > 0), sleep MORE to slow down
                 # If satellite is behind (drift < 0), sleep LESS to speed up
+                frame_time = 1.0 / self.target_frame_rate
                 if drift > 0:
                     # Satellite ahead: slow down by sleeping more
-                    adjustment = self.DRIFT_ADJUSTMENT_FACTOR * self.RENDER_FRAME_TIME
+                    adjustment = self.DRIFT_ADJUSTMENT_FACTOR * frame_time
                 else:
                     # Satellite behind: speed up by sleeping less
-                    adjustment = -self.DRIFT_ADJUSTMENT_FACTOR * self.RENDER_FRAME_TIME
+                    adjustment = -self.DRIFT_ADJUSTMENT_FACTOR * frame_time
                 self.sleep_adjustment = adjustment

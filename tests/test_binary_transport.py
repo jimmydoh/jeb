@@ -4,12 +4,19 @@
 import sys
 import os
 
+# Mock CircuitPython modules before any imports
+class MockModule:
+    """Mock module that allows any attribute access."""
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+sys.modules['synthio'] = MockModule()
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# Mock the COBS functions
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities'))
-import cobs
+# Import the COBS functions from utilities package
+from utilities import cobs_encode, cobs_decode
 
 
 def calculate_crc8(data):
@@ -31,15 +38,6 @@ def calculate_crc8(data):
             crc &= 0xFF
 
     return crc
-
-
-# Mock utilities module
-class MockUtilities:
-    cobs_encode = staticmethod(cobs.cobs_encode)
-    cobs_decode = staticmethod(cobs.cobs_decode)
-    calculate_crc8 = staticmethod(calculate_crc8)
-
-sys.modules['utilities'] = MockUtilities()
 
 
 # Mock the UARTManager
@@ -139,7 +137,47 @@ class MockUARTManager:
 
 
 # Now import the transport classes
-from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+from transport import Message, UARTTransport
+from transport.protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+
+def drain_tx_buffer(transport, mock_uart):
+    """Helper function to manually drain TX buffer for synchronous tests.
+
+    Simulates what the async TX worker does, but synchronously.
+    """
+    while transport._tx_head != transport._tx_tail:
+        head = transport._tx_head
+        tail = transport._tx_tail
+        size = transport._tx_buffer_size
+
+        # Determine contiguous chunk to write
+        if head > tail:
+            chunk = transport._tx_mv[tail:head]
+        else:
+            chunk = transport._tx_mv[tail:size]
+
+        # Write to mock UART (convert memoryview to bytes)
+        transport.uart.write(bytes(chunk))
+
+        # Advance tail
+        transport._tx_tail = (tail + len(chunk)) % size
+
+
+def receive_message_sync(transport):
+    """Helper function to manually receive a message for synchronous tests.
+
+    Simulates what the async RX worker does, but synchronously.
+    Returns a message if available, None otherwise.
+    """
+    # First try to get from queue if workers have been run
+    msg = transport.receive_nowait()
+    if msg is not None:
+        return msg
+
+    # Otherwise, manually process incoming data
+    transport._read_hw()
+    return transport._try_decode_one()
+
 
 def test_message_creation():
     """Test Message class creation and properties."""
@@ -165,6 +203,7 @@ def test_binary_transport_send_simple():
     # Send a message
     msg = Message("ALL", "ID_ASSIGN", "0100")
     transport.send(msg)
+    drain_tx_buffer(transport, mock_uart)
 
     # Verify packet was sent
     assert len(mock_uart.sent_packets) == 1
@@ -192,6 +231,7 @@ def test_binary_transport_send_led_command():
     # Send LED command with numeric values
     msg = Message("0101", "LED", "0,255,128,64")
     transport.send(msg)
+    drain_tx_buffer(transport, mock_uart)
 
     packet = mock_uart.sent_packets[0]
     print(f"  LED command packet (hex): {packet.hex()}")
@@ -213,6 +253,7 @@ def test_binary_transport_receive_simple():
     # First send a message to get valid packet format
     msg_out = Message("0101", "STATUS", "100,200")
     transport.send(msg_out)
+    drain_tx_buffer(transport, mock_uart)
     sent_packet = mock_uart.sent_packets[0]
 
     # Put the packet into receive buffer
@@ -220,7 +261,7 @@ def test_binary_transport_receive_simple():
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
 
     # Receive the message
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     assert msg_in is not None, "Should receive a message"
     assert msg_in.destination == "0101", f"Expected dest '0101', got '{msg_in.destination}'"
@@ -252,12 +293,13 @@ def test_binary_transport_roundtrip():
 
         # Send
         transport.send(msg_out)
+        drain_tx_buffer(transport, mock_uart)
         sent_packet = mock_uart.sent_packets[0]
 
         # Receive
         mock_uart.receive_buffer.extend(sent_packet)
         mock_uart._in_waiting = len(mock_uart.receive_buffer)
-        msg_in = transport.receive()
+        msg_in = receive_message_sync(transport)
 
         assert msg_in is not None, f"Failed to receive message: {msg_out}"
         assert msg_in.destination == msg_out.destination, \
@@ -280,6 +322,7 @@ def test_binary_transport_invalid_crc():
     # Send a valid message
     msg = Message("0101", "STATUS", "100")
     transport.send(msg)
+    drain_tx_buffer(transport, mock_uart)
     packet = mock_uart.sent_packets[0]
 
     # Corrupt the packet (modify a byte in COBS data)
@@ -290,7 +333,7 @@ def test_binary_transport_invalid_crc():
     # Try to receive corrupted packet
     mock_uart.receive_buffer.extend(bytes(corrupted))
     mock_uart._in_waiting = len(mock_uart.receive_buffer)
-    msg_in = transport.receive()
+    msg_in = receive_message_sync(transport)
 
     assert msg_in is None, "Should reject message with corrupted data"
 
@@ -305,7 +348,7 @@ def test_binary_transport_no_data():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Try to receive when nothing is available
-    msg = transport.receive()
+    msg = receive_message_sync(transport)
 
     assert msg is None, "Should return None when no data available"
 
@@ -342,6 +385,7 @@ def test_binary_vs_text_overhead():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
     msg = Message("0101", "STATUS", "100,200,50")
     transport.send(msg)
+    drain_tx_buffer(transport, mock_uart)
     binary_packet = mock_uart.sent_packets[0]
     binary_size = len(binary_packet)
 
@@ -368,11 +412,12 @@ def test_special_destinations():
 
         msg_out = Message(dest, cmd, payload)
         transport.send(msg_out)
+        drain_tx_buffer(transport, mock_uart)
 
         # Receive back
         mock_uart.receive_buffer.extend(mock_uart.sent_packets[0])
         mock_uart._in_waiting = len(mock_uart.receive_buffer)
-        msg_in = transport.receive()
+        msg_in = receive_message_sync(transport)
 
         assert msg_in is not None
         assert msg_in.destination == dest, f"Destination mismatch: {dest} != {msg_in.destination}"
