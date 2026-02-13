@@ -68,7 +68,9 @@ class PongMode(GameMode):
         self.game_mode = self.core.data.get_setting("PONG", "mode", "1P")
         self.difficulty = self.core.data.get_setting("PONG", "difficulty", "NORMAL")
         
-        # Set variant for high score tracking (only for 1P mode)
+        # Set variant for high score tracking
+        # 1P mode tracks high scores separately per difficulty level
+        # This allows fair comparison within each difficulty tier
         self.variant = f"{self.game_mode}_{self.difficulty}" if self.game_mode == "1P" else "2P"
         
         # Check for Industrial satellite if in 2P mode
@@ -109,9 +111,7 @@ class PongMode(GameMode):
         self.core.display.use_standard_layout()
         
         # Intro
-        mode_text = f"{self.game_mode} MODE"
-        if self.game_mode == "1P":
-            mode_text += f" - {self.difficulty}"
+        mode_text = f"{self.game_mode} MODE - {self.difficulty}" if self.game_mode == "1P" else f"{self.game_mode} MODE"
         await self.core.display.update_status("MINI PONG", mode_text)
         await self.core.matrix.show_icon("PONG", anim_mode="PULSE", speed=2.0)
         await asyncio.sleep(2.0)
@@ -201,7 +201,7 @@ class PongMode(GameMode):
         # Get encoder position and map to bat position (0-6)
         encoder_pos = self.core.hid.encoder_positions[0]
         # Map encoder to 0-6 range (allows 2-pixel bat to fit in 8-pixel width)
-        # Python's modulo handles negative values correctly (wraps naturally)
+        # Python's modulo with negative numbers wraps naturally: -1 % 7 = 6, -2 % 7 = 5, etc.
         self.player_bat_x = encoder_pos % 7
     
     def update_cpu_bat(self, now):
@@ -235,9 +235,12 @@ class PongMode(GameMode):
             return
         
         # Get encoder position from satellite (index 0)
-        encoder_pos = self.industrial_sat.hid.encoder_positions[0]
-        # Map encoder to 0-6 range (allows 2-pixel bat to fit in 8-pixel width)
-        self.cpu_bat_x = encoder_pos % 7
+        # Check that encoder_positions list has at least one element
+        if len(self.industrial_sat.hid.encoder_positions) > 0:
+            encoder_pos = self.industrial_sat.hid.encoder_positions[0]
+            # Map encoder to 0-6 range (allows 2-pixel bat to fit in 8-pixel width)
+            # Python's modulo with negative numbers wraps naturally: -1 % 7 = 6, -2 % 7 = 5, etc.
+            self.cpu_bat_x = encoder_pos % 7
     
     def update_ball(self):
         """Update ball position and handle collisions."""
@@ -305,13 +308,18 @@ class PongMode(GameMode):
     def calculate_1p_score(self):
         """Calculate final score for 1P mode based on win margin and difficulty.
         
+        Precondition: Called only when player wins (player_score >= 7)
+        
         Scoring system:
         - Base score: 100 points for winning
         - Win margin bonus: +50 points per game lead (7-0 = +300, 7-6 = +0)
         - Difficulty multiplier: EASY=0.75x, NORMAL=1.0x, HARD=1.5x, INSANE=2.0x
         """
         base_score = 100
-        win_margin = self.player_score - self.cpu_score  # Will be 1-7
+        # Win margin represents point difference at victory (1-7 range)
+        # Examples: 7-6 = margin of 1, 7-0 = margin of 7
+        # Since this is only called when player wins, margin is always positive
+        win_margin = self.player_score - self.cpu_score
         margin_bonus = (win_margin - 1) * 50  # 0 to 300 points
         
         # Difficulty multiplier
