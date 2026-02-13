@@ -30,15 +30,12 @@ def _generate_saw(sample_size=512, max_amp=32000):
 
 def _generate_triangle(sample_size=512, max_amp=32000):
     b = array.array("h", [0] * sample_size)
-    quarter = sample_size // 4
-    three_quarter = 3 * sample_size // 4
     for i in range(sample_size):
-        if i < quarter:
-            val = i / quarter
-        elif i < three_quarter:
-            val = 1 - (i - quarter) / quarter
-        else:
-            val = -1 + (i - three_quarter) / quarter
+        # 1. Create a ramp from 0.0 to 1.0
+        phase = i / sample_size
+        # 2. Shift and use absolute value to create the 'V' shape
+        # 4 * abs(phase - 0.5) - 1  gives a range of -1 to 1
+        val = 1 - 4 * abs(0.5 - ((phase + 0.25) % 1.0))
         b[i] = int(val * max_amp)
     return b
 
