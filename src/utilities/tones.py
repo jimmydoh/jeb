@@ -7,12 +7,7 @@ Designed for use with SynthManager via AudioManager and BuzzerManager.
 
 import re
 
-# Import your registry from the other file
-try:
-    from utilities.synth_registry import Patches
-except ImportError:
-    # Fallback if running on PC/Testing without the registry
-    Patches = None
+from utilities.synth_registry import Patches
 
 # --- FREQUENCIES (4th Octave Reference) ---
 NOTE_FREQUENCIES = {
@@ -48,47 +43,48 @@ T = 0.33 # Triplet
 # A quick, optimistic ascending major triad (C-E-G)
 SYSTEM_BOOT = {
     'bpm': 120,
-    'patch': Patches.SELECT if Patches else None, # Clean Square or Sine
+    'patch': Patches.SELECT, # Clean Square or Sine
     'sequence': [('C4', S), ('E4', S), ('G4', Q)]
 }
 
 # A "Windows-style" shutdown (Descending)
 SYSTEM_SHUTDOWN = {
     'bpm': 100,
-    'patch': Patches.IDLE_HUM if Patches else None, # Softer, fading sound
+    'patch': Patches.IDLE_HUM, # Softer, fading sound
     'sequence': [('G4', E), ('E4', E), ('C4', H)]
 }
 
 # "Critical Error" - The classic "Windows Dong" interval
 CRITICAL_STOP = {
     'bpm': 120,
-    'patch': Patches.ERROR if Patches else None, # Harsh Saw wave
+    'patch': Patches.ERROR, # Harsh Saw wave
     'sequence': [('A3', Q)] # Just one abrupt low note
 }
 
 # "Message Received" (Similar to iOS Tri-tone)
 NOTIFY_INBOX = {
     'bpm': 180,
-    'patch': Patches.SUCCESS if Patches else None, # Bell-like
+    'patch': Patches.SUCCESS, # Bell-like
     'sequence': [('E5', S), ('C5', S), ('A5', Q)]
 }
 
 # Play this very fast when scrolling through a menu
 UI_TICK = {
     'bpm': 200,
-    'patch': Patches.CLICK if Patches else None, # Ultra short envelope
+    'patch': Patches.CLICK, # Ultra short envelope
     'sequence': [('C6', N64)]
 }
 
 # "Save Complete" / Checkpoint
 SAVE_OK = {
     'bpm': 140,
-    'patch': Patches.SUCCESS if Patches else None,
+    'patch': Patches.SUCCESS,
     'sequence': [('A4', S), ('A4', S), ('E5', H)]
 }
 
 BEEP = {
     'bpm': 120,
+    'patch': Patches.BEEP,
     'sequence': [('C5', S)]
 }
 
@@ -134,7 +130,7 @@ UI_CONFIRM = {
 # Mario Coin (Fast B5 -> E6)
 COIN = {
     'bpm': 200,
-    'patch': Patches.RETRO_COIN if Patches else None,
+    'patch': Patches.RETRO_COIN,
     'sequence': [(1000, S), (1333, Q * 1.5)]
 }
 
@@ -191,7 +187,7 @@ GAME_OVER = {
 # The "Nokia Tune" (Gran Vals)
 NOKIA_TUNE = {
     'bpm': 160,
-    'patch': Patches.BEEP if Patches else None,
+    'patch': Patches.BEEP,
     'sequence': [
         ('E6', E), ('D6', E), ('F#5', Q), ('G#5', Q),
         ('C#6', E), ('B5', E), ('D5', Q), ('E5', Q),
@@ -203,7 +199,7 @@ NOKIA_TUNE = {
 # Star Wars - Imperial March
 IMPERIAL_MARCH = {
     'bpm': 105,
-    'patch': Patches.ERROR if Patches else None, # Saw wave fits the aggressive tone
+    'patch': Patches.ERROR, # Saw wave fits the aggressive tone
     'sequence': [
         ('G4', Q), ('G4', Q), ('G4', Q),
         ('D#4', E), ('A#4', S), ('G4', Q),
@@ -212,7 +208,8 @@ IMPERIAL_MARCH = {
 }
 
 MARIO_THEME = {
-    'bpm': 180,
+    'bpm': 100,
+    'patch': Patches.RETRO_LEAD, # Square wave with instant attack
     'sequence': [
         # --- INTRO ---
         ('E6', E), ('E6', E), ('-', E), ('E6', E),
@@ -258,7 +255,8 @@ MARIO_THEME = {
 }
 
 MARIO_THEME_ALT = {
-    'bpm': 180,
+    'bpm': 100,
+    'patch': Patches.RETRO_LEAD, # Square wave with instant attack
     'sequence': [
         # Intro
         ('E6', E), ('E6', E), ('-', E), ('E6', E), ('-', E), ('C6', E), ('E6', Q),
@@ -275,6 +273,7 @@ MARIO_THEME_ALT = {
 
 MARIO_UNDERGROUND = {
     'bpm': 100,
+    'patch': Patches.RETRO_LEAD, # Square wave with instant attack
     'sequence': [
         ('C4', S), ('A3', S), ('A#3', S), ('A3', S),
         ('F3', S), ('G3', S),
@@ -285,6 +284,7 @@ MARIO_UNDERGROUND = {
 
 TETRIS_THEME = {
     'bpm': 140,
+    'patch': Patches.RETRO_LEAD, # Square wave with instant attack
     'sequence': [
         ('E5', Q), ('B4', E), ('C5', E), ('D5', Q),
         ('C5', E), ('B4', E), ('A4', Q), ('A4', E),
@@ -320,7 +320,7 @@ MAINFRAME_THINKING = {
 # Uses a dissonant tritone interval (C to F#)
 RADIATION_WARNING = {
     'bpm': 240,
-    'patch': Patches.ALARM if Patches else None,
+    'patch': Patches.ALARM,
     'sequence': [
         ('C6', S), ('F#6', S), ('C6', S), ('F#6', S),
         ('C6', S), ('F#6', S), ('C6', S), ('F#6', S)
@@ -331,7 +331,7 @@ RADIATION_WARNING = {
 # Rapidly rising pitch
 WARP_ENGAGE = {
     'bpm': 300, # Ultra fast
-    'patch': Patches.ENGINE_HUM if Patches else None, # Slow attack smoothes this out
+    'patch': Patches.ENGINE_HUM, # Slow attack smoothes this out
     'sequence': [
         ('C3', S), ('E3', S), ('G3', S),
         ('C4', S), ('E4', S), ('G4', S),

@@ -30,18 +30,17 @@ class SynthManager:
         """Returns the synth object to be fed into AudioMixer."""
         return self.synth
 
-    def play_note(self, frequency, patch_name="SELECT", duration=None):
+    def play_note(self, frequency, patch=None, duration=None):
         """
         Trigger a note.
 
         Args:
             frequency (float): Frequency in Hz.
-            patch_name (str): Key from Patches registry (e.g., 'SELECT').
+            patch (dict): The synth patch to use.
             duration (float): If set, note auto-releases after seconds.
                               If None, note holds until stop_note is called.
         """
-        patch = getattr(Patches, patch_name, Patches.SELECT)
-
+        patch = patch or Patches.SELECT
         wave = self.override if self.override else patch["wave"]
 
         # Create the note object
@@ -74,20 +73,24 @@ class SynthManager:
         await asyncio.sleep(duration)
         self.synth.release(note_obj)
 
-    async def play_sequence(self, sequence_data, patch_name="SELECT"):
+    async def play_sequence(self, sequence_data, patch=None):
         """
         Play a sequence of notes defined in Tones format.
 
         Args:
             sequence_data (dict): Dict with 'bpm' and 'sequence' list.
-            patch_name (str): The synth patch to use.
+            patch (dict): The synth patch to use.
         """
         bpm = sequence_data.get('bpm', 120)
         beat_duration = 60.0 / bpm
 
-        patch = getattr(Patches, patch_name, Patches.SELECT)
+        # LOGIC UPDATE:
+        # sequence_data.get('patch') -> Returns Patch Object or None
+        # patch -> Returns Patch Object or None
+        # Patches.SELECT -> The guaranteed fallback
+        active_patch = sequence_data.get('patch') or patch or Patches.SELECT
 
-        wave = self.override if self.override else patch["wave"]
+        wave = self.override if self.override else active_patch["wave"]
 
         for item in sequence_data['sequence']:
             # Handle both (freq, dur) and ('NoteName', dur) formats
@@ -100,7 +103,7 @@ class SynthManager:
                 n = synthio.Note(
                     frequency=freq,
                     waveform=wave,
-                    envelope=patch["envelope"]
+                    envelope=active_patch["envelope"]
                 )
                 self.synth.press(n)
                 await asyncio.sleep(duration_sec)

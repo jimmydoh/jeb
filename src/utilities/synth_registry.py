@@ -8,6 +8,7 @@ import array
 import math
 import synthio
 
+#region --- Waveform Maths ---
 def _generate_sine(sample_size=512, max_amp=32000):
     b = array.array("h", [0] * sample_size)
     for i in range(sample_size):
@@ -46,6 +47,7 @@ def _generate_pulse(sample_size=512, max_amp=32000, duty=0.25):
     for i in range(sample_size):
         b[i] = max_amp if i < cutoff else -max_amp
     return b
+#endregion
 
 class Waveforms:
     """Generates and stores single-cycle waveforms."""
@@ -100,6 +102,23 @@ class Envelopes:
         sustain_level=0.6
     )
 
+    # 8-Bit Game Lead (Instant ON, Full Volume, Quick Release)
+    GAME_LEAD = synthio.Envelope(
+        attack_time=0.01,   # Almost instant (prevents popping)
+        decay_time=0.0,     # No volume drop
+        release_time=0.1,   # Crisp end, no muddy overlapping
+        attack_level=0.8,   # 80% volume (saves headroom for chords)
+        sustain_level=0.8
+    )
+
+    # SFX: Punchy start, quick fade to 50%, sharp release
+    GAME_SFX = synthio.Envelope(
+        attack_time=0.01,
+        decay_time=0.1,    # The "Ping" effect
+        release_time=0.2,  # Ring out slightly when finished
+        attack_level=1.0,  # Max volume impact
+        sustain_level=0.5  # Echo/Ring level
+    )
 
 class Patches:
     """Named combinations of Waveforms and Envelopes."""
@@ -166,16 +185,23 @@ class Patches:
         )
     }
 
+    # Classic NES Melody
+    RETRO_LEAD = {
+        "wave": Waveforms.SQUARE, # The authentic Mario waveform
+        "envelope": Envelopes.GAME_LEAD
+    }
+
+    RETRO_SFX = {
+        "wave": Waveforms.PULSE,
+        "envelope": Envelopes.GAME_SFX
+    }
+
     RETRO_COIN = {
         "wave": Waveforms.PULSE,
-        "envelope": synthio.Envelope(
-            attack_time=0.01,
-            decay_time=0.1,
-            release_time=0.1,
-            attack_level=0.8,
-            sustain_level=0.5
-        )
+        "envelope": Envelopes.GAME_SFX
     }
+
+
 
     TEXT_SCROLL = {
         "wave": Waveforms.TRIANGLE,
