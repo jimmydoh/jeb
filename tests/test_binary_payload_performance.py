@@ -10,37 +10,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Import payload_parser functions directly before mocking utilities
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities'))
-from payload_parser import parse_values, unpack_bytes, get_int
+from utilities.payload_parser import parse_values, unpack_bytes, get_int
 
 # Mock the COBS functions
-import cobs
-
-
-def calculate_crc8(data):
-    """Calculate CRC-8 checksum."""
-    crc = 0x00
-    polynomial = 0x07
-
-    # Handle both str and bytes input
-    if isinstance(data, str):
-        data = data.encode('utf-8')
-
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            if crc & 0x80:
-                crc = (crc << 1) ^ polynomial
-            else:
-                crc <<= 1
-            crc &= 0xFF
-
-    return crc
-
+from utilities import cobs_encode, cobs_decode, calculate_crc8
 
 # Mock utilities module
 class MockUtilities:
-    cobs_encode = staticmethod(cobs.cobs_encode)
-    cobs_decode = staticmethod(cobs.cobs_decode)
+    cobs_encode = staticmethod(cobs_encode)
+    cobs_decode = staticmethod(cobs_decode)
     calculate_crc8 = staticmethod(calculate_crc8)
 
 sys.modules['utilities'] = MockUtilities()

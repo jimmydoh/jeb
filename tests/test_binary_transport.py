@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Mock the COBS functions
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities'))
-import cobs
+from utilities.cobs import cobs_encode, cobs_decode
 
 
 def calculate_crc8(data):
@@ -35,8 +35,8 @@ def calculate_crc8(data):
 
 # Mock utilities module
 class MockUtilities:
-    cobs_encode = staticmethod(cobs.cobs_encode)
-    cobs_decode = staticmethod(cobs.cobs_decode)
+    cobs_encode = staticmethod(cobs_encode)
+    cobs_decode = staticmethod(cobs_decode)
     calculate_crc8 = staticmethod(calculate_crc8)
 
 sys.modules['utilities'] = MockUtilities()
