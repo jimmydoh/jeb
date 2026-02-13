@@ -208,44 +208,48 @@ def test_play_note_with_duration():
     asyncio.run(run_test())
 
 
-@pytest.mark.asyncio
-async def test_play_sequence():
+def test_play_sequence():
     """Test playing a sequence of notes."""
     print("\nTesting play_sequence...")
     
-    mock_pin = "GP10"
-    buzzer = BuzzerManager(mock_pin)
+    async def run_test():
+        mock_pin = "GP10"
+        buzzer = BuzzerManager(mock_pin)
+        
+        # Create a simple sequence
+        sequence_data = {
+            'bpm': 120,
+            'sequence': [('C4', 0.1), ('D4', 0.1), ('E4', 0.1)]
+        }
+        
+        # Play sequence (should be async)
+        await buzzer.play_sequence(sequence_data)
+        
+        # Verify notes were played
+        synth = buzzer.engine.synth
+        # At least some notes should have been pressed and released
+        assert len(synth.pressed_notes) > 0, "Notes should have been pressed"
+        assert len(synth.released_notes) > 0, "Notes should have been released"
+        
+        print("✓ Play sequence test passed")
     
-    # Create a simple sequence
-    sequence_data = {
-        'bpm': 120,
-        'sequence': [('C4', 0.1), ('D4', 0.1), ('E4', 0.1)]
-    }
-    
-    # Play sequence (should be async)
-    await buzzer.play_sequence(sequence_data)
-    
-    # Verify notes were played
-    synth = buzzer.engine.synth
-    # At least some notes should have been pressed and released
-    assert len(synth.pressed_notes) > 0, "Notes should have been pressed"
-    assert len(synth.released_notes) > 0, "Notes should have been released"
-    
-    print("✓ Play sequence test passed")
+    asyncio.run(run_test())
 
 
-@pytest.mark.asyncio
-async def test_stop_is_async():
+def test_stop_is_async():
     """Test that stop() can be awaited."""
     print("\nTesting stop is async...")
     
-    mock_pin = "GP10"
-    buzzer = BuzzerManager(mock_pin)
+    async def run_test():
+        mock_pin = "GP10"
+        buzzer = BuzzerManager(mock_pin)
+        
+        # This should not raise an error
+        await buzzer.stop()
+        
+        print("✓ Stop is async test passed")
     
-    # This should not raise an error
-    await buzzer.stop()
-    
-    print("✓ Stop is async test passed")
+    asyncio.run(run_test())
 
 
 def test_engine_uses_square_wave():
@@ -270,15 +274,12 @@ def run_all_tests():
     print("Running BuzzerManager Tests (synthio-based)")
     print("="*60)
     
-    sync_tests = [
+    all_tests = [
         test_buzzer_initialization,
         test_buzzer_stop,
         test_play_note_basic,
         test_play_note_with_duration,
         test_engine_uses_square_wave,
-    ]
-    
-    async_tests = [
         test_play_sequence,
         test_stop_is_async,
     ]
@@ -286,22 +287,10 @@ def run_all_tests():
     passed = 0
     failed = 0
     
-    # Run sync tests
-    for test in sync_tests:
+    # Run all tests
+    for test in all_tests:
         try:
             test()
-            passed += 1
-        except AssertionError as e:
-            print(f"\n✗ {test.__name__} FAILED: {e}")
-            failed += 1
-        except Exception as e:
-            print(f"\n✗ {test.__name__} ERROR: {e}")
-            failed += 1
-    
-    # Run async tests
-    for test in async_tests:
-        try:
-            asyncio.run(test())
             passed += 1
         except AssertionError as e:
             print(f"\n✗ {test.__name__} FAILED: {e}")
