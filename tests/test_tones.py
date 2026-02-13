@@ -4,11 +4,31 @@
 import sys
 import os
 
-# Add src/utilities to path for direct module import
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities'))
+# Mock CircuitPython modules before any imports
+class MockModule:
+    """Mock module that allows any attribute access."""
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
 
-# Import tones module directly
-import tones
+sys.modules['synthio'] = MockModule()
+
+# Add src to path for module import
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+# Import utilities package first to establish it as a package
+import utilities
+# Import synth_registry to ensure dependencies are loaded
+import utilities.synth_registry
+
+# Now import tones using importlib to bypass standard import caching issues
+import importlib.util
+spec = importlib.util.spec_from_file_location(
+    "utilities.tones",
+    os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities', 'tones.py')
+)
+tones_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tones_module)
+tones = tones_module
 
 
 def test_note_frequencies_defined():

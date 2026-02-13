@@ -57,16 +57,6 @@ def verify_crc8(packet):
     return calculated_crc == received_crc, data
 
 
-# Mock utilities module
-class MockUtilities:
-    cobs_encode = staticmethod(cobs.cobs_encode)
-    cobs_decode = staticmethod(cobs.cobs_decode)
-    calculate_crc8 = staticmethod(calculate_crc8)
-    verify_crc8 = staticmethod(verify_crc8)
-
-sys.modules['utilities'] = MockUtilities()
-
-
 # Mock the UARTManager
 class MockUART:
     """Mock UART object for testing."""
