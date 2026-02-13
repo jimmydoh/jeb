@@ -353,7 +353,7 @@ def note(note_name):
         return 0
 
     # Regex: Capture (A-G followed by optional # or b) and (digits)
-    match = re.match(r"^([A-G][#b]?)(-?\d+)$", str(note_name).strip().upper())
+    match = re.match(r"^([A-G][#B]?)(-?\d+)$", str(note_name).strip().upper())
 
     if not match:
         return 0
