@@ -36,8 +36,6 @@ sys.modules['storage'] = MagicMock()
 sys.modules['supervisor'] = MagicMock()
 sys.modules['usb_cdc'] = MagicMock()
 sys.modules['watchdog'] = MagicMock()
-sys.modules['time'] = MagicMock()
-sys.modules['gc'] = MagicMock()
 
 # Add src/managers to path for direct module import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'managers'))
@@ -209,15 +207,15 @@ class TestDisplayManagerLayoutSystem(unittest.TestCase):
     
     def test_legacy_update_debug_stats(self):
         """Test that legacy update_debug_stats method still works."""
-        # Mock gc.mem_free to return a simple number
-        import sys
-        sys.modules['gc'].mem_free = Mock(return_value=120000)
-        
-        # Should not raise an error
-        try:
-            self.display.update_debug_stats(15.5, 3)
-        except Exception as e:
-            self.fail(f"update_debug_stats raised exception: {e}")
+        # Patch gc.mem_free in the display_manager module namespace
+        with patch('display_manager.gc') as mock_gc:
+            mock_gc.mem_free.return_value = 120000
+            
+            # Should not raise an error
+            try:
+                self.display.update_debug_stats(15.5, 3)
+            except Exception as e:
+                self.fail(f"update_debug_stats raised exception: {e}")
     
     def test_switching_between_modes(self):
         """Test switching between different layout modes."""
