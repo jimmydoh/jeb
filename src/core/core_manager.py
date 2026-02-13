@@ -164,7 +164,7 @@ class CoreManager:
         # System Modes
         self.mode_registry = MODE_REGISTRY
         self.loaded_modes = {} # Cache for instantiated mode classes
-        self.mode = "DASHBOARD"
+        self.mode = "DASHBOARD" # Start in main menu mode
 
         # --- SAFETY EVENTS ---
         self.estop_event = asyncio.Event()
@@ -191,6 +191,20 @@ class CoreManager:
             )
         return next(mode for mode in self.mode_registry if mode["id"] == mode_name)
 
+    def _get_mode_metadata(self, mode_id):
+        """Get mode metadata from the registry.
+
+        Args:
+            mode_id: The unique identifier of the mode
+        Returns:
+            A dictionary containing the mode's metadata
+        Raises:
+            KeyError: If the mode_id is not found in the registry
+        """
+        if mode_id not in self.mode_registry:
+            raise KeyError(f"Mode ID '{mode_id}' not found in registry.")
+        return self.mode_registry[mode_id]
+
     def _load_mode_class(self, mode_id):
         """Dynamically load a mode class from the registry.
 
@@ -207,14 +221,15 @@ class CoreManager:
         if mode_id in self.loaded_modes:
             return self.loaded_modes[mode_id]
 
-        if mode_id not in [mode["id"] for mode in self.mode_registry]:
-            available = ", ".join(sorted([mode["id"] for mode in self.mode_registry]))
+        if mode_id not in self.mode_registry:
+            available = ", ".join(sorted(self.mode_registry.keys()))
             raise KeyError(
                 f"Mode ID '{mode_id}' not found in registry. Available modes: {available}"
             )
 
-        module_path = next(mode["module_path"] for mode in self.mode_registry if mode["id"] == mode_id)
-        class_name = next(mode["class_name"] for mode in self.mode_registry if mode["id"] == mode_id)
+        meta = self.mode_registry[mode_id]
+        module_path = meta["module_path"]
+        class_name = meta["class_name"]
 
         try:
             # Dynamic Import
@@ -537,16 +552,12 @@ class CoreManager:
             while self.meltdown:
                 await asyncio.sleep(0.1)
 
-            # Don't block for DASHBOARD mode
-            if self.mode == "DASHBOARD":
-                # TODO What is DASHBOARD mode doing now?
-                continue
-
             # --- GENERIC MODE RUNNER ---
-            # Check if the mode is in self.mode_registry (Dict[mode_id: str, mode_class: Type[BaseMode]])
-            if self.mode in [mode["id"] for mode in self.mode_registry]:
+            # Check if the mode is in self.mode_registry
+            if self.mode in self.mode_registry:
                 # Retrieve mode requirements
-                requirements = next(mode["requires"] for mode in self.mode_registry if mode["id"] == self.mode)
+                meta = self.mode_registry[self.mode]
+                requirements = meta.get("requires", [])
 
                 # Check Dependencies
                 target_sat = None

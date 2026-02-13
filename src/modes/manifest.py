@@ -12,8 +12,26 @@ To add a new mode:
 """
 
 # Mode Registry
-MODE_REGISTRY = [
-    {
+MODE_REGISTRY = {
+    "MAINMENU": {
+        "id": "MAINMENU",
+        "name": "MAIN MENU",
+        "module_path": "modes.main_menu",
+        "class_name": "MainMenu",
+        "icon": "home",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "DASHBOARD": {
+        "id": "DASHBOARD",
+        "name": "DASHBOARD",
+        "module_path": "modes.main_menu",
+        "class_name": "MainMenu",
+        "icon": "home",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "SIMON": {
         "id": "SIMON",
         "name": "SIMON SAYS",
         "module_path": "modes.simon",
@@ -33,9 +51,9 @@ MODE_REGISTRY = [
                 "options": ["EASY","NORMAL", "HARD", "INSANE"],
                 "default": "NORMAL"
             }
-        ],
+        ]
     },
-    {
+    "JEBRIS": {
         "id": "JEBRIS",
         "name": "JEBRIS",
         "module_path": "modes.jebris",
@@ -57,22 +75,24 @@ MODE_REGISTRY = [
             }
         ]
     },
-    {
+    "SAFE": {
         "id": "SAFE",
         "name": "SAFE CRACKER",
         "module_path": "modes.safe_cracker",
         "class_name": "SafeCrackerMode",
         "icon": "dial",
-        "requires": ["CORE"]
+        "requires": ["CORE"],
+        "settings": []
     },
-    {
+    "IND_START": {
         "id": "IND_START",
         "name": "INDUSTRIAL STARTUP",
         "module_path": "modes.industrial_startup",
         "class_name": "IndustrialStartupMode",
         "icon": "factory",
-        "requires": ["INDUSTRIAL"]
+        "requires": ["INDUSTRIAL"],
+        "settings": []
     }
-]
+}
 
 __all__ = ["MODE_REGISTRY"]
