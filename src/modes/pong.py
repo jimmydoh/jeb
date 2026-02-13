@@ -2,6 +2,7 @@
 """Pong Game Mode - Classic Mini Pong for 8x8 LED Matrix."""
 
 import asyncio
+import math
 import random
 from adafruit_ticks import ticks_ms, ticks_diff
 
@@ -59,6 +60,7 @@ class PongMode(GameMode):
         
         # Load settings
         self.difficulty = self.core.data.get_setting("PONG", "difficulty", "NORMAL")
+        self.variant = "CLASSIC"  # For high score tracking
         
         # Apply difficulty settings
         if self.difficulty == "EASY":
@@ -151,7 +153,6 @@ class PongMode(GameMode):
         
         # Random starting angle (avoid too horizontal)
         angle = random.choice([30, 45, 60, 120, 135, 150, 210, 225, 240, 300, 315, 330])
-        import math
         self.ball_dx = self.ball_speed * math.cos(math.radians(angle))
         self.ball_dy = self.ball_speed * math.sin(math.radians(angle))
     
@@ -160,7 +161,8 @@ class PongMode(GameMode):
         # Get encoder position and map to bat position (0-6)
         encoder_pos = self.core.hid.encoder_positions[0]
         # Map encoder to 0-6 range (allows 2-pixel bat to fit in 8-pixel width)
-        self.player_bat_x = max(0, min(6, (encoder_pos % 7 + 7) % 7))
+        # Python's modulo handles negative values correctly (wraps naturally)
+        self.player_bat_x = encoder_pos % 7
     
     def update_cpu_bat(self, now):
         """Update CPU bat position with AI."""
@@ -171,8 +173,15 @@ class PongMode(GameMode):
         self.last_cpu_update = now
         
         # Simple AI: Move towards ball X position
-        target_x = int(self.ball_x) - 1  # Center bat on ball
-        target_x = max(0, min(6, target_x))
+        # Center 2-pixel bat on ball: bat occupies [target_x, target_x+1]
+        # Ball at 4.0 should center at [3, 4] or [4, 5], so target = int(ball_x - 0.5) ≈ int(ball_x)
+        # This gives reasonable tracking without being perfect
+        if self.ball_x < 0.5:
+            target_x = 0
+        elif self.ball_x > 6.5:
+            target_x = 6
+        else:
+            target_x = int(self.ball_x)
         
         # Move CPU bat towards target
         if self.cpu_bat_x < target_x:
@@ -201,7 +210,8 @@ class PongMode(GameMode):
                 self.ball_y = 0.5
                 self.ball_dy = abs(self.ball_dy)
                 # Add slight angle based on where ball hits bat
-                offset = (ball_x_int - self.cpu_bat_x) - 0.5
+                # Bat center is at position + 0.5 (between the two pixels)
+                offset = self.ball_x - (self.cpu_bat_x + 0.5)
                 self.ball_dx += offset * 0.05
         
         # Bottom bat collision (player at y=7)
@@ -211,7 +221,8 @@ class PongMode(GameMode):
                 self.ball_y = 6.5
                 self.ball_dy = -abs(self.ball_dy)
                 # Add slight angle based on where ball hits bat
-                offset = (ball_x_int - self.player_bat_x) - 0.5
+                # Bat center is at position + 0.5 (between the two pixels)
+                offset = self.ball_x - (self.player_bat_x + 0.5)
                 self.ball_dx += offset * 0.05
     
     def check_score(self):
@@ -273,7 +284,7 @@ class PongMode(GameMode):
             "audio/general/win.wav",
             self.core.audio.CH_SFX,
             level=1.0,
-            Interrupt=True
+            interrupt=True
         )
         await asyncio.sleep(3)
     
@@ -292,6 +303,6 @@ class PongMode(GameMode):
             "audio/general/fail.wav",
             self.core.audio.CH_SFX,
             level=1.0,
-            Interrupt=True
+            interrupt=True
         )
         await asyncio.sleep(3)
