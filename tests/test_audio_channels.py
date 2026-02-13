@@ -39,7 +39,7 @@ sys.modules['adafruit_led_animation.animation.solid'] = MockModule()
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from utilities import AudioChannels
+from utilities.audio_channels import AudioChannels
 
 
 def test_audio_channels_attributes():

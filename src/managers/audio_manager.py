@@ -5,7 +5,7 @@ import asyncio
 import audiobusio
 import audiocore
 import audiomixer
-from utilities import AudioChannels
+from utilities.audio_channels import AudioChannels
 
 # Maximum file size (in bytes) for preloading into RAM
 # Files larger than this will be streamed from disk to prevent MemoryError

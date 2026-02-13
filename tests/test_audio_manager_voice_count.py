@@ -95,7 +95,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'manager
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from audio_manager import AudioManager
-from utilities import AudioChannels
+from utilities.audio_channels import AudioChannels
 
 
 def test_default_voice_count():
