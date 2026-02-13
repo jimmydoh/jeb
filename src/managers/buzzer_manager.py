@@ -23,7 +23,7 @@ class BuzzerManager:
 
         self.audio.play(self.engine.source)
 
-    def stop(self):
+    async def stop(self):
         """Immediately silences the buzzer and cancels running tasks."""
         self.engine.release_all()
 
@@ -32,6 +32,6 @@ class BuzzerManager:
         # Delegate logic to the engine
         self.engine.play_note(frequency, duration=duration)
 
-    def play_sequence(self, sequence_data):
+    async def play_sequence(self, sequence_data):
         """Plays a sequence of notes [(freq, dur), ...]."""
-        self.engine.play_sequence(sequence_data)
+        await self.engine.play_sequence(sequence_data)
