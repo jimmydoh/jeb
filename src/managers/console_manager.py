@@ -5,8 +5,10 @@ import busio
 import microcontroller
 import supervisor
 
-from managers import BuzzerManager
-from utilities import Pins,tones
+from managers.buzzer_manager import BuzzerManager
+
+from utilities.pins import Pins
+from utilities import tones
 
 
 class ConsoleManager():

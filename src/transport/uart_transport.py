@@ -2,7 +2,8 @@
 
 import asyncio
 import struct
-from utilities import cobs_encode, cobs_decode, calculate_crc8
+from utilities.cobs import cobs_encode, cobs_decode
+from utilities.crc import calculate_crc8
 from .message import Message
 
 #region --- Helper Functions for Encoding/Decoding ---

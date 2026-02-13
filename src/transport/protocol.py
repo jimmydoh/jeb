@@ -21,6 +21,7 @@ CMD_LOG = "LOG"
 CMD_SYNC_FRAME = "SYNC_FRAME"
 CMD_POWER = "POWER"
 CMD_REBOOT = "REBOOT"
+CMD_HELLO = "HELLO"
 
 # LED Commands
 CMD_LED = "LED"
@@ -42,6 +43,7 @@ CMD_SETENC = "SETENC"
 # --- Command Mapping ---
 COMMAND_MAP = {
     # System & Discovery
+    CMD_HELLO: 0xAA,
     CMD_PING: 0x01,
     CMD_ACK: 0x02,
     CMD_NACK: 0x03,
@@ -70,6 +72,8 @@ COMMAND_MAP = {
 
     # Encoder commands
     CMD_SETENC: 0x30,
+
+
 }
 
 # Special destination IDs
@@ -119,6 +123,7 @@ ENCODING_FLOATS = 'floats'
 #   'count': (optional) Expected number of values for validation
 PAYLOAD_SCHEMAS = {
     # Core commands
+    CMD_HELLO: {'type': ENCODING_RAW_TEXT, 'desc': 'Hello message with optional text'},
     "ID_ASSIGN": {'type': ENCODING_RAW_TEXT, 'desc': 'Device ID string like "0100"'},
     "NEW_SAT": {'type': ENCODING_RAW_TEXT, 'desc': 'Satellite type ID like "01"'},
     "ERROR": {'type': ENCODING_RAW_TEXT, 'desc': 'Error description text'},

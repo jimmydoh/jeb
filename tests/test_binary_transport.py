@@ -139,34 +139,35 @@ class MockUARTManager:
 
 
 # Now import the transport classes
-from transport import Message, UARTTransport, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
+from transport import Message, UARTTransport
+from transport.protocol import COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS
 
 def drain_tx_buffer(transport, mock_uart):
     """Helper function to manually drain TX buffer for synchronous tests.
-    
+
     Simulates what the async TX worker does, but synchronously.
     """
     while transport._tx_head != transport._tx_tail:
         head = transport._tx_head
         tail = transport._tx_tail
         size = transport._tx_buffer_size
-        
+
         # Determine contiguous chunk to write
         if head > tail:
             chunk = transport._tx_mv[tail:head]
         else:
             chunk = transport._tx_mv[tail:size]
-        
+
         # Write to mock UART (convert memoryview to bytes)
         transport.uart.write(bytes(chunk))
-        
+
         # Advance tail
         transport._tx_tail = (tail + len(chunk)) % size
 
 
 def receive_message_sync(transport):
     """Helper function to manually receive a message for synchronous tests.
-    
+
     Simulates what the async RX worker does, but synchronously.
     Returns a message if available, None otherwise.
     """
@@ -174,7 +175,7 @@ def receive_message_sync(transport):
     msg = transport.receive_nowait()
     if msg is not None:
         return msg
-    
+
     # Otherwise, manually process incoming data
     transport._read_hw()
     return transport._try_decode_one()

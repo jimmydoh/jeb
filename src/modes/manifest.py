@@ -2,7 +2,7 @@
 """Mode Registry Manifest.
 
 This module provides a centralized registry of all available mode classes.
-CoreManager uses this manifest to dynamically register modes without 
+CoreManager uses this manifest to dynamically register modes without
 direct imports, avoiding circular dependencies and tight coupling.
 
 To add a new mode:
@@ -27,4 +27,12 @@ AVAILABLE_MODES = [
     Simon,
 ]
 
-__all__ = ["AVAILABLE_MODES"]
+DEFAULT_METADATA = {
+    "id": "UNKNOWN",
+    "name": "Unknown Mode",
+    "icon": "DEFAULT",
+    "requires": ["CORE"],
+    "settings": []
+}
+
+__all__ = ["AVAILABLE_MODES", "DEFAULT_METADATA"]

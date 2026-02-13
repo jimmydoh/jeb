@@ -10,24 +10,21 @@ import asyncio
 import busio
 import neopixel
 
-from utilities import (
-    JEBPixel,
-    Pins,
-    parse_values,
-    get_int,
-)
-from transport import (
+from utilities.jeb_pixel import JEBPixel
+from utilities.pins import Pins
+from utilities.payload_parser import parse_values, get_int
+
+from transport.protocol import (
     CMD_SYNC_FRAME,
     CMD_SETENC,
     LED_COMMANDS,
     DSP_COMMANDS,
 )
-from managers import (
-    HIDManager,
-    LEDManager,
-    RenderManager,
-    SegmentManager
-)
+from managers.hid_manager import HIDManager
+from managers.led_manager import LEDManager
+from managers.render_manager import RenderManager
+from managers.segment_manager import SegmentManager
+
 from .base_firmware import SatelliteFirmware
 
 TYPE_ID = "01"

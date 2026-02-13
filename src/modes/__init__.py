@@ -2,10 +2,9 @@
 """Top-level package for mode classes."""
 
 # Import from manifest for centralized mode registry
-from .manifest import AVAILABLE_MODES
-from .base import BaseMode
+from .manifest import AVAILABLE_MODES, DEFAULT_METADATA
 
 __all__ = [
     "AVAILABLE_MODES",
-    "BaseMode"
+    "DEFAULT_METADATA"
 ]

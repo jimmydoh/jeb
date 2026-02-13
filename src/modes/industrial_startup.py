@@ -5,7 +5,7 @@ import asyncio
 import random
 from adafruit_ticks import ticks_ms, ticks_diff
 
-from utilities import Palette
+from utilities.palette import Palette
 
 from .game_mode import GameMode
 

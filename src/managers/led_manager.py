@@ -1,7 +1,8 @@
 # File: src/core/managers/led_manager.py
 """Manages simple LED arrays, such as individual button LEDs, sticks and strings."""
 
-from utilities import parse_values, get_int, get_float, get_str, Palette
+from utilities.payload_parser import parse_values, get_int, get_float, get_str
+from utilities.palette import Palette
 
 from .base_pixel_manager import BasePixelManager
 
