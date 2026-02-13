@@ -18,10 +18,12 @@ class PongMode(GameMode):
     
     Features:
     - 8x8 LED matrix as playing field
-    - 2-pixel bats on each side (player bottom, CPU top)
-    - Player controls bottom bat with rotary encoder
-    - CPU opponent with difficulty-based AI
+    - 2-pixel bats on each side (player bottom, top player/CPU)
+    - Player 1 controls bottom bat with core rotary encoder
+    - Player 2 controls top bat with industrial satellite encoder (2P mode)
+    - CPU opponent with difficulty-based AI (1P mode)
     - Score display on OLED in middle info section
+    - Scoring system for 1P mode based on win margin
     """
     
     def __init__(self, core):
@@ -39,8 +41,8 @@ class PongMode(GameMode):
         self.ball_dy = 0.0  # Ball velocity Y
         
         # Bat positions (0-6, centered position of 2-pixel bat)
-        self.player_bat_x = 3  # Bottom bat (player)
-        self.cpu_bat_x = 3     # Top bat (CPU)
+        self.player_bat_x = 3  # Bottom bat (player 1)
+        self.cpu_bat_x = 3     # Top bat (CPU or player 2)
         
         # Scores
         self.player_score = 0
@@ -55,41 +57,70 @@ class PongMode(GameMode):
         # Difficulty multipliers
         self.difficulty = "NORMAL"
         
+        # Game mode (1P or 2P)
+        self.game_mode = "1P"
+        self.industrial_sat = None
+        
     async def run(self):
         """Main game loop for Pong."""
         
         # Load settings
+        self.game_mode = self.core.data.get_setting("PONG", "mode", "1P")
         self.difficulty = self.core.data.get_setting("PONG", "difficulty", "NORMAL")
-        self.variant = "CLASSIC"  # For high score tracking
         
-        # Apply difficulty settings
-        if self.difficulty == "EASY":
-            self.cpu_speed = 0.05
-            self.cpu_reaction_delay = 500
-            self.ball_speed = 0.12
-        elif self.difficulty == "HARD":
-            self.cpu_speed = 0.12
-            self.cpu_reaction_delay = 150
-            self.ball_speed = 0.18
-        elif self.difficulty == "INSANE":
-            self.cpu_speed = 0.15
-            self.cpu_reaction_delay = 50
-            self.ball_speed = 0.22
-        else:  # NORMAL
-            self.cpu_speed = 0.08
-            self.cpu_reaction_delay = 300
+        # Set variant for high score tracking (only for 1P mode)
+        self.variant = f"{self.game_mode}_{self.difficulty}" if self.game_mode == "1P" else "2P"
+        
+        # Check for Industrial satellite if in 2P mode
+        if self.game_mode == "2P":
+            for sat in self.core.satellites.values():
+                if sat.sat_type_name == "INDUSTRIAL" and sat.is_connected:
+                    self.industrial_sat = sat
+                    break
+            
+            if not self.industrial_sat:
+                await self.core.display.update_status("ERROR", "INDUSTRIAL SAT REQUIRED FOR 2P")
+                await asyncio.sleep(2)
+                return "FAILURE"
+        
+        # Apply difficulty settings (only for 1P mode)
+        if self.game_mode == "1P":
+            if self.difficulty == "EASY":
+                self.cpu_speed = 0.05
+                self.cpu_reaction_delay = 500
+                self.ball_speed = 0.12
+            elif self.difficulty == "HARD":
+                self.cpu_speed = 0.12
+                self.cpu_reaction_delay = 150
+                self.ball_speed = 0.18
+            elif self.difficulty == "INSANE":
+                self.cpu_speed = 0.15
+                self.cpu_reaction_delay = 50
+                self.ball_speed = 0.22
+            else:  # NORMAL
+                self.cpu_speed = 0.08
+                self.cpu_reaction_delay = 300
+                self.ball_speed = 0.15
+        else:
+            # 2P mode uses normal speed
             self.ball_speed = 0.15
         
         # Use standard layout for display
         self.core.display.use_standard_layout()
         
         # Intro
-        await self.core.display.update_status("MINI PONG", f"DIFFICULTY: {self.difficulty}")
+        mode_text = f"{self.game_mode} MODE"
+        if self.game_mode == "1P":
+            mode_text += f" - {self.difficulty}"
+        await self.core.display.update_status("MINI PONG", mode_text)
         await self.core.matrix.show_icon("PONG", anim_mode="PULSE", speed=2.0)
         await asyncio.sleep(2.0)
         
-        # Reset encoder
+        # Reset encoders
         self.core.hid.reset_encoder(0)
+        if self.industrial_sat:
+            # Reset satellite encoder (index 0)
+            self.industrial_sat.hid.reset_encoder(0)
         
         # Initialize game state
         self.player_score = 0
@@ -109,8 +140,11 @@ class PongMode(GameMode):
                 # Update player bat from encoder
                 self.update_player_bat()
                 
-                # Update CPU bat
-                self.update_cpu_bat(now)
+                # Update top bat (CPU or P2)
+                if self.game_mode == "1P":
+                    self.update_cpu_bat(now)
+                else:
+                    self.update_player2_bat()
                 
                 # Update ball position
                 self.update_ball()
@@ -123,10 +157,16 @@ class PongMode(GameMode):
                     
                     # Check for game over (first to 7 points)
                     if self.player_score >= 7:
+                        if self.game_mode == "1P":
+                            # Calculate final score based on win margin
+                            self.calculate_1p_score()
                         await self.show_victory()
                         game_running = False
                         break
                     elif self.cpu_score >= 7:
+                        if self.game_mode == "1P":
+                            # No points awarded for losing
+                            self.score = 0
                         await self.show_defeat()
                         game_running = False
                         break
@@ -189,6 +229,16 @@ class PongMode(GameMode):
         elif self.cpu_bat_x > target_x:
             self.cpu_bat_x = max(self.cpu_bat_x - 1, target_x)
     
+    def update_player2_bat(self):
+        """Update player 2 bat position from industrial satellite encoder."""
+        if not self.industrial_sat:
+            return
+        
+        # Get encoder position from satellite (index 0)
+        encoder_pos = self.industrial_sat.hid.encoder_positions[0]
+        # Map encoder to 0-6 range (allows 2-pixel bat to fit in 8-pixel width)
+        self.cpu_bat_x = encoder_pos % 7
+    
     def update_ball(self):
         """Update ball position and handle collisions."""
         # Update position
@@ -241,10 +291,40 @@ class PongMode(GameMode):
     
     async def update_score_display(self):
         """Update the OLED display with current scores."""
-        await self.core.display.update_status(
-            f"YOU: {self.player_score}  CPU: {self.cpu_score}",
-            f"FIRST TO 7 WINS"
-        )
+        if self.game_mode == "1P":
+            await self.core.display.update_status(
+                f"P1: {self.player_score}  CPU: {self.cpu_score}",
+                f"FIRST TO 7 WINS"
+            )
+        else:
+            await self.core.display.update_status(
+                f"P1: {self.player_score}  P2: {self.cpu_score}",
+                f"FIRST TO 7 WINS"
+            )
+    
+    def calculate_1p_score(self):
+        """Calculate final score for 1P mode based on win margin and difficulty.
+        
+        Scoring system:
+        - Base score: 100 points for winning
+        - Win margin bonus: +50 points per game lead (7-0 = +300, 7-6 = +0)
+        - Difficulty multiplier: EASY=0.75x, NORMAL=1.0x, HARD=1.5x, INSANE=2.0x
+        """
+        base_score = 100
+        win_margin = self.player_score - self.cpu_score  # Will be 1-7
+        margin_bonus = (win_margin - 1) * 50  # 0 to 300 points
+        
+        # Difficulty multiplier
+        difficulty_multipliers = {
+            "EASY": 0.75,
+            "NORMAL": 1.0,
+            "HARD": 1.5,
+            "INSANE": 2.0
+        }
+        multiplier = difficulty_multipliers.get(self.difficulty, 1.0)
+        
+        # Calculate final score
+        self.score = int((base_score + margin_bonus) * multiplier)
     
     def render(self):
         """Render the game state to the LED matrix."""
@@ -271,10 +351,19 @@ class PongMode(GameMode):
     
     async def show_victory(self):
         """Show victory animation."""
-        await self.core.display.update_status(
-            "YOU WIN!",
-            f"FINAL: {self.player_score}-{self.cpu_score}"
-        )
+        if self.game_mode == "1P":
+            # Show score for 1P mode
+            await self.core.display.update_status(
+                f"YOU WIN! SCORE: {self.score}",
+                f"FINAL: {self.player_score}-{self.cpu_score}"
+            )
+        else:
+            # 2P mode - Player 1 wins
+            await self.core.display.update_status(
+                "PLAYER 1 WINS!",
+                f"FINAL: {self.player_score}-{self.cpu_score}"
+            )
+        
         await self.core.matrix.show_icon(
             "SUCCESS",
             anim_mode="PULSE",
@@ -290,10 +379,17 @@ class PongMode(GameMode):
     
     async def show_defeat(self):
         """Show defeat animation."""
-        await self.core.display.update_status(
-            "CPU WINS",
-            f"FINAL: {self.player_score}-{self.cpu_score}"
-        )
+        if self.game_mode == "1P":
+            await self.core.display.update_status(
+                "CPU WINS",
+                f"FINAL: {self.player_score}-{self.cpu_score}"
+            )
+        else:
+            # 2P mode - Player 2 wins
+            await self.core.display.update_status(
+                "PLAYER 2 WINS!",
+                f"FINAL: {self.player_score}-{self.cpu_score}"
+            )
         await self.core.matrix.show_icon(
             "FAILURE",
             anim_mode="PULSE",

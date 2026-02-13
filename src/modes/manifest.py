@@ -100,7 +100,14 @@ MODE_REGISTRY = {
         "class_name": "PongMode",
         "icon": "pong",
         "requires": ["CORE"],
+        "optional": ["INDUSTRIAL"],
         "settings": [
+            {
+                "key": "mode",
+                "label": "MODE",
+                "options": ["1P", "2P"],
+                "default": "1P"
+            },
             {
                 "key": "difficulty",
                 "label": "DIFF",

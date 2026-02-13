@@ -43,7 +43,14 @@ def test_pong_difficulty_settings():
     assert "settings" in pong_metadata, "PONG mode missing settings"
     
     settings = pong_metadata["settings"]
-    assert len(settings) > 0, "PONG mode should have at least one setting"
+    assert len(settings) >= 2, "PONG mode should have at least two settings (mode and difficulty)"
+    
+    # Check for mode setting
+    mode_setting = next((s for s in settings if s["key"] == "mode"), None)
+    assert mode_setting is not None, "PONG mode should have mode setting"
+    assert "1P" in mode_setting["options"], "Missing 1P mode"
+    assert "2P" in mode_setting["options"], "Missing 2P mode"
+    assert mode_setting["default"] == "1P", "Default mode should be 1P"
     
     # Check for difficulty setting
     difficulty_setting = next((s for s in settings if s["key"] == "difficulty"), None)
@@ -54,7 +61,17 @@ def test_pong_difficulty_settings():
     assert "INSANE" in difficulty_setting["options"], "Missing INSANE difficulty"
     assert difficulty_setting["default"] == "NORMAL", "Default difficulty should be NORMAL"
     
-    print("✓ PONG mode difficulty settings are correct")
+    print("✓ PONG mode settings are correct (mode and difficulty)")
+
+def test_pong_optional_satellite():
+    """Test that Pong mode has optional INDUSTRIAL satellite."""
+    from modes.manifest import MODE_REGISTRY
+    
+    pong_metadata = MODE_REGISTRY["PONG"]
+    assert "optional" in pong_metadata, "PONG mode missing optional field"
+    assert "INDUSTRIAL" in pong_metadata["optional"], "PONG mode should list INDUSTRIAL as optional"
+    
+    print("✓ PONG mode has optional INDUSTRIAL satellite")
 
 def test_pong_icon_exists():
     """Test that PONG icon exists in icon library."""
@@ -74,6 +91,7 @@ if __name__ == "__main__":
         test_pong_mode_file_exists()
         test_pong_in_manifest()
         test_pong_difficulty_settings()
+        test_pong_optional_satellite()
         test_pong_icon_exists()
         
         print("\n✅ All Pong mode tests passed!")
