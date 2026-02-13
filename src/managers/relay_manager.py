@@ -245,36 +245,53 @@ class RelayManager:
                 await self.trigger_relay(i, duration=duration, cycles=cycles)
         
         elif cmd == "RELAYSIMUL":
-            # RELAYSIMUL,<indices>,<duration>,<cycles>
-            # Parse indices (comma-separated or ALL)
-            indices_str = get_str(values, 0)
-            if indices_str == "ALL":
+            # RELAYSIMUL,ALL or index,duration,cycles
+            idx_raw = get_str(values, 0)
+            if idx_raw == "ALL":
                 indices = None
             else:
-                indices = [get_int(values, i) for i in range(1, len(values) - 2)]
+                # Single index - parse remaining values as additional indices up to duration/cycles
+                indices = []
+                for i in range(len(values) - 2):
+                    try:
+                        indices.append(get_int(values, i))
+                    except:
+                        break
             duration = get_float(values, len(values)-2, 0.1)
             cycles = get_int(values, len(values)-1, 1)
             await self.trigger_simultaneous(indices=indices, duration=duration, cycles=cycles)
         
         elif cmd == "RELAYPROG":
-            # RELAYPROG,<indices>,<duration>,<delay>,<cycles>
-            indices_str = get_str(values, 0)
-            if indices_str == "ALL":
+            # RELAYPROG,ALL or index,duration,delay,cycles
+            idx_raw = get_str(values, 0)
+            if idx_raw == "ALL":
                 indices = None
             else:
-                indices = [get_int(values, i) for i in range(1, len(values) - 3)]
+                # Parse indices up to the last 3 values (duration, delay, cycles)
+                indices = []
+                for i in range(len(values) - 3):
+                    try:
+                        indices.append(get_int(values, i))
+                    except:
+                        break
             duration = get_float(values, len(values)-3, 0.1)
             delay = get_float(values, len(values)-2, 0.05)
             cycles = get_int(values, len(values)-1, 1)
             await self.trigger_progressive(indices=indices, duration=duration, delay=delay, cycles=cycles)
         
         elif cmd == "RELAYRAND":
-            # RELAYRAND,<indices>,<duration>,<timeframe>,<cycles>
-            indices_str = get_str(values, 0)
-            if indices_str == "ALL":
+            # RELAYRAND,ALL or index,duration,timeframe,cycles
+            idx_raw = get_str(values, 0)
+            if idx_raw == "ALL":
                 indices = None
             else:
-                indices = [get_int(values, i) for i in range(1, len(values) - 3)]
+                # Parse indices up to the last 3 values (duration, timeframe, cycles)
+                indices = []
+                for i in range(len(values) - 3):
+                    try:
+                        indices.append(get_int(values, i))
+                    except:
+                        break
             duration = get_float(values, len(values)-3, 0.1)
             timeframe = get_float(values, len(values)-2, 1.0)
             cycles = get_int(values, len(values)-1, 1)
