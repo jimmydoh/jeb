@@ -13,27 +13,6 @@ from .game_mode import GameMode
 class JEBris(GameMode):
     """JEBris: A Tetris-inspired Falling Block Game."""
 
-    METADATA = {
-        "id": "JEBRIS",
-        "name": "JEBRIS",
-        "icon": "JEBRIS",
-        "requires": ["CORE"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "SPEED",
-                "options": ["EASY", "NORMAL", "HARD", "INSANE"],
-                "default": "NORMAL"
-            },
-            {
-                "key": "music",
-                "label": "MUSIC",
-                "options": ["ON", "OFF"],
-                "default": "ON"
-            }
-        ]
-    }
-
     # State machine constants
     STATE_PLAYING = "PLAYING"
     STATE_CLEARING_LINES = "CLEARING_LINES"

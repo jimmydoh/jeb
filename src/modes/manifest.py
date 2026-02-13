@@ -11,28 +11,68 @@ To add a new mode:
 3. Add it to the AVAILABLE_MODES list
 """
 
-from .industrial_startup import IndustrialStartup
-from .jebris import JEBris
-from .main_menu import MainMenu
-from .safe_cracker import SafeCracker
-from .simon import Simon
-
-# Registry of all available mode classes
-# Each entry should be a mode class (not an instance)
-AVAILABLE_MODES = [
-    IndustrialStartup,
-    JEBris,
-    MainMenu,
-    SafeCracker,
-    Simon,
+# Mode Registry
+MODE_REGISTRY = [
+    {
+        "id": "SIMON",
+        "name": "SIMON SAYS",
+        "module_path": "modes.simon",
+        "class_name": "SimonMode",
+        "icon": "simon",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "mode",
+                "label": "MODE",
+                "options": ["CLASSIC", "REVERSE", "BLIND"],
+                "default": "CLASSIC"
+            },
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY","NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ],
+    },
+    {
+        "id": "JEBRIS",
+        "name": "JEBRIS",
+        "module_path": "modes.jebris",
+        "class_name": "JebrisMode",
+        "icon": "tetris",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "SPEED",
+                "options": ["EASY", "NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "music",
+                "label": "MUSIC",
+                "options": ["ON", "OFF"],
+                "default": "ON"
+            }
+        ]
+    },
+    {
+        "id": "SAFE",
+        "name": "SAFE CRACKER",
+        "module_path": "modes.safe_cracker",
+        "class_name": "SafeCrackerMode",
+        "icon": "dial",
+        "requires": ["CORE"]
+    },
+    {
+        "id": "IND_START",
+        "name": "INDUSTRIAL STARTUP",
+        "module_path": "modes.industrial_startup",
+        "class_name": "IndustrialStartupMode",
+        "icon": "factory",
+        "requires": ["INDUSTRIAL"]
+    }
 ]
 
-DEFAULT_METADATA = {
-    "id": "UNKNOWN",
-    "name": "Unknown Mode",
-    "icon": "DEFAULT",
-    "requires": ["CORE"],
-    "settings": []
-}
-
-__all__ = ["AVAILABLE_MODES", "DEFAULT_METADATA"]
+__all__ = ["MODE_REGISTRY"]

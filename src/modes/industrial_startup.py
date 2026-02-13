@@ -15,14 +15,6 @@ class IndustrialStartup(GameMode):
     from both the Core and Industrial Satellite box.
     """
 
-    METADATA = {
-        "id": "IND",
-        "name": "INDUSTRIAL",
-        "icon": "IND",
-        "requires": ["INDUSTRIAL"], # Explicit dependency
-        "settings": []
-    }
-
     def __init__(self, core):
         super().__init__(
             core,

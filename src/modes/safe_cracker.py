@@ -11,15 +11,6 @@ from .game_mode import GameMode
 
 class SafeCracker(GameMode):
     """Safe Cracker Game Mode."""
-
-    METADATA = {
-        "id": "SAFE",
-        "name": "SAFE CRACKER",
-        "icon": "SAFE",
-        "settings": [],  # No settings for Safe Cracker yet
-        "requires": ["CORE"] # Always Available
-    }
-
     def __init__(self, core):
         super().__init__(core, "SAFE CRACKER", "Crack the safe by turning the dial")
 

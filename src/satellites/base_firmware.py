@@ -72,13 +72,14 @@ class SatelliteFirmware:
             Pins.UART_TX,
             Pins.UART_RX,
             baudrate=115200,
-            receiver_buffer_size=512,
+            receiver_buffer_size=1024,
             timeout=0.01
         )
         uart_down_hw = busio.UART(
             Pins.UART_DOWN_TX,
             Pins.UART_DOWN_RX,
             baudrate=115200,
+            receiver_buffer_size=1024,
             timeout=0.01
         )
 

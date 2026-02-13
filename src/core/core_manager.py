@@ -22,7 +22,7 @@ from managers.render_manager import RenderManager
 from managers.satellite_network_manager import SatelliteNetworkManager
 from managers.synth_manager import SynthManager
 
-from modes import AVAILABLE_MODES, DEFAULT_METADATA
+from modes.manifest import MODE_REGISTRY
 
 from transport import UARTTransport
 from transport.protocol import (
@@ -94,7 +94,7 @@ class CoreManager:
             Pins.UART_TX,
             Pins.UART_RX,
             baudrate=config.get("uart_baudrate", 115200),
-            receiver_buffer_size=config.get("uart_buffer_size", 512),
+            receiver_buffer_size=config.get("uart_buffer_size", 1024),
             timeout=0.01,
         )
 
@@ -161,20 +161,9 @@ class CoreManager:
         self.renderer.add_animator(self.leds)
         self.renderer.add_animator(self.matrix)
 
-        # System State
-        self._mode_registry = {}
-
-        # modes: Public registry mapping mode IDs to mode classes
-        # See class docstring for detailed structure documentation
-        self.modes = {}
-        for mode_class in AVAILABLE_MODES:
-            try:
-                # Attempt to inspect/register the mode
-                self._mode_registry[mode_class.__name__] = mode_class
-                meta = getattr(mode_class, "METADATA", DEFAULT_METADATA)
-                self.modes[meta["id"]] = mode_class
-            except Exception as e:
-                print(f"FAILED TO LOAD MODE {mode_class}: {e}")
+        # System Modes
+        self.mode_registry = MODE_REGISTRY
+        self.loaded_modes = {} # Cache for instantiated mode classes
         self.mode = "DASHBOARD"
 
         # --- SAFETY EVENTS ---
@@ -195,12 +184,48 @@ class CoreManager:
         Raises:
             KeyError: If the mode is not found in the registry
         """
-        if mode_name not in self._mode_registry:
-            available = ", ".join(sorted(self._mode_registry.keys()))
+        if mode_name not in [mode["id"] for mode in self.mode_registry]:
+            available = ", ".join(sorted([mode["id"] for mode in self.mode_registry]))
             raise KeyError(
                 f"Mode '{mode_name}' not found in registry. Available modes: {available}"
             )
-        return self._mode_registry[mode_name]
+        return next(mode for mode in self.mode_registry if mode["id"] == mode_name)
+
+    def _load_mode_class(self, mode_id):
+        """Dynamically load a mode class from the registry.
+
+        Args:
+            mode_id: The unique identifier of the mode to load
+
+        Returns:
+            The mode class
+
+        Raises:
+            ImportError: If the module or class cannot be imported
+            KeyError: If the mode_id is not in the registry
+        """
+        if mode_id in self.loaded_modes:
+            return self.loaded_modes[mode_id]
+
+        if mode_id not in [mode["id"] for mode in self.mode_registry]:
+            available = ", ".join(sorted([mode["id"] for mode in self.mode_registry]))
+            raise KeyError(
+                f"Mode ID '{mode_id}' not found in registry. Available modes: {available}"
+            )
+
+        module_path = next(mode["module_path"] for mode in self.mode_registry if mode["id"] == mode_id)
+        class_name = next(mode["class_name"] for mode in self.mode_registry if mode["id"] == mode_id)
+
+        try:
+            # Dynamic Import
+            module = __import__(module_path, None, None, [class_name])
+            mode_class = getattr(module, class_name)
+            self.loaded_modes[mode_id] = mode_class
+            return mode_class
+        except ImportError as e:
+            raise ImportError(f"Failed to import module '{module_path}' for mode '{mode_id}': {e}") from e
+        except AttributeError as e:
+            raise ImportError(f"Module '{module_path}' does not have class '{class_name}' for mode '{mode_id}': {e}") from e
 
     # Satellite Network Delegation Properties
     @property
@@ -512,18 +537,22 @@ class CoreManager:
             while self.meltdown:
                 await asyncio.sleep(0.1)
 
+            # Don't block for DASHBOARD mode
+            if self.mode == "DASHBOARD":
+                # TODO What is DASHBOARD mode doing now?
+                continue
+
             # --- GENERIC MODE RUNNER ---
-            # Check if the mode is in self.modes (Dict[mode_id: str, mode_class: Type[BaseMode]])
-            if self.mode in self.modes:
-                mode_class = self.modes[self.mode]
-                # Access the mode's METADATA class attribute (documented in BaseMode)
-                meta = mode_class.METADATA
+            # Check if the mode is in self.mode_registry (Dict[mode_id: str, mode_class: Type[BaseMode]])
+            if self.mode in [mode["id"] for mode in self.mode_registry]:
+                # Retrieve mode requirements
+                requirements = next(mode["requires"] for mode in self.mode_registry if mode["id"] == self.mode)
 
                 # Check Dependencies
                 target_sat = None
                 requirements_met = True
 
-                for req in meta.get("requires", []):
+                for req in requirements:
                     if req == "CORE":
                         continue
                     found = False
@@ -538,6 +567,18 @@ class CoreManager:
                         break
 
                 if requirements_met:
+
+                    # LAZY LOAD THE MODE CLASS
+                    try:
+                        mode_class = self._load_mode_class(self.mode)
+                    except (ImportError, KeyError) as e:
+                        print(f"Error loading mode '{self.mode}': {e}")
+                        await self.display.update_status("MODE LOAD ERROR", self.mode)
+                        await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
+                        await asyncio.sleep(2)
+                        self.mode = "DASHBOARD"  # Return to dashboard if mode fails to load
+                        continue
+
                     mode_instance = mode_class(self)
 
                     if target_sat:
@@ -585,7 +626,7 @@ class CoreManager:
                 else:
                     print(f"Cannot start {self.mode}: Missing Dependency")
                     await self.display.update_status(
-                        "REQUIREMENT NOT MET", f"NEED {', '.join(meta.get('requires', []))}"
+                        "REQUIREMENT MISSING", f"NEED: {', '.join(requirements)}"
                     )
                     await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
                     await asyncio.sleep(2)

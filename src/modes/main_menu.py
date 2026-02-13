@@ -10,13 +10,6 @@ from .utility_mode import UtilityMode
 
 class MainMenu(UtilityMode):
     """Main Menu for selecting modes."""
-    METADATA = {
-        "id": "MAIN_MENU",
-        "name": "MAIN MENU",
-        "icon": "DEFAULT",
-        "requires": ["CORE"],
-        "settings": []
-    }
     def __init__(self, core):
         super().__init__(core, name="MAIN MENU", description="Select a mode to begin", timeout=10)
         self.state = "DASHBOARD"
@@ -36,10 +29,8 @@ class MainMenu(UtilityMode):
 
         # Sort by name or predefined order if you wish
         # self.core.modes is Dict[mode_id: str, mode_class: Type[BaseMode]]
-        for mode_id, mode_class in self.core.modes.items():
-            # Access the mode's METADATA class attribute
-            # Expected structure documented in BaseMode class
-            meta = mode_class.METADATA
+        for mode in self.core.mode_registry:
+            mode_id = mode.get("id", "UNKNOWN")
 
             # Skip system modes (like Main Menu itself, or Debug if not needed)
             if mode_id in ["MAIN_MENU", "DASHBOARD"]:
@@ -48,7 +39,7 @@ class MainMenu(UtilityMode):
             # Check requirements
             # meta["requires"] is List[str] of hardware dependencies
             requirements_met = True
-            for req in meta.get("requires", []):
+            for req in mode.get("requires", []):
                 if req == "CORE":
                     continue
                 # Check for specific satellite type presence
@@ -60,7 +51,7 @@ class MainMenu(UtilityMode):
                     break
 
             if requirements_met:
-                items.append((mode_id, meta))
+                items.append((mode_id))
 
         return items
 
@@ -151,22 +142,23 @@ class MainMenu(UtilityMode):
                     speed=2.0
                 )
 
-                meta = menu_items[selected_game_idx]
+
+                menu_item_settings = self.core.mode_registry[selected_game_idx].get("settings", [])
 
                 # --- UPDATE DISPLAY ---
                 display_settings = []
-                for s in meta["settings"]:
-                    current_value = self.core.data.get_setting(meta["id"], s["key"], s["default"])
+                for s in menu_item_settings:
+                    current_value = self.core.data.get_setting(self.core.mode_registry[selected_game_idx]["id"], s["key"], s["default"])
                     display_settings.append({
                         "label": s["label"],
                         "value": str(current_value)
                     })
 
                 # Get High Score
-                high_score = self.core.data.get_score(meta["id"])
+                high_score = self.core.data.get_score(self.core.mode_registry[selected_game_idx]["id"])
 
                 self.core.display.update_game_menu(
-                    title=meta["name"],
+                    title=self.core.mode_registry[selected_game_idx]["name"],
                     score=high_score,
                     settings=display_settings,
                     selected_idx=selected_setting_idx,
@@ -205,9 +197,9 @@ class MainMenu(UtilityMode):
                     elif focus_mode == "SETTINGS":
 
                         # Cycle Settings Row
-                        if len(meta["settings"]) > 0:
+                        if len(menu_item_settings) > 0:
                             delta = curr_pos - last_pos
-                            selected_setting_idx = (selected_setting_idx + delta) % len(meta["settings"])
+                            selected_setting_idx = (selected_setting_idx + delta) % len(menu_item_settings)
 
                     last_pos = curr_pos
 
@@ -222,7 +214,7 @@ class MainMenu(UtilityMode):
                             self.core.audio.CH_SFX,
                             level=0.8
                         )
-                        return meta["id"]
+                        return self.core.mode_registry[selected_game_idx]["id"]
 
                     elif focus_mode == "SETTINGS":
                         # TOGGLE SETTING OPTION
@@ -233,10 +225,10 @@ class MainMenu(UtilityMode):
                         )
 
                         # Cycle through options for the selected setting
-                        if len(meta["settings"]) > 0:
-                            setting = meta["settings"][selected_setting_idx]
+                        if len(menu_item_settings) > 0:
+                            setting = menu_item_settings[selected_setting_idx]
                             current_value = self.core.data.get_setting(
-                                meta["id"],
+                                self.core.mode_registry[selected_game_idx]["id"],
                                 setting["key"],
                                 setting["default"]
                             )
@@ -249,13 +241,13 @@ class MainMenu(UtilityMode):
                             new_value = setting["options"][new_idx]
 
                             # Save immediately
-                            self.core.data.set_setting(meta["id"], setting["key"], new_value)
+                            self.core.data.set_setting(self.core.mode_registry[selected_game_idx]["id"], setting["key"], new_value)
 
                 # 'D' BUTTON to toggle focus
                 if self.core.hid.is_pressed(3, action="tap"):
                     self.touch()
                     if focus_mode == "GAME":
-                        if len(meta["settings"]) > 0:
+                        if len(menu_item_settings) > 0:
                             focus_mode = "SETTINGS"
                             selected_setting_idx = 0
                             self.core.audio.play(
