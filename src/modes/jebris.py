@@ -99,7 +99,7 @@ class JEBris(GameMode):
         last_tick = ticks_ms()
 
         if self.music_on:
-            await self.core.buzzer.play_song("TETRIS_THEME", loop=True)
+            await self.core.buzzer.play_sequence(self.core.tones.TETRIS_THEME, loop=True)
 
         while True:
             now = ticks_ms()
@@ -314,6 +314,6 @@ class JEBris(GameMode):
         )
         await self.core.audio.stop_all()
         await self.core.buzzer.stop()
-        await self.core.buzzer.play_song("GAME_OVER")
+        await self.core.buzzer.play_sequence(self.core.tones.GAME_OVER)
         await asyncio.sleep(2)
         return await self.game_over()

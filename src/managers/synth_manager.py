@@ -6,19 +6,21 @@ Manager for Generative Audio using synthio.
 import asyncio
 import random
 import synthio
-from utilities.synth_registry import Patches
+from utilities.synth_registry import Patches, Waveforms
 from utilities.tones import note
 
 class SynthManager:
     """
-    Controls real-time audio synthesis.
-    Must be connected to the Mixer in AudioManager or CoreManager.
+    A reusable SynthIO engine.
+    Can be instantiated for Hi-Fi (I2S) or Lo-Fi (PWM/Piezo).
     """
 
-    def __init__(self, sample_rate=22050):
+    def __init__(self, sample_rate=22050, channel_count=None, waveform_override=None):
+        self.override = waveform_override
+
         # Create the synthesizer object
         # mode=synthio.Mode.POLYPHONIC allows multiple notes at once
-        self.synth = synthio.Synthesizer(sample_rate=sample_rate)
+        self.synth = synthio.Synthesizer(sample_rate=sample_rate, channel_count=channel_count)
 
         # Note: Active notes are managed directly by the synthesizer
         # using press() and release() methods
@@ -28,26 +30,25 @@ class SynthManager:
         """Returns the synth object to be fed into AudioMixer."""
         return self.synth
 
-    def play_note(self, frequency, patch_name="UI_SELECT", duration=None):
+    def play_note(self, frequency, patch_name="SELECT", duration=None):
         """
         Trigger a note.
 
         Args:
             frequency (float): Frequency in Hz.
-            patch_name (str): Key from Patches registry (e.g., 'UI_SELECT').
+            patch_name (str): Key from Patches registry (e.g., 'SELECT').
             duration (float): If set, note auto-releases after seconds.
                               If None, note holds until stop_note is called.
         """
-        patch = getattr(Patches, patch_name, None)
-        if patch is None:
-            print(f"Warning: Patch '{patch_name}' not found, using UI_SELECT")
-            patch = Patches.UI_SELECT
+        patch = getattr(Patches, patch_name, Patches.SELECT)
+
+        wave = self.override if self.override else patch["wave"]
 
         # Create the note object
         # We assume standard amplitude; ADSR handles the rest
         n = synthio.Note(
             frequency=frequency,
-            waveform=patch["wave"],
+            waveform=wave,
             envelope=patch["envelope"]
         )
 
@@ -73,7 +74,7 @@ class SynthManager:
         await asyncio.sleep(duration)
         self.synth.release(note_obj)
 
-    async def play_sequence(self, sequence_data, patch_name="UI_SELECT"):
+    async def play_sequence(self, sequence_data, patch_name="SELECT"):
         """
         Play a sequence of notes defined in Tones format.
 
@@ -84,10 +85,9 @@ class SynthManager:
         bpm = sequence_data.get('bpm', 120)
         beat_duration = 60.0 / bpm
 
-        patch = getattr(Patches, patch_name, None)
-        if patch is None:
-            print(f"Warning: Patch '{patch_name}' not found, using UI_SELECT")
-            patch = Patches.UI_SELECT
+        patch = getattr(Patches, patch_name, Patches.SELECT)
+
+        wave = self.override if self.override else patch["wave"]
 
         for item in sequence_data['sequence']:
             # Handle both (freq, dur) and ('NoteName', dur) formats
@@ -99,7 +99,7 @@ class SynthManager:
                 # Play note
                 n = synthio.Note(
                     frequency=freq,
-                    waveform=patch["wave"],
+                    waveform=wave,
                     envelope=patch["envelope"]
                 )
                 self.synth.press(n)

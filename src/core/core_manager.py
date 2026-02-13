@@ -34,6 +34,7 @@ from transport.protocol import (
 
 from utilities.jeb_pixel import JEBPixel
 from utilities.pins import Pins
+from utilities import tones
 
 class CoreManager:
     """Class to hold global state for the master controller.
@@ -104,7 +105,7 @@ class CoreManager:
         )
 
         # Init Basic Audio (Buzzer)
-        self.buzzer = BuzzerManager(Pins.BUZZER, volume=0.5)
+        self.buzzer = BuzzerManager(Pins.BUZZER)
 
         # Init Primary Audio (I2S) and Synthesizer
         self.audio = AudioManager(
@@ -171,6 +172,9 @@ class CoreManager:
         self.abort_event = asyncio.Event()
         self.target_sat_event = asyncio.Event()
         self.meltdown = False
+
+        # Store tones for mode usage
+        self.tones = tones
 
     def _get_mode(self, mode_name):
         """Get a mode class from the registry with helpful error message.
@@ -483,7 +487,7 @@ class CoreManager:
         # --- POWER ON SELF TEST ---
         # Check power integrity before starting main application loop
         if self.power.check_power_integrity():
-            self.buzzer.play_song("POWER_UP")
+            self.buzzer.play_sequence(self.tones.POWER_UP)
             print("Power integrity check passed. Starting system...")
             await self.display.update_status("POWER OK", "STARTING SYSTEM...")
             await asyncio.sleep(1)
@@ -508,7 +512,7 @@ class CoreManager:
             asyncio.create_task(self.monitor_hw_hid())
 
         else:
-            self.buzzer.play_song("POWER_FAIL")
+            self.buzzer.play_sequence(self.tones.POWER_FAIL)
             print("Power integrity check failed! Check power supply and connections.")
             await self.display.update_status("POWER ERROR", "CHECK CONNECTIONS")
             # Do not start main loop if power is not stable

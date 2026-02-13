@@ -4,7 +4,6 @@
 import asyncio
 
 from utilities.palette import Palette
-from utilities import tones
 
 from .utility_mode import UtilityMode
 
@@ -269,7 +268,7 @@ class MainMenu(UtilityMode):
                 # Secret Admin Trigger (A + D hold)
                 if focus_mode == "GAME" and self.core.hid.is_pressed(0,long=True) and self.core.hid.is_pressed(3,long=True):
                     self.touch()
-                    self.core.buzzer.play_song(tones.SECRET_FOUND)
+                    self.core.buzzer.play_sequence(self.core.tones.SECRET_FOUND)
                     self._set_state("ADMIN")
 
             # =========================================

@@ -24,8 +24,9 @@ def _generate_square(sample_size=512, max_amp=32000):
 def _generate_saw(sample_size=512, max_amp=32000):
     b = array.array("h", [0] * sample_size)
     for i in range(sample_size):
-        # Scale 0..SIZE to -MAX..MAX
-        b[i] = int(-max_amp + (2 * max_amp * i / sample_size))
+        shifted_i = (i + sample_size // 2) % sample_size
+        val = -1 + 2 * (shifted_i / sample_size)
+        b[i] = int(val * max_amp)
     return b
 
 def _generate_triangle(sample_size=512, max_amp=32000):
@@ -39,6 +40,13 @@ def _generate_triangle(sample_size=512, max_amp=32000):
         b[i] = int(val * max_amp)
     return b
 
+def _generate_pulse(sample_size=512, max_amp=32000, duty=0.25):
+    b = array.array("h", [0] * sample_size)
+    cutoff = int(sample_size * duty)
+    for i in range(sample_size):
+        b[i] = max_amp if i < cutoff else -max_amp
+    return b
+
 class Waveforms:
     """Generates and stores single-cycle waveforms."""
 
@@ -50,6 +58,8 @@ class Waveforms:
     SQUARE = _generate_square(SAMPLE_SIZE, MAX_AMP)
     SAW = _generate_saw(SAMPLE_SIZE, MAX_AMP)
     TRIANGLE = _generate_triangle(SAMPLE_SIZE, MAX_AMP)
+    PULSE = _generate_pulse(SAMPLE_SIZE, MAX_AMP)
+    PULSE_125 = _generate_pulse(SAMPLE_SIZE, MAX_AMP, duty=0.125)
 
 class Envelopes:
     """Pre-defined ADSR Envelopes."""
@@ -94,19 +104,99 @@ class Envelopes:
 class Patches:
     """Named combinations of Waveforms and Envelopes."""
 
-    UI_SELECT = {
+    SELECT = {
         "wave": Waveforms.SQUARE,
         "envelope": Envelopes.CLICK
     }
 
-    UI_ERROR = {
+    ERROR = {
         "wave": Waveforms.SAW,
         "envelope": Envelopes.PUNCHY
+    }
+
+    CLICK = {
+        "wave": Waveforms.SQUARE,
+        "envelope": Envelopes.CLICK
+    }
+
+    BEEP = {
+        "wave": Waveforms.SINE,
+        "envelope": Envelopes.BEEP
+    }
+
+    BEEP_SQUARE = {
+        "wave": Waveforms.SQUARE,
+        "envelope": Envelopes.BEEP
+    }
+
+    PAD = {
+        "wave": Waveforms.TRIANGLE,
+        "envelope": Envelopes.PAD
+    }
+
+    PUNCH = {
+        "wave": Waveforms.SAW,
+        "envelope": Envelopes.PUNCHY
+    }
+
+    SUCCESS = {
+        "wave": Waveforms.SINE,
+        "envelope": synthio.Envelope(
+            attack_time=0.01,
+            decay_time=0.2,
+            release_time=0.4,
+            attack_level=0.8,
+            sustain_level=0.0 # Bell-like ring out
+        )
     }
 
     ALARM = {
         "wave": Waveforms.SAW,
         "envelope": Envelopes.BEEP
+    }
+
+    SONAR = {
+        "wave": Waveforms.SINE,
+        "envelope": synthio.Envelope(
+            attack_time=0.001,
+            decay_time=0.5,
+            release_time=0.5,
+            attack_level=1.0,
+            sustain_level=0.0
+        )
+    }
+
+    RETRO_COIN = {
+        "wave": Waveforms.PULSE,
+        "envelope": synthio.Envelope(
+            attack_time=0.01,
+            decay_time=0.1,
+            release_time=0.1,
+            attack_level=0.8,
+            sustain_level=0.5
+        )
+    }
+
+    TEXT_SCROLL = {
+        "wave": Waveforms.TRIANGLE,
+        "envelope": synthio.Envelope(
+            attack_time=0.001,
+            decay_time=0.03,
+            release_time=0.03,
+            attack_level=0.3, # Very quiet
+            sustain_level=0.0
+        )
+    }
+
+    ETHEREAL = {
+        "wave": Waveforms.TRIANGLE,
+        "envelope": synthio.Envelope(
+            attack_time=1.0,  # Slow fade in
+            decay_time=0.5,
+            release_time=2.0, # Long fade out
+            attack_level=0.7,
+            sustain_level=0.7
+        )
     }
 
     IDLE_HUM = {
