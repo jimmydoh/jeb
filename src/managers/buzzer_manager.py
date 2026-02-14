@@ -85,7 +85,7 @@ class BuzzerManager:
         except asyncio.CancelledError:
             self.buzzer.duty_cycle = self.VOLUME_OFF
         except ValueError as e:
-            print(f"🔊 BuzzerManager Error: Buzzer sequence ValueError: {e}")
+            print(f"🔊 BuzzerManager ValueError: {e}")
             self.buzzer.duty_cycle = self.VOLUME_OFF
 
     # --- PUBLIC TRIGGERS ---
