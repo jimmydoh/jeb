@@ -78,7 +78,7 @@ class ConsoleManager():
             choice = await self.get_input(">> ")
 
             if choice == "0":
-                buzzer.stop()
+                await buzzer.stop()
                 break
 
             elif choice == "1":
