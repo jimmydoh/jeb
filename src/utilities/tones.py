@@ -296,7 +296,7 @@ TETRIS_THEME = {
 
 BUBSY_THEME = {
     'bpm': 180,
-    'patch': Patches.RETRO_LEAD
+    'patch': Patches.RETRO_LEAD,
     'sequence': [
         # --- INTRO (Frantic ascending walk-up) ---
         ('G4', S), ('G#4', S), ('A4', S), ('A#4', S),
