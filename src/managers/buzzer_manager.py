@@ -46,6 +46,7 @@ class BuzzerManager:
                 self.buzzer.duty_cycle = self.VOLUME_OFF
         except asyncio.CancelledError:
             self.buzzer.duty_cycle = self.VOLUME_OFF
+            raise
 
     async def _play_sequence_logic(self, sequence, tempo=1.0, loop=False):
         """
@@ -84,6 +85,7 @@ class BuzzerManager:
 
         except asyncio.CancelledError:
             self.buzzer.duty_cycle = self.VOLUME_OFF
+            raise
         except ValueError as e:
             print(f"🔊 BuzzerManager ValueError: {e}")
             self.buzzer.duty_cycle = self.VOLUME_OFF
