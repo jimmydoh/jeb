@@ -309,7 +309,7 @@ BUBSY_THEME = {
         ('C5', E), ('E5', E), ('G5', E), ('A5', E),
         ('G5', E), ('E5', E), ('C5', E), ('A4', E),
         ('G4', E), ('A4', E), ('C5', E), ('D#5', E),
-        ('E5', Q), ('C5', Q), 
+        ('E5', Q), ('C5', Q),
 
         # --- MAIN MOTIF (Part B - The Bluesy Turn) ---
         ('F5', E), ('A5', E), ('C6', E), ('D6', E),
