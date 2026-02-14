@@ -294,6 +294,44 @@ TETRIS_THEME = {
     ]
 }
 
+BUBSY_THEME = {
+    'bpm': 180,
+    'patch': Patches.RETRO_LEAD
+    'sequence': [
+        # --- INTRO (Frantic ascending walk-up) ---
+        ('G4', S), ('G#4', S), ('A4', S), ('A#4', S),
+        ('B4', E), ('C5', E), ('C#5', E), ('D5', E),
+        ('D#5', E), ('E5', E), ('F5', E), ('F#5', E),
+        ('G5', Q), ('-', Q),
+
+        # --- MAIN RAGTIME MOTIF (Part A) ---
+        # The classic bouncy mascot walk
+        ('C5', E), ('E5', E), ('G5', E), ('A5', E),
+        ('G5', E), ('E5', E), ('C5', E), ('A4', E),
+        ('G4', E), ('A4', E), ('C5', E), ('D#5', E),
+        ('E5', Q), ('C5', Q), 
+
+        # --- MAIN MOTIF (Part B - The Bluesy Turn) ---
+        ('F5', E), ('A5', E), ('C6', E), ('D6', E),
+        ('C6', E), ('A5', E), ('F5', E), ('D5', E),
+        ('C5', E), ('D5', E), ('D#5', E), ('E5', E),
+        ('G5', Q), ('C5', Q),
+
+        # --- THE CHAOTIC BRIDGE ---
+        # Syncopated hits to simulate the 16-bit "attitude"
+        ('-', E), ('A#5', E), ('-', E), ('A5', E),
+        ('-', E), ('G5', E), ('E5', E), ('C5', E),
+        ('A#4', E), ('A4', E), ('G4', E), ('E4', E),
+        ('C4', Q), ('-', Q),
+
+        # --- OUTRO RUN ---
+        ('G4', E), ('A4', E), ('C5', E), ('E5', E),
+        ('G5', E), ('A5', E), ('C6', E), ('E6', E),
+        ('G6', Q), ('E6', Q), ('C6', H)
+    ]
+}
+
+
 # -- SYNTHIO SCORES ---
 
 WARP_CORE_IDLE = {
