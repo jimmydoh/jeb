@@ -208,7 +208,7 @@ IMPERIAL_MARCH = {
 }
 
 MARIO_THEME = {
-    'bpm': 100,
+    'bpm': 200, # 100 BPM Cut-Time
     'patch': Patches.RETRO_LEAD, # Square wave with instant attack
     'sequence': [
         # --- INTRO ---
@@ -255,7 +255,7 @@ MARIO_THEME = {
 }
 
 MARIO_THEME_ALT = {
-    'bpm': 100,
+    'bpm': 200, # 100 BPM Cut-Time
     'patch': Patches.RETRO_LEAD, # Square wave with instant attack
     'sequence': [
         # Intro
@@ -272,7 +272,7 @@ MARIO_THEME_ALT = {
 
 
 MARIO_UNDERGROUND = {
-    'bpm': 100,
+    'bpm': 180,
     'patch': Patches.RETRO_LEAD, # Square wave with instant attack
     'sequence': [
         ('C4', S), ('A3', S), ('A#3', S), ('A3', S),
