@@ -115,6 +115,28 @@ MODE_REGISTRY = {
                 "default": "NORMAL"
             }
         ]
+    },
+    "TRENCH_RUN": {
+        "id": "TRENCH_RUN",
+        "name": "TRENCH RUN",
+        "module_path": "modes.trench_run",
+        "class_name": "TrenchRunMode",
+        "icon": "game",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "perspective",
+                "label": "VIEW",
+                "options": ["3RD_PERSON", "1ST_PERSON"],
+                "default": "3RD_PERSON"
+            }
+        ]
     }
 }
 
