@@ -25,6 +25,17 @@ class AstroBreakerMode(GameMode):
     - Fully integrated with the CoreManager High Score system
     """
     
+    # Game constants
+    TARGET_FRAME_TIME_MS = 16  # ~60 FPS
+    MAX_PADDLE_X = 7  # Maximum paddle position (accounts for 2-pixel width on 8-pixel display)
+    LAUNCH_ANGLES = [210, 225, 240, 300, 315, 330]  # Ball launch angle options (degrees)
+    
+    # Scoring constants
+    NORMAL_BRICK_SCORE = 10
+    TOUGH_BRICK_DAMAGE_SCORE = 2
+    CORE_BRICK_SCORE = 50
+    SMART_BOMB_BRICK_SCORE = 5
+    
     METADATA = {
         "id": "ASTRO_BREAKER",
         "name": "ASTRO BREAKER",
@@ -92,7 +103,7 @@ class AstroBreakerMode(GameMode):
             now = ticks_ms()
             delta_ms = ticks_diff(now, last_tick)
             
-            if delta_ms >= 16:  # ~60 FPS Target
+            if delta_ms >= self.TARGET_FRAME_TIME_MS:  # ~60 FPS Target
                 
                 # 1. Hardware Interrupt: Check for Smart Bomb trigger
                 if self.check_buttons():
@@ -206,7 +217,7 @@ class AstroBreakerMode(GameMode):
             bricks_to_remove = [pos for pos in self.bricks.keys() if pos[1] == y]
             for pos in bricks_to_remove:
                 del self.bricks[pos]
-                self.score += 5  # Give a reduced score for bombing vs playing normally
+                self.score += self.SMART_BOMB_BRICK_SCORE  # Give a reduced score for bombing vs playing normally
             
             await asyncio.sleep(0.08)
             
@@ -241,14 +252,14 @@ class AstroBreakerMode(GameMode):
         self.ball_x = self.paddle_x + 0.5
         self.ball_y = 6.0
         
-        angle = random.choice([210, 225, 240, 300, 315, 330])
+        angle = random.choice(self.LAUNCH_ANGLES)
         self.ball_dx = self.current_speed * math.cos(math.radians(angle))
         self.ball_dy = self.current_speed * math.sin(math.radians(angle))
         
     def update_paddle(self):
         """Update shield position from encoder."""
         encoder_pos = self.core.hid.encoder_positions[0]
-        self.paddle_x = encoder_pos % 7 
+        self.paddle_x = encoder_pos % self.MAX_PADDLE_X 
 
     def update_ball(self):
         """Update physics and handle collisions. Returns True if ball falls off bottom."""
@@ -298,16 +309,16 @@ class AstroBreakerMode(GameMode):
                     self.core.synth.play_note(150.0, Patches.ERROR, duration=0.1)
                 else:
                     del self.bricks[ball_pos]
-                    self.score += 50
+                    self.score += self.CORE_BRICK_SCORE
                     self.core.synth.play_note(1200.0, Patches.ALARM, duration=0.1)
             else: 
                 brick['hp'] -= 1
                 if brick['hp'] <= 0:
                     del self.bricks[ball_pos]
-                    self.score += 10
+                    self.score += self.NORMAL_BRICK_SCORE
                     self.core.synth.play_note(880.0, Patches.RETRO_SFX, duration=0.05)
                 else:
-                    self.score += 2
+                    self.score += self.TOUGH_BRICK_DAMAGE_SCORE
                     self.core.synth.play_note(440.0, Patches.RETRO_SFX, duration=0.05)
             
         if self.ball_y > 8:
