@@ -23,7 +23,7 @@ class TrenchRunMode(GameMode):
     METADATA = {
         "id": "TRENCH_RUN",
         "name": "TRENCH RUN",
-        "icon": "GAME",
+        "icon": "game",
         "requires": ["CORE"],
         "settings": [
             {
@@ -40,6 +40,10 @@ class TrenchRunMode(GameMode):
             }
         ]
     }
+
+    # Matrix dimensions
+    MATRIX_WIDTH = 8
+    MATRIX_HEIGHT = 8
 
     def __init__(self, core):
         super().__init__(core, "TRENCH RUN", "Endless Space Dodger")
@@ -116,20 +120,20 @@ class TrenchRunMode(GameMode):
     def spawn_wall(self, y_start=-1.0):
         """Creates a new wall segment with a gap."""
         if not self.walls:
-            gap = random.randint(0, 7)
+            gap = random.randint(0, self.MATRIX_WIDTH - 1)
         else:
             # Prevent impossible jumps by keeping the next gap close to the last one
             last_gap = self.walls[-1]['gap_x']
             shift = random.choice([-2, -1, 0, 1, 2])
-            gap = (last_gap + shift) % 8
+            gap = (last_gap + shift) % self.MATRIX_WIDTH
             
         self.walls.append({'y': y_start, 'gap_x': gap})
 
     def update_player(self):
         """Update absolute ship position from encoder."""
         encoder_pos = self.core.hid.encoder_positions[0]
-        # Keep player in infinite 0-7 wrapped space
-        self.player_pos = encoder_pos % 8
+        # Keep player in infinite 0-(MATRIX_WIDTH-1) wrapped space
+        self.player_pos = encoder_pos % self.MATRIX_WIDTH
 
     def update_walls(self):
         """Moves walls down and handles collisions. Returns True if crashed."""
@@ -141,10 +145,10 @@ class TrenchRunMode(GameMode):
             wall['y'] += self.current_speed
             new_y_int = int(wall['y'])
             
-            # If the wall just hit the bottom row (y=7), check collision
-            if old_y_int < 7 and new_y_int >= 7:
+            # If the wall just hit the bottom row (y = MATRIX_HEIGHT - 1), check collision
+            if old_y_int < (self.MATRIX_HEIGHT - 1) and new_y_int >= (self.MATRIX_HEIGHT - 1):
                 # Calculate the safe indices for this wall
-                safe_indices = [(wall['gap_x'] + i) % 8 for i in range(self.gap_width)]
+                safe_indices = [(wall['gap_x'] + i) % self.MATRIX_WIDTH for i in range(self.gap_width)]
                 
                 if self.player_pos in safe_indices:
                     # Success!
@@ -160,7 +164,7 @@ class TrenchRunMode(GameMode):
                     crashed = True
             
             # If wall goes completely off screen, mark for removal
-            if wall['y'] > 8.0:
+            if wall['y'] > self.MATRIX_HEIGHT:
                 walls_to_remove.append(wall)
                 
         # Remove old walls
@@ -181,27 +185,27 @@ class TrenchRunMode(GameMode):
         
         for wall in self.walls:
             y_int = int(wall['y'])
-            if 0 <= y_int < 8:
+            if 0 <= y_int < self.MATRIX_HEIGHT:
                 
                 if self.perspective == "3RD_PERSON":
                     render_gap = wall['gap_x']
                 else: # 1ST_PERSON
                     # Shift the gap rendering so the player is effectively locked at index 3
-                    render_gap = (wall['gap_x'] - self.player_pos + 3) % 8
+                    render_gap = (wall['gap_x'] - self.player_pos + 3) % self.MATRIX_WIDTH
                 
                 # Calculate the exact indices to leave blank
-                gap_indices = [(render_gap + i) % 8 for i in range(self.gap_width)]
+                gap_indices = [(render_gap + i) % self.MATRIX_WIDTH for i in range(self.gap_width)]
                 
                 # Draw the wall blocks (color shifts slightly as speed increases)
                 wall_color = Palette.RED if self.level < 5 else Palette.PURPLE
-                for x in range(8):
+                for x in range(self.MATRIX_WIDTH):
                     if x not in gap_indices:
                         self.core.matrix.draw_pixel(x, y_int, wall_color)
         
         # Draw the Ship
         if self.perspective == "3RD_PERSON":
             # Ship moves across the bottom row
-            self.core.matrix.draw_pixel(self.player_pos, 7, Palette.CYAN)
+            self.core.matrix.draw_pixel(self.player_pos, self.MATRIX_HEIGHT - 1, Palette.CYAN)
         else:
             # Ship is anchored in the center (index 3)
-            self.core.matrix.draw_pixel(3, 7, Palette.CYAN)
+            self.core.matrix.draw_pixel(3, self.MATRIX_HEIGHT - 1, Palette.CYAN)
