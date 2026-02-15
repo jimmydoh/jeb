@@ -20,6 +20,11 @@ class DataFlowMode(GameMode):
     - Synthio audio for tactile cursor movement and routing
     """
     
+    # Game constants
+    AMBIENT_HUM_PROBABILITY = 0.05  # 5% chance per frame to play ambient hum
+    MAX_BEAM_PATH_LENGTH = 64  # Maximum beam path length (prevents infinite loops)
+    MAX_GENERATION_ATTEMPTS = 100  # Maximum attempts to generate a valid level
+    
     METADATA = {
         "id": "DATA_FLOW",
         "name": "DATA FLOW",
@@ -91,15 +96,13 @@ class DataFlowMode(GameMode):
                 # Check Win Condition
                 if self.target in self.beam_path:
                     await self.handle_victory(now)
-                    if not game_running:
-                        break
                 
                 # Render
                 await self.core.display.update_status(f"ROUTER SEC: {self.level}", f"NODES: {len(self.mirrors)}")
                 self.render(now)
                 
                 # Background ambient hum
-                if random.random() < 0.05:
+                if random.random() < self.AMBIENT_HUM_PROBABILITY:
                     self.core.synth.play_note(60.0, "ENGINE_HUM", duration=0.1)
                 
                 last_tick = now
@@ -162,7 +165,7 @@ class DataFlowMode(GameMode):
         x, y = self.source
         dx, dy = 1, 0  # Source always faces right
         
-        for _ in range(64):
+        for _ in range(self.MAX_BEAM_PATH_LENGTH):
             x += dx
             y += dy
             
@@ -191,7 +194,7 @@ class DataFlowMode(GameMode):
             
         num_mirrors = min(base_mirrors + (self.level // 2), 12)
         
-        for attempt in range(100):
+        for attempt in range(self.MAX_GENERATION_ATTEMPTS):
             self.mirrors.clear()
             
             x, y = 0, random.randint(1, 6)
