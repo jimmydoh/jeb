@@ -84,6 +84,7 @@ class TrenchRunMode(GameMode):
         self.score = 0
         self.level = 1
         self.walls.clear()
+        self.drone_freq = 80.0 + (self.level * 2.0)  # Cache drone frequency
         
         # Spawn the first wall off-screen
         self.spawn_wall(y_start=-1.0)
@@ -110,8 +111,7 @@ class TrenchRunMode(GameMode):
                 self.render()
                 
                 # Engine drone that pitches up slightly as you speed up
-                drone_freq = 80.0 + (self.level * 2.0)
-                self.core.synth.play_note(drone_freq, "ENGINE_HUM", duration=0.05)
+                self.core.synth.play_note(self.drone_freq, "ENGINE_HUM", duration=0.05)
                 
                 last_tick = now
             
@@ -159,6 +159,7 @@ class TrenchRunMode(GameMode):
                     if self.score % 100 == 0:
                         self.level += 1
                         self.current_speed = min(self.base_speed + (self.level * 0.01), 0.25)
+                        self.drone_freq = 80.0 + (self.level * 2.0)  # Update drone frequency when level changes
                 else:
                     # Crash!
                     crashed = True
