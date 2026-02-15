@@ -28,7 +28,7 @@ class AstroBreakerMode(GameMode):
     METADATA = {
         "id": "ASTRO_BREAKER",
         "name": "ASTRO BREAKER",
-        "icon": "GAME",
+        "icon": "ASTRO_BREAKER",
         "requires": ["CORE"],
         "settings": [
             {

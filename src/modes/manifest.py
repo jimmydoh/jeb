@@ -121,7 +121,7 @@ MODE_REGISTRY = {
         "name": "ASTRO BREAKER",
         "module_path": "modes.astro_breaker",
         "class_name": "AstroBreakerMode",
-        "icon": "GAME",
+        "icon": "ASTRO_BREAKER",
         "requires": ["CORE"],
         "settings": [
             {

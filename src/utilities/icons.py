@@ -205,6 +205,17 @@ class Icons:
         4, 4, 0, 0, 0, 0, 4, 4   # Bottom bat (green)
     ]
 
+    ASTRO_BREAKER = [
+        1, 1, 8, 8, 8, 8, 1, 1,  # Top row - Cores (red) and tough bricks (purple)
+        8, 8,12,12,12,12, 8, 8,  # Second row - Tough bricks (purple, magenta)
+        11,11,11,11,11,11,11,11, # Third row - Normal bricks (cyan)
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 3, 0, 0, 0, 0,  # Ball (yellow)
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 4, 4, 0, 0, 0, 0   # Paddle (green)
+    ]
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "SIMON": SIMON,
@@ -213,6 +224,7 @@ class Icons:
         "SUCCESS": SUCCESS,
         "FAILURE": FAILURE,
         "PONG": PONG,
+        "ASTRO_BREAKER": ASTRO_BREAKER,
         "0": ZERO,
         "1": ONE,
         "2": TWO,
