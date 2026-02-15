@@ -116,6 +116,22 @@ MODE_REGISTRY = {
             }
         ]
     },
+    "ASTRO_BREAKER": {
+        "id": "ASTRO_BREAKER",
+        "name": "ASTRO BREAKER",
+        "module_path": "modes.astro_breaker",
+        "class_name": "AstroBreakerMode",
+        "icon": "ASTRO_BREAKER",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
     "TRENCH_RUN": {
         "id": "TRENCH_RUN",
         "name": "TRENCH RUN",
