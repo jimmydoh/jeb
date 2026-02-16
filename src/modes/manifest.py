@@ -115,6 +115,44 @@ MODE_REGISTRY = {
                 "default": "NORMAL"
             }
         ]
+    },
+    "ASTRO_BREAKER": {
+        "id": "ASTRO_BREAKER",
+        "name": "ASTRO BREAKER",
+        "module_path": "modes.astro_breaker",
+        "class_name": "AstroBreakerMode",
+        "icon": "ASTRO_BREAKER",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "TRENCH_RUN": {
+        "id": "TRENCH_RUN",
+        "name": "TRENCH RUN",
+        "module_path": "modes.trench_run",
+        "class_name": "TrenchRunMode",
+        "icon": "game",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "perspective",
+                "label": "VIEW",
+                "options": ["3RD_PERSON", "1ST_PERSON"],
+                "default": "3RD_PERSON"
+            }
+        ]
     }
 }
 
