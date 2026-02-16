@@ -121,7 +121,7 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
 
         # 2. Subsystem Delegation (Prefix Routing)
         if cmd in LED_COMMANDS:
-            await self.leds.apply_command(cmd, val)
+            self.leds.apply_command(cmd, val)
         elif cmd in DSP_COMMANDS:
             await self.segment.apply_command(cmd, val)
 

@@ -81,7 +81,7 @@ class Pong(GameMode):
                     break
 
             if not self.industrial_sat:
-                await self.core.display.update_status("ERROR", "INDUSTRIAL SAT REQUIRED FOR 2P")
+                self.core.display.update_status("ERROR", "INDUSTRIAL SAT REQUIRED FOR 2P")
                 await asyncio.sleep(2)
                 return "FAILURE"
 
@@ -112,8 +112,8 @@ class Pong(GameMode):
 
         # Intro
         mode_text = f"{self.game_mode} MODE - {self.difficulty}" if self.game_mode == "1P" else f"{self.game_mode} MODE"
-        await self.core.display.update_status("MINI PONG", mode_text)
-        await self.core.matrix.show_icon("PONG", anim_mode="PULSE", speed=2.0)
+        self.core.display.update_status("MINI PONG", mode_text)
+        self.core.matrix.show_icon("PONG", anim_mode="PULSE", speed=2.0)
         await asyncio.sleep(2.0)
 
         # Reset encoders
@@ -295,12 +295,12 @@ class Pong(GameMode):
     async def update_score_display(self):
         """Update the OLED display with current scores."""
         if self.game_mode == "1P":
-            await self.core.display.update_status(
+            self.core.display.update_status(
                 f"P1: {self.player_score}  CPU: {self.cpu_score}",
                 f"FIRST TO 7 WINS"
             )
         else:
-            await self.core.display.update_status(
+            self.core.display.update_status(
                 f"P1: {self.player_score}  P2: {self.cpu_score}",
                 f"FIRST TO 7 WINS"
             )
@@ -361,18 +361,18 @@ class Pong(GameMode):
         """Show victory animation."""
         if self.game_mode == "1P":
             # Show score for 1P mode
-            await self.core.display.update_status(
+            self.core.display.update_status(
                 f"YOU WIN! SCORE: {self.score}",
                 f"FINAL: {self.player_score}-{self.cpu_score}"
             )
         else:
             # 2P mode - Player 1 wins
-            await self.core.display.update_status(
+            self.core.display.update_status(
                 "PLAYER 1 WINS!",
                 f"FINAL: {self.player_score}-{self.cpu_score}"
             )
 
-        await self.core.matrix.show_icon(
+        self.core.matrix.show_icon(
             "SUCCESS",
             anim_mode="PULSE",
             speed=2.0
@@ -388,17 +388,17 @@ class Pong(GameMode):
     async def show_defeat(self):
         """Show defeat animation."""
         if self.game_mode == "1P":
-            await self.core.display.update_status(
+            self.core.display.update_status(
                 "CPU WINS",
                 f"FINAL: {self.player_score}-{self.cpu_score}"
             )
         else:
             # 2P mode - Player 2 wins
-            await self.core.display.update_status(
+            self.core.display.update_status(
                 "PLAYER 2 WINS!",
                 f"FINAL: {self.player_score}-{self.cpu_score}"
             )
-        await self.core.matrix.show_icon(
+        self.core.matrix.show_icon(
             "FAILURE",
             anim_mode="PULSE",
             speed=2.0

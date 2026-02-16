@@ -185,6 +185,9 @@ class HIDManager:
                 self._mcp_int = None
                 MCP23017 = None
                 MCP23008 = None
+                self._expanded_buttons_keys = None
+                self._expanded_latching_keys = None
+                self._expanded_momentary_keys = None
 
                 if mcp_chip == "MCP23017":
                     try:
@@ -199,7 +202,13 @@ class HIDManager:
                     except ImportError:
                         MCP23008 = None
                 if mcp_int_pin:
-                    self._mcp_int = mcp_int_pin
+                    import digitalio
+                    # Wrap the raw pin in a DigitalInOut object
+                    self._mcp_int = digitalio.DigitalInOut(mcp_int_pin)
+                    # Set it to INPUT so we can read the interrupt signal
+                    self._mcp_int.direction = digitalio.Direction.INPUT
+                    # Usually MCP interrupts are Active-Low, so we use a Pull-Up
+                    self._mcp_int.pull = digitalio.Pull.UP
 
                 if MCP23017 or MCP23008:
                     print(f"✅ MCP Chip '{mcp_chip}' initialized at address {hex(mcp_i2c_address)}. Expanded inputs will be available. ✅")
@@ -464,7 +473,6 @@ class HIDManager:
     #endregion
 
     #region --- Encoder Handling ---
-    @property
     def encoder_position(self, index=0):
         """Returns the encoder position state."""
         return self.encoder_positions[index]
@@ -790,9 +798,12 @@ class HIDManager:
         if self._mcp: # Poll expander if available
             if (self._mcp_int and not self._mcp_int.value) or not self._mcp_int:
                 # Interrupt Active LOW or no INT pin
-                self._expanded_buttons_keys.update()
-                self._expanded_latching_keys.update()
-                self._expanded_momentary_keys.update()
+                if self._expanded_buttons_keys:
+                    self._expanded_buttons_keys.update()
+                if self._expanded_latching_keys:
+                    self._expanded_latching_keys.update()
+                if self._expanded_momentary_keys:
+                    self._expanded_momentary_keys.update()
                 dirty |= self._hw_expander_buttons()
                 dirty |= self._hw_expander_latching_toggles()
                 dirty |= self._hw_expander_momentary_toggles()
@@ -894,4 +905,41 @@ class HIDManager:
         # Use get_status_bytes() and decode to string
         # This ensures consistent behavior between both methods
         return self.get_status_bytes(order).decode('utf-8')
+
+    def flush(self):
+        """Clear all input states and queues."""
+        # Flush local keypad events
+        if self._buttons:
+            evt = keypad.Event()
+            while self._buttons.events.get_into(evt):
+                pass
+
+        # Latching toggles
+        if self._latching_toggles:
+            evt = keypad.Event()
+            while self._latching_toggles.events.get_into(evt):
+                pass
+
+        # Momentary toggles
+        if self._momentary_toggles:
+            evt = keypad.Event()
+            while self._momentary_toggles.events.get_into(evt):
+                pass
+
+        # TODO: Encoders - no events to flush, but reset positions if needed
+
+        # Flush encoder button events
+        if self._encoder_buttons:
+            evt = keypad.Event()
+            while self._encoder_buttons.events.get_into(evt):
+                pass
+
+        # TODO: Expanders
+
+        if self._matrix_keypads:
+            evt = keypad.Event()
+            for k_pad in self._matrix_keypads:
+                while k_pad.events.get_into(evt):
+                    pass
+
     #endregion

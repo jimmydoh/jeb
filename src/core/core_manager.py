@@ -36,6 +36,11 @@ from utilities.jeb_pixel import JEBPixel
 from utilities.pins import Pins
 from utilities import tones
 
+POW_INPUT = "input_20v"
+POW_BUS = "satbus_20v"
+POW_MAIN = "main_5v"
+POW_LED = "led_5v"
+
 class CoreManager:
     """Class to hold global state for the master controller.
 
@@ -82,7 +87,7 @@ class CoreManager:
         # Init power manager first for voltage readings
         self.power = PowerManager(
             Pins.SENSE_PINS,
-            ["input", "satbus", "main", "led"],
+            [POW_INPUT, POW_BUS, POW_MAIN, POW_LED],
             Pins.MOSFET_CONTROL,
             Pins.SATBUS_DETECT,
         )
@@ -321,14 +326,15 @@ class CoreManager:
 
         # Determine the result based on which task completed
         if estop_task in done:
-            await self.display.update_status("ESTOP ENGAGED", "EXITING MODE...")
+            self.display.update_status("ESTOP ENGAGED", "EXITING MODE...")
             return "ESTOP_ABORT"
         elif abort_task in done:
-            await self.display.update_status("USER ABORT", "EXITING MODE...")
+            self.display.update_status("USER ABORT", "EXITING MODE...")
             return "MANUAL_ABORT"
-        elif target_sat_task in done:
-            await self.display.update_status("LINK LOST", "EXITING MODE...")
-            return "LINK_LOST"
+        elif target_sat:
+            if target_sat_task in done:
+                self.display.update_status("LINK LOST", "EXITING MODE...")
+                return "LINK_LOST"
 
         if sub_task in done:
             # Propagate any exceptions from the mode task
@@ -337,7 +343,9 @@ class CoreManager:
                 return result if result else "SUCCESS"
             except Exception as e:
                 print(f"Error in mode execution: {e}")
-                await self.display.update_status("MODE ERROR", "CHECK LOGS")
+                import traceback
+                traceback.print_exc()
+                self.display.update_status("MODE ERROR", "CHECK LOGS")
                 return "MODE_ERROR"
 
         return "UNKNOWN_EXIT"
@@ -366,7 +374,7 @@ class CoreManager:
                     self.meltdown = False
                     self.estop_event.clear()  # Reset the event for future use
                     await self.audio.play("system_reset.wav")
-                    await self.display.update_status("SAFETY RESET", "PLEASE STAND BY")
+                    self.display.update_status("SAFETY RESET", "PLEASE STAND BY")
                     await asyncio.sleep(2)
                 else:
                     # Still in meltdown, continue strobing and waiting for reset
@@ -403,17 +411,16 @@ class CoreManager:
             if self.mode == "DASHBOARD":
                 # self.display.update_telemetry(v["bus"], v["log"])
                 # TODO Implement telemetry display
-                print(f"Power Rail - BUS: {v['bus']:.2f}V | LOGIC: {v['log']:.2f}V")
+                #print(f"Power Rail - BUS: {v[POW_BUS]:.2f}V | LOGIC: {v[POW_MAIN]:.2f}V")
+                pass
 
             # Scenario: LED buck converter is failing or overloaded
-            if v["led"] < 4.5 and v["raw"] > 18.0:
-                await self.display.update_status("LED PWR FAILURE", "CHECK 5A FUSE")
-                # Potentially dim the GlowBit automatically to save power
-                self.matrix.pixels.brightness = 0.02
+            if v[POW_LED] < 4.5 and v[POW_INPUT] > 18.0:
+                self.display.update_status("LED PWR FAILURE", "CHECK 5A FUSE")
 
             # Scenario: Logic rail is sagging (Audio Amp drawing too much?)
-            if v["log"] < 4.7:
-                await self.display.update_status("LOGIC BROWNOUT", "REDUCING VOLUME")
+            if v[POW_MAIN] < 4.7:
+                self.display.update_status("LOGIC BROWNOUT", "REDUCING VOLUME")
                 await self.audio.set_level(self.audio.CH_SFX, 0.5)  # Lower SFX volume
 
             await asyncio.sleep(0.5)
@@ -426,7 +433,7 @@ class CoreManager:
 
             if self.power.satbus_connected and not self.power.satbus_powered:
                 # PHYSICAL LINK DETECTED - Trigger Soft Start
-                await self.display.update_status("LINK DETECTED", "POWERING BUS...")
+                self.display.update_status("LINK DETECTED", "POWERING BUS...")
                 success, error = await self.power.soft_start_satellites()
 
                 if success:
@@ -436,13 +443,13 @@ class CoreManager:
                     # Power is stable, trigger the ID assignment chain
                     await self.sat_network.discover_satellites()
                 else:
-                    await self.display.update_status("PWR ERROR", error)
+                    self.display.update_status("PWR ERROR", error)
                     await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
 
             elif not self.power.satbus_connected and self.power.satbus_powered:
                 # PHYSICAL LINK LOST - Immediate Hardware Cut-off
                 self.power.emergency_kill()
-                await self.display.update_status("SAT LINK LOST", "BUS OFFLINE")
+                self.display.update_status("SAT LINK LOST", "BUS OFFLINE")
                 await self.audio.play("link_lost.wav", channel=self.audio.CH_SFX)
 
             await asyncio.sleep(0.5)  # Poll twice per second to save CPU
@@ -483,10 +490,10 @@ class CoreManager:
         """Main async loop for the Master Controller."""
         # --- POWER ON SELF TEST ---
         # Check power integrity before starting main application loop
-        if self.power.check_power_integrity():
+        if await self.power.check_power_integrity():
             self.buzzer.play_sequence(tones.POWER_UP)
             print("Power integrity check passed. Starting system...")
-            await self.display.update_status("POWER OK", "STARTING SYSTEM...")
+            self.display.update_status("POWER OK", "STARTING SYSTEM...")
             await asyncio.sleep(1)
 
             print("Initializing Watchdog Manager...")
@@ -511,7 +518,7 @@ class CoreManager:
         else:
             self.buzzer.play_sequence(tones.POWER_FAIL)
             print("Power integrity check failed! Check power supply and connections.")
-            await self.display.update_status("POWER ERROR", "CHECK CONNECTIONS")
+            self.display.update_status("POWER ERROR", "CHECK CONNECTIONS")
             # Do not start main loop if power is not stable
             while True:
                 await asyncio.sleep(1)
@@ -537,6 +544,9 @@ class CoreManager:
                 heartbeat_callback=lambda: self.watchdog.check_in("render")
             )
         )
+
+        if self.display:
+            asyncio.create_task(self.display.scroll_loop())
 
         asyncio.create_task(self.monitor_watchdog_feed())  # Start watchdog feed loop
 
@@ -585,7 +595,7 @@ class CoreManager:
                         mode_class = self._load_mode_class(self.mode)
                     except (ImportError, KeyError) as e:
                         print(f"Error loading mode '{self.mode}': {e}")
-                        await self.display.update_status("MODE LOAD ERROR", self.mode)
+                        self.display.update_status("MODE LOAD ERROR", self.mode)
                         await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
                         await asyncio.sleep(2)
                         self.mode = "DASHBOARD"  # Return to dashboard if mode fails to load
@@ -600,7 +610,7 @@ class CoreManager:
                                 mode_instance, target_sat=target_sat
                             )
                             if result == "LINK_LOST":
-                                await self.display.update_status(
+                                self.display.update_status(
                                     "LINK LOST", "RECONNECT IN 60s"
                                 )
                                 asyncio.create_task(
@@ -617,12 +627,12 @@ class CoreManager:
                                         run_robust = False
                                         continue
                                     secs_left = 60 - (elapsed // 1000)
-                                    await self.display.update_status(
+                                    self.display.update_status(
                                         "LINK LOST", f"ABORT IN: {secs_left}s"
                                     )
                                     await asyncio.sleep(0.1)
                                 if target_sat.is_active and run_robust:
-                                    await self.display.update_status(
+                                    self.display.update_status(
                                         "LINK RESTORED", "RESUMING..."
                                     )
                                     asyncio.create_task(
@@ -637,7 +647,7 @@ class CoreManager:
                         await self.run_mode_with_safety(mode_instance)
                 else:
                     print(f"Cannot start {self.mode}: Missing Dependency")
-                    await self.display.update_status(
+                    self.display.update_status(
                         "REQUIREMENT MISSING", f"NEED: {', '.join(requirements)}"
                     )
                     await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
@@ -646,7 +656,7 @@ class CoreManager:
 
             else:
                 print(f"Mode {self.mode} not found in registry.")
-                await self.display.update_status("MODE NOT FOUND", self.mode)
+                self.display.update_status("MODE NOT FOUND", self.mode)
                 await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
                 await asyncio.sleep(2)
                 self.mode = "DASHBOARD"  # Return to dashboard if mode not found

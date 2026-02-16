@@ -60,26 +60,22 @@ class MainMenu(UtilityMode):
 
         if new_state == "DASHBOARD":
             self.set_timeout(None)
-            self.core.display.load_view("dashboard")
-            asyncio.create_task(self.core.display.update_status("SYSTEM READY", "AWAITING INPUT"))
-            asyncio.create_task(self.core.matrix.show_icon("DEFAULT", anim_mode="PULSE", speed=3.0))
+            self.core.display.update_status("SYSTEM READY", "AWAITING INPUT")
+            self.core.matrix.show_icon("DEFAULT")
 
         elif new_state == "MENU":
             self.set_timeout(30)
-            self.core.display.load_view("game_info")
-            #asyncio.create_task(self.core.matrix.show_icon("MENU", anim_mode="SLIDE_LEFT", speed=2.0))
 
         elif new_state == "ADMIN":
             self.set_timeout(30)
-            self.core.display.load_view("admin")
-            asyncio.create_task(self.core.display.update_status("ADMIN CONSOLE", "AUTHORIZED ACCESS"))
-            asyncio.create_task(self.core.matrix.show_icon("ADMIN", anim_mode="PULSE", speed=2.0))
+            self.core.display.update_status("ADMIN CONSOLE", "AUTHORIZED ACCESS")
+            self.core.matrix.show_icon("ADMIN")
             self.core.hid.reset_encoder(0)
 
     async def run(self):
         """Main Menu for selecting modes."""
-        self.core.hid.reset_encoder(0)
-        last_pos = self.core.hid.encoder_pos
+        self.core.hid.reset_encoder(-1)
+        last_pos = self.core.hid.encoder_position()
         self._set_state("DASHBOARD")
 
         # Menu Logic Variables
@@ -88,12 +84,16 @@ class MainMenu(UtilityMode):
         focus_mode = "GAME" # "GAME" (Matrix Select) or "SETTINGS" (OLED Select)
         selected_setting_idx = 0
 
+        # Turn off all button LEDs
+        self.core.leds.off_led(-1)
+
         while True:
-            curr_pos = self.core.hid.encoder_pos
+            curr_pos = self.core.hid.encoder_position()
 
             # --- GLOBAL TIMEOUT CHECK ---
             if self.is_timed_out:
                 if self.state != "DASHBOARD":
+                    self.core.leds.off_led(-1)
                     await self.core.audio.play(
                         "audio/menu/close.wav",
                         self.core.audio.CH_SFX,
@@ -101,31 +101,22 @@ class MainMenu(UtilityMode):
                     )
                     self._set_state("DASHBOARD")
                     focus_mode = "GAME"
-
-            # --- INPUT WAKEUP ---
-            if curr_pos != last_pos:
-                self.touch()
+                    self.core.display.update_header("JADNET Electronics Box")
+                    self.core.display.update_footer("")
 
             # =========================================
             # STATE: DASHBOARD (Idle)
             # =========================================
             if self.state == "DASHBOARD":
-
-                # Turn off all button LEDs
-                self.core.led.off_led(-1)
-
-                if curr_pos != last_pos or self.core.hid.dial_pressed:
+                if curr_pos != last_pos or self.core.hid.is_encoder_button_pressed():
                     menu_items = self._build_menu_items()
                     self._set_state("MENU")
-                    last_pos = curr_pos
-                    first_mode_id = menu_items[selected_game_idx]
-                    first_mode_icon = self.core.mode_registry[first_mode_id]["icon"]
-                    asyncio.create_task(
-                        self.core.matrix.show_icon(
-                            first_mode_icon,
-                            anim="SLIDE_LEFT",
-                            speed=2.0
-                        )
+                    # Add breath effect to 'D' button to indicate it can be used to enter settings
+                    self.core.leds.set_led(
+                        index=3,
+                        color=Palette.CYAN,
+                        anim="BREATH",
+                        speed=0.5
                     )
                     await self.core.audio.play(
                         "audio/menu/open.wav",
@@ -138,47 +129,9 @@ class MainMenu(UtilityMode):
             # STATE: MENU (Game Select & Settings)
             # =========================================
             elif self.state == "MENU":
-
-                # Turn off all button LEDs
-                self.core.led.off_led(-1)
-
-                # Add breath effect to 'D' button to indicate it can be used to enter settings
-                self.core.led.set_led(
-                    index=3,
-                    color=Palette.CYAN,
-                    anim="BREATH",
-                    speed=2.0
-                )
-
-                selected_mode_id = menu_items[selected_game_idx]
-                mode_meta = self.core.mode_registry[selected_mode_id]
-                mode_settings = mode_meta.get("settings", [])
-
-                # --- UPDATE DISPLAY ---
-                display_settings = []
-                for s in mode_settings:
-                    current_value = self.core.data.get_setting(selected_mode_id, s["key"], s["default"])
-                    display_settings.append({
-                        "label": s["label"],
-                        "value": str(current_value)
-                    })
-
-                # Get High Score
-                high_score = self.core.data.get_score(selected_mode_id)
-
-                self.core.display.update_game_menu(
-                    title=mode_meta["name"],
-                    score=high_score,
-                    settings=display_settings,
-                    selected_idx=selected_setting_idx,
-                    has_focus=(focus_mode == "SETTINGS")
-                )
-
                 # --- INPUT HANDLING ---
-
                 # ENCODER TURN
                 if curr_pos != last_pos:
-
                     # Menu Tick
                     await self.core.audio.play(
                         "audio/menu/tick.wav",
@@ -189,22 +142,32 @@ class MainMenu(UtilityMode):
                     if focus_mode == "GAME":
 
                         # Cycle Games
-                        selected_game_idx = self.core.hid.get_scaled_encoder_pos(
+                        selected_game_idx = self.core.hid.encoder_position_scaled(
                             multiplier=1.0,
                             wrap=len(menu_items)
                         )
+                        selected_mode_id = menu_items[selected_game_idx]
+                        selected_mode_icon = self.core.mode_registry[selected_mode_id]["icon"]
+                        mode_meta = self.core.mode_registry[selected_mode_id]
+                        mode_settings = mode_meta.get("settings", [])
 
                         # Update Icon
-                        next_mode_id = menu_items[selected_game_idx]
-                        next_mode_icon = self.core.mode_registry[next_mode_id]["icon"]
-
-                        asyncio.create_task(
-                            self.core.matrix.show_icon(
-                                next_mode_icon,
-                                anim_mode="SLIDE_LEFT",
-                                speed=2.0
-                            )
+                        self.core.matrix.show_icon(
+                            selected_mode_icon,
+                            anim_mode="SLIDE_LEFT",
+                            speed=2.0
                         )
+
+                        # --- UPDATE DISPLAY ---
+                        # Get High Score
+                        high_score = self.core.data.get_high_score(selected_mode_id)
+
+                        self.core.display.update_header(f"-{mode_meta['name']}-")
+                        self.core.display.update_status(
+                            f"HIGH SCORE: {high_score}",
+                            "Push dial to select, then let's make this line really long"
+                        )
+                        self.core.display.update_footer("Press 'D' for settings")
 
                     elif focus_mode == "SETTINGS":
 
@@ -213,10 +176,27 @@ class MainMenu(UtilityMode):
                             delta = curr_pos - last_pos
                             selected_setting_idx = (selected_setting_idx + delta) % len(mode_settings)
 
+                        # settings_strings: A list of strings like "DIFF: NORMAL" built from mode_settings and current values
+                        settings_strings = []
+                        for s in mode_settings:
+                            current_value = self.core.data.get_setting(
+                                mode_meta["id"],
+                                s["key"],
+                                s["default"]
+                            )
+                            settings_strings.append(f"{s['label']}: {current_value}")
+
+                        self.core.display.update_header(f"-{mode_meta['name']}- SETTINGS")
+                        self.core.display.update_settings_menu(
+                            settings_strings,
+                            selected_setting_idx
+                        )
+                        self.core.display.update_footer("Press 'D' to exit settings")
+
                     last_pos = curr_pos
 
                 # ENCODER PRESS
-                if self.core.hid.dial_pressed:
+                if self.core.hid.is_encoder_button_pressed():
                     self.touch()
 
                     if focus_mode == "GAME":
@@ -257,7 +237,7 @@ class MainMenu(UtilityMode):
                             self.core.data.set_setting(mode_meta["id"], setting["key"], new_value)
 
                 # 'D' BUTTON to toggle focus
-                if self.core.hid.is_pressed(3, action="tap"):
+                if self.core.hid.is_button_pressed(3, action="tap"):
                     self.touch()
                     if focus_mode == "GAME":
                         if len(mode_settings) > 0:
@@ -279,10 +259,11 @@ class MainMenu(UtilityMode):
                         )
 
                 # Secret Admin Trigger (A + D hold)
-                if focus_mode == "GAME" and self.core.hid.is_pressed(0,long=True) and self.core.hid.is_pressed(3,long=True):
+                if focus_mode == "GAME" and self.core.hid.is_button_pressed(0,long=True) and self.core.hid.is_button_pressed(3,long=True):
                     self.touch()
                     self.core.buzzer.play_sequence(tones.SECRET_FOUND)
                     self._set_state("ADMIN")
+                    print("DEBUG: Entering Admin Menu")
 
             # =========================================
             # STATE: ADMIN MENU (Work in progress)
@@ -290,13 +271,13 @@ class MainMenu(UtilityMode):
             elif self.state == "ADMIN":
 
                 # Turn off all button LEDs
-                self.core.led.off_led(-1)
+                self.core.leds.off_led(-1)
 
                 # Start a Cylon strobe
-                self.core.led.start_cylon(Palette.RED, speed=0.05)
+                self.core.leds.start_cylon(Palette.RED, speed=0.05)
 
                 # Add breath effect to 'B' button to indicate it can be used to exit admin menu
-                self.core.led.set_led(
+                self.core.leds.set_led(
                     index=1,
                     color=Palette.ORANGE,
                     anim="FLASH",
@@ -308,19 +289,20 @@ class MainMenu(UtilityMode):
 
                 # Navigation
                 if curr_pos != last_pos:
-                    admin_idx = self.core.hid.get_scaled_encoder_pos(
+                    admin_idx = self.core.hid.encoder_position_scaled(
                         multiplier=1.0,
                         wrap=len(menu_items)
                     )
 
-                    self.core.display.update_admin_menu(menu_items, admin_idx)
+                    # TODO: Fix admin menu display
+                    self.core.display.update_status("TBD Admin Menu")
                     await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
                     last_pos = curr_pos
 
                 # Selection
-                if self.core.hid.dial_pressed:
+                if self.core.hid.is_encoder_button_pressed():
                     self.touch()
-                    admin_idx = self.core.hid.get_scaled_encoder_pos(
+                    admin_idx = self.core.hid.encoder_position_scaled(
                         multiplier=1.0,
                         wrap=len(menu_items)
                     )
@@ -328,7 +310,7 @@ class MainMenu(UtilityMode):
                     return menu_keys[admin_idx]
 
                 # Back Button (B Button)
-                if self.core.hid.is_pressed(1,long=True,duration=2000):
+                if self.core.hid.is_button_pressed(1,long=True,duration=2000):
                     self.touch()
                     await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
                     self._set_state("DASHBOARD")

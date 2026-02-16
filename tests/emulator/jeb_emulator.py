@@ -22,7 +22,7 @@ class HardwareMocks:
     encoder = None          # Will hold the rotaryio.IncrementalEncoder instance
     estop = None            # Will hold the digitalio.DigitalInOut instance
     mcp = None              # Will hold the MCP expander instance if configured
-    expanded_buttons = None # Will hold the MCP expander buttons if configured
+    mcp_int = None          # Will hold the MCP interrupt pin object if configured
 
 # --- KEYPAD MOCK ---
 class MockKeypadEvent:
@@ -86,9 +86,12 @@ class MockDigitalInOut:
         self.direction = MockDirection.INPUT  # Added to prevent attribute errors
         self._value = True # Default UP (E-Stop is usually active low)
 
-        # Only assign this to the E-Stop mock if it's actually the E-Stop pin
-        # You may want to check the specific pin if PowerManager uses other digital pins
-        HardwareMocks.estop = self
+        # Identify the pin based on the board constant
+        # Note: 'board.GP15' is the standard MCP_INT pin in your Pins class
+        if str(pin) == "board.GP11":
+            HardwareMocks.mcp_int = self
+        elif str(pin) == "board.GP7": # Example E-Stop pin
+            HardwareMocks.estop = self
 
     @property
     def value(self):
@@ -114,9 +117,29 @@ class MockPin:
 class MockBoard:
     def __getattr__(self, name): return MockPin(name)
 
-sys.modules['board'] = MockBoard()
-sys.modules['microcontroller'] = type('MockMicrocontroller', (), {'pin': MockBoard()})()
+# --- WATCHDOG MOCK ---
+class MockWatchdog:
+    class WatchDogMode:
+        RESET = 1
+        RAISE = 2
 
+    def __init__(self):
+        self.timeout = 10
+        self.mode = self.WatchDogMode.RESET
+
+    def feed(self):
+        # Optional: uncomment to see the heartbeat in the console
+        # print("[WATCHDOG] Fed")
+        pass
+
+mock_watchdog = MockWatchdog()
+
+sys.modules['board'] = MockBoard()
+sys.modules['microcontroller'] = type('MockMicrocontroller', (), {
+    'pin': type('MockPin', (), {})(),
+    'watchdog': mock_watchdog,
+    'WatchDogMode': MockWatchdog.WatchDogMode # Some versions use this path
+})
 # busio (UART and I2C)
 class MockUART:
     def __init__(self, *args, **kwargs): self.in_waiting = 0
@@ -141,8 +164,8 @@ class MockAnalogIn:
     @property
     def value(self):
         # CircuitPython ADC returns a 16-bit int (0 to 65535).
-        # 60000 simulates a healthy ~3.0V reading on the rail.
-        return 60000
+        # 49650 simulates a healthy reading on the rail.
+        return 49650
 
 sys.modules['analogio'] = type('MockAnalogIO', (), {'AnalogIn': MockAnalogIn})
 
@@ -205,6 +228,45 @@ class MockPWMAudioOut:
     def deinit(self): pass
 
 sys.modules['audiopwmio'] = type('MockAudioPWMIO', (), {'PWMAudioOut': MockPWMAudioOut})
+
+# --- PWMIO MOCK (For Buzzer/Piezo) ---
+class MockPWMOut:
+    def __init__(self, pin, duty_cycle=0, frequency=440, variable_frequency=True):
+        self.pin = pin
+        self._duty_cycle = duty_cycle
+        self._frequency = frequency
+        self.variable_frequency = variable_frequency
+        self._is_playing = duty_cycle > 0
+
+    @property
+    def duty_cycle(self):
+        return self._duty_cycle
+
+    @duty_cycle.setter
+    def duty_cycle(self, value):
+        # Detect transition from silence to sound
+        if value > 0 and self._duty_cycle == 0:
+            print(f"[BUZZER] ON  ({self._frequency} Hz)")
+        # Detect transition from sound to silence
+        elif value == 0 and self._duty_cycle > 0:
+            print(f"[BUZZER] OFF")
+
+        self._duty_cycle = value
+
+    @property
+    def frequency(self):
+        return self._frequency
+
+    @frequency.setter
+    def frequency(self, value):
+        if value != self._frequency and self._duty_cycle > 0:
+            print(f"[BUZZER] FREQ CHANGE -> {value} Hz")
+        self._frequency = value
+
+    def deinit(self):
+        pass
+
+sys.modules['pwmio'] = type('MockPWMIO', (), {'PWMOut': MockPWMOut})
 
 # --- AUDIOCORE MOCK (.wav File Decoder) ---
 class MockWaveFile:
@@ -361,6 +423,8 @@ class MockMCP:
         HardwareMocks.mcp = self
 
     def get_pin(self, pin_num):
+        if HardwareMocks.mcp_int:
+            HardwareMocks.mcp_int.value = True
         if pin_num not in self.pins:
             self.pins[pin_num] = MockMCPPin(pin_num)
         return self.pins[pin_num]

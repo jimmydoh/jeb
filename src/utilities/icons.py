@@ -216,6 +216,17 @@ class Icons:
         0, 0, 4, 4, 0, 0, 0, 0   # Paddle (green)
     ]
 
+    TRENCH_RUN = [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        1, 9, 0, 0, 0, 9, 1, 1,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        1, 1, 9, 0, 0, 0, 9, 1,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 7, 0, 0, 0, 0
+    ]
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -228,6 +239,7 @@ class Icons:
         "FAILURE": FAILURE,
         "PONG": PONG,
         "ASTRO_BREAKER": ASTRO_BREAKER,
+        "TRENCH_RUN": TRENCH_RUN,
         "0": ZERO,
         "1": ONE,
         "2": TWO,

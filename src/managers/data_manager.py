@@ -39,9 +39,17 @@ class DataManager:
         except OSError as e:
             print(f"Error saving game data: {e}")
 
-    def get_high_score(self, mode_name, variant):
+    def get_high_score(self, mode_name, variant=None):
         """Get high score for a game."""
-        return self.data.get(mode_name, {}).get(variant, {}).get("high_score", 0)
+        # If variant is None, try and return the first available variant's high score, otherwise return 0
+        if mode_name in self.data:
+            if variant and variant in self.data[mode_name]:
+                return self.data[mode_name][variant].get("high_score", 0)
+            elif not variant:
+                # Return the high score of the first variant found
+                for var_data in self.data[mode_name].values():
+                    if "high_score" in var_data:
+                        return var_data["high_score"]
 
     def save_high_score(self, mode_name, variant, score):
         """Set high score if higher than current."""

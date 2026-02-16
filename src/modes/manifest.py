@@ -120,7 +120,7 @@ MODE_REGISTRY = {
         "id": "ASTRO_BREAKER",
         "name": "ASTRO BREAKER",
         "module_path": "modes.astro_breaker",
-        "class_name": "AstroBreakerMode",
+        "class_name": "AstroBreaker",
         "icon": "ASTRO_BREAKER",
         "requires": ["CORE"],
         "settings": [
@@ -136,8 +136,8 @@ MODE_REGISTRY = {
         "id": "TRENCH_RUN",
         "name": "TRENCH RUN",
         "module_path": "modes.trench_run",
-        "class_name": "TrenchRunMode",
-        "icon": "game",
+        "class_name": "TrenchRun",
+        "icon": "TRENCH_RUN",
         "requires": ["CORE"],
         "settings": [
             {
