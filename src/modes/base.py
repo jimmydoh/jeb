@@ -66,7 +66,7 @@ class BaseMode:
         self.core.hid.flush()
 
         # 3. UI Setup
-        self.core.display.update_status(self.name, "LOADING...")
+        asyncio.create_task(self.core.display.update_status(self.name, "LOADING..."))
         await asyncio.sleep(0.1)
 
     async def exit(self):

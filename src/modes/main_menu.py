@@ -61,19 +61,19 @@ class MainMenu(UtilityMode):
         if new_state == "DASHBOARD":
             self.set_timeout(None)
             self.core.display.load_view("dashboard")
-            self.core.display.update_status("SYSTEM READY", "AWAITING INPUT")
-            asyncio.create_task(self.core.matrix.show_icon("DEFAULT", anim="PULSE", speed=3.0))
+            asyncio.create_task(self.core.display.update_status("SYSTEM READY", "AWAITING INPUT"))
+            asyncio.create_task(self.core.matrix.show_icon("DEFAULT", anim_mode="PULSE", speed=3.0))
 
         elif new_state == "MENU":
             self.set_timeout(30)
             self.core.display.load_view("game_info")
-            asyncio.create_task(self.core.matrix.show_icon("MENU", anim="SLIDE_LEFT", speed=2.0))
+            #asyncio.create_task(self.core.matrix.show_icon("MENU", anim_mode="SLIDE_LEFT", speed=2.0))
 
         elif new_state == "ADMIN":
             self.set_timeout(30)
             self.core.display.load_view("admin")
-            self.core.display.update_status("ADMIN CONSOLE", "AUTHORIZED ACCESS")
-            asyncio.create_task(self.core.matrix.show_icon("ADMIN", anim="PULSE", speed=2.0))
+            asyncio.create_task(self.core.display.update_status("ADMIN CONSOLE", "AUTHORIZED ACCESS"))
+            asyncio.create_task(self.core.matrix.show_icon("ADMIN", anim_mode="PULSE", speed=2.0))
             self.core.hid.reset_encoder(0)
 
     async def run(self):
@@ -94,7 +94,7 @@ class MainMenu(UtilityMode):
             # --- GLOBAL TIMEOUT CHECK ---
             if self.is_timed_out:
                 if self.state != "DASHBOARD":
-                    self.core.audio.play(
+                    await self.core.audio.play(
                         "audio/menu/close.wav",
                         self.core.audio.CH_SFX,
                         level=0.8
@@ -118,7 +118,16 @@ class MainMenu(UtilityMode):
                     menu_items = self._build_menu_items()
                     self._set_state("MENU")
                     last_pos = curr_pos
-                    self.core.audio.play(
+                    first_mode_id = menu_items[selected_game_idx]
+                    first_mode_icon = self.core.mode_registry[first_mode_id]["icon"]
+                    asyncio.create_task(
+                        self.core.matrix.show_icon(
+                            first_mode_icon,
+                            anim="SLIDE_LEFT",
+                            speed=2.0
+                        )
+                    )
+                    await self.core.audio.play(
                         "audio/menu/open.wav",
                         self.core.audio.CH_SFX,
                         level=0.8
@@ -171,7 +180,7 @@ class MainMenu(UtilityMode):
                 if curr_pos != last_pos:
 
                     # Menu Tick
-                    self.core.audio.play(
+                    await self.core.audio.play(
                         "audio/menu/tick.wav",
                         self.core.audio.CH_SFX,
                         level=0.8
@@ -186,10 +195,13 @@ class MainMenu(UtilityMode):
                         )
 
                         # Update Icon
+                        next_mode_id = menu_items[selected_game_idx]
+                        next_mode_icon = self.core.mode_registry[next_mode_id]["icon"]
+
                         asyncio.create_task(
                             self.core.matrix.show_icon(
-                                menu_items[selected_game_idx]["icon"],
-                                anim="SLIDE_LEFT",
+                                next_mode_icon,
+                                anim_mode="SLIDE_LEFT",
                                 speed=2.0
                             )
                         )
@@ -209,7 +221,7 @@ class MainMenu(UtilityMode):
 
                     if focus_mode == "GAME":
                         # START GAME
-                        self.core.audio.play(
+                        await self.core.audio.play(
                             "audio/menu/power.wav",
                             self.core.audio.CH_SFX,
                             level=0.8
@@ -219,7 +231,7 @@ class MainMenu(UtilityMode):
 
                     elif focus_mode == "SETTINGS":
                         # TOGGLE SETTING OPTION
-                        self.core.audio.play(
+                        await self.core.audio.play(
                             "audio/menu/select.wav",
                             self.core.audio.CH_SFX,
                             level=0.8
@@ -251,7 +263,7 @@ class MainMenu(UtilityMode):
                         if len(mode_settings) > 0:
                             focus_mode = "SETTINGS"
                             selected_setting_idx = 0
-                            self.core.audio.play(
+                            await self.core.audio.play(
                                 "audio/menu/open.wav",
                                 self.core.audio.CH_SFX,
                                 level=0.8
@@ -260,7 +272,7 @@ class MainMenu(UtilityMode):
                         focus_mode = "GAME"
                         self.core.hid.reset_encoder(selected_game_idx)
                         last_pos = selected_game_idx
-                        self.core.audio.play(
+                        await self.core.audio.play(
                             "audio/menu/close.wav",
                             self.core.audio.CH_SFX,
                             level=0.8
@@ -302,7 +314,7 @@ class MainMenu(UtilityMode):
                     )
 
                     self.core.display.update_admin_menu(menu_items, admin_idx)
-                    self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
+                    await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
                     last_pos = curr_pos
 
                 # Selection
@@ -312,13 +324,13 @@ class MainMenu(UtilityMode):
                         multiplier=1.0,
                         wrap=len(menu_items)
                     )
-                    self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
+                    await self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
                     return menu_keys[admin_idx]
 
                 # Back Button (B Button)
                 if self.core.hid.is_pressed(1,long=True,duration=2000):
                     self.touch()
-                    self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
+                    await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
                     self._set_state("DASHBOARD")
 
             await asyncio.sleep(0.01)

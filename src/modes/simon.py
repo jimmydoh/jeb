@@ -76,7 +76,7 @@ class Simon(GameMode):
 
         # --- INTRO ---
         await self.core.display.update_status("SIMON", sub_text)
-        await self.core.matrix.show_icon("SIMON", anim="PULSE", speed=2.0)
+        await self.core.matrix.show_icon("SIMON", anim_mode="PULSE", speed=2.0)
 
         # Setup button LEDs
         for i in range(4):

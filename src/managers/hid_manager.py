@@ -161,7 +161,7 @@ class HIDManager:
 
             # Matrix Keypads
             self._matrix_keypads = []
-            for mk in matrix_keypads:
+            for mk in matrix_keypads or []:
                 _, row_pins, col_pins = mk
                 self._matrix_keypads.append(keypad.Keypad(
                     row_pins,
@@ -183,6 +183,9 @@ class HIDManager:
             if mcp_chip and mcp_i2c and mcp_i2c_address:
                 self._mcp = None
                 self._mcp_int = None
+                MCP23017 = None
+                MCP23008 = None
+
                 if mcp_chip == "MCP23017":
                     try:
                         from adafruit_mcp230xx.mcp23017 import MCP23017
