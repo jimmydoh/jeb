@@ -18,7 +18,7 @@ MODE_REGISTRY = {
         "name": "MAIN MENU",
         "module_path": "modes.main_menu",
         "class_name": "MainMenu",
-        "icon": "home",
+        "icon": "DEFAULT",
         "requires": ["CORE"],
         "settings": []
     },
@@ -27,7 +27,7 @@ MODE_REGISTRY = {
         "name": "DASHBOARD",
         "module_path": "modes.main_menu",
         "class_name": "MainMenu",
-        "icon": "home",
+        "icon": "DEFAULT",
         "requires": ["CORE"],
         "settings": []
     },
@@ -35,8 +35,8 @@ MODE_REGISTRY = {
         "id": "SIMON",
         "name": "SIMON SAYS",
         "module_path": "modes.simon",
-        "class_name": "SimonMode",
-        "icon": "simon",
+        "class_name": "Simon",
+        "icon": "SIMON",
         "requires": ["CORE"],
         "settings": [
             {
@@ -57,8 +57,8 @@ MODE_REGISTRY = {
         "id": "JEBRIS",
         "name": "JEBRIS",
         "module_path": "modes.jebris",
-        "class_name": "JebrisMode",
-        "icon": "tetris",
+        "class_name": "JEBris",
+        "icon": "JEBRIS",
         "requires": ["CORE"],
         "settings": [
             {
@@ -79,8 +79,8 @@ MODE_REGISTRY = {
         "id": "SAFE",
         "name": "SAFE CRACKER",
         "module_path": "modes.safe_cracker",
-        "class_name": "SafeCrackerMode",
-        "icon": "dial",
+        "class_name": "SafeCracker",
+        "icon": "SAFE",
         "requires": ["CORE"],
         "settings": []
     },
@@ -88,8 +88,8 @@ MODE_REGISTRY = {
         "id": "IND_START",
         "name": "INDUSTRIAL STARTUP",
         "module_path": "modes.industrial_startup",
-        "class_name": "IndustrialStartupMode",
-        "icon": "factory",
+        "class_name": "IndustrialStartup",
+        "icon": "IND",
         "requires": ["INDUSTRIAL"],
         "settings": []
     },
@@ -97,8 +97,8 @@ MODE_REGISTRY = {
         "id": "PONG",
         "name": "MINI PONG",
         "module_path": "modes.pong",
-        "class_name": "PongMode",
-        "icon": "pong",
+        "class_name": "Pong",
+        "icon": "PONG",
         "requires": ["CORE"],
         "optional": ["INDUSTRIAL"],
         "settings": [

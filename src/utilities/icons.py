@@ -207,12 +207,14 @@ class Icons:
 
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
+        "MENU": DEFAULT,
         "SIMON": SIMON,
         "SAFE": SAFE,
+        "JEBRIS": JEBRIS,
+        "PONG": PONG,
         "IND": IND,
         "SUCCESS": SUCCESS,
         "FAILURE": FAILURE,
-        "PONG": PONG,
         "0": ZERO,
         "1": ONE,
         "2": TWO,
