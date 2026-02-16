@@ -105,7 +105,7 @@ def test_song_library():
     """Test song library entries."""
     print("\nTesting song library...")
     
-    song_names = ['MARIO_THEME', 'MARIO_THEME_ALT', 'MARIO_UNDERGROUND', 
+    song_names = ['BUBSY_THEME','MARIO_THEME', 'MARIO_THEME_ALT', 'MARIO_UNDERGROUND', 
                   'TETRIS_THEME', 'WARP_CORE_IDLE', 'MAINFRAME_THINKING']
     
     for song_name in song_names:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for BuzzerManager (synthio-based implementation)."""
+"""Unit tests for BuzzerManager (pwmio-based implementation)."""
 
 import sys
 import os
@@ -25,85 +25,39 @@ sys.modules['adafruit_ticks'] = MockModule()
 sys.modules['audiobusio'] = MockModule()
 sys.modules['audiocore'] = MockModule()
 sys.modules['audiomixer'] = MockModule()
+sys.modules['audiopwmio'] = MockModule()
 sys.modules['analogio'] = MockModule()
 sys.modules['microcontroller'] = MockModule()
 sys.modules['watchdog'] = MockModule()
 sys.modules['storage'] = MockModule()
+sys.modules['synthio'] = MockModule()
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 
-# Mock synthio module with actual implementation for testing
-class MockNote:
-    """Mock synthio.Note."""
-    def __init__(self, frequency, waveform=None, envelope=None):
-        self.frequency = frequency
-        self.waveform = waveform
-        self.envelope = envelope
-
-
-class MockEnvelope:
-    """Mock synthio.Envelope."""
-    def __init__(self, attack_time=0, decay_time=0, release_time=0, 
-                 attack_level=1.0, sustain_level=1.0):
-        self.attack_time = attack_time
-        self.decay_time = decay_time
-        self.release_time = release_time
-        self.attack_level = attack_level
-        self.sustain_level = sustain_level
-
-
-class MockSynthesizer:
-    """Mock synthio.Synthesizer."""
-    def __init__(self, sample_rate=22050, channel_count=None):
-        self.sample_rate = sample_rate
-        self.channel_count = channel_count
-        self.pressed_notes = []
-        self.released_notes = []
-    
-    def press(self, note):
-        """Mock press."""
-        self.pressed_notes.append(note)
-    
-    def release(self, note):
-        """Mock release."""
-        self.released_notes.append(note)
-    
-    def release_all(self):
-        """Mock release_all."""
-        self.pressed_notes.clear()
-        self.released_notes.clear()
-
-
-class MockSynthio:
-    """Mock synthio module."""
-    Note = MockNote
-    Envelope = MockEnvelope
-    Synthesizer = MockSynthesizer
-
-
-sys.modules['synthio'] = MockSynthio()
-
-
-# Mock audiopwmio module
-class MockPWMAudioOut:
-    """Mock audiopwmio.PWMAudioOut."""
-    def __init__(self, pin):
+# Mock pwmio module
+class MockPWMOut:
+    """Mock pwmio.PWMOut."""
+    def __init__(self, pin, duty_cycle=0, frequency=440, variable_frequency=False):
         self.pin = pin
-        self.playing_source = None
+        self.duty_cycle = duty_cycle
+        self.frequency = frequency
+        self.variable_frequency = variable_frequency
+        self.history = []  # Track state changes for testing
     
-    def play(self, source):
-        """Mock play."""
-        self.playing_source = source
+    def __setattr__(self, name, value):
+        if name != 'history' and hasattr(self, 'history'):
+            self.history.append((name, value))
+        super().__setattr__(name, value)
 
 
-class MockAudiopwmio:
-    """Mock audiopwmio module."""
-    PWMAudioOut = MockPWMAudioOut
+class MockPwmio:
+    """Mock pwmio module."""
+    PWMOut = MockPWMOut
 
 
-sys.modules['audiopwmio'] = MockAudiopwmio()
+sys.modules['pwmio'] = MockPwmio()
 
 
 # Import packages first to establish them as packages
@@ -129,71 +83,120 @@ def test_buzzer_initialization():
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
     
-    assert buzzer.audio is not None, "Audio output should be initialized"
-    assert buzzer.engine is not None, "Synth engine should be initialized"
-    assert buzzer.audio.playing_source == buzzer.engine.source, "Audio should be playing synth source"
+    assert buzzer.buzzer is not None, "PWM buzzer should be initialized"
+    assert buzzer.buzzer.duty_cycle == 0, "Initial duty cycle should be 0 (silent)"
+    assert buzzer.buzzer.frequency == 440, "Initial frequency should be 440Hz"
+    assert buzzer.buzzer.variable_frequency == True, "Variable frequency should be enabled"
+    assert buzzer._current_task is None, "No task should be running initially"
+    
+    # Test volume calculation (default 0.5)
+    expected_volume = int(0.5 * (2**16 - 1))
+    assert buzzer.VOLUME_ON == expected_volume, f"Volume should be {expected_volume}"
+    assert buzzer.VOLUME_OFF == 0, "VOLUME_OFF should be 0"
     
     print("✓ Buzzer initialization test passed")
 
 
-def test_buzzer_stop():
+def test_buzzer_volume_validation():
+    """Test volume validation."""
+    print("\nTesting volume validation...")
+    
+    mock_pin = "GP10"
+    
+    # Valid volumes
+    buzzer1 = BuzzerManager(mock_pin, volume=0.0)
+    assert buzzer1.VOLUME_ON == 0
+    
+    buzzer2 = BuzzerManager(mock_pin, volume=1.0)
+    assert buzzer2.VOLUME_ON == 65535
+    
+    # Invalid volumes
+    try:
+        BuzzerManager(mock_pin, volume=-0.1)
+        assert False, "Should raise ValueError for volume < 0"
+    except ValueError as e:
+        assert "between 0.0 and 1.0" in str(e)
+    
+    try:
+        BuzzerManager(mock_pin, volume=1.1)
+        assert False, "Should raise ValueError for volume > 1"
+    except ValueError as e:
+        assert "between 0.0 and 1.0" in str(e)
+    
+    print("✓ Volume validation test passed")
+
+
+@pytest.mark.asyncio
+async def test_buzzer_stop():
     """Test buzzer stop functionality."""
     print("\nTesting buzzer stop...")
     
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
     
-    # Simulate some notes playing
-    buzzer.engine.synth.press(MockNote(440))
-    buzzer.engine.synth.press(MockNote(880))
+    # Create a long-running task
+    buzzer._current_task = asyncio.create_task(asyncio.sleep(10))
     
-    assert len(buzzer.engine.synth.pressed_notes) == 2, "Should have 2 pressed notes"
+    # Stop should cancel the task
+    await buzzer.stop()
     
-    # Stop should release all notes
-    buzzer.stop()
-    
-    assert len(buzzer.engine.synth.pressed_notes) == 0, "Stop should clear all pressed notes"
+    assert buzzer._current_task.done(), "Task should be cancelled"
+    assert buzzer._current_task.cancelled(), "Task should be marked as cancelled"
+    assert buzzer.buzzer.duty_cycle == 0, "Duty cycle should be 0 after stop"
     
     print("✓ Buzzer stop test passed")
 
 
-def test_play_note_without_duration():
+@pytest.mark.asyncio
+async def test_play_note_with_duration():
+    """Test playing a note with duration."""
+    print("\nTesting play_note with duration...")
+    
+    mock_pin = "GP10"
+    buzzer = BuzzerManager(mock_pin, testing=True)
+    
+    # Play a short note
+    buzzer.play_note(440, duration=0.1)
+    
+    # Give the task time to start and run
+    await asyncio.sleep(0.05)
+    
+    # Verify buzzer is playing
+    assert buzzer.buzzer.frequency == 440, "Frequency should be set to 440Hz"
+    assert buzzer.buzzer.duty_cycle == buzzer.VOLUME_ON, "Duty cycle should be on"
+    
+    # Wait for note to complete
+    await asyncio.sleep(0.1)
+    
+    # Verify buzzer stopped
+    assert buzzer.buzzer.duty_cycle == buzzer.VOLUME_OFF, "Duty cycle should be off after duration"
+    
+    print("✓ Play note with duration test passed")
+
+
+@pytest.mark.asyncio
+async def test_play_note_without_duration():
     """Test playing a continuous note without duration."""
     print("\nTesting play_note without duration...")
     
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
     
-    # Play a note without duration (continuous)
-    buzzer.play_note(440, duration=None)
+    # Play a continuous note
+    buzzer.play_note(880, duration=None)
     
-    # Verify note was pressed in the synth engine
-    assert len(buzzer.engine.synth.pressed_notes) == 1, "Should have 1 pressed note"
-    assert buzzer.engine.synth.pressed_notes[0].frequency == 440, "Note frequency should be 440"
+    # Give the task time to start
+    await asyncio.sleep(0.05)
+    
+    # Verify buzzer is playing
+    assert buzzer.buzzer.frequency == 880, "Frequency should be set to 880Hz"
+    assert buzzer.buzzer.duty_cycle == buzzer.VOLUME_ON, "Duty cycle should be on"
+    
+    # Stop manually
+    await buzzer.stop()
+    assert buzzer.buzzer.duty_cycle == buzzer.VOLUME_OFF, "Duty cycle should be off after stop"
     
     print("✓ Play note without duration test passed")
-
-
-@pytest.mark.asyncio
-async def test_play_note_with_duration():
-    """Test playing a note with auto-release duration."""
-    print("\nTesting play_note with duration...")
-    
-    mock_pin = "GP10"
-    buzzer = BuzzerManager(mock_pin)
-    
-    # Play a note with duration (auto-release)
-    buzzer.play_note(880, duration=0.05)
-    
-    # Verify note was pressed
-    assert len(buzzer.engine.synth.pressed_notes) == 1, "Should have 1 pressed note"
-    
-    # Wait for auto-release
-    await asyncio.sleep(0.1)
-    
-    assert len(buzzer.engine.synth.released_notes) == 1, "Note should be auto-released"
-    
-    print("✓ Play note with duration test passed")
 
 
 @pytest.mark.asyncio
@@ -202,7 +205,7 @@ async def test_play_sequence():
     print("\nTesting play_sequence...")
     
     mock_pin = "GP10"
-    buzzer = BuzzerManager(mock_pin)
+    buzzer = BuzzerManager(mock_pin, testing=True)
     
     # Create a simple sequence
     sequence_data = {
@@ -214,15 +217,16 @@ async def test_play_sequence():
         ]
     }
     
-    # Note: BuzzerManager.play_sequence doesn't await, so we call the engine directly
-    # This is testing the underlying implementation
-    await buzzer.engine.play_sequence(sequence_data)
+    buzzer.play_sequence(sequence_data)
     
-    # Should have pressed notes
-    assert len(buzzer.engine.synth.pressed_notes) > 0, "Should have pressed notes during sequence"
+    # Give time for sequence to start and play
+    await asyncio.sleep(0.4)
     
-    # Should have released notes
-    assert len(buzzer.engine.synth.released_notes) > 0, "Should have released notes after sequence"
+    # The sequence should have played
+    assert buzzer._current_task is not None, "Task should exist"
+    
+    # Stop to clean up
+    await buzzer.stop()
     
     print("✓ Play sequence test passed")
 
@@ -240,86 +244,128 @@ async def test_play_sequence_with_rest():
         'bpm': 240,  # Fast tempo
         'sequence': [
             ('C4', 0.1),
-            (0, 0.1),  # Rest
+            ('-', 0.1),  # Rest
             ('E4', 0.1)
         ]
     }
     
-    # Call the engine directly since BuzzerManager.play_sequence doesn't await
-    await buzzer.engine.play_sequence(sequence_data)
+    buzzer.play_sequence(sequence_data)
     
-    # Should have played and released notes (but not the rest)
-    assert len(buzzer.engine.synth.pressed_notes) == 2, "Should have pressed 2 notes (skipping rest)"
-    assert len(buzzer.engine.synth.released_notes) == 2, "Should have released 2 notes"
+    # Give time for sequence to complete
+    await asyncio.sleep(0.4)
+    
+    # Stop to clean up
+    await buzzer.stop()
     
     print("✓ Sequence with rest test passed")
 
 
 @pytest.mark.asyncio
-async def test_multiple_notes_overlap():
-    """Test that multiple notes can be played simultaneously."""
-    print("\nTesting multiple overlapping notes...")
+async def test_play_sequence_by_name():
+    """Test playing a named sequence from tones module."""
+    print("\nTesting play_sequence by name...")
     
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
     
-    # Play multiple notes with long duration
-    buzzer.play_note(440, duration=1.0)
-    buzzer.play_note(554, duration=1.0)
-    buzzer.play_note(659, duration=1.0)
+    # Play a named sequence (should exist in tones.py)
+    buzzer.play_sequence('BEEP')
     
-    # Give them time to start
+    # Give time for sequence to start
+    await asyncio.sleep(0.1)
+    
+    # Stop to clean up
+    await buzzer.stop()
+    
+    print("✓ Play sequence by name test passed")
+
+
+@pytest.mark.asyncio
+async def test_invalid_sequence_name():
+    """Test handling of invalid sequence name."""
+    print("\nTesting invalid sequence name...")
+    
+    mock_pin = "GP10"
+    buzzer = BuzzerManager(mock_pin)
+    
+    # Play an invalid sequence name (should print warning and return)
+    buzzer.play_sequence('NONEXISTENT_SEQUENCE')
+    
+    # Give time for any potential task
     await asyncio.sleep(0.05)
     
-    assert len(buzzer.engine.synth.pressed_notes) == 3, "Should have 3 simultaneous notes"
+    # Task should not be created
+    assert buzzer._current_task is None, "No task should be created for invalid sequence"
     
-    # Clean up
-    buzzer.stop()
-    
-    print("✓ Multiple overlapping notes test passed")
+    print("✓ Invalid sequence name test passed")
 
 
-def test_stop_clears_all_notes():
-    """Test that stop() releases all playing notes."""
-    print("\nTesting stop clears all notes...")
+@pytest.mark.asyncio
+async def test_invalid_sequence_type():
+    """Test handling of invalid sequence type."""
+    print("\nTesting invalid sequence type...")
     
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
     
-    # Play multiple notes
+    # Try to play an invalid type
+    buzzer.play_sequence(12345)  # Not a string or dict
+    
+    # Give time for any potential task
+    await asyncio.sleep(0.05)
+    
+    # Task should not be created
+    assert buzzer._current_task is None, "No task should be created for invalid type"
+    
+    print("✓ Invalid sequence type test passed")
+
+
+@pytest.mark.asyncio
+async def test_stop_clears_task():
+    """Test that stop() properly cancels and clears the task."""
+    print("\nTesting stop clears task...")
+    
+    mock_pin = "GP10"
+    buzzer = BuzzerManager(mock_pin)
+    
+    # Play a note
     buzzer.play_note(440)
-    buzzer.play_note(554)
-    buzzer.play_note(659)
     
-    assert len(buzzer.engine.synth.pressed_notes) == 3, "Should have 3 pressed notes"
+    # Give time for task to start
+    await asyncio.sleep(0.05)
     
-    # Stop should clear everything
-    buzzer.stop()
+    assert buzzer._current_task is not None, "Task should exist"
     
-    assert len(buzzer.engine.synth.pressed_notes) == 0, "Stop should clear all pressed notes"
-    assert len(buzzer.engine.synth.released_notes) == 0, "Stop should clear released notes tracking"
+    # Stop should cancel and wait for the task
+    await buzzer.stop()
     
-    print("✓ Stop clears all notes test passed")
+    assert buzzer._current_task.done(), "Task should be done after stop"
+    assert buzzer.buzzer.duty_cycle == 0, "Buzzer should be silent"
+    
+    print("✓ Stop clears task test passed")
 
 
 def run_all_tests():
     """Run all buzzer manager tests."""
     print("="*60)
-    print("Running BuzzerManager Tests (synthio-based)")
+    print("Running BuzzerManager Tests (pwmio-based)")
     print("="*60)
     
     sync_tests = [
         test_buzzer_initialization,
-        test_buzzer_stop,
-        test_play_note_without_duration,
-        test_stop_clears_all_notes,
+        test_buzzer_volume_validation,
     ]
     
     async_tests = [
+        test_buzzer_stop,
         test_play_note_with_duration,
+        test_play_note_without_duration,
         test_play_sequence,
         test_play_sequence_with_rest,
-        test_multiple_notes_overlap,
+        test_play_sequence_by_name,
+        test_invalid_sequence_name,
+        test_invalid_sequence_type,
+        test_stop_clears_task,
     ]
     
     passed = 0
