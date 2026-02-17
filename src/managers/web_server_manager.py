@@ -188,6 +188,11 @@ class WebServerManager:
         else:
             sanitized = base_path
         
+        # Final validation: ensure the sanitized path doesn't escape the base directory
+        # This is a defense-in-depth measure to catch any edge cases
+        if not sanitized.startswith(base_path):
+            return base_path
+        
         return sanitized
     
     def setup_routes(self):
