@@ -27,13 +27,14 @@ class MockJEBPixel:
 
 
 # Import after mocks are defined
-sys.path.insert(0, '/home/runner/work/jeb/jeb/src')
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
 # Import directly to avoid __init__.py which has CircuitPython dependencies
 import importlib.util
 spec = importlib.util.spec_from_file_location(
     "base_pixel_manager", 
-    "/home/runner/work/jeb/jeb/src/managers/base_pixel_manager.py"
+    os.path.join(os.path.dirname(__file__), '..', 'src', 'managers', 'base_pixel_manager.py')
 )
 base_pixel_manager_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(base_pixel_manager_module)
