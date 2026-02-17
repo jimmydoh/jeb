@@ -77,7 +77,8 @@ def test_get_high_score_nonexistent():
         
         # Get high score for game that doesn't exist
         score = dm.get_high_score("NonExistentGame", "variant1")
-        assert score == 0, "Non-existent game should return 0"
+        # Method now returns None instead of 0 for non-existent games
+        assert score is None, f"Non-existent game should return None, got {score}"
         
     finally:
         shutil.rmtree(temp_dir)
