@@ -346,12 +346,11 @@ class WebServerManager:
                     return Response(request, '{"error": "Invalid filename - directory references not allowed"}', 
                                   content_type="application/json", status=400)
                 
-                # Check for empty or whitespace-only filename
-                if filename.strip() == "":
+                # Strip whitespace and check for empty filename
+                clean_filename = filename.strip()
+                if clean_filename == "":
                     return Response(request, '{"error": "Filename cannot be empty"}', 
                                   content_type="application/json", status=400)
-                
-                clean_filename = filename
                 
                 # Ensure path is within SD card
                 if not (normalized_path.startswith("/sd/") or normalized_path == "/sd"):
