@@ -81,7 +81,11 @@ class SafeMode:
             await asyncio.sleep(1)
     
     async def exit(self):
-        """Exit safe mode."""
+        """Exit safe mode.
+        
+        No cleanup needed - safe mode has no resources to release.
+        Display is used conditionally and mode runs indefinitely.
+        """
         pass
     
     async def execute(self):
