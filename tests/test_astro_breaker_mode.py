@@ -29,7 +29,7 @@ def test_astro_breaker_in_manifest():
     assert astro_breaker_metadata["id"] == "ASTRO_BREAKER", "ASTRO_BREAKER mode ID incorrect"
     assert astro_breaker_metadata["name"] == "ASTRO BREAKER", "ASTRO_BREAKER mode name incorrect"
     assert astro_breaker_metadata["module_path"] == "modes.astro_breaker", "ASTRO_BREAKER module path incorrect"
-    assert astro_breaker_metadata["class_name"] == "AstroBreakerMode", "ASTRO_BREAKER class name incorrect"
+    assert astro_breaker_metadata["class_name"] == "AstroBreaker", "ASTRO_BREAKER class name incorrect"
     assert astro_breaker_metadata["icon"] == "ASTRO_BREAKER", "ASTRO_BREAKER icon incorrect"
     assert "CORE" in astro_breaker_metadata["requires"], "ASTRO_BREAKER should require CORE"
     

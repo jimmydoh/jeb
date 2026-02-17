@@ -57,10 +57,9 @@ class TestDisplayManagerLayoutSystem(unittest.TestCase):
         self.display = DisplayManager(self.mock_i2c)
 
     def test_initialization_in_legacy_mode(self):
-        """Test that DisplayManager initializes in legacy mode for backward compatibility."""
-        self.assertEqual(self.display._layout_mode, "legacy")
-        # Verify that legacy layout uses the viewport
-        self.assertIsNotNone(self.display.viewport)
+        """Test that DisplayManager initializes in standard layout mode by default."""
+        # Default mode is now "standard" (initialized via use_standard_layout())
+        self.assertEqual(self.display._layout_mode, "standard")
 
     def test_switch_to_standard_layout(self):
         """Test switching to standard three-zone layout."""
@@ -103,13 +102,13 @@ class TestDisplayManagerLayoutSystem(unittest.TestCase):
         self.assertEqual(self.display._layout_mode, "custom")
 
     def test_update_status_works_in_all_modes(self):
-        """Test that update_status works in legacy, standard, and custom modes."""
-        # Legacy mode
+        """Test that update_status works in standard and custom modes."""
+        # Standard mode (default after initialization)
         self.display.update_status("Test 1", "Sub 1")
         # Just verify no errors are raised
-        self.assertEqual(self.display._layout_mode, "legacy")
+        self.assertEqual(self.display._layout_mode, "standard")
 
-        # Standard mode
+        # Still in standard mode after another update
         self.display.use_standard_layout()
         self.display.update_status("Test 2", "Sub 2")
         # Just verify no errors are raised

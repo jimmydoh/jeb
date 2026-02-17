@@ -49,10 +49,11 @@ def test_message_with_bytes_payload():
     status_bytes = b"00000000,CC,NN,0,0\n"
     
     # Create a message with bytes payload
-    msg = Message("0101", "STATUS", status_bytes)
+    msg = Message("0101", "CORE", "STATUS", status_bytes)
     
     # Verify the message was created successfully
-    assert msg.destination == "0101"
+    assert msg.source == "0101", f"Expected source '0101', got {msg.source}"
+    assert msg.destination == "CORE", f"Expected destination 'CORE', got {msg.destination}"
     assert msg.command == "STATUS"
     assert msg.payload == status_bytes
     assert isinstance(msg.payload, bytes)

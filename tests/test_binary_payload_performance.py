@@ -132,7 +132,7 @@ def test_binary_payload_returns_bytes():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, {})
 
     # Send a message with numeric payload (will be encoded as binary)
-    msg_out = Message("0101", "LED", "0,255,128,64")
+    msg_out = Message("CORE", "0101", "LED", "0,255,128,64")
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
 
@@ -160,7 +160,7 @@ def test_text_payload_returns_string():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Send a message with text payload
-    msg_out = Message("0101", "DSP", "HELLO")
+    msg_out = Message("CORE", "0101", "DSP", "HELLO")
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
 
@@ -251,7 +251,7 @@ def test_no_string_boomerang():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Send LED command with 4 values using tuple for binary encoding
-    msg_out = Message("0101", "LED", (0, 255, 128, 64))
+    msg_out = Message("CORE", "0101", "LED", (0, 255, 128, 64))
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
 
@@ -290,7 +290,7 @@ def test_heap_efficiency():
     # bytes [10, 20, 30, 40] -> tuple (10, 20, 30, 40)
     # Creates: 1 tuple = 1 object (zero copies)
 
-    msg_out = Message("0101", "LED", (10, 20, 30, 40))
+    msg_out = Message("CORE", "0101", "LED", (10, 20, 30, 40))
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
 

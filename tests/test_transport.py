@@ -199,7 +199,7 @@ def test_message_creation():
     """Test Message class creation and properties."""
     print("Testing Message creation...")
 
-    msg = Message("0101", "STATUS", "0000,C,N,0,0")
+    msg = Message("CORE", "0101", "STATUS", "0000,C,N,0,0")
 
     assert msg.destination == "0101"
     assert msg.command == "STATUS"
@@ -213,9 +213,9 @@ def test_message_equality():
     """Test Message equality comparison."""
     print("\nTesting Message equality...")
 
-    msg1 = Message("ALL", "ID_ASSIGN", "0100")
-    msg2 = Message("ALL", "ID_ASSIGN", "0100")
-    msg3 = Message("0101", "LED", "0,255,0,0")
+    msg1 = Message("CORE", "ALL", "ID_ASSIGN", "0100")
+    msg2 = Message("CORE", "ALL", "ID_ASSIGN", "0100")
+    msg3 = Message("CORE", "0101", "LED", "0,255,0,0")
 
     assert msg1 == msg2, "Identical messages should be equal"
     assert msg1 != msg3, "Different messages should not be equal"
@@ -231,7 +231,7 @@ def test_uart_transport_send():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Send a message (writes to TX buffer)
-    msg = Message("ALL", "ID_ASSIGN", "0100")
+    msg = Message("CORE", "ALL", "ID_ASSIGN", "0100")
     transport.send(msg)
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
 
@@ -263,7 +263,7 @@ def test_uart_transport_receive():
 
     # Create a valid message by sending it first (to get proper binary format)
     # Use tuple for STATUS which expects ENCODING_NUMERIC_BYTES
-    msg_out = Message("0101", "STATUS", (100, 200))
+    msg_out = Message("CORE", "0101", "STATUS", (100, 200))
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
@@ -294,7 +294,7 @@ def test_uart_transport_receive_invalid_crc():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Create a valid packet then corrupt its CRC
-    msg_out = Message("0101", "STATUS", "100,200")
+    msg_out = Message("CORE", "0101", "STATUS", "100,200")
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
@@ -378,7 +378,7 @@ def test_transport_abstraction():
 
     # Send a message - user doesn't need to know about CRC or COBS framing
     # Use tuple for LED which expects ENCODING_NUMERIC_BYTES
-    msg_out = Message("0101", "LED", (255, 128, 64, 32))
+    msg_out = Message("CORE", "0101", "LED", (255, 128, 64, 32))
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
@@ -409,7 +409,7 @@ def test_receive_returns_none_for_incomplete_packet():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Send a message to get a valid packet
-    msg_out = Message("0101", "STATUS", "100,200")
+    msg_out = Message("CORE", "0101", "STATUS", "100,200")
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
@@ -446,7 +446,7 @@ def test_receive_assembles_fragmented_packets():
 
     # Send a message to get a valid packet
     # Use tuple for LED which expects ENCODING_NUMERIC_BYTES
-    msg_out = Message("0101", "LED", (255, 128, 64, 32))
+    msg_out = Message("CORE", "0101", "LED", (255, 128, 64, 32))
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
@@ -492,8 +492,8 @@ def test_multiple_packets_in_buffer():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Send two messages
-    msg1 = Message("0101", "STATUS", "100")
-    msg2 = Message("0102", "LED", "255,0,0,0")
+    msg1 = Message("CORE", "0101", "STATUS", "100")
+    msg2 = Message("CORE", "0102", "LED", "255,0,0,0")
     transport.send(msg1)
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     transport.send(msg2)
@@ -548,7 +548,7 @@ def test_receive_buffer_overflow_protection():
     # The exact state depends on buffer size, but system should remain functional
 
     # Now send a valid packet - system should recover
-    msg_valid = Message("0101", "STATUS", "100")
+    msg_valid = Message("CORE", "0101", "STATUS", "100")
     transport.send(msg_valid)
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     valid_packet = mock_uart.sent_packets[0]
@@ -577,7 +577,7 @@ def test_buffer_overflow_preserves_valid_packets():
 
     # Create multiple valid packets
     messages = [
-        Message("0101", "STATUS", f"{i}") for i in range(100, 200)
+        Message("CORE", "0101", "STATUS", f"{i}") for i in range(100, 200)
     ]
 
     # Send all messages to get valid packets
@@ -625,7 +625,7 @@ def test_ring_buffer_wrapped_packet():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Create a valid packet
-    msg_out = Message("0101", "LED", (255, 128, 64, 32))
+    msg_out = Message("CORE", "0101", "LED", (255, 128, 64, 32))
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     sent_packet = mock_uart.sent_packets[0]
@@ -668,7 +668,7 @@ def test_ring_buffer_multiple_wrapped_packets():
 
     # Create several packets
     messages = [
-        Message("0101", "STATUS", f"{i}") for i in range(10)
+        Message("CORE", "0101", "STATUS", f"{i}") for i in range(10)
     ]
 
     for msg in messages:
@@ -735,7 +735,7 @@ def test_ring_buffer_full_recovery():
     print(f"  After overflow handling, buffer has {bytes_in_buffer} bytes")
 
     # Now send a valid packet - system should be able to receive it
-    msg_valid = Message("0101", "STATUS", (200,))  # Use tuple for numeric byte payload
+    msg_valid = Message("CORE", "0101", "STATUS", (200,))  # Use tuple for numeric byte payload
     transport.send(msg_valid)
     drain_tx_buffer(transport, mock_uart)  # Drain TX buffer
     valid_packet = mock_uart.sent_packets[0]

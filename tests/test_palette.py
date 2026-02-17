@@ -32,15 +32,20 @@ def test_palette_library():
     """Test that palette library contains expected colors."""
     print("\nTesting palette library...")
     
-    # Test that library contains expected keys
-    expected_colors = ["OFF", "RED", "BLUE", "YELLOW", "GREEN", "WHITE", 
-                       "GOLD", "SILVER", "PURPLE", "ORANGE", "PINK", 
-                       "CYAN", "MAGENTA", "AMBER"]
+    # The palette library now uses numeric indices 0-13
+    # Test that library contains all expected indices
+    expected_indices = list(range(14))  # 0-13
     
-    for color_name in expected_colors:
-        assert color_name in Palette.PALETTE_LIBRARY, f"Color {color_name} not found in library"
-        assert len(Palette.PALETTE_LIBRARY[color_name]) == 3, \
-            f"Color {color_name} should be RGB tuple with 3 values"
+    for index in expected_indices:
+        assert index in Palette.PALETTE_LIBRARY, f"Index {index} not found in library"
+        assert len(Palette.PALETTE_LIBRARY[index]) == 3, \
+            f"Color at index {index} should be RGB tuple with 3 values"
+    
+    # Test that specific colors are mapped correctly
+    assert Palette.PALETTE_LIBRARY[0] == Palette.OFF, "Index 0 should be OFF"
+    assert Palette.PALETTE_LIBRARY[1] == Palette.RED, "Index 1 should be RED"
+    assert Palette.PALETTE_LIBRARY[2] == Palette.BLUE, "Index 2 should be BLUE"
+    assert Palette.PALETTE_LIBRARY[5] == Palette.WHITE, "Index 5 should be WHITE"
     
     print("✓ Palette library test passed")
 

@@ -183,7 +183,7 @@ def test_message_creation():
     """Test Message class creation and properties."""
     print("Testing Message creation...")
 
-    msg = Message("0101", "STATUS", "0000,C,N,0,0")
+    msg = Message("CORE", "0101", "STATUS", "0000,C,N,0,0")
 
     assert msg.destination == "0101"
     assert msg.command == "STATUS"
@@ -201,7 +201,7 @@ def test_binary_transport_send_simple():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Send a message
-    msg = Message("ALL", "ID_ASSIGN", "0100")
+    msg = Message("CORE", "ALL", "ID_ASSIGN", "0100")
     transport.send(msg)
     drain_tx_buffer(transport, mock_uart)
 
@@ -229,7 +229,7 @@ def test_binary_transport_send_led_command():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Send LED command with numeric values
-    msg = Message("0101", "LED", "0,255,128,64")
+    msg = Message("CORE", "0101", "LED", "0,255,128,64")
     transport.send(msg)
     drain_tx_buffer(transport, mock_uart)
 
@@ -251,7 +251,7 @@ def test_binary_transport_receive_simple():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # First send a message to get valid packet format
-    msg_out = Message("0101", "STATUS", "100,200")
+    msg_out = Message("CORE", "0101", "STATUS", "100,200")
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
     sent_packet = mock_uart.sent_packets[0]
@@ -279,12 +279,12 @@ def test_binary_transport_roundtrip():
     print("\nTesting binary transport roundtrip...")
 
     test_cases = [
-        Message("ALL", "ID_ASSIGN", "0100"),  # Text encoding
-        Message("0101", "STATUS", (100, 200, 50)),  # Numeric bytes
-        Message("SAT", "NEW_SAT", "01"),  # Text encoding
-        Message("0101", "LED", (0, 255, 0, 0)),  # Numeric bytes
-        Message("0101", "DSP", "HELLO"),  # Text encoding
-        Message("0101", "POWER", (19.5, 18.2, 5.0)),  # Floats
+        Message("CORE", "ALL", "ID_ASSIGN", "0100"),  # Text encoding
+        Message("CORE", "0101", "STATUS", (100, 200, 50)),  # Numeric bytes
+        Message("SAT", "CORE", "NEW_SAT", "01"),  # Text encoding
+        Message("CORE", "0101", "LED", (0, 255, 0, 0)),  # Numeric bytes
+        Message("CORE", "0101", "DSP", "HELLO"),  # Text encoding
+        Message("CORE", "0101", "POWER", (19.5, 18.2, 5.0)),  # Floats
     ]
 
     for msg_out in test_cases:
@@ -320,7 +320,7 @@ def test_binary_transport_invalid_crc():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Send a valid message
-    msg = Message("0101", "STATUS", "100")
+    msg = Message("CORE", "0101", "STATUS", "100")
     transport.send(msg)
     drain_tx_buffer(transport, mock_uart)
     packet = mock_uart.sent_packets[0]
@@ -383,7 +383,7 @@ def test_binary_vs_text_overhead():
     # Binary protocol
     mock_uart = MockUARTManager()
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
-    msg = Message("0101", "STATUS", "100,200,50")
+    msg = Message("CORE", "0101", "STATUS", "100,200,50")
     transport.send(msg)
     drain_tx_buffer(transport, mock_uart)
     binary_packet = mock_uart.sent_packets[0]
@@ -401,16 +401,16 @@ def test_special_destinations():
     print("\nTesting special destinations...")
 
     test_cases = [
-        ("ALL", "ID_ASSIGN", "0100"),
-        ("SAT", "NEW_SAT", "01"),
-        ("0101", "STATUS", "100"),
+        ("CORE", "ALL", "ID_ASSIGN", "0100"),
+        ("SAT", "CORE", "NEW_SAT", "01"),
+        ("CORE", "0101", "STATUS", "100"),
     ]
 
-    for dest, cmd, payload in test_cases:
+    for source, dest, cmd, payload in test_cases:
         mock_uart = MockUARTManager()
         transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
-        msg_out = Message(dest, cmd, payload)
+        msg_out = Message(source, dest, cmd, payload)
         transport.send(msg_out)
         drain_tx_buffer(transport, mock_uart)
 

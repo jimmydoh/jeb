@@ -152,7 +152,7 @@ def test_id_assign_preserves_leading_zeros():
     ]
 
     for test_id, description in test_cases:
-        msg_out = Message("ALL", "ID_ASSIGN", test_id)
+        msg_out = Message("CORE", "ALL", "ID_ASSIGN", test_id)
         transport.send(msg_out)
         drain_tx_buffer(transport, mock_uart)
 
@@ -180,7 +180,7 @@ def test_new_sat_preserves_string_ids():
     test_cases = ["01", "02", "03", "10"]
 
     for sat_id in test_cases:
-        msg_out = Message("SAT", "NEW_SAT", sat_id)
+        msg_out = Message("SAT", "CORE", "NEW_SAT", sat_id)
         transport.send(msg_out)
         drain_tx_buffer(transport, mock_uart)
 
@@ -206,7 +206,7 @@ def test_led_commands_use_byte_encoding():
 
     # LED command should encode R,G,B,brightness as 4 bytes
     # Use tuple for proper binary encoding
-    msg_out = Message("0101", "LED", (255, 128, 64, 100))
+    msg_out = Message("CORE", "0101", "LED", (255, 128, 64, 100))
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
 
@@ -230,7 +230,7 @@ def test_power_commands_use_float_encoding():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # POWER command uses floats for voltage/current - use tuple not string
-    msg_out = Message("0101", "POWER", (19.5, 18.2, 5.0))
+    msg_out = Message("CORE", "0101", "POWER", (19.5, 18.2, 5.0))
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
 
@@ -259,7 +259,7 @@ def test_power_commands_accept_list_tuple():
 
     # Test with list input (satellite-side optimization)
     test_values = [19.5, 18.2, 5.0]
-    msg_out = Message("0101", "POWER", test_values)
+    msg_out = Message("CORE", "0101", "POWER", test_values)
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
 
@@ -282,7 +282,7 @@ def test_power_commands_accept_list_tuple():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     test_values = (19.5, 18.2, 5.0)
-    msg_out = Message("0101", "POWER", test_values)
+    msg_out = Message("CORE", "0101", "POWER", test_values)
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
 
@@ -302,13 +302,13 @@ def test_power_commands_accept_list_tuple():
     # Verify list produces same result as tuple
     mock_uart_tuple = MockUARTManager()
     transport_tuple = UARTTransport(mock_uart_tuple, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
-    msg_tuple = Message("0101", "POWER", (19.5, 18.2, 5.0))
+    msg_tuple = Message("CORE", "0101", "POWER", (19.5, 18.2, 5.0))
     transport_tuple.send(msg_tuple)
     drain_tx_buffer(transport_tuple, mock_uart_tuple)
 
     mock_uart_list = MockUARTManager()
     transport_list = UARTTransport(mock_uart_list, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
-    msg_list = Message("0101", "POWER", [19.5, 18.2, 5.0])
+    msg_list = Message("CORE", "0101", "POWER", [19.5, 18.2, 5.0])
     transport_list.send(msg_list)
     drain_tx_buffer(transport_list, mock_uart_list)
 
@@ -334,7 +334,7 @@ def test_display_commands_preserve_text():
     ]
 
     for text in test_texts:
-        msg_out = Message("0101", "DSP", text)
+        msg_out = Message("CORE", "0101", "DSP", text)
         transport.send(msg_out)
         drain_tx_buffer(transport, mock_uart)
 
@@ -359,7 +359,7 @@ def test_backward_compatibility():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Test STATUS with correct number of values (5 bytes) - use tuple for byte encoding
-    msg_out = Message("0101", "STATUS", (100, 200, 50, 75, 25))
+    msg_out = Message("CORE", "0101", "STATUS", (100, 200, 50, 75, 25))
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
 
@@ -380,13 +380,13 @@ def test_roundtrip_all_command_types():
     print("\nTesting roundtrip for all command types...")
 
     test_cases = [
-        ("ID_ASSIGN", Message("ALL", "ID_ASSIGN", "0100"), "0100"),  # text encoding
-        ("NEW_SAT", Message("SAT", "NEW_SAT", "01"), "01"),  # text encoding
-        ("LED", Message("0101", "LED", (255, 0, 128, 100)), (255, 0, 128, 100)),  # byte encoding
-        ("POWER", Message("0101", "POWER", (19.5, 18.2, 5.0)), None),  # float encoding (special check)
-        ("DSP", Message("0101", "DSP", "HELLO WORLD"), "HELLO WORLD"),  # text encoding
-        ("ERROR", Message("0101", "ERROR", "LOW_VOLTAGE"), "LOW_VOLTAGE"),  # text encoding
-        ("STATUS", Message("0101", "STATUS", (100, 200, 50, 75, 25)), (100, 200, 50, 75, 25)),  # byte encoding
+        ("ID_ASSIGN", Message("CORE", "ALL", "ID_ASSIGN", "0100"), "0100"),  # text encoding
+        ("NEW_SAT", Message("SAT", "CORE", "NEW_SAT", "01"), "01"),  # text encoding
+        ("LED", Message("CORE", "0101", "LED", (255, 0, 128, 100)), (255, 0, 128, 100)),  # byte encoding
+        ("POWER", Message("CORE", "0101", "POWER", (19.5, 18.2, 5.0)), None),  # float encoding (special check)
+        ("DSP", Message("CORE", "0101", "DSP", "HELLO WORLD"), "HELLO WORLD"),  # text encoding
+        ("ERROR", Message("CORE", "0101", "ERROR", "LOW_VOLTAGE"), "LOW_VOLTAGE"),  # text encoding
+        ("STATUS", Message("CORE", "0101", "STATUS", (100, 200, 50, 75, 25)), (100, 200, 50, 75, 25)),  # byte encoding
     ]
 
     for cmd_name, msg_out, expected_payload in test_cases:
