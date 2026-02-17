@@ -135,7 +135,7 @@ class IndustrialStartup(GameMode):
                 while iteration < total_iterations:
                     # Set all toggle LEDs to blue
                     for i in range(6):
-                        self.sat.send_cmd("LEDBREATH", f"{i},0,0,200,0.0,0.5,1,2.0")
+                        self.sat.send("LEDBREATH", f"{i},0,0,200,0.0,0.5,1,2.0")
                     await asyncio.sleep(0.5)
 
                     # Calculate dynamic blink speed (gets faster every round)
@@ -172,7 +172,7 @@ class IndustrialStartup(GameMode):
 
                     while not success and not wrong_input:
                         # Pulse the target LED Amber
-                        self.sat.send_cmd(
+                        self.sat.send(
                             "LEDFLASH",
                             f"{target_idx},255,165,0,0.0,0.5,3,{blink_speed},{blink_speed}"
                         )
@@ -212,10 +212,10 @@ class IndustrialStartup(GameMode):
                                             self.core.audio.CH_SFX,
                                             level=0.8,
                                             Interrupt=True)
-                        self.sat.send_cmd("LED", f"{target_idx},0,255,0,0.0,0.5,2")
+                        self.sat.send("LED", f"{target_idx},0,255,0,0.0,0.5,2")
                         # TODO Add progress animation for matrix
                         await asyncio.sleep(0.5)
-                        self.sat.send_cmd("LED", f"{target_idx},100,100,255,0.0,0.5,2")
+                        self.sat.send("LED", f"{target_idx},100,100,255,0.0,0.5,2")
 
                     elif wrong_input:
                         self.core.audio.play("audio/ind/sfx/toggle_error.wav",
@@ -224,7 +224,7 @@ class IndustrialStartup(GameMode):
                                             Interrupt=True)
                         # Flash ALL toggle LEDs Red
                         for _ in range(6):
-                            self.sat.send_cmd("LEDFLASH", f"{_},255,0,0,1.5,0.5,1,0.25,0.25")
+                            self.sat.send("LEDFLASH", f"{_},255,0,0,1.5,0.5,1,0.25,0.25")
                         await asyncio.sleep(0.3)
                         # Loop continues, iterations do NOT increase
 
@@ -276,7 +276,7 @@ class IndustrialStartup(GameMode):
                     while len(user_entry) < 8 and ticks_diff(ticks_ms(), start_time) < 10000:
                         if self.sat.keypad != "N":
                             user_entry += self.sat.keypad
-                            self.sat.send_cmd("DSP",user_entry)
+                            self.sat.send("DSP",user_entry)
                             self.core.audio.play("audio/ind/sfx/keypad_click.wav",
                                                 self.core.audio.CH_SFX,
                                                 level=0.8)
@@ -295,7 +295,7 @@ class IndustrialStartup(GameMode):
                                             level=narration_vol,
                                             Wait=True)
                         user_entry = ""
-                        self.sat.send_cmd("DSP","********")
+                        self.sat.send("DSP","********")
                         await asyncio.sleep(2)
 
                 # Success

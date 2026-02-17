@@ -19,6 +19,7 @@ from transport.protocol import (
     CMD_HELLO,
     CMD_ID_ASSIGN,
     CMD_REBOOT,
+    CMD_MODE,
     COMMAND_MAP,
     DEST_MAP,
     MAX_INDEX_VALUE,
@@ -63,6 +64,8 @@ class SatelliteFirmware:
         self.last_sync_frame = 0
         self.time_offset = 0.0  # Estimated time difference from Core (in seconds)
 
+        self.operating_mode = "IDLE"
+
         # Common Hardware
         # Init power manager first for voltage readings
         self.power = PowerManager(
@@ -94,7 +97,8 @@ class SatelliteFirmware:
 
         self._system_handlers = {
             CMD_ID_ASSIGN: self._handle_id_assign,
-            CMD_REBOOT: self._handle_reboot_command
+            CMD_REBOOT: self._handle_reboot_command,
+            CMD_MODE: self._handle_mode_command
         }
 
         self.watchdog = WatchdogManager(
@@ -174,6 +178,25 @@ class SatelliteFirmware:
             print(f"{self.sat_type_id}-{self.id}: Failed to send reboot log message upstream")
         # Use the WatchdogManager to reboot (1 second delay)
         self.watchdog.force_reboot()
+
+    async def _handle_mode_command(self, val):
+        """Processes an upstream mode change request."""
+        if isinstance(val, bytes):
+            val = val.decode('utf-8')
+        new_mode = val.strip().upper()
+        
+        if new_mode in ("IDLE", "ACTIVE"):
+            if self.operating_mode != new_mode:
+                self.operating_mode = new_mode
+                # Notify upstream that the switch was successful
+                if not self.transport_up.send(Message(self.id, "CORE", "LOG", f"MODE_CHANGED:{new_mode}")):
+                    pass
+                # Trigger subclass specific cleanups
+                await self.on_mode_change(new_mode)
+
+    async def on_mode_change(self, new_mode):
+        """Virtual hook for subclasses to react to mode transitions."""
+        pass
 
     async def monitor_connection(self):
         """Background task to manage the downstream RJ45 power pass-through."""
@@ -328,22 +351,30 @@ class SatelliteFirmware:
                         self.last_tx = time.monotonic()
                     else:
                         # Back off slightly on send failure
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(1)
 
-            # Normal Operation: Send STATUS message when triggered or every 2 seconds
+            # Normal Operation: Send STATUS message when triggered or every 3 seconds
             else:
-                # Check if update needed (event trigger or timeout)
-                if self._status_event.is_set() or time.monotonic() - self.last_tx > 2.0:
-                    # Use get_status_bytes() to avoid string allocation overhead
-                    msg_out = Message(self.id, "CORE", "STATUS", self._get_status_bytes())
+                if self.operating_mode == "IDLE":
+                    # IDLE STATE: Suppress constant status updates, send a minimalist heartbeat every 3s
+                    if time.monotonic() - self.last_tx > 3.0:
+                        msg_out = Message(self.id, "CORE", "PING")
+                        if self.transport_up.send(msg_out):
+                            self.last_tx = time.monotonic()
+                            self._status_event.clear()
+                else:
+                    # Check if update needed (event trigger or timeout)
+                    if self._status_event.is_set() or time.monotonic() - self.last_tx > 3.0:
+                        # Use get_status_bytes() to avoid string allocation overhead
+                        msg_out = Message(self.id, "CORE", "STATUS", self._get_status_bytes())
 
-                    if self.transport_up.send(msg_out):
-                        self.last_tx = time.monotonic()
-                        self._status_event.clear()
-                    elif self._status_event.is_set():
-                        # If triggered by event but failed, retry quickly
-                        await asyncio.sleep(0.05)
-                        continue
+                        if self.transport_up.send(msg_out):
+                            self.last_tx = time.monotonic()
+                            self._status_event.clear()
+                        elif self._status_event.is_set():
+                            # If triggered by event but failed, retry quickly
+                            await asyncio.sleep(0.05)
+                            continue
 
             # Base loop delay to yield to other tasks
             await asyncio.sleep(0.1)

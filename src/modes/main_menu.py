@@ -77,6 +77,10 @@ class MainMenu(UtilityMode):
         self.core.hid.flush() # Ensure no ghost inputs from previous modes
         self.core.hid.reset_encoder(0)
 
+        # Set all Satellites to idle state (if applicable)
+        for sat in self.core.satellites.values():
+            sat.send("MODE", "IDLE")
+
         # UI State Variables
         self._set_state("DASHBOARD")
         focus_mode = "GAME" # "GAME" or "SETTINGS"

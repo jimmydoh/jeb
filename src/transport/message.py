@@ -18,7 +18,7 @@ class Message:
     - tuple/list: Numeric values (optimization to reduce string allocations)
     """
 
-    def __init__(self, source, destination, command, payload):
+    def __init__(self, source, destination, command, payload=""):
         """Initialize a Message.
 
         Parameters:

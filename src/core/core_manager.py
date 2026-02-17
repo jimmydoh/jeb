@@ -75,6 +75,12 @@ class CoreManager:
         self.debug_mode = config.get("debug_mode", False)
         self.root_data_dir = config.get("root_data_dir", "/")
 
+        # --- SAFETY EVENTS ---
+        self.estop_event = asyncio.Event()
+        self.abort_event = asyncio.Event()
+        self.target_sat_event = asyncio.Event()
+        self.meltdown = False
+
         # Init Watchdog Manager
         self.watchdog = None
 
@@ -140,7 +146,8 @@ class CoreManager:
         self.sat_network = SatelliteNetworkManager(
             self.transport,
             self.display,
-            self.audio
+            self.audio,
+            self.abort_event,
         )
         if self.debug_mode:
             self.sat_network.set_debug_mode(True)
@@ -171,12 +178,6 @@ class CoreManager:
         self.mode_registry = MODE_REGISTRY
         self.loaded_modes = {} # Cache for instantiated mode classes
         self.mode = "DASHBOARD" # Start in main menu mode
-
-        # --- SAFETY EVENTS ---
-        self.estop_event = asyncio.Event()
-        self.abort_event = asyncio.Event()
-        self.target_sat_event = asyncio.Event()
-        self.meltdown = False
 
     def _get_mode(self, mode_name):
         """Get a mode class from the registry with helpful error message.
@@ -335,8 +336,9 @@ class CoreManager:
             self.display.update_status("ESTOP ENGAGED", "EXITING MODE...")
             return "ESTOP_ABORT"
         elif abort_task in done:
-            self.display.update_status("USER ABORT", "EXITING MODE...")
-            return "MANUAL_ABORT"
+            self.display.update_status("SYSTEM ABORT", "RESETTING CORE...")
+            self.abort_event.clear()  # Reset the event for future use
+            return "SYSTEM_ABORT"
         elif target_sat:
             if target_sat_task in done:
                 self.display.update_status("LINK LOST", "EXITING MODE...")

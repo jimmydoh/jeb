@@ -16,6 +16,7 @@ CMD_NACK = "NACK"
 CMD_ID_ASSIGN = "ID_ASSIGN"
 CMD_NEW_SAT = "NEW_SAT"
 CMD_STATUS = "STATUS"
+CMD_MODE = "MODE"
 CMD_ERROR = "ERROR"
 CMD_LOG = "LOG"
 CMD_SYNC_FRAME = "SYNC_FRAME"
@@ -55,6 +56,7 @@ COMMAND_MAP = {
     CMD_SYNC_FRAME: 0x09,
     CMD_POWER: 0x0A,
     CMD_REBOOT: 0x0B,
+    CMD_MODE: 0x0C,
 
     # LED commands
     "LED": 0x10,
@@ -98,7 +100,8 @@ SYSTEM_COMMANDS = {
     CMD_ID_ASSIGN,
     CMD_SYNC_FRAME,
     CMD_SETENC,
-    CMD_NEW_SAT
+    CMD_NEW_SAT,
+    CMD_MODE,
 }
 
 # Reverse mapping for decoding
@@ -125,6 +128,7 @@ ENCODING_FLOATS = 'floats'
 PAYLOAD_SCHEMAS = {
     # Core commands
     CMD_HELLO: {'type': ENCODING_RAW_TEXT, 'desc': 'Hello message with optional text'},
+    CMD_MODE: {'type': ENCODING_RAW_TEXT, 'desc': 'Operating mode: IDLE or ACTIVE'},
     "ID_ASSIGN": {'type': ENCODING_RAW_TEXT, 'desc': 'Device ID string like "0100"'},
     "NEW_SAT": {'type': ENCODING_RAW_TEXT, 'desc': 'Satellite type ID like "01"'},
     "ERROR": {'type': ENCODING_RAW_TEXT, 'desc': 'Error description text'},

@@ -18,7 +18,7 @@ class SatelliteNetworkManager:
     - Satellite registry management
     """
 
-    def __init__(self, transport, display, audio):
+    def __init__(self, transport, display, audio, abort_event):
         """Initialize the satellite network manager.
 
         Args:
@@ -29,6 +29,7 @@ class SatelliteNetworkManager:
         self.transport = transport
         self.display = display
         self.audio = audio
+        self.abort_event = abort_event
 
         # Satellite Registry
         self.satellites = {}
@@ -50,6 +51,7 @@ class SatelliteNetworkManager:
             "HELLO": self._handle_hello_command,
             "NEW_SAT": self._handle_new_sat_command,
             "LOG": self._handle_log_command,
+            "PING": self._handle_ping_command,
         }
 
     def set_debug_mode(self, debug_mode):
@@ -121,7 +123,7 @@ class SatelliteNetworkManager:
             val: Command value/payload
         """
         for sid in self.satellites:
-            self.get_sat(sid).send_cmd(cmd, val)
+            self.get_sat(sid).send(cmd, val)
 
     async def _process_inbound_cmd(self, sid, cmd, val):
         """
@@ -151,7 +153,7 @@ class SatelliteNetworkManager:
 
                 # TODO: Improve this logic to handle all sat types based on capability
                 if self.satellites[sid].sat_type_name == "INDUSTRIAL":
-                    self.satellites[sid].send_cmd("DSPMATRIX", "2")
+                    self.satellites[sid].send("DSPMATRIX", "2")
             self.satellites[sid].update_from_packet(val)
         else:
             self.display.update_status("UNKNOWN SAT", f"{sid} sent STATUS.")
@@ -184,6 +186,7 @@ class SatelliteNetworkManager:
                     sid, self.transport
                 )
                 self.satellites[sid].update_heartbeat(increment=2000)
+                self.abort_event.set()  # Signal to restart the core manager to integrate the new satellite
             self.display.update_status("NEW SAT", f"{sid} sent HELLO {val}.")
             JEBLogger.info("NETM", f"New sat {sid} TYPE-{val} via HELLO.")
 
@@ -217,6 +220,17 @@ class SatelliteNetworkManager:
         """
         JEBLogger.info("NETM", f"LOG from {sid}: {val}", src=sid)
         # TODO: More robust logging system, potentially with log levels and storage
+
+    async def _handle_ping_command(self, sid, val):
+        """
+        Handle PING command from satellite,
+        which may be used as a keepalive signal.
+        """
+        if sid in self.satellites:
+            self.satellites[sid].update_heartbeat()
+            JEBLogger.info("NETM", f"PING", src=sid)
+        else:
+            JEBLogger.warning("NETM", f"PING from unknown sat", src=sid)
 
     async def monitor_messages(self, heartbeat_callback=None):
         """
@@ -276,6 +290,7 @@ class SatelliteNetworkManager:
                         # Satellite is online now but was detected as offline
                         JEBLogger.info("NETM", f"Link restored with {sid}. Marking as active.")
                         self.display.update_status(f"LINK RESTORED", f"ID: {sid}")
+                        self.abort_event.set()  # Signal to restart the core manager to reset satellite state
                         self._spawn_audio_task(
                             self.audio.play,
                             "link_restored.wav",
@@ -289,6 +304,7 @@ class SatelliteNetworkManager:
                         sat.is_active = False
                         sat.was_offline = True
                         self.display.update_status(f"LINK LOST", f"ID: {sid}")
+                        self.abort_event.set()  # Signal to restart the core manager to reset satellite state
                         self._spawn_audio_task(
                             self.audio.play,
                             "link_lost.wav",

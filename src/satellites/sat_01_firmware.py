@@ -7,11 +7,14 @@ including neopixels, segment displays, encoders, and power management.
 """
 
 import asyncio
+import time
 import busio
 import neopixel
 
 from utilities.jeb_pixel import JEBPixel
+from utilities.logger import JEBLogger
 from utilities.pins import Pins
+from utilities.palette import Palette
 from utilities.payload_parser import parse_values, get_int
 
 from transport.protocol import (
@@ -75,13 +78,13 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         # Init LED Hardware
         self.root_pixels = neopixel.NeoPixel(
             Pins.LED_CONTROL,
-            5,
+            4,
             brightness=0.3,
             auto_write=False
         )
 
-        # Init LEDManager with JEBPixel wrapper for the 5 onboard LEDs
-        self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=5)
+        # Init LEDManager with JEBPixel wrapper for the 4 onboard LEDs
+        self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=4)
         self.leds = LEDManager(self.led_jeb_pixel)
 
         self.renderer = RenderManager(
@@ -91,10 +94,15 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
 
         self.renderer.add_animator(self.leds)  # Register LEDManager for animation updates
 
+        self.last_interaction_time = 0
+        self.attract_running = False
+        self._idle_display_buffer = ""
+
         self._system_handlers.update({
             CMD_SYNC_FRAME: self._handle_sync_frame,
             CMD_SETENC: self._handle_set_enc,
         })
+        JEBLogger.info("FIRM", "Industrial Satellite Firmware initialized.", src=self.id)
 
     async def _handle_sync_frame(self, val):
         # val is tuple (frame, time) from binary payload
@@ -130,27 +138,111 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
     def _get_status_bytes(self):
         return self.hid.get_status_bytes()
 
+    async def on_mode_change(self, new_mode):
+        """React to mode changes by cleaning up local hardware state."""
+        JEBLogger.info("FIRM", f"Mode changed to {new_mode}", src=self.id)
+        self.attract_running = False
+        self.last_interaction_time = time.monotonic()
+        self._idle_display_buffer = ""
+        
+        # Clear LEDs (using priority 99 to override local animations)
+        for i in range(5):
+            self.leds.off_led(i, priority=99)
+            
+        # Clear Segment display
+        await self.segment.clear()
+        
+        # Flush the HID queues so old button presses don't trigger game events
+        self.hid.flush()
+
 #region --- Async Background Tasks ---
     async def monitor_hw_hid(self):
         """Background task to poll hardware inputs."""
         while True:
-            # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("hw_hid")
-            if self.hid.hw_update(self.id):
-                self.trigger_status_update()  # Trigger status update on state change
-            await asyncio.sleep(0.01) # Poll at 100Hz
+            changed = self.hid.hw_update(self.id)
+            
+            if changed:
+                # Any hardware interaction resets the attract mode timer
+                self.last_interaction_time = time.monotonic()
+                if self.attract_running:
+                    self.attract_running = False
+                    for i in range(5):
+                        self.leds.off_led(i, priority=5)
+                    await self.segment.clear()
+
+            if self.operating_mode == "IDLE":
+                if changed:
+                    # 1. Hardware Toggles directly drive Local LEDs (Assuming 5 toggles, 5 LEDs)
+                    for i in range(4):
+                        if self.hid.is_latching_toggled(i):
+                            JEBLogger.info("FIRM", f"Local Idle Toggle {i} ON", src=self.id)
+                            self.leds.set_led(i, Palette.GREEN, priority=5) 
+                        else:
+                            JEBLogger.info("FIRM", f"Local Idle Toggle {i} OFF", src=self.id)
+                            self.leds.off_led(i, priority=5)
+
+                    # 2. Keypad typing directly to 14-Segment Displays
+                    key = self.hid.get_keypad_next_key(0) # Assuming index 0 is your matrix keypad
+                    while key:
+                        JEBLogger.info("FIRM", f"Keypad Idle input received: {key}", src=self.id)
+                        # Keep a running 4-character buffer
+                        if len(self._idle_display_buffer) >= 8: # 4 chars * 2 displays = 8 total
+                            self._idle_display_buffer = self._idle_display_buffer[1:]
+                        self._idle_display_buffer += key
+                        await self.segment.apply_command("DSP", self._idle_display_buffer)
+                        key = self.hid.get_keypad_next_key(0)
+
+                    # 3. Momentary Switch triggers an animation
+                    # Direction "U" or "D" depends on your switch wiring
+                    if self.hid.is_momentary_toggled(0, direction="U", action="tap"):
+                        JEBLogger.info("FIRM", "Momentary Idle UP Triggered", src=self.id)
+                        self._idle_display_buffer = "UP"
+                        await self.segment.apply_command("DSP", self._idle_display_buffer)
+                    if self.hid.is_momentary_toggled(0, direction="D", action="tap"):
+                        JEBLogger.info("FIRM", "Momentary Idle DOWN Triggered", src=self.id)
+                        self._idle_display_buffer = "DOWN"
+                        await self.segment.apply_command("DSP", self._idle_display_buffer)
+
+            else:
+                # ACTIVE MODE: Only trigger upstream updates
+                if changed:
+                    self.trigger_status_update()
+                    
+            await asyncio.sleep(0.01)
+
+    async def attract_loop(self):
+        """Passive background animation when nobody touches the satellite in IDLE mode."""
+        # 30 seconds of inactivity triggers attract
+        ATTRACT_TIMEOUT = 30.0 
+        
+        while True:
+            self.watchdog.check_in("attract")
+            
+            if self.operating_mode == "IDLE" and not self.attract_running:
+                if time.monotonic() - self.last_interaction_time > ATTRACT_TIMEOUT:
+                    JEBLogger.info("FIRM", "Entering Idle Attract Mode", src=self.id)
+                    self.attract_running = True
+                    
+                    # Fire off a passive sweeping LED animation
+                    self.leds.start_cylon(Palette.CYAN, speed=0.08)
+                    
+                    # Put a fun message on the segment displays
+                    await self.segment.apply_command("DSP", "** JEB ROCKS **")
+
+            await asyncio.sleep(0.5)
 #endregion
 
     async def custom_start(self):
         """Custom startup sequence for the Industrial Satellite."""
-
         # Register additional watchdog flags
-        self.watchdog.register_flags(["hw_hid"])
-        self.watchdog.register_flags(["render"])
+        self.watchdog.register_flags(["hw_hid", "render", "attract"])
 
-        # Return list of background tasks to run concurrently with the main loop
+        self.last_interaction_time = time.monotonic()
+
         return [
             self.monitor_hw_hid(),
+            self.attract_loop(),
             self.renderer.run(
                 heartbeat_callback=lambda: self.watchdog.check_in("render")
             )

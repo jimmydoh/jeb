@@ -75,7 +75,7 @@ class SatelliteDriver:
         except ValueError:
             pass  # Task might have been removed already, which is fine
 
-    def send_cmd(self, cmd, val, retry_count=5, retry_delay=0.05):
+    def send(self, cmd, val, retry_count=5, retry_delay=0.05):
         """
         Send a formatted command via the transport layer,
         targetting this satellite's real hardware via self.id.

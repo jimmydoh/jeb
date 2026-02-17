@@ -362,7 +362,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 pygame.draw.rect(screen, (220, 180, 40), (SAT_X, SAT_Y, SAT_W, SAT_H), border_radius=10)
                 pygame.draw.rect(screen, (100, 80, 20), (SAT_X, SAT_Y, SAT_W, SAT_H), 4, border_radius=10)
 
-                # 1. TOP: LATCHING TOGGLES & STATUS LEDS
+                # 1. TOP: LATCHING TOGGLES
                 for i in range(4):
                     tx, ty = SAT_X + 40 + i*60, SAT_Y + 70
 
@@ -383,19 +383,37 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         pygame.draw.rect(screen, (120, 120, 120), (tx-6, ty, 12, 28), border_radius=3)
                         pygame.draw.circle(screen, (90, 90, 90), (tx, ty+28), 6)
 
-                    # Draw Indicator LED above the switch
-                    led_y = SAT_Y + 25
-                    try:
-                        color = HardwareMocks.sat_pixels.pixels[i]
-                        safe_color = tuple(max(0, min(255, int(c))) for c in color)
-                    except Exception:
-                        safe_color = (0, 0, 0)
+                    # ==========================================
+                    # RENDER SAT 01 LEDs
+                    # ==========================================
+                    # Look at the simulated hardware, not the firmware!
+                    sat_pixels = HardwareMocks.get("SAT_01", "pixels")
+                    
+                    if sat_pixels:
+                        led_y = SAT_Y + 25
+                        for i in range(4):
+                            # Calculate the X coordinate for THIS specific LED
+                            tx = SAT_X + 40 + i * 60 
+                            
+                            # Draw outer Bezel
+                            pygame.draw.circle(screen, (30, 30, 30), (tx, led_y), 12) 
+                            
+                            try:
+                                # Get the color directly from our MockNeoPixel
+                                color = sat_pixels[i] 
+                                safe_color = tuple(max(0, min(255, int(c))) for c in color)
 
-                    pygame.draw.circle(screen, (30, 30, 30), (tx, led_y), 12) # Bezel
-                    if any(c > 0 for c in safe_color):
-                        pygame.draw.circle(screen, safe_color, (tx, led_y), 9)
-                    else:
-                        pygame.draw.circle(screen, (10, 10, 10), (tx, led_y), 9)
+                                
+                                
+                                # If the color is lit (>0), draw the glowing dome
+                                if any(c > 0 for c in safe_color):
+                                    pygame.draw.circle(screen, safe_color, (tx, led_y), 9)
+                                else:
+                                    # Draw dark unlit dome
+                                    pygame.draw.circle(screen, (10, 10, 10), (tx, led_y), 9)
+                                    
+                            except (TypeError, IndexError):
+                                pass
 
                 # 2. MIDDLE: KEYPAD (3x4)
                 KEYPAD_LABELS = ['1','2','3','4','5','6','7','8','9','*','0','#']
