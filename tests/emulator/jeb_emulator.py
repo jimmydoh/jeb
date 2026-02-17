@@ -2,6 +2,19 @@ import sys
 import time
 import pygame
 
+# ==========================================
+# SAFE AUDIO INITIALIZATION
+# ==========================================
+AUDIO_AVAILABLE = False
+try:
+    # Pre-init the mixer to avoid a slight delay when the first sound plays
+    pygame.mixer.pre_init(44100, -16, 2, 512)
+    pygame.mixer.init()
+    AUDIO_AVAILABLE = True
+    print("🔊 [EMULATOR] Hardware Audio Device Found. Sound Enabled.")
+except Exception as e:
+    print(f"⚠️ [EMULATOR] No audio device available ({e}). Falling back to silent logging.")
+
 #region --- Hardware Mocks ---
 
 # adafruit_ticks
@@ -322,35 +335,36 @@ class MockNeopixelModule:
 
 sys.modules['neopixel'] = MockNeopixelModule()
 
-# --- AUDIOBUSIO MOCK (I2S Hardware) ---
-class MockI2SOut:
-    def __init__(self, bit_clock, word_select, data, **kwargs):
+# --- AUDIOBUSIO / AUDIOPWMIO MOCKS (Direct Playback Fallbacks) ---
+class MockDirectAudioOut:
+    """Handles cases where audio.play() is called without a mixer."""
+    def __init__(self, *args, **kwargs):
         self.playing = False
+        self._current_channel = None
 
     def play(self, sample, loop=False):
         self.playing = True
+        filename = getattr(sample, 'filepath', 'synth/stream')
+
+        if not AUDIO_AVAILABLE:
+            print(f"🔊 [AUDIO DUMMY] Direct intent to play: {filename} (Loop: {loop})")
+            return
+
+        if hasattr(sample, 'sound') and sample.sound:
+            # Find the first available open channel and play it
+            self._current_channel = pygame.mixer.find_channel()
+            if self._current_channel:
+                self._current_channel.play(sample.sound, loops=-1 if loop else 0)
 
     def stop(self):
         self.playing = False
+        if self._current_channel:
+            self._current_channel.stop()
 
     def deinit(self): pass
 
-sys.modules['audiobusio'] = type('MockAudioBusIO', (), {'I2SOut': MockI2SOut})
-
-# --- AUDIOPWMIO MOCK (PWM Hardware Fallback) ---
-class MockPWMAudioOut:
-    def __init__(self, pin, **kwargs):
-        self.playing = False
-
-    def play(self, sample, loop=False):
-        self.playing = True
-
-    def stop(self):
-        self.playing = False
-
-    def deinit(self): pass
-
-sys.modules['audiopwmio'] = type('MockAudioPWMIO', (), {'PWMAudioOut': MockPWMAudioOut})
+sys.modules['audiobusio'] = type('MockAudioBusIO', (), {'I2SOut': MockDirectAudioOut})
+sys.modules['audiopwmio'] = type('MockAudioPWMIO', (), {'PWMAudioOut': MockDirectAudioOut})
 
 # --- PWMIO MOCK (For Buzzer/Piezo) ---
 class MockPWMOut:
@@ -394,12 +408,23 @@ sys.modules['pwmio'] = type('MockPWMIO', (), {'PWMOut': MockPWMOut})
 # --- AUDIOCORE MOCK (.wav File Decoder) ---
 class MockWaveFile:
     def __init__(self, file_obj, buffer=None):
-        self.file_obj = file_obj
-        self.sample_rate = 22050
-        # Try to extract the real filename from the PC file object for our console logs
-        self.filename = getattr(file_obj, 'name', 'unknown_stream')
+        # Extract the filename from the file object
+        self.filepath = getattr(file_obj, 'name', 'unknown_audio')
+        
+        # Clean up absolute paths for PC compatibility
+        if self.filepath.startswith("/"):
+            self.filepath = self.filepath[1:]
 
-    def deinit(self): pass
+        # [NEW] Pre-load the Pygame Sound object if audio is available!
+        self.sound = None
+        if AUDIO_AVAILABLE:
+            try:
+                self.sound = pygame.mixer.Sound(self.filepath)
+            except Exception as e:
+                print(f"❌ [AUDIO ERROR] Could not load '{self.filepath}': {e}")
+
+    def deinit(self):
+        pass
 
 sys.modules['audiocore'] = type('MockAudioCore', (), {'WaveFile': MockWaveFile})
 
@@ -409,6 +434,9 @@ class MockMixerVoice:
         self.index = index
         self._level = 1.0
         self.playing = False
+        
+        # [NEW] Map this voice to a physical Pygame Channel!
+        self.channel = pygame.mixer.Channel(index) if AUDIO_AVAILABLE else None
 
     @property
     def level(self):
@@ -417,15 +445,29 @@ class MockMixerVoice:
     @level.setter
     def level(self, val):
         self._level = val
-        # Optional: print(f"[HW AUDIO] Channel {self.index} Vol -> {val:.2f}")
+        if self.channel:
+            self.channel.set_volume(val)
 
     def play(self, sample, loop=False):
         self.playing = True
-        filename = getattr(sample, 'filename', 'synth/stream')
-        print(f"[HW AUDIO] Channel {self.index} Playing -> {filename}")
+        filename = getattr(sample, 'filepath', 'synth/stream')
+
+        # 1. Fallback / VM Logging Mode
+        if not AUDIO_AVAILABLE:
+            print(f"🔊 [AUDIO DUMMY] Channel {self.index} intent to play: {filename} (Loop: {loop})")
+            return
+
+        # 2. Hardware Audio Mode
+        if hasattr(sample, 'sound') and sample.sound:
+            loops = -1 if loop else 0
+            self.channel.play(sample.sound, loops=loops)
+        else:
+            print(f"⚠️ [HW AUDIO] Channel {self.index} skipped unsupported sample: {filename}")
 
     def stop(self):
         self.playing = False
+        if self.channel:
+            self.channel.stop()
 
 class MockMixer:
     def __init__(self, voice_count=1, **kwargs):
