@@ -2,7 +2,38 @@
 """Integration tests for LEDManager and MatrixManager with refactored animation logic."""
 
 import sys
+import os
 import pytest
+
+
+# Mock CircuitPython modules BEFORE any imports (same pattern as other tests)
+class MockModule:
+    """Generic mock module."""
+    def __getattr__(self, name):
+        return MockModule()
+    
+    def __call__(self, *args, **kwargs):
+        return MockModule()
+
+sys.modules['digitalio'] = MockModule()
+sys.modules['busio'] = MockModule()
+sys.modules['board'] = MockModule()
+sys.modules['adafruit_mcp230xx'] = MockModule()
+sys.modules['adafruit_mcp230xx.mcp23017'] = MockModule()
+sys.modules['adafruit_ticks'] = MockModule()
+sys.modules['audiobusio'] = MockModule()
+sys.modules['audiocore'] = MockModule()
+sys.modules['audiomixer'] = MockModule()
+sys.modules['analogio'] = MockModule()
+sys.modules['microcontroller'] = MockModule()
+sys.modules['watchdog'] = MockModule()
+sys.modules['audiopwmio'] = MockModule()
+sys.modules['synthio'] = MockModule()
+sys.modules['ulab'] = MockModule()
+sys.modules['neopixel'] = MockModule()
+
+# Add src directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
 
 # Mock JEBPixel for testing
@@ -26,74 +57,10 @@ class MockJEBPixel:
         pass  # Mock - does nothing
 
 
-# Mock Palette for testing
-class MockPalette:
-    OFF = (0, 0, 0)
-    RED = (255, 0, 0)
-    GREEN = (0, 255, 0)
-    BLUE = (0, 0, 255)
-    YELLOW = (255, 255, 0)
-    CYAN = (0, 255, 255)
-    MAGENTA = (255, 0, 255)
-    WHITE = (255, 255, 255)
-    PALETTE_LIBRARY = {1: RED, 2: GREEN, 3: BLUE}
-
-
-# Mock Icons for testing
-class MockIcons:
-    DEFAULT = [2] * 64
-    SUCCESS = [1] * 64
-    ICON_LIBRARY = {"DEFAULT": DEFAULT, "SUCCESS": SUCCESS}
-
-
-# Monkey-patch utilities before importing managers
-sys.path.insert(0, '/home/runner/work/jeb/jeb/src')
-sys.modules['utilities.payload_parser'] = type(sys)('utilities.payload_parser')
-sys.modules['utilities.payload_parser'].parse_values = lambda x: x
-sys.modules['utilities.payload_parser'].get_int = lambda x, i, d=0: 0
-sys.modules['utilities.payload_parser'].get_float = lambda x, i, d=0.0: 0.0
-sys.modules['utilities.payload_parser'].get_str = lambda x, i, d="": ""
-sys.modules['utilities.palette'] = type(sys)('utilities.palette')
-sys.modules['utilities.palette'].Palette = MockPalette
-sys.modules['utilities.icons'] = type(sys)('utilities.icons')
-sys.modules['utilities.icons'].Icons = MockIcons
-
-# Import directly to avoid __init__.py which has CircuitPython dependencies
-import importlib.util
-
-# Import base_pixel_manager first
-spec_base = importlib.util.spec_from_file_location(
-    "base_pixel_manager", 
-    "/home/runner/work/jeb/jeb/src/managers/base_pixel_manager.py"
-)
-base_pixel_manager_module = importlib.util.module_from_spec(spec_base)
-spec_base.loader.exec_module(base_pixel_manager_module)
-
-# Make base_pixel_manager available in sys.modules for relative imports
-sys.modules['managers'] = type(sys)('managers')
-sys.modules['managers.base_pixel_manager'] = base_pixel_manager_module
-
-# Import led_manager
-spec_led = importlib.util.spec_from_file_location(
-    "managers.led_manager", 
-    "/home/runner/work/jeb/jeb/src/managers/led_manager.py"
-)
-led_manager_module = importlib.util.module_from_spec(spec_led)
-spec_led.loader.exec_module(led_manager_module)
-sys.modules['managers.led_manager'] = led_manager_module
-
-# Import matrix_manager
-spec_matrix = importlib.util.spec_from_file_location(
-    "managers.matrix_manager", 
-    "/home/runner/work/jeb/jeb/src/managers/matrix_manager.py"
-)
-matrix_manager_module = importlib.util.module_from_spec(spec_matrix)
-spec_matrix.loader.exec_module(matrix_manager_module)
-sys.modules['managers.matrix_manager'] = matrix_manager_module
-
-LEDManager = led_manager_module.LEDManager
-MatrixManager = matrix_manager_module.MatrixManager
-PixelLayout = base_pixel_manager_module.PixelLayout
+# Import managers after mocks are set up
+from managers.led_manager import LEDManager
+from managers.matrix_manager import MatrixManager
+from managers.base_pixel_manager import PixelLayout
 
 
 def test_led_manager_layout():
