@@ -16,9 +16,10 @@ def test_message_creation_with_string_payload():
     """Test creating a message with string payload."""
     print("Testing message creation with string payload...")
     
-    msg = Message("0101", "STATUS", "0000,C,N,0,0")
+    msg = Message("0101", "CORE", "STATUS", "0000,C,N,0,0")
     
-    assert msg.destination == "0101", f"Expected destination '0101', got {msg.destination}"
+    assert msg.source == "0101", f"Expected source '0101', got {msg.source}"
+    assert msg.destination == "CORE", f"Expected destination 'CORE', got {msg.destination}"
     assert msg.command == "STATUS", f"Expected command 'STATUS', got {msg.command}"
     assert msg.payload == "0000,C,N,0,0", f"Expected payload '0000,C,N,0,0', got {msg.payload}"
     
@@ -30,9 +31,10 @@ def test_message_creation_with_bytes_payload():
     print("\nTesting message creation with bytes payload...")
     
     payload_bytes = b'\x01\x02\x03\x04'
-    msg = Message("0102", "DATA", payload_bytes)
+    msg = Message("0102", "CORE", "DATA", payload_bytes)
     
-    assert msg.destination == "0102"
+    assert msg.source == "0102"
+    assert msg.destination == "CORE"
     assert msg.command == "DATA"
     assert msg.payload == payload_bytes
     assert isinstance(msg.payload, bytes), "Payload should be bytes type"
@@ -44,8 +46,9 @@ def test_message_broadcast():
     """Test creating a broadcast message."""
     print("\nTesting broadcast message...")
     
-    msg = Message("ALL", "ID_ASSIGN", "0100")
+    msg = Message("CORE", "ALL", "ID_ASSIGN", "0100")
     
+    assert msg.source == "CORE"
     assert msg.destination == "ALL", "Broadcast should use 'ALL' destination"
     assert msg.command == "ID_ASSIGN"
     assert msg.payload == "0100"
@@ -57,9 +60,10 @@ def test_message_repr_string():
     """Test string representation with string payload."""
     print("\nTesting message __repr__ with string...")
     
-    msg = Message("0101", "LED", "0,255,0,0,2.0,0.5,2")
+    msg = Message("CORE", "0101", "LED", "0,255,0,0,2.0,0.5,2")
     repr_str = repr(msg)
     
+    assert "CORE" in repr_str, "Repr should contain source"
     assert "0101" in repr_str, "Repr should contain destination"
     assert "LED" in repr_str, "Repr should contain command"
     assert "0,255,0,0,2.0,0.5,2" in repr_str, "Repr should contain payload"
@@ -73,9 +77,10 @@ def test_message_repr_bytes():
     print("\nTesting message __repr__ with bytes...")
     
     payload_bytes = b'\x01\x02\x03\x04\x05'
-    msg = Message("0102", "BINARY", payload_bytes)
+    msg = Message("CORE", "0102", "BINARY", payload_bytes)
     repr_str = repr(msg)
     
+    assert "CORE" in repr_str, "Repr should contain source"
     assert "0102" in repr_str, "Repr should contain destination"
     assert "BINARY" in repr_str, "Repr should contain command"
     assert "<bytes:5>" in repr_str, "Repr should show bytes length"
@@ -88,8 +93,8 @@ def test_message_equality_same():
     """Test message equality for identical messages."""
     print("\nTesting message equality (same)...")
     
-    msg1 = Message("0101", "STATUS", "online")
-    msg2 = Message("0101", "STATUS", "online")
+    msg1 = Message("0101", "CORE", "STATUS", "online")
+    msg2 = Message("0101", "CORE", "STATUS", "online")
     
     assert msg1 == msg2, "Identical messages should be equal"
     
@@ -100,8 +105,8 @@ def test_message_equality_different_destination():
     """Test message inequality for different destinations."""
     print("\nTesting message inequality (different destination)...")
     
-    msg1 = Message("0101", "STATUS", "online")
-    msg2 = Message("0102", "STATUS", "online")
+    msg1 = Message("0101", "CORE", "STATUS", "online")
+    msg2 = Message("0101", "0102", "STATUS", "online")
     
     assert msg1 != msg2, "Messages with different destinations should not be equal"
     
@@ -112,8 +117,8 @@ def test_message_equality_different_command():
     """Test message inequality for different commands."""
     print("\nTesting message inequality (different command)...")
     
-    msg1 = Message("0101", "STATUS", "data")
-    msg2 = Message("0101", "LED", "data")
+    msg1 = Message("0101", "CORE", "STATUS", "data")
+    msg2 = Message("0101", "CORE", "LED", "data")
     
     assert msg1 != msg2, "Messages with different commands should not be equal"
     
@@ -124,8 +129,8 @@ def test_message_equality_different_payload():
     """Test message inequality for different payloads."""
     print("\nTesting message inequality (different payload)...")
     
-    msg1 = Message("0101", "STATUS", "payload1")
-    msg2 = Message("0101", "STATUS", "payload2")
+    msg1 = Message("0101", "CORE", "STATUS", "payload1")
+    msg2 = Message("0101", "CORE", "STATUS", "payload2")
     
     assert msg1 != msg2, "Messages with different payloads should not be equal"
     
@@ -137,13 +142,13 @@ def test_message_equality_bytes_payload():
     print("\nTesting message equality with bytes payloads...")
     
     payload = b'\x01\x02\x03'
-    msg1 = Message("0101", "DATA", payload)
-    msg2 = Message("0101", "DATA", payload)
+    msg1 = Message("0101", "CORE", "DATA", payload)
+    msg2 = Message("0101", "CORE", "DATA", payload)
     
     assert msg1 == msg2, "Messages with identical bytes payloads should be equal"
     
     # Different bytes should not be equal
-    msg3 = Message("0101", "DATA", b'\x04\x05\x06')
+    msg3 = Message("0101", "CORE", "DATA", b'\x04\x05\x06')
     assert msg1 != msg3, "Messages with different bytes should not be equal"
     
     print("✓ Message equality with bytes test passed")
@@ -153,7 +158,7 @@ def test_message_equality_non_message():
     """Test message equality comparison with non-Message object."""
     print("\nTesting message equality with non-Message...")
     
-    msg = Message("0101", "STATUS", "test")
+    msg = Message("0101", "CORE", "STATUS", "test")
     
     assert msg != "not a message", "Message should not equal non-Message object"
     assert msg != None, "Message should not equal None"
@@ -168,23 +173,23 @@ def test_message_common_commands():
     print("\nTesting common protocol commands...")
     
     # Status message
-    status_msg = Message("0101", "STATUS", "0000,C,N,0,0")
+    status_msg = Message("0101", "CORE", "STATUS", "0000,C,N,0,0")
     assert status_msg.command == "STATUS"
     
     # LED control
-    led_msg = Message("0101", "LED", "0,255,0,0,2.0,0.5,2")
+    led_msg = Message("CORE", "0101", "LED", "0,255,0,0,2.0,0.5,2")
     assert led_msg.command == "LED"
     
     # Display message
-    display_msg = Message("0101", "DSP", "HELLO,1,0.2,L")
+    display_msg = Message("CORE", "0101", "DSP", "HELLO,1,0.2,L")
     assert display_msg.command == "DSP"
     
     # Power message
-    power_msg = Message("0101", "POWER", "24.2,23.8,5.0")
+    power_msg = Message("0101", "CORE", "POWER", "24.2,23.8,5.0")
     assert power_msg.command == "POWER"
     
     # Error message
-    error_msg = Message("0101", "ERROR", "LOGIC_BROWNOUT:4.5V")
+    error_msg = Message("0101", "CORE", "ERROR", "LOGIC_BROWNOUT:4.5V")
     assert error_msg.command == "ERROR"
     
     print("✓ Common protocol commands test passed")
@@ -194,8 +199,9 @@ def test_message_empty_payload():
     """Test creating message with empty payload."""
     print("\nTesting message with empty payload...")
     
-    msg = Message("0101", "PING", "")
+    msg = Message("CORE", "0101", "PING", "")
     
+    assert msg.source == "CORE"
     assert msg.destination == "0101"
     assert msg.command == "PING"
     assert msg.payload == ""
