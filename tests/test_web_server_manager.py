@@ -334,6 +334,61 @@ def test_invalid_config():
         print("  ✓ Invalid config detection passed")
 
 
+def test_sanitize_path():
+    """Test path sanitization function."""
+    print("\nTesting path sanitization...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    manager = WebServerManager(config)
+
+    # Test basic path
+    result = manager._sanitize_path("/sd", "/sd/test.txt")
+    assert result == "/sd/test.txt", f"Expected '/sd/test.txt', got '{result}'"
+
+    # Test path with directory traversal (..)
+    result = manager._sanitize_path("/sd", "/sd/subdir/../test.txt")
+    assert result == "/sd/test.txt", f"Expected '/sd/test.txt', got '{result}'"
+
+    # Test path with multiple directory traversals
+    result = manager._sanitize_path("/sd", "/sd/a/b/../../test.txt")
+    assert result == "/sd/test.txt", f"Expected '/sd/test.txt', got '{result}'"
+
+    # Test path trying to escape base (should not go above base)
+    result = manager._sanitize_path("/sd", "/sd/../../etc/passwd")
+    assert result == "/sd/etc/passwd", f"Expected '/sd/etc/passwd', got '{result}'"
+
+    # Test path with current directory references (.)
+    result = manager._sanitize_path("/sd", "/sd/./test.txt")
+    assert result == "/sd/test.txt", f"Expected '/sd/test.txt', got '{result}'"
+
+    # Test path with multiple slashes
+    result = manager._sanitize_path("/sd", "/sd//test.txt")
+    assert result == "/sd/test.txt", f"Expected '/sd/test.txt', got '{result}'"
+
+    # Test nested directories
+    result = manager._sanitize_path("/sd", "/sd/dir1/dir2/test.txt")
+    assert result == "/sd/dir1/dir2/test.txt", f"Expected '/sd/dir1/dir2/test.txt', got '{result}'"
+
+    # Test empty path
+    result = manager._sanitize_path("/sd", "")
+    assert result == "/sd", f"Expected '/sd', got '{result}'"
+
+    # Test just filename (no base path)
+    result = manager._sanitize_path("", "test.txt")
+    assert result == "/test.txt", f"Expected '/test.txt', got '{result}'"
+
+    # Test path with only base
+    result = manager._sanitize_path("/sd", "/sd")
+    assert result == "/sd", f"Expected '/sd', got '{result}'"
+
+    print("  ✓ Path sanitization test passed")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -350,6 +405,7 @@ def run_all_tests():
         test_html_generation,
         test_route_registration,
         test_invalid_config,
+        test_sanitize_path,
     ]
 
     try:
