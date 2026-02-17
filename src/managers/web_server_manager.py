@@ -288,7 +288,8 @@ class WebServerManager:
                 # Normalize path and ensure it's within allowed directories
                 normalized_path = self._sanitize_path("/sd", path)
                 
-                # Check for directory traversal
+                # Defense-in-depth: Verify sanitized path is within allowed directories
+                # _sanitize_path already ensures this, but we check again for safety
                 if not (normalized_path.startswith("/sd/") or normalized_path == "/sd"):
                     return Response(request, '{"error": "Invalid path - access denied"}', 
                                   content_type="application/json", status=400)
@@ -352,7 +353,8 @@ class WebServerManager:
                     return Response(request, '{"error": "Filename cannot be empty"}', 
                                   content_type="application/json", status=400)
                 
-                # Ensure path is within SD card
+                # Defense-in-depth: Verify sanitized path is within SD card
+                # _sanitize_path already ensures this, but we check again for safety
                 if not (normalized_path.startswith("/sd/") or normalized_path == "/sd"):
                     return Response(request, '{"error": "Invalid path - must be within /sd"}', 
                                   content_type="application/json", status=400)
