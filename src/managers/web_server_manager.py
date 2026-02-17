@@ -331,14 +331,22 @@ class WebServerManager:
                 
                 # For filename, we just need to remove any path components
                 # and ensure it doesn't contain directory traversal
-                filename_parts = filename.split("/")
-                # Take only the last part (the actual filename)
-                clean_filename = filename_parts[-1] if filename_parts else filename
-                
-                # Check for directory traversal attempts in filename
-                if ".." in clean_filename or "/" in clean_filename:
-                    return Response(request, '{"error": "Invalid filename - directory traversal not allowed"}', 
+                # First check for path separators in the original filename
+                if "/" in filename or "\\" in filename:
+                    return Response(request, '{"error": "Invalid filename - path separators not allowed"}', 
                                   content_type="application/json", status=400)
+                
+                # Check for directory traversal attempts (exact match)
+                if filename == ".." or filename == ".":
+                    return Response(request, '{"error": "Invalid filename - directory references not allowed"}', 
+                                  content_type="application/json", status=400)
+                
+                # Check for empty filename
+                if not filename or filename.strip() == "":
+                    return Response(request, '{"error": "Filename cannot be empty"}', 
+                                  content_type="application/json", status=400)
+                
+                clean_filename = filename
                 
                 # Ensure path is within SD card
                 if not (normalized_path.startswith("/sd/") or normalized_path == "/sd"):
