@@ -153,6 +153,22 @@ MODE_REGISTRY = {
                 "default": "3RD_PERSON"
             }
         ]
+    },
+    "DATA_FLOW": {
+        "id": "DATA_FLOW",
+        "name": "DATA FLOW",
+        "module_path": "modes.data_flow",
+        "class_name": "DataFlowMode",
+        "icon": "DATA_FLOW",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD"],
+                "default": "NORMAL"
+            }
+        ]
     }
 }
 
