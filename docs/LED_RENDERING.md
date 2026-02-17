@@ -242,6 +242,64 @@ python tests/test_satellite_render_loop.py
 python tests/test_watchdog_flag_pattern.py
 ```
 
+## Animation Architecture
+
+### Shape-Aware Animation System
+
+The animation system has been refactored to support shape/layout awareness, enabling animations to adapt to different physical pixel arrangements.
+
+#### Layout Types
+
+The `PixelLayout` enum defines supported physical arrangements:
+
+- **LINEAR**: 1D strips, strings, or straight-line arrangements
+- **MATRIX_2D**: 2D grids/matrices (e.g., 8x8 LED matrix)
+- **CIRCLE**: Circular/ring arrangements
+- **CUSTOM**: Irregular or custom layouts
+
+#### Base Pixel Manager
+
+`BasePixelManager` now provides:
+
+1. **Layout Awareness**: 
+   - `get_layout_type()` - Returns the PixelLayout enum
+   - `get_dimensions()` - Returns dimensions tuple (e.g., (width, height) for matrices)
+   - `get_shape()` - Returns dict with both type and dimensions
+
+2. **Common Animation Methods**:
+   - `solid(index, color, brightness, ...)` - Static color animation
+   - `flash(index, color, brightness, speed, ...)` - Blinking animation
+   - `breathe(index, color, brightness, speed, ...)` - Breathing/pulse animation
+   - `cylon(color, speed, ...)` - Scanner animation (layout-aware)
+   - `centrifuge(color, speed, ...)` - Spinning animation
+   - `rainbow(speed, ...)` - Rainbow color cycle
+   - `glitch(colors, speed, ...)` - Glitch effect
+
+#### Implementing Classes
+
+**LEDManager** (Linear/1D):
+- Declares `PixelLayout.LINEAR` with dimensions `(num_pixels,)`
+- Uses base class animation methods
+- Provides LED-specific convenience methods (`solid_led`, `flash_led`, etc.)
+
+**MatrixManager** (2D Matrix):
+- Declares `PixelLayout.MATRIX_2D` with dimensions `(8, 8)`
+- Uses base class animation methods
+- Adds matrix-specific methods (`draw_pixel`, `show_icon`, `draw_quadrant`)
+
+### Animation Consolidation
+
+Animation logic has been consolidated to reduce code duplication:
+
+**Before**: LEDManager had duplicate brightness calculations and animation setup  
+**After**: Shared methods in BasePixelManager handle common patterns
+
+This enables:
+- Unified animation APIs across all pixel managers
+- Easier addition of new layouts (circles, custom shapes)
+- Simplified maintenance and bug fixes
+- Shape-aware animation behavior (e.g., Cylon scanners work differently for strips vs. matrices)
+
 ## Future Enhancements
 
 Possible improvements for future versions:
@@ -257,5 +315,7 @@ Possible improvements for future versions:
 - `src/core/core_manager.py` - Core render loop and sync broadcast
 - `src/satellites/sat_01_firmware.py` - Satellite render loop and sync handler
 - `src/protocol.py` - SYNC_FRAME command definition
-- `src/managers/base_pixel_manager.py` - Animation logic
+- `src/managers/base_pixel_manager.py` - Base animation logic and shape/layout awareness
+- `src/managers/led_manager.py` - Linear LED strip/string management
+- `src/managers/matrix_manager.py` - 2D matrix LED management
 - `src/utilities/jeb_pixel.py` - LED buffer wrapper
