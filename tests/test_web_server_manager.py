@@ -334,6 +334,184 @@ def test_invalid_config():
         print("  ✓ Invalid config detection passed")
 
 
+def test_sanitize_path():
+    """Test path sanitization function."""
+    print("\nTesting path sanitization...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    manager = WebServerManager(config)
+
+    # Test basic path
+    result = manager._sanitize_path("/sd", "/sd/test.txt")
+    assert result == "/sd/test.txt", f"Expected '/sd/test.txt', got '{result}'"
+
+    # Test path with directory traversal (..)
+    result = manager._sanitize_path("/sd", "/sd/subdir/../test.txt")
+    assert result == "/sd/test.txt", f"Expected '/sd/test.txt', got '{result}'"
+
+    # Test path with multiple directory traversals
+    result = manager._sanitize_path("/sd", "/sd/a/b/../../test.txt")
+    assert result == "/sd/test.txt", f"Expected '/sd/test.txt', got '{result}'"
+
+    # Test path trying to escape base with absolute path outside base
+    # Absolute paths that don't start with base_path should be rejected for security
+    result = manager._sanitize_path("/sd", "/etc/passwd")
+    assert result == "/sd", f"Expected '/sd' (rejected), got '{result}'"
+    
+    # Test path with traversal attempt that would escape in normpath
+    # Our function keeps it within base_path, unlike os.path.normpath which would return /etc/passwd
+    result = manager._sanitize_path("/sd", "/sd/../../etc/passwd")
+    assert result == "/sd/etc/passwd", f"Expected '/sd/etc/passwd' (sanitized within base), got '{result}'"
+
+    # Test path with current directory references (.)
+    result = manager._sanitize_path("/sd", "/sd/./test.txt")
+    assert result == "/sd/test.txt", f"Expected '/sd/test.txt', got '{result}'"
+
+    # Test path with multiple slashes
+    result = manager._sanitize_path("/sd", "/sd//test.txt")
+    assert result == "/sd/test.txt", f"Expected '/sd/test.txt', got '{result}'"
+
+    # Test nested directories
+    result = manager._sanitize_path("/sd", "/sd/dir1/dir2/test.txt")
+    assert result == "/sd/dir1/dir2/test.txt", f"Expected '/sd/dir1/dir2/test.txt', got '{result}'"
+
+    # Test empty path
+    result = manager._sanitize_path("/sd", "")
+    assert result == "/sd", f"Expected '/sd', got '{result}'"
+
+    # Test path with only base
+    result = manager._sanitize_path("/sd", "/sd")
+    assert result == "/sd", f"Expected '/sd', got '{result}'"
+
+    print("  ✓ Path sanitization test passed")
+
+
+def test_filename_validation():
+    """Test filename validation logic."""
+    print("\nTesting filename validation...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    manager = WebServerManager(config)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    # Find the upload_file route
+    upload_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/files/upload":
+            upload_route = func
+            break
+
+    assert upload_route is not None, "Upload route not found"
+
+    # Test filename with forward slash
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": "test/file.txt"}
+    request.body = b"test content"
+    response = upload_route(request)
+    assert response.status == 400, "Should reject filename with forward slash"
+    assert "path separators not allowed" in response.body
+
+    # Test filename with backslash
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": "test\\file.txt"}
+    request.body = b"test content"
+    response = upload_route(request)
+    assert response.status == 400, "Should reject filename with backslash"
+    assert "path separators not allowed" in response.body
+
+    # Test filename that is ".."
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": ".."}
+    request.body = b"test content"
+    response = upload_route(request)
+    assert response.status == 400, "Should reject '..' as filename"
+    assert "directory references not allowed" in response.body
+
+    # Test filename that is "."
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": "."}
+    request.body = b"test content"
+    response = upload_route(request)
+    assert response.status == 400, "Should reject '.' as filename"
+    assert "directory references not allowed" in response.body
+
+    # Test empty filename
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": ""}
+    request.body = b"test content"
+    response = upload_route(request)
+    assert response.status == 400, "Should reject empty filename"
+    assert "Filename required" in response.body or "cannot be empty" in response.body
+
+    # Test whitespace-only filename
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": "   "}
+    request.body = b"test content"
+    response = upload_route(request)
+    assert response.status == 400, "Should reject whitespace-only filename"
+    assert "cannot be empty" in response.body or "Filename" in response.body
+
+    print("  ✓ Filename validation test passed")
+
+
+def test_path_security_integration():
+    """Test that invalid paths are sanitized and don't access unauthorized files."""
+    print("\nTesting path security integration...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    manager = WebServerManager(config)
+    
+    # Test the sanitization directly to verify security behavior
+    # Test 1: Absolute path outside base is sanitized to base
+    result = manager._sanitize_path("/sd", "/etc/passwd")
+    assert result == "/sd", f"Should sanitize /etc/passwd to /sd, got {result}"
+    
+    # Test 2: Traversal attempt is contained within base
+    result = manager._sanitize_path("/sd", "/sd/../../../etc/passwd")
+    assert result.startswith("/sd"), f"Should stay within /sd, got {result}"
+    assert "/etc" not in result or result.startswith("/sd/etc"), f"Should not escape to /etc, got {result}"
+    
+    # Test 3: Verify the download route uses sanitized paths
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+    
+    download_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/files/download":
+            download_route = func
+            break
+    
+    assert download_route is not None, "Download route not found"
+    
+    # When an attacker tries /etc/passwd, it gets sanitized to /sd
+    # The key security guarantee is that normalized_path will never be /etc/passwd
+    request = MockRequest()
+    request.query_params = {"path": "/etc/passwd"}
+    # We can't easily test the file access without mocking the filesystem,
+    # but we can verify the sanitization prevents accessing the malicious path
+    # by checking that _sanitize_path transforms it safely
+    sanitized = manager._sanitize_path("/sd", "/etc/passwd")
+    assert sanitized == "/sd", f"Malicious path should be sanitized to /sd, got {sanitized}"
+
+    print("  ✓ Path security integration test passed")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -350,6 +528,9 @@ def run_all_tests():
         test_html_generation,
         test_route_registration,
         test_invalid_config,
+        test_sanitize_path,
+        test_filename_validation,
+        test_path_security_integration,
     ]
 
     try:

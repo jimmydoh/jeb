@@ -136,6 +136,65 @@ class WebServerManager:
         if len(self.logs) > self.max_logs:
             self.logs = self.logs[-self.max_logs:]
     
+    def _sanitize_path(self, base_path, user_path):
+        """
+        Sanitize a user-provided path to prevent directory traversal attacks.
+        
+        This function normalizes paths using string manipulation instead of
+        os.path.normpath, which is not available in CircuitPython.
+        
+        Args:
+            base_path (str): The base directory path (e.g., "/sd")
+            user_path (str): The user-provided path to sanitize
+            
+        Returns:
+            str: The sanitized absolute path within base_path
+        """
+        # If user_path starts with base_path, extract the relative part
+        if user_path.startswith(base_path + "/"):
+            # Extract relative path after base_path
+            relative_path = user_path[len(base_path) + 1:]
+            parts = relative_path.split("/")
+        elif user_path == base_path:
+            # User path is exactly the base path
+            return base_path
+        elif user_path.startswith("/"):
+            # Absolute path that doesn't start with base_path is a security violation
+            # Return base_path to deny access outside the allowed directory
+            return base_path
+        else:
+            # Relative path - will be appended to base_path
+            parts = user_path.split("/")
+        
+        clean_parts = []
+        
+        # Process each part
+        for part in parts:
+            # Skip empty parts and current directory references
+            if part == "" or part == ".":
+                continue
+            # Handle parent directory references
+            if part == "..":
+                # Only pop if there are parts to pop (prevent going above base)
+                if clean_parts:
+                    clean_parts.pop()
+            else:
+                # Add normal directory/file name
+                clean_parts.append(part)
+        
+        # Construct the sanitized path
+        if clean_parts:
+            sanitized = base_path + "/" + "/".join(clean_parts)
+        else:
+            sanitized = base_path
+        
+        # Final validation: ensure the sanitized path doesn't escape the base directory
+        # This is a defense-in-depth measure to catch any edge cases
+        if not sanitized.startswith(base_path):
+            return base_path
+        
+        return sanitized
+    
     def setup_routes(self):
         """Setup HTTP routes for the web server."""
         
@@ -227,11 +286,11 @@ class WebServerManager:
                 
                 # Security: Prevent directory traversal and validate path
                 # Normalize path and ensure it's within allowed directories
-                import os.path
-                normalized_path = os.path.normpath(path)
+                normalized_path = self._sanitize_path("/sd", path)
                 
-                # Check for directory traversal
-                if ".." in normalized_path or not (normalized_path.startswith("/sd/") or normalized_path == "/sd"):
+                # Defense-in-depth: Verify sanitized path is within allowed directories
+                # _sanitize_path already ensures this, but we check again for safety
+                if not (normalized_path.startswith("/sd/") or normalized_path == "/sd"):
                     return Response(request, '{"error": "Invalid path - access denied"}', 
                                   content_type="application/json", status=400)
                 
@@ -250,10 +309,10 @@ class WebServerManager:
                     except Exception as e:
                         print(f"Error reading file {filepath}: {e}")
                 
-                filename = path.split("/")[-1]
+                filename = normalized_path.split("/")[-1]
                 
                 # Return response with generator for chunked transfer
-                return Response(request, file_generator(path), 
+                return Response(request, file_generator(normalized_path), 
                               content_type="application/octet-stream",
                               headers={"Content-Disposition": f"attachment; filename={filename}"})
             except Exception as e:
@@ -274,16 +333,28 @@ class WebServerManager:
                                   content_type="application/json", status=400)
                 
                 # Security: Prevent directory traversal and validate paths
-                import os.path
-                normalized_path = os.path.normpath(path)
-                normalized_filename = os.path.normpath(filename)
+                normalized_path = self._sanitize_path("/sd", path)
                 
-                # Check for directory traversal in both path and filename
-                if ".." in normalized_path or ".." in normalized_filename:
-                    return Response(request, '{"error": "Invalid path - directory traversal not allowed"}', 
+                # For filename, we just need to remove any path components
+                # and ensure it doesn't contain directory traversal
+                # First check for path separators in the original filename
+                if "/" in filename or "\\" in filename:
+                    return Response(request, '{"error": "Invalid filename - path separators not allowed"}', 
                                   content_type="application/json", status=400)
                 
-                # Ensure path is within SD card
+                # Check for directory traversal attempts (exact match)
+                if filename == ".." or filename == ".":
+                    return Response(request, '{"error": "Invalid filename - directory references not allowed"}', 
+                                  content_type="application/json", status=400)
+                
+                # Strip whitespace and check for empty filename
+                clean_filename = filename.strip()
+                if clean_filename == "":
+                    return Response(request, '{"error": "Filename cannot be empty"}', 
+                                  content_type="application/json", status=400)
+                
+                # Defense-in-depth: Verify sanitized path is within SD card
+                # _sanitize_path already ensures this, but we check again for safety
                 if not (normalized_path.startswith("/sd/") or normalized_path == "/sd"):
                     return Response(request, '{"error": "Invalid path - must be within /sd"}', 
                                   content_type="application/json", status=400)
@@ -302,7 +373,7 @@ class WebServerManager:
                                   content_type="application/json", status=413)
                 
                 # Write file in chunks to minimize memory usage
-                filepath = f"{path}/{filename}"
+                filepath = f"{normalized_path}/{clean_filename}"
                 with open(filepath, "wb") as f:
                     for i in range(0, len(content), self.CHUNK_SIZE):
                         f.write(content[i:i+self.CHUNK_SIZE])
