@@ -358,12 +358,15 @@ def test_sanitize_path():
     result = manager._sanitize_path("/sd", "/sd/a/b/../../test.txt")
     assert result == "/sd/test.txt", f"Expected '/sd/test.txt', got '{result}'"
 
-    # Test path trying to escape base (should not go above base)
-    # The path /sd/../../etc/passwd means: start at /sd, go up twice (but can't go above /sd because we start processing from there)
-    # So the ".." operations in the relative path "../../etc/passwd" will try to go up from /sd
-    # After processing, we end up at /sd/etc/passwd (went up twice from /sd, but stayed at /sd, then added etc/passwd)
+    # Test path trying to escape base with absolute path outside base
+    # Absolute paths that don't start with base_path should be rejected for security
+    result = manager._sanitize_path("/sd", "/etc/passwd")
+    assert result == "/sd", f"Expected '/sd' (rejected), got '{result}'"
+    
+    # Test path with traversal attempt that would escape in normpath
+    # Our function keeps it within base_path, unlike os.path.normpath which would return /etc/passwd
     result = manager._sanitize_path("/sd", "/sd/../../etc/passwd")
-    assert result == "/sd/etc/passwd", f"Expected '/sd/etc/passwd', got '{result}'"
+    assert result == "/sd/etc/passwd", f"Expected '/sd/etc/passwd' (sanitized within base), got '{result}'"
 
     # Test path with current directory references (.)
     result = manager._sanitize_path("/sd", "/sd/./test.txt")

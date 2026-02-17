@@ -148,7 +148,7 @@ class WebServerManager:
             user_path (str): The user-provided path to sanitize
             
         Returns:
-            str: The sanitized absolute path
+            str: The sanitized absolute path within base_path
         """
         # If user_path starts with base_path, extract the relative part
         if user_path.startswith(base_path + "/"):
@@ -159,11 +159,11 @@ class WebServerManager:
             # User path is exactly the base path
             return base_path
         elif user_path.startswith("/"):
-            # Absolute path that doesn't start with base_path
-            # Split and process normally
-            parts = user_path.split("/")
+            # Absolute path that doesn't start with base_path is a security violation
+            # Return base_path to deny access outside the allowed directory
+            return base_path
         else:
-            # Relative path
+            # Relative path - will be appended to base_path
             parts = user_path.split("/")
         
         clean_parts = []
