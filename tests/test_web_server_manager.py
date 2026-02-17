@@ -391,6 +391,80 @@ def test_sanitize_path():
     print("  ✓ Path sanitization test passed")
 
 
+def test_filename_validation():
+    """Test filename validation logic."""
+    print("\nTesting filename validation...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    manager = WebServerManager(config)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    # Find the upload_file route
+    upload_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/files/upload":
+            upload_route = func
+            break
+
+    assert upload_route is not None, "Upload route not found"
+
+    # Test filename with forward slash
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": "test/file.txt"}
+    request.body = b"test content"
+    response = upload_route(request)
+    assert response.status == 400, "Should reject filename with forward slash"
+    assert "path separators not allowed" in response.body
+
+    # Test filename with backslash
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": "test\\file.txt"}
+    request.body = b"test content"
+    response = upload_route(request)
+    assert response.status == 400, "Should reject filename with backslash"
+    assert "path separators not allowed" in response.body
+
+    # Test filename that is ".."
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": ".."}
+    request.body = b"test content"
+    response = upload_route(request)
+    assert response.status == 400, "Should reject '..' as filename"
+    assert "directory references not allowed" in response.body
+
+    # Test filename that is "."
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": "."}
+    request.body = b"test content"
+    response = upload_route(request)
+    assert response.status == 400, "Should reject '.' as filename"
+    assert "directory references not allowed" in response.body
+
+    # Test empty filename
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": ""}
+    request.body = b"test content"
+    response = upload_route(request)
+    assert response.status == 400, "Should reject empty filename"
+    assert "Filename required" in response.body or "cannot be empty" in response.body
+
+    # Test whitespace-only filename
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": "   "}
+    request.body = b"test content"
+    response = upload_route(request)
+    assert response.status == 400, "Should reject whitespace-only filename"
+    assert "cannot be empty" in response.body or "Filename" in response.body
+
+    print("  ✓ Filename validation test passed")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -408,6 +482,7 @@ def run_all_tests():
         test_route_registration,
         test_invalid_config,
         test_sanitize_path,
+        test_filename_validation,
     ]
 
     try:

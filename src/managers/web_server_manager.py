@@ -346,8 +346,8 @@ class WebServerManager:
                     return Response(request, '{"error": "Invalid filename - directory references not allowed"}', 
                                   content_type="application/json", status=400)
                 
-                # Check for empty filename
-                if not filename or filename.strip() == "":
+                # Check for empty or whitespace-only filename
+                if filename.strip() == "":
                     return Response(request, '{"error": "Filename cannot be empty"}', 
                                   content_type="application/json", status=400)
                 
