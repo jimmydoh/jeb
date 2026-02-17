@@ -29,8 +29,8 @@ def test_trench_run_in_manifest():
     assert trench_run_metadata["id"] == "TRENCH_RUN", "TRENCH_RUN mode ID incorrect"
     assert trench_run_metadata["name"] == "TRENCH RUN", "TRENCH_RUN mode name incorrect"
     assert trench_run_metadata["module_path"] == "modes.trench_run", "TRENCH_RUN module path incorrect"
-    assert trench_run_metadata["class_name"] == "TrenchRunMode", "TRENCH_RUN class name incorrect"
-    assert trench_run_metadata["icon"] == "game", "TRENCH_RUN icon incorrect"
+    assert trench_run_metadata["class_name"] == "TrenchRun", "TRENCH_RUN class name incorrect"
+    assert trench_run_metadata["icon"] == "TRENCH_RUN", "TRENCH_RUN icon incorrect"
     assert "CORE" in trench_run_metadata["requires"], "TRENCH_RUN should require CORE"
     
     print("✓ TRENCH_RUN mode metadata is correct")
