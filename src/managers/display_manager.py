@@ -263,6 +263,15 @@ class DisplayManager:
             # ~30 FPS scroll speed
             await asyncio.sleep(0.03)
 
+    def show_settings_menu(self, show=None):
+        """Choose visibility of the settings menu, which replaces the main zone."""
+        if show:
+            self.settings_group.hidden = False
+            self.main_group.hidden = True
+        else:
+            self.settings_group.hidden = True
+            self.main_group.hidden = False
+
     def update_settings_menu(self, menu_items, selected_index):
         """Renders a scrollable list with color-inversion highlighting.
 
@@ -270,10 +279,7 @@ class DisplayManager:
             menu_items (list): List of strings e.g., ["Sound: ON", "Diff: HARD", "Exit"]
             selected_index (int): The currently selected item index
         """
-        # Swap visibility in the central zone
-        self.main_group.hidden = True
-        self.settings_group.hidden = False
-
+        self.show_settings_menu(True)  # Ensure settings menu is visible
         total_items = len(menu_items)
         if total_items == 0:
             return

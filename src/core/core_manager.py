@@ -310,11 +310,17 @@ class CoreManager:
         tasks_to_wait = [sub_task, estop_task, abort_task]
         if target_sat:
             tasks_to_wait.extend([target_sat_monitor_task, target_sat_task])
-
-        done, pending = await asyncio.wait(
-            tasks_to_wait,
-            return_when=asyncio.FIRST_COMPLETED,
-        )
+        try:
+            done, pending = await asyncio.wait(
+                tasks_to_wait,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        except Exception as e:
+            print(f"Error while running mode with safety monitoring: {e}")
+            import traceback
+            traceback.print_exc()
+            self.display.update_status("MODE ERROR", "CHECK LOGS")
+            return "MODE_ERROR"
 
         # Cleanup: Cancel any pending tasks
         for task in pending:

@@ -63,6 +63,7 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         self.hid = HIDManager(
             encoders=Pins.ENCODERS,
             matrix_keypads=Pins.MATRIX_KEYPADS,
+            mcp_chip="MCP23008",
             mcp_i2c=self.i2c,
             mcp_i2c_address=Pins.I2C_ADDRESSES.get("EXPANDER"),
             mcp_int_pin=Pins.EXPANDER_INT,
@@ -114,16 +115,17 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             cmd (str): Command type.
             val (str or bytes): Command value.
         """
-        handler = self._system_handlers.get(cmd)
-        if handler:
-            await handler(val)
-            return
+        if await super()._process_local_cmd(cmd, val):
+            return True # Command was handled!
 
         # 2. Subsystem Delegation (Prefix Routing)
         if cmd in LED_COMMANDS:
             self.leds.apply_command(cmd, val)
+            return True
         elif cmd in DSP_COMMANDS:
             await self.segment.apply_command(cmd, val)
+            return True
+        return False
 
     def _get_status_bytes(self):
         return self.hid.get_status_bytes()
@@ -134,7 +136,7 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("hw_hid")
-            if self.hid.hw_update():
+            if self.hid.hw_update(self.id):
                 self.trigger_status_update()  # Trigger status update on state change
             await asyncio.sleep(0.01) # Poll at 100Hz
 #endregion

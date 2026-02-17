@@ -16,13 +16,59 @@ class MockTicksModule:
 sys.modules['adafruit_ticks'] = MockTicksModule()
 
 class HardwareMocks:
-    """Globally accessible registry of hardware mock instances for Pygame to talk to."""
-    buttons = None          # Will hold the keypad.Keys instance for main buttons
-    encoder_btn = None      # Will hold the keypad.Keys instance for the dial push
-    encoder = None          # Will hold the rotaryio.IncrementalEncoder instance
-    estop = None            # Will hold the digitalio.DigitalInOut instance
-    mcp = None              # Will hold the MCP expander instance if configured
-    mcp_int = None          # Will hold the MCP interrupt pin object if configured
+    """Context-Aware Registry for multi-device hardware emulation."""
+    _current_context = "CORE"
+
+    # Store devices in isolated "namespaces"
+    devices = {
+        "CORE": {},
+        "SAT_01": {}
+    }
+
+    # Global state (Not tied to a specific microcontroller)
+    satellite_plugged_in = False
+    satbus_detect_pin = None
+    satbus_mosfet_pin = None
+
+    @classmethod
+    def set_context(cls, context_name):
+        """Called right before booting a specific system's firmware."""
+        cls._current_context = context_name
+        if context_name not in cls.devices:
+            cls.devices[context_name] = {}
+
+    @classmethod
+    def register(cls, mock_type, instance, key=None):
+        """Mocks call this during __init__ to register themselves."""
+        if key is not None:
+            # Handle multiple identical items (like I2C Segment Displays)
+            if mock_type not in cls.devices[cls._current_context]:
+                cls.devices[cls._current_context][mock_type] = {}
+            cls.devices[cls._current_context][mock_type][key] = instance
+        else:
+            cls.devices[cls._current_context][mock_type] = instance
+
+    @classmethod
+    def get(cls, context, mock_type, key=None):
+        """Pygame UI calls this to retrieve the specific hardware state."""
+        device_dict = cls.devices.get(context, {})
+        if key is not None:
+            return device_dict.get(mock_type, {}).get(key)
+        return device_dict.get(mock_type)
+
+#class HardwareMocks:
+#    """Globally accessible registry of hardware mock instances for Pygame to talk to."""
+#    buttons = None          # Will hold the keypad.Keys instance for main buttons
+#    encoder_btn = None      # Will hold the keypad.Keys instance for the dial push
+#    encoder = None          # Will hold the rotaryio.IncrementalEncoder instance
+#    estop = None            # Will hold the digitalio.DigitalInOut instance
+#    mcp = None              # Will hold the MCP expander instance if configured
+#    mcp_int = None          # Will hold the MCP interrupt pin object if configured
+
+    # [NEW] Hot-Plug State
+#    satellite_plugged_in = False
+#    satbus_detect_pin = None
+#    satbus_mosfet_pin = None
 
 # --- KEYPAD MOCK ---
 class MockKeypadEvent:
@@ -34,6 +80,12 @@ class MockKeypadEvent:
 class MockEventQueue:
     def __init__(self):
         self.queue = []
+
+    def get(self):
+        """Returns a new event, or None if the queue is empty."""
+        if self.queue:
+            return self.queue.pop(0)
+        return None
 
     def get_into(self, event):
         """Simulates the hardware buffer popping the oldest event."""
@@ -52,21 +104,27 @@ class MockKeys:
 
         # Heuristic: HIDManager initializes buttons (4+ pins) and the encoder btn (1 pin)
         if pins and len(pins) >= 4:
-            HardwareMocks.buttons = self
+            HardwareMocks.register('buttons', self)
         elif pins and len(pins) == 1:
-            HardwareMocks.encoder_btn = self
+            HardwareMocks.register('encoder_btn', self)
+
+class MockKeypad:
+    """Explicitly handles matrix keypads (row x col) for the Satellite."""
+    def __init__(self, row_pins, column_pins, **kwargs):
+        self.events = MockEventQueue()
+        HardwareMocks.register('matrix_keypad', self)
 
 sys.modules['keypad'] = type('MockKeypadModule', (), {
     'Event': MockKeypadEvent,
     'Keys': MockKeys,
-    'Keypad': MockKeys # Alias matrix keypads to standard keys for now
+    'Keypad': MockKeypad
 })
 
 # --- ROTARYIO MOCK ---
 class MockIncrementalEncoder:
     def __init__(self, pin_a, pin_b):
         self.position = 0
-        HardwareMocks.encoder = self
+        HardwareMocks.register('encoder', self)
 
 sys.modules['rotaryio'] = type('MockRotaryIO', (), {'IncrementalEncoder': MockIncrementalEncoder})
 
@@ -89,9 +147,17 @@ class MockDigitalInOut:
         # Identify the pin based on the board constant
         # Note: 'board.GP15' is the standard MCP_INT pin in your Pins class
         if str(pin) == "board.GP11":
-            HardwareMocks.mcp_int = self
+            HardwareMocks.register('mcp_int', self)
         elif str(pin) == "board.GP7": # Example E-Stop pin
-            HardwareMocks.estop = self
+            HardwareMocks.register('estop', self)
+        elif str(pin) == "board.GP15": # Example SATBUS Detect pin
+            HardwareMocks.register('satbus_detect_pin', self)
+            self._value = True  # Assuming True = Pulled Up = Disconnected
+            print("[HW MOCK] Registered GP15 as SATBUS DETECT")
+        elif str(pin) == "board.GP14": # Example SATBUS MOSFET control pin
+            HardwareMocks.register('satbus_mosfet_pin', self)
+            self._value = False # Start with MOSFET off
+            print("[HW MOCK] Registered GP14 as SATBUS MOSFET CONTROL")
 
     @property
     def value(self):
@@ -104,7 +170,7 @@ class MockDigitalInOut:
 sys.modules['digitalio'] = type('MockDigitalIO', (), {
     'DigitalInOut': MockDigitalInOut,
     'Pull': MockPull,
-    'Direction': MockDirection   # <--- Added here!
+    'Direction': MockDirection
 })
 
 # --- BOARD PINS MOCK ---
@@ -140,19 +206,74 @@ sys.modules['microcontroller'] = type('MockMicrocontroller', (), {
     'watchdog': mock_watchdog,
     'WatchDogMode': MockWatchdog.WatchDogMode # Some versions use this path
 })
-# busio (UART and I2C)
-class MockUART:
-    def __init__(self, *args, **kwargs): self.in_waiting = 0
-    def readinto(self, buf): return 0
-    def write(self, buf): return len(buf)
-    def reset_input_buffer(self): pass
 
-class MockI2C:
-    def __init__(self, *args, **kwargs): pass
+# busio (UART and I2C)
+class MockUARTEndpoint:
+    """A single end of a virtual UART cable."""
+    def __init__(self, name):
+        self.name = name
+        self.rx_buffer = bytearray()
+        self.peer = None  # The other end of the cable
+
+    @property
+    def in_waiting(self):
+        return len(self.rx_buffer)
+
+    def readinto(self, buf):
+        length = min(len(buf), len(self.rx_buffer))
+        if length > 0:
+            # Copy bytes into the requested buffer
+            buf[:length] = self.rx_buffer[:length]
+            # Remove read bytes from our queue
+            self.rx_buffer = self.rx_buffer[length:]
+        return length
+
+    def write(self, data):
+        # Check if the Master has physically energized the bus
+        mosfet = HardwareMocks.get("CORE", "satbus_mosfet_pin")
+        is_powered = mosfet and mosfet.value
+        if self.peer and is_powered:
+            self.peer.rx_buffer.extend(data)
+        return len(data)
+
+    def reset_input_buffer(self):
+        self.rx_buffer.clear()
+
+class VirtualUARTBridge:
+    """Holds the two endpoints of our simulation cable."""
+    def __init__(self):
+        self.master_hw = MockUARTEndpoint("CORE")
+        self.sat_hw_up = MockUARTEndpoint("SAT_01_UP")
+        self.sat_hw_down = MockUARTEndpoint("SAT_01_DOWN")
+
+        # Cross-wire the TX to RX
+        self.master_hw.peer = self.sat_hw_up
+        self.sat_hw_up.peer = self.master_hw
+        self.sat_hw_down.peer = None # No peer yet
+
+# Create a global instance of our cable
+VIRTUAL_CABLE = VirtualUARTBridge()
 
 class MockBusioModule:
-    UART = MockUART
-    I2C = MockI2C
+    class I2C:
+        def __init__(self, *args, **kwargs): pass
+
+    class UART:
+        def __new__(cls, tx, rx, *args, **kwargs):
+            ctx = HardwareMocks._current_context
+            if ctx == "CORE":
+                return VIRTUAL_CABLE.master_hw
+            else:
+                # Ask the registry if THIS specific satellite has assigned its upstream port yet
+                if not HardwareMocks.get(ctx, "uart_up_assigned"):
+                    # Upstream hasn't been assigned yet, this is it!
+                    HardwareMocks.register("uart_up_assigned", True)
+                    return VIRTUAL_CABLE.sat_hw_up
+
+                else:
+                    # The upstream is taken. This must be the downstream port!
+                    HardwareMocks.register("uart_down_assigned", True)
+                    return VIRTUAL_CABLE.sat_hw_down
 
 sys.modules['busio'] = MockBusioModule()
 
@@ -181,6 +302,8 @@ class MockNeoPixel:
 
         # The internal hardware buffer holding (R,G,B) tuples
         self.pixels = [(0, 0, 0)] * n
+
+        HardwareMocks.register('pixels', self)
 
     def __setitem__(self, index, val):
         self.pixels[index] = val
@@ -420,11 +543,19 @@ class MockMCP:
         self.interrupt_enable = 0
         self.interrupt_configuration = 0
         self.pins = {} # Dictionary to track pin objects
-        HardwareMocks.mcp = self
+        self._context = HardwareMocks._current_context
+        HardwareMocks.register('mcp', self)
 
     def get_pin(self, pin_num):
-        if HardwareMocks.mcp_int:
-            HardwareMocks.mcp_int.value = True
+        mcp_int = HardwareMocks.get(self._context, 'mcp_int')
+        if mcp_int:
+            mcp_int.value = True
+        if pin_num not in self.pins:
+            self.pins[pin_num] = MockMCPPin(pin_num)
+        return self.pins[pin_num]
+
+    def peek_pin(self, pin_num):
+        # [NEW] Pygame uses this: it leaves the interrupt alone!
         if pin_num not in self.pins:
             self.pins[pin_num] = MockMCPPin(pin_num)
         return self.pins[pin_num]
@@ -433,4 +564,55 @@ class MockMCP:
 sys.modules['adafruit_mcp230xx'] = type('MockMCPMod', (), {})
 sys.modules['adafruit_mcp230xx.mcp23017'] = type('MockMCP17', (), {'MCP23017': MockMCP})
 sys.modules['adafruit_mcp230xx.mcp23008'] = type('MockMCP08', (), {'MCP23008': MockMCP})
+
+# --- HT16K33 SEGMENT DISPLAY MOCK ---
+class MockSeg14x4:
+    def __init__(self, i2c, address=0x70, **kwargs):
+        self.i2c = i2c
+        self.address = address
+        self._brightness = 1.0
+
+        # State tracking for Pygame rendering
+        self.chars = [" ", " ", " ", " "] # The 4 alphanumeric characters
+        self.raw_digits = [0, 0, 0, 0]    # The 4 raw 16-bit bitmasks
+
+        # Register this specific display with the global HardwareMocks
+        HardwareMocks.register('segments', self, key=address)
+
+    @property
+    def brightness(self):
+        return self._brightness
+
+    @brightness.setter
+    def brightness(self, val):
+        self._brightness = val
+
+    def fill(self, val):
+        """Fills or clears the display. Usually called with 0 to clear."""
+        char = " " if val == 0 else "*"
+        self.chars = [char] * 4
+        self.raw_digits = [val] * 4
+
+    def print(self, value):
+        """Prints a string to the 4 digits."""
+        text = str(value)
+        # Pad or truncate to exactly 4 characters
+        text = text.ljust(4)[:4]
+        self.chars = list(text)
+        self.raw_digits = [0] * 4 # Clear raw data when printing text
+
+    def set_digit_raw(self, index, bitmask):
+        """Used by the corruption and matrix animations."""
+        if 0 <= index < 4:
+            self.raw_digits[index] = bitmask
+            # Replace character with a block to signify raw animation
+            self.chars[index] = "■" if bitmask > 0 else " "
+
+    def show(self):
+        """Called to flush raw digit updates."""
+        pass
+
+# Inject the package and submodule
+sys.modules['adafruit_ht16k33'] = type('MockHT16K33', (), {})
+sys.modules['adafruit_ht16k33.segments'] = type('MockHTSegments', (), {'Seg14x4': MockSeg14x4})
 #endregion

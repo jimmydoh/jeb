@@ -2,6 +2,7 @@
 
 from adafruit_ticks import ticks_ms, ticks_diff
 import keypad
+from utilities.logger import JEBLogger
 
 class HIDManager:
     """
@@ -266,7 +267,8 @@ class HIDManager:
     def _sw_set_buttons(self, buttons):
         """Set the state of buttons without hardware polling."""
         if not self.monitor_only:
-            return
+            return False
+        dirty = False
         now = ticks_ms()
         for i, char in enumerate(buttons):
             val = char == "1"
@@ -275,6 +277,8 @@ class HIDManager:
                 self.buttons_timestamps[i] = now
                 if val and ticks_diff(now, self.buttons_timestamps[i]) < 500:
                     self.buttons_tapped[i] = True
+                dirty = True
+        return dirty
 
     def _hw_poll_buttons(self):
         """Poll hardware buttons and update states."""
@@ -332,7 +336,8 @@ class HIDManager:
     def _sw_set_latching_toggles(self, latching_toggles):
         """Set the state of a latching toggle without hardware polling."""
         if not self.monitor_only:
-            return
+            return False
+        dirty = False
         now = ticks_ms()
         for i, char in enumerate(latching_toggles):
             val = char == "1"
@@ -341,6 +346,8 @@ class HIDManager:
                 self.latching_timestamps[i] = now
                 if val and ticks_diff(now, self.latching_timestamps[i]) < 500:
                     self.latching_tapped[i] = True
+                dirty = True
+        return dirty
 
     def _hw_poll_latching_toggles(self):
         """Poll hardware latching toggles and update states."""
@@ -408,23 +415,30 @@ class HIDManager:
         :example: "UD" means first toggle up, second toggle down.
         """
         if not self.monitor_only:
-            return
+            return False
+        dirty = False
         now = ticks_ms()
         for i, char in enumerate(momentary_toggles):
             up_val = char == "U"
             down_val = char == "D"
-            # Up Direction
-            if up_val != self.momentary_values[i][0]:
-                self.momentary_values[i][0] = up_val
-                self.momentary_timestamps[i][0] = now
-                if up_val and ticks_diff(now, self.momentary_timestamps[i][0]) < 500:
-                    self.momentary_tapped[i][0] = True
-            # Down Direction
-            if down_val != self.momentary_values[i][1]:
-                self.momentary_values[i][1] = down_val
-                self.momentary_timestamps[i][1] = now
-                if down_val and ticks_diff(now, self.momentary_timestamps[i][1]) < 500:
-                    self.momentary_tapped[i][1] = True
+
+            # Check if the momentary toggle state has changed in either direction
+            if (up_val != self.momentary_values[i][0]) or (down_val != self.momentary_values[i][1]):
+                dirty = True
+
+                # Up Direction
+                if up_val != self.momentary_values[i][0]:
+                    self.momentary_values[i][0] = up_val
+                    self.momentary_timestamps[i][0] = now
+                    if up_val and ticks_diff(now, self.momentary_timestamps[i][0]) < 500:
+                        self.momentary_tapped[i][0] = True
+                # Down Direction
+                if down_val != self.momentary_values[i][1]:
+                    self.momentary_values[i][1] = down_val
+                    self.momentary_timestamps[i][1] = now
+                    if down_val and ticks_diff(now, self.momentary_timestamps[i][1]) < 500:
+                        self.momentary_tapped[i][1] = True
+        return dirty
 
     def _hw_poll_momentary_toggles(self):
         """Poll hardware momentary toggles and update states."""
@@ -499,14 +513,18 @@ class HIDManager:
         :example: "0:25:123" sets encoder 0 to 0, encoder 1 to 25, encoder 2 to 123.
         """
         if not self.monitor_only:
-            return
+            return False
+        dirty = False
         parts = positions.split(":")
         for i, pos in enumerate(parts):
             if i < len(self.encoder_positions):
                 try:
-                    self.encoder_positions[i] = int(pos)
+                    if self.encoder_positions[i] != int(pos):
+                        self.encoder_positions[i] = int(pos)
+                        dirty = True
                 except (ValueError, IndexError):
                     continue
+        return dirty
 
     def _hw_poll_encoders(self):
         """Poll hardware encoders and update states."""
@@ -576,7 +594,8 @@ class HIDManager:
     def _sw_set_encoder_buttons(self, encoder_buttons):
         """Set the state of encoder buttons without hardware polling."""
         if not self.monitor_only:
-            return
+            return False
+        dirty = False
         now = ticks_ms()
         for i, val in enumerate(encoder_buttons):
             if val != self.encoder_buttons_values[i]:
@@ -584,6 +603,10 @@ class HIDManager:
                 self.encoder_buttons_timestamps[i] = now
                 if val and ticks_diff(now, self.encoder_buttons_timestamps[i]) < 500:
                     self.encoder_buttons_tapped[i] = True
+                dirty = True
+        return dirty
+
+
 
     def _hw_poll_encoder_buttons(self):
         """Poll hardware encoder buttons and update states."""
@@ -627,6 +650,10 @@ class HIDManager:
             return self.matrix_keypads_queues[index].pop(0)
         return None
 
+    def flush_keypad_queue(self, index=0):
+        """Clear all pending key events from the matrix keypad queue."""
+        self.matrix_keypads_queues[index].clear()
+
     def _sw_set_matrix_keypads(self, char_sequences):
         """
         Set the state of matrix keypads without hardware polling.
@@ -635,21 +662,31 @@ class HIDManager:
         :example: "123A:456B" sets first keypad to "123A" and second to "456B".
         """
         if not self.monitor_only:
-            return
+            return False
+        dirty = False
         parts = char_sequences.split(":")
         for i, chars in enumerate(parts):
             if i < len(self.matrix_keypads_queues):
                 for char in chars:
+                    if len(self.matrix_keypads_queues[i]) > 16:
+                        self.matrix_keypads_queues[i].pop(0)  # Prevent unbounded growth
                     self.matrix_keypads_queues[i].append(char)
+                    dirty = True
+        return dirty
 
     def _hw_poll_matrix_keypads(self):
         """Poll hardware matrix keypads and update states."""
         if self.monitor_only or not self._matrix_keypads:
             return False
         changed = False
+
         for i, k_pad in enumerate(self._matrix_keypads):
-            event = k_pad.events.get()
-            while k_pad.events.get_into(event):
+            # Loop until the queue is completely empty
+            while True:
+                event = k_pad.events.get()
+                if not event:
+                    break # Break the while loop when queue is empty
+
                 if event.pressed:
                     changed = True # State changed
                     raw_idx = event.key_number
@@ -657,7 +694,7 @@ class HIDManager:
                     # Safe check for key map existence
                     if i < len(self.matrix_keypads_maps):
                         key_map = self.matrix_keypads_maps[i]
-                        if 0 < raw_idx < len(key_map):
+                        if 0 <= raw_idx < len(key_map):
                             self.matrix_keypads_queues[i].append(key_map[raw_idx])
         return changed
 
@@ -695,8 +732,13 @@ class HIDManager:
     def _sw_set_estop(self, value):
         """Set the state of E-Stop button without hardware polling (for testing/gameplay)."""
         if not self.monitor_only:
-            return
-        self.estop_value = value
+            return False
+        dirty = False
+        if value != self.estop_value:
+            self.estop_value = value
+            dirty = True
+        return dirty
+
 
     def _hw_poll_estop(self):
         """Poll hardware E-Stop button and update state (gameplay interaction)."""
@@ -782,7 +824,7 @@ class HIDManager:
     #endregion
 
     #region --- Global Functions ---
-    def hw_update(self):
+    def hw_update(self, sid=None):
         """Poll hardware inputs to update states."""
         if self.monitor_only:
             return False
@@ -808,6 +850,9 @@ class HIDManager:
                 dirty |= self._hw_expander_latching_toggles()
                 dirty |= self._hw_expander_momentary_toggles()
 
+        if dirty:
+            JEBLogger.debug("HIDM", "HID HW `I want to clean your dusty cups`", src=sid)
+
         return dirty
 
     def set_remote_state(self,
@@ -817,25 +862,42 @@ class HIDManager:
                          encoders,          # [int_position, int_position, ...]
                          encoder_buttons,   # [bool, bool, ...]
                          matrix_keypads,    # [[char, char, ...], ...]
-                         estop              # bool
+                         estop,             # bool
+                         sid
                         ):
         """Set remote HID states (for monitor-only mode)."""
         if not self.monitor_only:
-            return
+            return False
+        dirty = False
         if buttons:
-            self._sw_set_buttons(buttons)
+            if self._sw_set_buttons(buttons):
+                dirty = True
+                JEBLogger.debug("HIDM", f"Driver - Buttons: {buttons}", src=sid)
         if latching_toggles:
-            self._sw_set_latching_toggles(latching_toggles)
+            if self._sw_set_latching_toggles(latching_toggles):
+                dirty = True
+                JEBLogger.debug("HIDM", f"Driver - Latching Toggles: {latching_toggles}", src=sid)
         if momentary_toggles:
-            self._sw_set_momentary_toggles(momentary_toggles)
+            if self._sw_set_momentary_toggles(momentary_toggles):
+                dirty = True
+                JEBLogger.debug("HIDM", f"Driver - Momentary Toggles: {momentary_toggles}", src=sid)
         if encoders:
-            self._sw_set_encoders(encoders)
+            if self._sw_set_encoders(encoders):
+                dirty = True
+                JEBLogger.debug("HIDM", f"Driver - Encoders: {encoders}", src=sid)
         if encoder_buttons:
-            self._sw_set_encoder_buttons(encoder_buttons)
+            if self._sw_set_encoder_buttons(encoder_buttons):
+                dirty = True
+                JEBLogger.debug("HIDM", f"Driver - Encoder Buttons: {encoder_buttons}", src=sid)
         if matrix_keypads:
-            self._sw_set_matrix_keypads(matrix_keypads)
+            if self._sw_set_matrix_keypads(matrix_keypads):
+                dirty = True
+                JEBLogger.debug("HIDM", f"Driver - Matrix Keypads: {matrix_keypads}", src=sid)
         if estop:
-            self._sw_set_estop(estop)
+            if self._sw_set_estop(estop):
+                dirty = True
+                JEBLogger.debug("HIDM", f"Driver - E-Stop: {estop}", src=sid)
+        return dirty
 
     def get_status_bytes(self, order=None):
         """
@@ -908,7 +970,7 @@ class HIDManager:
 
     def flush(self):
         """Clear all input states and queues."""
-        # Flush local keypad events
+        # Buttons
         if self._buttons:
             evt = keypad.Event()
             while self._buttons.events.get_into(evt):
@@ -936,6 +998,7 @@ class HIDManager:
 
         # TODO: Expanders
 
+        # Flush matrix keypad events
         if self._matrix_keypads:
             evt = keypad.Event()
             for k_pad in self._matrix_keypads:

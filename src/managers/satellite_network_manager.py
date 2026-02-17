@@ -5,7 +5,8 @@ from adafruit_ticks import ticks_ms, ticks_diff
 
 from transport import Message
 
-from utilities.payload_parser import parse_values, get_float
+from utilities.logger import JEBLogger
+from utilities.payload_parser import parse_values
 
 class SatelliteNetworkManager:
     """Manages satellite discovery, health monitoring, and message handling.
@@ -93,7 +94,8 @@ class SatelliteNetworkManager:
         self.display.update_status("SCANNING BUS...", "ASSIGNING IDs")
 
         # Broadcast to discovered type, starting at index 00
-        message = Message("ALL", "ID_ASSIGN", f"{sat_type_id}00")
+        message = Message("CORE", "ALL", "ID_ASSIGN", f"{sat_type_id}00")
+        JEBLogger.debug("NETM", f"Triggering Sat Discovery with {sat_type_id}00")
         while not self.transport.send(message):
             # If the send fails (e.g., buffer full), wait briefly and retry.
             # This prevents flooding the transport with messages
@@ -135,9 +137,8 @@ class SatelliteNetworkManager:
             await handler(sid, val)
             return
         else:
-            self._spawn_status_task(
-                self.display.update_status, "UNKNOWN COMMAND", f"{sid} sent {cmd}"
-            )
+            self.display.update_status("UNKNOWN COMMAND", f"{sid} sent {cmd}")
+            JEBLogger.warning("NETM", f"Unknown command '{cmd}' | DATA:{val}", src=sid)
 
     async def _handle_status_command(self, sid, val):
         """
@@ -150,26 +151,22 @@ class SatelliteNetworkManager:
 
                 # TODO: Improve this logic to handle all sat types based on capability
                 if self.satellites[sid].sat_type_name == "INDUSTRIAL":
-                    self.satellites[sid].send_cmd("DSPANIMCORRECT", "1.5")
+                    self.satellites[sid].send_cmd("DSPMATRIX", "2")
             self.satellites[sid].update_from_packet(val)
         else:
-            self._spawn_status_task(
-                self.display.update_status,
-                "UNKNOWN SAT",
-                f"{sid} sent STATUS."
-            )
+            self.display.update_status("UNKNOWN SAT", f"{sid} sent STATUS.")
+            JEBLogger.warning("NETM", f"STATUS from unknown sat {sid} | DATA: {val}")
 
     async def _handle_power_command(self, sid, val):
         """
         Handle POWER command from satellite,
         which may indicate power state changes or alerts.
         """
-        v_data = parse_values(val)
-        self.sat_telemetry[sid] = {
-            "in": get_float(v_data, 0),
-            "bus": get_float(v_data, 1),
-            "log": get_float(v_data, 2),
-        }
+        data = parse_values(val)
+        # TODO: Do something with this
+        i = 0
+        formatted_data = ", ".join(f"{v:5.2f}" for v in data)
+        #JEBLogger.debug("NETM", f"POWER update | DATA: {formatted_data}", src=sid)
 
     async def _handle_hello_command(self, sid, val):
         """
@@ -186,9 +183,9 @@ class SatelliteNetworkManager:
                 self.satellites[sid] = IndustrialSatelliteDriver(
                     sid, self.transport
                 )
-            self._spawn_status_task(
-                self.display.update_status, "NEW SAT", f"{sid} sent HELLO {val}."
-            )
+                self.satellites[sid].update_heartbeat(increment=2000)
+            self.display.update_status("NEW SAT", f"{sid} sent HELLO {val}.")
+            JEBLogger.info("NETM", f"New sat {sid} TYPE-{val} via HELLO.")
 
     async def _handle_new_sat_command(self, sid, val):
         """
@@ -196,21 +193,17 @@ class SatelliteNetworkManager:
         which may indicate a new satellite has been detected by an existing satellite.
         This is useful for multi-hop satellite networks where not all satellites are directly visible to the core manager.
         """
-        self._spawn_status_task(
-            self.display.update_status, f"SAT {sid} CONNECTED", f"TYPE {val} FOUND"
-        )
-        self.discover_satellites(val)
+        self.display.update_status(f"SAT {sid} CONNECTED", f"TYPE {val} FOUND")
+        JEBLogger.info("NETM", f"New sat {sid} TYPE-{val} via NEW_SAT.")
+        await self.discover_satellites(val)
 
     async def _handle_error_command(self, sid, val):
         """
         Handle ERROR command from satellite,
         which may indicate malfunctions or critical issues.
         """
-        self._spawn_status_task(
-            self.display.update_status,
-            "SAT ERROR",
-            f"ID: {sid} ERR: {val}"
-        )
+        self.display.update_status(f"SAT ERROR", f"ID: {sid} ERR: {val}")
+        JEBLogger.error("NETM", f"Sat Error | DATA: {val}", src=sid)
         self._spawn_audio_task(
             self.audio.play,
             "alarm_klaxon.wav",
@@ -222,7 +215,7 @@ class SatelliteNetworkManager:
         Handle LOG command from satellite,
         which may contain debug or informational messages from the satellite firmware.
         """
-        print(f"LOG from {sid}: {val}")
+        JEBLogger.info("NETM", f"LOG from {sid}: {val}", src=sid)
         # TODO: More robust logging system, potentially with log levels and storage
 
     async def monitor_messages(self, heartbeat_callback=None):
@@ -250,13 +243,17 @@ class SatelliteNetworkManager:
 
             # Process the message based on its command and destination
             try:
+                src = message.source
                 sid = message.destination
                 cmd = message.command
                 payload = message.payload
 
-                await self._process_inbound_cmd(sid, cmd, payload)
+                if src == "CORE":
+                    continue
+
+                await self._process_inbound_cmd(src, cmd, payload)
             except (ValueError, IndexError) as e:
-                print(f"Error handling message: {e}")
+                JEBLogger.error("NETM", f"Error handling message: {e}")
 
     async def monitor_satellites(self, heartbeat_callback=None):
         """
@@ -277,11 +274,8 @@ class SatelliteNetworkManager:
                 if sat.is_active:
                     if sat.was_offline:
                         # Satellite is online now but was detected as offline
-                        self._spawn_status_task(
-                            self.display.update_status,
-                            "LINK RESTORED",
-                            f"ID: {sid}"
-                        )
+                        JEBLogger.info("NETM", f"Link restored with {sid}. Marking as active.")
+                        self.display.update_status(f"LINK RESTORED", f"ID: {sid}")
                         self._spawn_audio_task(
                             self.audio.play,
                             "link_restored.wav",
@@ -291,13 +285,10 @@ class SatelliteNetworkManager:
 
                     if ticks_diff(now, sat.last_seen) > 5000:
                         # Satellite has not been seen for over 5 seconds, mark as offline
+                        JEBLogger.warning("NETM", f"Link lost with {sid}. Marking as offline.")
                         sat.is_active = False
                         sat.was_offline = True
-                        self._spawn_status_task(
-                            self.display.update_status,
-                            "LINK LOST",
-                            f"ID: {sid}"
-                        )
+                        self.display.update_status(f"LINK LOST", f"ID: {sid}")
                         self._spawn_audio_task(
                             self.audio.play,
                             "link_lost.wav",

@@ -4,6 +4,7 @@ import asyncio
 import struct
 from utilities import cobs_encode, cobs_decode, calculate_crc8
 from .message import Message
+from .base_transport import BaseTransport
 
 #region --- Helper Functions for Encoding/Decoding ---
 def _encode_destination(dest_str, dest_map):
@@ -230,7 +231,7 @@ def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
 #endregion
 
 #region --- Main Transport Class ---
-class UARTTransport:
+class UARTTransport(BaseTransport):
     """UART transport implementation with binary protocol and COBS framing.
 
     Binary Protocol Format:
@@ -510,7 +511,8 @@ class UARTTransport:
         # Decode packet using linear scratchpad
         try:
             decoded = cobs_decode(self._packet_rx_mv[:packet_len])
-            if len(decoded) < 3:
+            # Minimum length is now 4: SRC(1) + DEST(1) + CMD(1) + CRC(1)
+            if len(decoded) < 4:
                 return None
 
             crc_rx = decoded[-1]
@@ -519,23 +521,39 @@ class UARTTransport:
             if calculate_crc8(content) != crc_rx:
                 return None  # CRC fail
 
-            # Parse fields
-            dest_str, offset = _decode_destination(
+            # 1. Parse Source ID (1 or 2 bytes)
+            src_str, src_offset = _decode_destination(
                 content,
                 0,
                 self.dest_reverse_map,
                 self.max_index_value
             )
+            if src_offset >= len(content):
+                return None
+
+            # 2. Parse Destination ID (1 or 2 bytes), starting AFTER source
+            dest_str, dest_offset = _decode_destination(
+                content,
+                src_offset,
+                self.dest_reverse_map,
+                self.max_index_value
+            )
+
+            # 3. Calculate offset for the Command byte
+            offset = src_offset + dest_offset
             if offset >= len(content):
                 return None
 
+            # 4. Parse Command
             cmd_str = _decode_command(content[offset], self.command_reverse_map)
             offset += 1
 
+            # 5. Parse Payload
             schema = self.payload_schemas.get(cmd_str)
             payload = _decode_payload(content[offset:], schema, self.encoding_constants)
 
-            return Message(dest_str, cmd_str, payload)
+            # Return the correctly structured Message!
+            return Message(src_str, dest_str, cmd_str, payload)
 
         except (ValueError, IndexError) as e:
             print(f"Protocol Error: {e}")
@@ -677,13 +695,14 @@ class UARTTransport:
             message (Message): The message to send.
         """
         # Encoding Logic
+        src = _encode_destination(message.source, self.dest_map)
         dest = _encode_destination(message.destination, self.dest_map)
         cmd = bytes([_encode_command(message.command, self.command_map)])
         schema = self.payload_schemas.get(message.command)
         payload = _encode_payload(message.payload, schema, self.encoding_constants)
 
         # Packet Construction
-        raw = dest + cmd + payload
+        raw = src + dest + cmd + payload
         crc = bytes([calculate_crc8(raw)])
         packet = cobs_encode(raw + crc) + b'\x00'
 

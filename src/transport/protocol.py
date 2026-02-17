@@ -80,6 +80,7 @@ COMMAND_MAP = {
 DEST_MAP = {
     "ALL": 0xFF,
     "CORE": 0x00,
+    "DRIV": 0xFD,
     "SAT": 0xFE,
 }
 

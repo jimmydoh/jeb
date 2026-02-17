@@ -74,245 +74,232 @@ class MainMenu(UtilityMode):
 
     async def run(self):
         """Main Menu for selecting modes."""
-        self.core.hid.reset_encoder(-1)
-        last_pos = self.core.hid.encoder_position()
-        self._set_state("DASHBOARD")
+        self.core.hid.flush() # Ensure no ghost inputs from previous modes
+        self.core.hid.reset_encoder(0)
 
-        # Menu Logic Variables
+        # UI State Variables
+        self._set_state("DASHBOARD")
+        focus_mode = "GAME" # "GAME" or "SETTINGS"
+
+        # Data Variables
         menu_items = self._build_menu_items()
         selected_game_idx = 0
-        focus_mode = "GAME" # "GAME" (Matrix Select) or "SETTINGS" (OLED Select)
         selected_setting_idx = 0
+
+        # Render Tracking (Prevents unnecessary screen updates)
+        self.core.display.use_standard_layout()
+        needs_render = True
+        last_rendered_game = -1
+        last_rendered_setting = -1
+        last_rendered_state = None
+        last_rendered_focus = None
 
         # Turn off all button LEDs
         self.core.leds.off_led(-1)
 
+        last_pos = 0
+
         while True:
+            # =========================================
+            # 1. GATHER INPUTS
+            # =========================================
             curr_pos = self.core.hid.encoder_position()
+            encoder_diff = curr_pos - last_pos
+            encoder_pressed = self.core.hid.is_encoder_button_pressed(action="tap")
+            btn_d_pressed = self.core.hid.is_button_pressed(3, action="tap")
+            btn_a_long = self.core.hid.is_button_pressed(0, long=True)
+            btn_d_long = self.core.hid.is_button_pressed(3, long=True)
+            btn_b_long = self.core.hid.is_button_pressed(1, long=True, duration=2000)
 
             # --- GLOBAL TIMEOUT CHECK ---
-            if self.is_timed_out:
-                if self.state != "DASHBOARD":
-                    self.core.leds.off_led(-1)
-                    await self.core.audio.play(
-                        "audio/menu/close.wav",
-                        self.core.audio.CH_SFX,
-                        level=0.8
-                    )
-                    self._set_state("DASHBOARD")
-                    focus_mode = "GAME"
-                    self.core.display.update_header("JADNET Electronics Box")
-                    self.core.display.update_footer("")
+            if self.is_timed_out and self.state != "DASHBOARD":
+                self.core.leds.off_led(-1)
+                await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
+                self._set_state("DASHBOARD")
+                focus_mode = "GAME"
+                needs_render = True
 
             # =========================================
-            # STATE: DASHBOARD (Idle)
+            # 2. PROCESS STATE & LOGIC
             # =========================================
+
+            # --- DASHBOARD STATE ---
             if self.state == "DASHBOARD":
-                if curr_pos != last_pos or self.core.hid.is_encoder_button_pressed():
+                if encoder_diff != 0 or encoder_pressed:
+                    self.touch()
                     menu_items = self._build_menu_items()
                     self._set_state("MENU")
-                    # Add breath effect to 'D' button to indicate it can be used to enter settings
-                    self.core.leds.set_led(
-                        index=3,
-                        color=Palette.CYAN,
-                        anim="BREATH",
-                        speed=0.5
-                    )
-                    await self.core.audio.play(
-                        "audio/menu/open.wav",
-                        self.core.audio.CH_SFX,
-                        level=0.8
-                    )
+                    needs_render = True
+                    await self.core.audio.play("audio/menu/open.wav", self.core.audio.CH_SFX, level=0.8)
+
+                    # Prepare hardware for MENU state
+                    self.core.hid.reset_encoder(selected_game_idx)
+                    curr_pos = selected_game_idx
+                    self.core.leds.set_led(3, color=Palette.CYAN, anim="BREATH", speed=0.5)
+
+            # --- ADMIN STATE ---
+            elif self.state == "ADMIN":
+                admin_items = ["Settings", "Debug Dash", "Calibration", "UART Logs", "Reset"]
+                admin_keys = ["SETTINGS", "DEBUG", "CALIB", "UARTLOG", "RESET"]
+
+                if encoder_diff != 0:
+                    self.touch()
+                    await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
+                    needs_render = True
+
+                admin_idx = curr_pos % len(admin_items)
+
+                if encoder_pressed:
+                    self.touch()
+                    await self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
+                    return admin_keys[admin_idx]
+
+                if btn_b_long:
+                    self.touch()
+                    await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
+                    self._set_state("DASHBOARD")
+                    self.core.leds.stop_cylon()
+                    self.core.leds.off_led(-1)
+                    needs_render = True
+
+            # --- MENU STATE ---
+            elif self.state == "MENU":
+                # Check for Admin transition
+                if focus_mode == "GAME" and btn_a_long and btn_d_long:
+                    self.touch()
+                    self.core.buzzer.play_sequence(tones.SECRET_FOUND)
+                    self._set_state("ADMIN")
+                    print("DEBUG: Entering Admin Menu")
+                    self.core.leds.off_led(-1)
+                    self.core.leds.start_cylon(Palette.RED, speed=0.05)
+                    self.core.leds.set_led(1, color=Palette.ORANGE, anim="FLASH", speed=2.0)
+                    needs_render = True
                     continue
 
-            # =========================================
-            # STATE: MENU (Game Select & Settings)
-            # =========================================
-            elif self.state == "MENU":
-                # --- INPUT HANDLING ---
-                # ENCODER TURN
-                if curr_pos != last_pos:
-                    # Menu Tick
-                    await self.core.audio.play(
-                        "audio/menu/tick.wav",
-                        self.core.audio.CH_SFX,
-                        level=0.8
-                    )
-
-                    if focus_mode == "GAME":
-
-                        # Cycle Games
-                        selected_game_idx = self.core.hid.encoder_position_scaled(
-                            multiplier=1.0,
-                            wrap=len(menu_items)
-                        )
-                        selected_mode_id = menu_items[selected_game_idx]
-                        selected_mode_icon = self.core.mode_registry[selected_mode_id]["icon"]
-                        mode_meta = self.core.mode_registry[selected_mode_id]
-                        mode_settings = mode_meta.get("settings", [])
-
-                        # Update Icon
-                        self.core.matrix.show_icon(
-                            selected_mode_icon,
-                            anim_mode="SLIDE_LEFT",
-                            speed=2.0
-                        )
-
-                        # --- UPDATE DISPLAY ---
-                        # Get High Score
-                        high_score = self.core.data.get_high_score(selected_mode_id)
-
-                        self.core.display.update_header(f"-{mode_meta['name']}-")
-                        self.core.display.update_status(
-                            f"HIGH SCORE: {high_score}",
-                            "Push dial to select, then let's make this line really long"
-                        )
-                        self.core.display.update_footer("Press 'D' for settings")
-
-                    elif focus_mode == "SETTINGS":
-
-                        # Cycle Settings Row
-                        if len(mode_settings) > 0:
-                            delta = curr_pos - last_pos
-                            selected_setting_idx = (selected_setting_idx + delta) % len(mode_settings)
-
-                        # settings_strings: A list of strings like "DIFF: NORMAL" built from mode_settings and current values
-                        settings_strings = []
-                        for s in mode_settings:
-                            current_value = self.core.data.get_setting(
-                                mode_meta["id"],
-                                s["key"],
-                                s["default"]
-                            )
-                            settings_strings.append(f"{s['label']}: {current_value}")
-
-                        self.core.display.update_header(f"-{mode_meta['name']}- SETTINGS")
-                        self.core.display.update_settings_menu(
-                            settings_strings,
-                            selected_setting_idx
-                        )
-                        self.core.display.update_footer("Press 'D' to exit settings")
-
-                    last_pos = curr_pos
-
-                # ENCODER PRESS
-                if self.core.hid.is_encoder_button_pressed():
+                # Handle Focus Toggle ('D' Button)
+                if btn_d_pressed:
                     self.touch()
-
                     if focus_mode == "GAME":
-                        # START GAME
-                        await self.core.audio.play(
-                            "audio/menu/power.wav",
-                            self.core.audio.CH_SFX,
-                            level=0.8
-                        )
-                        self.core.mode = selected_mode_id
+                        # Only enter settings if the current game HAS settings
+                        current_game = menu_items[selected_game_idx]
+                        if len(self.core.mode_registry[current_game].get("settings", [])) > 0:
+                            focus_mode = "SETTINGS"
+                            selected_setting_idx = 0
+                            self.core.hid.reset_encoder(0)
+                            curr_pos = 0
+                            await self.core.audio.play("audio/menu/open.wav", self.core.audio.CH_SFX, level=0.8)
+                            needs_render = True
+                    else: # Exiting Settings
+                        focus_mode = "GAME"
+                        self.core.hid.reset_encoder(selected_game_idx)
+                        curr_pos = selected_game_idx
+                        await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
+                        needs_render = True
+
+                # Handle GAME Focus Logic
+                if focus_mode == "GAME":
+                    if encoder_diff != 0:
+                        self.touch()
+                        selected_game_idx = curr_pos % len(menu_items)
+                        await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
+                        needs_render = True
+
+                    if encoder_pressed:
+                        self.touch()
+                        await self.core.audio.play("audio/menu/power.wav", self.core.audio.CH_SFX, level=0.8)
+                        self.core.mode = menu_items[selected_game_idx]
                         return "SUCCESS"
 
-                    elif focus_mode == "SETTINGS":
-                        # TOGGLE SETTING OPTION
-                        await self.core.audio.play(
-                            "audio/menu/select.wav",
-                            self.core.audio.CH_SFX,
-                            level=0.8
-                        )
+                # Handle SETTINGS Focus Logic
+                elif focus_mode == "SETTINGS":
+                    current_game = menu_items[selected_game_idx]
+                    mode_meta = self.core.mode_registry[current_game]
+                    mode_settings = mode_meta.get("settings", [])
 
-                        # Cycle through options for the selected setting
-                        if len(mode_settings) > 0:
+                    if len(mode_settings) > 0:
+                        if encoder_diff != 0:
+                            self.touch()
+                            selected_setting_idx = curr_pos % len(mode_settings)
+                            await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
+                            needs_render = True
+
+                        if encoder_pressed:
+                            self.touch()
                             setting = mode_settings[selected_setting_idx]
-                            current_value = self.core.data.get_setting(
-                                mode_meta["id"],
-                                setting["key"],
-                                setting["default"]
-                            )
-                            # Find current index in options and increment
+                            # Toggle Logic
+                            current_val = self.core.data.get_setting(mode_meta["id"], setting["key"], setting["default"])
                             try:
-                                opt_idx = setting["options"].index(current_value)
+                                opt_idx = setting["options"].index(current_val)
                             except ValueError:
                                 opt_idx = 0
                             new_idx = (opt_idx + 1) % len(setting["options"])
                             new_value = setting["options"][new_idx]
 
-                            # Save immediately
                             self.core.data.set_setting(mode_meta["id"], setting["key"], new_value)
+                            await self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
+                            needs_render = True
 
-                # 'D' BUTTON to toggle focus
-                if self.core.hid.is_button_pressed(3, action="tap"):
-                    self.touch()
+            # =========================================
+            # 3. RENDER STAGE
+            # =========================================
+            # Only push updates to hardware if something visually changed!
+            if needs_render or self.state != last_rendered_state or focus_mode != last_rendered_focus:
+
+                if self.state == "DASHBOARD":
+                    self.core.display.use_standard_layout()
+                    self.core.display.update_header("JADNET Electronics Box")
+                    self.core.display.update_status("SYSTEM READY", "Push encoder to begin")
+                    self.core.display.update_footer("")
+                    self.core.matrix.clear()
+
+                elif self.state == "ADMIN":
+                    admin_items = ["Settings", "Debug Dash", "Calibration", "UART Logs", "Reset"]
+                    admin_idx = curr_pos % len(admin_items)
+
+                    self.core.display.use_standard_layout()
+                    self.core.display.update_header("- ADMIN MODE -")
+                    # Emulate an inverted selection bar for standard labels using brackets
+                    self.core.display.update_status(f"> {admin_items[admin_idx]} <", "Hold 'W' to Exit")
+                    self.core.display.update_footer("WARNING: System Override")
+                    self.core.matrix.show_icon("WARNING")
+
+                elif self.state == "MENU":
+                    mode_id = menu_items[selected_game_idx]
+                    mode_meta = self.core.mode_registry[mode_id]
+
                     if focus_mode == "GAME":
-                        if len(mode_settings) > 0:
-                            focus_mode = "SETTINGS"
-                            selected_setting_idx = 0
-                            await self.core.audio.play(
-                                "audio/menu/open.wav",
-                                self.core.audio.CH_SFX,
-                                level=0.8
-                            )
+                        self.core.display.update_header(f"-{mode_meta['name']}-")
+                        high_score = self.core.data.get_high_score(mode_id)
+                        self.core.display.update_status(f"HIGH SCORE: {high_score}", "Push to Select")
+                        self.core.display.show_settings_menu(False)
+                        settings_hint = "Press 'D' for Settings" if len(mode_meta.get("settings", [])) > 0 else ""
+                        self.core.display.update_footer(settings_hint)
+
+                        # Only re-trigger the slide animation if the game actually changed
+                        if selected_game_idx != last_rendered_game:
+                            self.core.matrix.show_icon(mode_meta["icon"], anim_mode="SLIDE_LEFT", speed=2.0)
+
+                        last_rendered_game = selected_game_idx
+
                     elif focus_mode == "SETTINGS":
-                        focus_mode = "GAME"
-                        self.core.hid.reset_encoder(selected_game_idx)
-                        last_pos = selected_game_idx
-                        await self.core.audio.play(
-                            "audio/menu/close.wav",
-                            self.core.audio.CH_SFX,
-                            level=0.8
-                        )
+                        mode_settings = mode_meta.get("settings", [])
+                        settings_strings = []
+                        for s in mode_settings:
+                            val = self.core.data.get_setting(mode_meta["id"], s["key"], s["default"])
+                            settings_strings.append(f"{s['label']}: {val}")
 
-                # Secret Admin Trigger (A + D hold)
-                if focus_mode == "GAME" and self.core.hid.is_button_pressed(0,long=True) and self.core.hid.is_button_pressed(3,long=True):
-                    self.touch()
-                    self.core.buzzer.play_sequence(tones.SECRET_FOUND)
-                    self._set_state("ADMIN")
-                    print("DEBUG: Entering Admin Menu")
+                        self.core.display.update_header(f"-{mode_meta['name']}- SETTINGS")
+                        self.core.display.update_settings_menu(settings_strings, selected_setting_idx)
+                        self.core.display.update_footer("Press 'D' to Exit")
 
-            # =========================================
-            # STATE: ADMIN MENU (Work in progress)
-            # =========================================
-            elif self.state == "ADMIN":
+                        last_rendered_setting = selected_setting_idx
 
-                # Turn off all button LEDs
-                self.core.leds.off_led(-1)
+                    last_rendered_focus = focus_mode
 
-                # Start a Cylon strobe
-                self.core.leds.start_cylon(Palette.RED, speed=0.05)
+                # Update tracking variables
+                needs_render = False
+                last_rendered_state = self.state
 
-                # Add breath effect to 'B' button to indicate it can be used to exit admin menu
-                self.core.leds.set_led(
-                    index=1,
-                    color=Palette.ORANGE,
-                    anim="FLASH",
-                    speed=2.0
-                )
-
-                menu_items = ["Settings", "Debug Dash", "Calibration", "UART Logs", "Reset"]
-                menu_keys = ["SETTINGS", "DEBUG", "CALIB", "UARTLOG", "RESET"]
-
-                # Navigation
-                if curr_pos != last_pos:
-                    admin_idx = self.core.hid.encoder_position_scaled(
-                        multiplier=1.0,
-                        wrap=len(menu_items)
-                    )
-
-                    # TODO: Fix admin menu display
-                    self.core.display.update_status("TBD Admin Menu")
-                    await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
-                    last_pos = curr_pos
-
-                # Selection
-                if self.core.hid.is_encoder_button_pressed():
-                    self.touch()
-                    admin_idx = self.core.hid.encoder_position_scaled(
-                        multiplier=1.0,
-                        wrap=len(menu_items)
-                    )
-                    await self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
-                    return menu_keys[admin_idx]
-
-                # Back Button (B Button)
-                if self.core.hid.is_button_pressed(1,long=True,duration=2000):
-                    self.touch()
-                    await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
-                    self._set_state("DASHBOARD")
+            last_pos = curr_pos
 
             await asyncio.sleep(0.01)
