@@ -681,7 +681,8 @@ class CoreManager:
                         try:
                             self.display.update_status("MODE LOAD ERROR", self.mode)
                             await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
-                        except Exception:
+                        except Exception as e:
+                            print(f"Error displaying mode load error: {e}")
                             pass  # Display/audio failure - continue anyway
                         
                         await asyncio.sleep(2)
@@ -744,7 +745,8 @@ class CoreManager:
                             "REQUIREMENT MISSING", f"NEED: {', '.join(requirements)}"
                         )
                         await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
-                    except Exception:
+                    except Exception as e:
+                        print(f"Error displaying requirements missing error: {e}")
                         pass  # Display/audio failure - continue anyway
                     
                     await asyncio.sleep(2)
@@ -757,7 +759,8 @@ class CoreManager:
                 try:
                     self.display.update_status("MODE NOT FOUND", self.mode)
                     await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
-                except Exception:
+                except Exception as e:
+                    print(f"Error displaying mode not found error: {e}")
                     pass  # Display/audio failure - continue anyway
                 
                 await asyncio.sleep(2)
