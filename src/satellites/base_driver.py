@@ -41,9 +41,17 @@ class SatelliteDriver:
         self._retry_tasks = []
         self._retry_task_max = 5
 
-    def update_heartbeat(self):
+    @property
+    def sid(self):
+        """Returns the satellite's unique ID."""
+        return self.id
+
+    def update_heartbeat(self, increment=None):
         """Update the last seen timestamp."""
-        self.last_seen = ticks_ms()
+        if increment is not None:
+            self.last_seen += ticks_ms() + increment
+        else:
+            self.last_seen = ticks_ms()
         self.is_active = True
 
     async def _retry_send(self, message, retry_count=5, retry_delay=0.05):
@@ -67,7 +75,7 @@ class SatelliteDriver:
         except ValueError:
             pass  # Task might have been removed already, which is fine
 
-    def send_cmd(self, cmd, val, retry_count=5, retry_delay=0.05):
+    def send(self, cmd, val, retry_count=5, retry_delay=0.05):
         """
         Send a formatted command via the transport layer,
         targetting this satellite's real hardware via self.id.
@@ -76,7 +84,7 @@ class SatelliteDriver:
             cmd (str): Command type - LED | DSP.
             val (str): Command value.
         """
-        message = Message(self.id, cmd, val)
+        message = Message("DRIV", self.id, cmd, val)
         if not self.transport.send(message):
             if len(self._retry_tasks) < self._retry_task_max:
                 task = asyncio.create_task(

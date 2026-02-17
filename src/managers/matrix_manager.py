@@ -108,7 +108,7 @@ class MatrixManager(BasePixelManager):
             # Note: print() is standard for CircuitPython/embedded systems
             print(f"Error in SLIDE_LEFT animation: {e}")
 
-    async def show_icon(
+    def show_icon(
             self,
             icon_name,
             clear=True,
@@ -149,7 +149,7 @@ class MatrixManager(BasePixelManager):
         # Note: Hardware write is now handled by CoreManager.render_loop()
 
     # TODO Refactor progress grid to use animations
-    async def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):
+    def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):
         """Fills the matrix like a rising 'tank' of fluid."""
         self.fill(Palette.OFF, show=False)
         # Map {total} iterations to 64 pixels (approx 6 pixels per step)
@@ -158,7 +158,7 @@ class MatrixManager(BasePixelManager):
             self.draw_pixel(i % 8, 7 - (i // 8), color, show=False)
         # Note: Hardware write is now handled by CoreManager.render_loop()
 
-    async def draw_quadrant(self, quad_idx, color, anim_mode=None, speed=1.0, duration=None):
+    def draw_quadrant(self, quad_idx, color, anim_mode=None, speed=1.0, duration=None):
         """Fills one of four 4x4 quadrants: 0=TopLeft, 1=TopRight, 2=BottomLeft, 3=BottomRight."""
         # Define start X, Y for each quadrant
         offsets = [(0,0), (4,0), (0,4), (4,4)]

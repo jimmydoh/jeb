@@ -194,13 +194,52 @@ class Icons:
         0,0,0,0,0,0,0,0
     ]
 
+    PONG = [
+        1, 1, 0, 0, 0, 0, 1, 1,  # Top bat (red)
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 5, 0, 0,  # Ball (white)
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 5, 0, 0, 0, 0, 0,  # Ball trail (white)
+        0, 0, 0, 0, 0, 0, 0, 0,
+        4, 4, 0, 0, 0, 0, 4, 4   # Bottom bat (green)
+    ]
+
+    ASTRO_BREAKER = [
+        1, 1, 8, 8, 8, 8, 1, 1,  # Top row - Cores (red) and tough bricks (purple)
+        8, 8,12,12,12,12, 8, 8,  # Second row - Tough bricks (purple, magenta)
+        11,11,11,11,11,11,11,11, # Third row - Normal bricks (cyan)
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 3, 0, 0, 0, 0,  # Ball (yellow)
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 4, 4, 0, 0, 0, 0   # Paddle (green)
+    ]
+
+    TRENCH_RUN = [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        1, 9, 0, 0, 0, 9, 1, 1,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        1, 1, 9, 0, 0, 0, 9, 1,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 7, 0, 0, 0, 0
+    ]
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
+        "MENU": DEFAULT,
         "SIMON": SIMON,
         "SAFE": SAFE,
+        "JEBRIS": JEBRIS,
+        "PONG": PONG,
         "IND": IND,
         "SUCCESS": SUCCESS,
         "FAILURE": FAILURE,
+        "PONG": PONG,
+        "ASTRO_BREAKER": ASTRO_BREAKER,
+        "TRENCH_RUN": TRENCH_RUN,
         "0": ZERO,
         "1": ONE,
         "2": TWO,

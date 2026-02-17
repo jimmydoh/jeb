@@ -63,7 +63,7 @@ class SafeCracker(GameMode):
         self.core.hid.reset_encoder(0)
         last_p = 0
 
-        await self.core.display.update_status("SAFE MODE", "LISTEN CLOSELY")
+        self.core.display.update_status("SAFE MODE", "LISTEN CLOSELY")
         self.core.audio.play("audio/safe/voice/welcome.wav",
                             self.core.audio.CH_VOICE,
                             vol=1.0,
@@ -93,7 +93,7 @@ class SafeCracker(GameMode):
                         anim_mode="BLINK",
                         speed=2.0
                     )
-                    await self.core.display.update_status("RESET", "WRONG DIRECTION")
+                    self.core.display.update_status("RESET", "WRONG DIRECTION")
 
                     self.step = 0
                     await asyncio.sleep(0.5)
@@ -123,7 +123,7 @@ class SafeCracker(GameMode):
                         anim_mode="BLINK",
                         speed=2.0
                     )
-                    await self.core.display.update_status("OVERSHOOT!", "TRY AGAIN")
+                    self.core.display.update_status("OVERSHOOT!", "TRY AGAIN")
                     self.step = 0
                     await asyncio.sleep(0.5)
                     last_p = curr_p

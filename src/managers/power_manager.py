@@ -6,11 +6,15 @@ import analogio
 import digitalio
 
 class PowerManager:
-    """Class to manage power sensing and MOSFET control for satellite bus."""
+    """
+    Class to manage power sensing and MOSFET control for satellite bus.
+
+    TODO: Remove magic strings
+    """
     def __init__(self, sense_pins, sense_names, mosfet_pin, detect_pin):
 
         # Dynamic ADC Assignments
-        # Standard Order: [Input, SatBus, LogicRail, LEDRail]
+        # Standard Order: [input_20v, satbus_20v, main_5v, led_5v]
 
         # Check that sense_pins and sense_names lengths match
         if sense_names is not None and len(sense_pins) != len(sense_names):
@@ -29,14 +33,14 @@ class PowerManager:
                 self.sense_names.append(i)
 
         # Ideal ADC Sensors:
-        # self.sense_input      - Pre-MOSFET 20V Input
-        # self.sense_satbus     - Post-MOSFET 20V Bus
-        # self.sense_logicbus   - 5V Logic Rail
-        # self.sense_ledbus     - 5V LED Rail
-        # self.v_input = [0.0, 0.0, 99.0] # Last, Max, Min
-        # self.v_satbus = [0.0, 0.0, 99.0] # Last, Max, Min
-        # self.v_ledbus = [0.0, 0.0, 99.0] # Last, Max, Min
-        # self.v_logicbus = [0.0, 0.0, 99.0] # Last, Max, Min
+        # self.sense_input_20v      - Pre-MOSFET 20V Input
+        # self.sense_satbus_20v     - Post-MOSFET 20V Bus
+        # self.sense_main_5v   - 5V Logic Rail
+        # self.sense_led_5v     - 5V LED Rail
+        # self.v_input_20v = [0.0, 0.0, 99.0] # Last, Max, Min
+        # self.v_satbus_20v = [0.0, 0.0, 99.0] # Last, Max, Min
+        # self.v_main_5v = [0.0, 0.0, 99.0] # Last, Max, Min
+        # self.v_led_5v = [0.0, 0.0, 99.0] # Last, Max, Min
 
         # MOSFET Control
         self.sat_pwr = digitalio.DigitalInOut(mosfet_pin)
@@ -66,7 +70,7 @@ class PowerManager:
         """Primary touch point - updates voltage readings and returns as Dict."""
         for name in self.sense_names:
             sensor = getattr(self, f"sense_{name}")
-            ratio = self.RATIO_20V if "20V" in name else self.RATIO_5V
+            ratio = self.RATIO_20V if "20v" in name else self.RATIO_5V
             v_attr = f"v_{name}"
             v_list = getattr(self, v_attr)
 
@@ -104,7 +108,7 @@ class PowerManager:
         import time
 
         v = self.status
-        if v["input" if "input" in self.sense_names else "0"] < 18.0:
+        if v["input_20v" if "input_20v" in self.sense_names else "0"] < 18.0:
             return False, "LOW INPUT VOLTAGE"
 
         self.sat_pwr.value = True
@@ -121,7 +125,7 @@ class PowerManager:
             # Only check for short circuit after blanking time has elapsed
             if elapsed >= self.SOFT_START_BLANKING_TIME:
                 v = self.status
-                if v["satbus" if "satbus" in self.sense_names else "1"] < 17.0:
+                if v["satbus_20v" if "satbus_20v" in self.sense_names else "1"] < 17.0:
                     self.sat_pwr.value = False
                     return False, "BUS BROWNOUT"
 
@@ -135,10 +139,15 @@ class PowerManager:
 
     async def check_power_integrity(self):
         """Diagnostic check performed at boot and during play."""
+        print("Performing power integrity check...")
         v = self.status
-        if v["input" if "input" in self.sense_names else "0"] < 15.0:
+        print(f" | Input Voltage: {v['input_20v' if 'input_20v' in self.sense_names else '0']} V"
+              f" | SatBus Voltage: {v['satbus_20v' if 'satbus_20v' in self.sense_names else '1']} V"
+              f" | Logic Rail: {v['main_5v' if 'main_5v' in self.sense_names else '2']} V"
+              f" | LED Rail: {v['led_5v' if 'led_5v' in self.sense_names else '3']} V")
+        if v["input_20v" if "input_20v" in self.sense_names else "0"] < 15.0:
             return False
-        if v["input" if "input" in self.sense_names else "0"] > 18.0 \
-            and v["satbus" if "satbus" in self.sense_names else "1"] < 1.0:
+        if v["input_20v" if "input_20v" in self.sense_names else "0"] > 18.0 \
+            and v["satbus_20v" if "satbus_20v" in self.sense_names else "1"] < 1.0:
             return False
         return True

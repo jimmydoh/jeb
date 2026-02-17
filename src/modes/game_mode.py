@@ -24,7 +24,7 @@ class GameMode(BaseMode):
         To track by difficulty later, change this to:
         return f"{self.variant}_{self.difficulty}"
         """
-        return self.variant
+        return self.variant or "DEFAULT"
 
     def get_high_score(self):
         """Helper to get the high score for the current setup."""
@@ -46,11 +46,11 @@ class GameMode(BaseMode):
 
         # Show high score animation if we beat the record
         if self.save_high_score():
-            await self.core.display.update_status(
+            self.core.display.update_status(
                 "GAME OVER - NEW HIGH SCORE!",
                 f"SCORE: {self.score}"
             )
-            await self.core.matrix.show_icon(
+            self.core.matrix.show_icon(
                 "HIGH_SCORE",
                 anim_mode="PULSE",
                 speed=2.0)
@@ -63,11 +63,11 @@ class GameMode(BaseMode):
             await asyncio.sleep(2)
         # Show regular game over if we didn't beat the record
         else:
-            await self.core.display.update_status(
+            self.core.display.update_status(
                 f"GAME OVER - SCORE: {self.score}",
                 f"HIGH SCORE: {self.get_high_score()}"
             )
-            await self.core.matrix.show_icon(
+            self.core.matrix.show_icon(
                 "FAILURE",
                 anim_mode="PULSE",
                 speed=2.0
@@ -90,11 +90,11 @@ class GameMode(BaseMode):
 
         # Show high score animation if we beat the record
         if self.save_high_score():
-            await self.core.display.update_status(
+            self.core.display.update_status(
                 "VICTORY - NEW HIGH SCORE!",
                 f"SCORE: {self.score}"
             )
-            await self.core.matrix.show_icon(
+            self.core.matrix.show_icon(
                 "HIGH_SCORE",
                 anim_mode="PULSE",
                 speed=2.0)
@@ -107,11 +107,11 @@ class GameMode(BaseMode):
             await asyncio.sleep(2)
         # Show regular victory if we didn't beat the record
         else:
-            await self.core.display.update_status(
+            self.core.display.update_status(
                 f"VICTORY! SCORE: {self.score}",
                 f"HIGH SCORE: {self.get_high_score()}"
             )
-            await self.core.matrix.show_icon(
+            self.core.matrix.show_icon(
                 "SUCCESS",
                 anim_mode="PULSE",
                 speed=2.0

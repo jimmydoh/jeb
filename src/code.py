@@ -30,6 +30,12 @@ import time
 
 import supervisor
 
+from utilities.logger import JEBLogger, LogLevel
+
+# Init logger at DEBUG for initial boot
+JEBLogger.set_level(LogLevel.DEBUG)
+JEBLogger.enable_file_logging(False)
+
 # Check if SD card was mounted in boot.py
 # Note: We cannot import boot.py as it will re-execute the script
 # Instead, check if /sd directory exists in the filesystem
@@ -76,23 +82,23 @@ def load_config():
         if file_exists("config.json"):
             with open("config.json", "r", encoding="utf-8") as f:
                 config_data = json.load(f)
-                print("Configuration loaded from config.json")
+                JEBLogger.info("CODE", "Configuration loaded from config.json")
                 # Merge with defaults - MicroPython compatible
                 merged_config = default_config.copy()
                 merged_config.update(config_data)
                 return merged_config
         else:
-            print("No config.json found. Using default configuration.")
+            JEBLogger.warning("CODE", "No config.json found. Using default configuration.")
             return default_config
     except Exception as e:
-        print(f"Error loading config.json: {e}")
-        print("Using default configuration.")
+        JEBLogger.error("CODE", f"Error loading config.json: {e}")
+        JEBLogger.warning("CODE", "Using default configuration.")
         return default_config
 
 # --- ENTRY POINT ---
 
-print("*** BOOTING JEB SYSTEM ***")
-print(f"SD Card mounted: {SD_MOUNTED}")
+JEBLogger.info("CODE", "*** BOOTING JEB SYSTEM ***")
+JEBLogger.info("CODE", f"SD Card mounted: {SD_MOUNTED}")
 config = load_config()
 
 # --- OTA UPDATE CHECK ---
@@ -104,9 +110,7 @@ try:
         from updater import should_check_for_updates, Updater, clear_update_flag
 
         if should_check_for_updates():
-            print("\n" + "="*50)
-            print("   OTA UPDATE REQUIRED")
-            print("="*50 + "\n")
+            JEBLogger.info("CODE", "Update flag detected - starting OTA update process")
 
             # Check if Wi-Fi is configured
             if config.get("wifi_ssid") and config.get("update_url"):
@@ -117,32 +121,32 @@ try:
                     if update_success:
                         # Only clear flag on successful update
                         clear_update_flag()
-                        print("\n✓ Update complete and installed - rebooting...")
+                        JEBLogger.info("CODE", "\n✓ Update complete and installed - rebooting...")
                         updater.reboot()
                     else:
                         # Do NOT clear flag - preserve for retry on next boot
-                        print("\n⚠️ Update failed - flag preserved for retry")
-                        print("Device will attempt update again on next boot")
+                        JEBLogger.warning("CODE", "\n⚠️ Update failed - flag preserved for retry")
+                        JEBLogger.warning("CODE", "Device will attempt update again on next boot")
 
                 except Exception as e:
                     # Do NOT clear flag on fatal error - preserve for retry
-                    print(f"\n❌ Updater fatal error: {e}")
-                    print("Flag preserved - device will retry update on next boot")
-                    print("Continuing with existing firmware")
+                    JEBLogger.error("CODE", f"\n❌ Updater fatal error: {e}")
+                    JEBLogger.warning("CODE", "Flag preserved - device will retry update on next boot")
+                    JEBLogger.warning("CODE", "Continuing with existing firmware")
             else:
-                print("⚠️ Wi-Fi not configured - skipping update")
-                print("Configure wifi_ssid and update_url in config.json")
+                JEBLogger.warning("CODE", "⚠️ Wi-Fi not configured - skipping update")
+                JEBLogger.warning("CODE", "Configure wifi_ssid and update_url in config.json")
                 clear_update_flag()  # Clear flag since config is missing
 
     else:
         from updater import clear_update_flag
 
-        print("⚠️ SD card not mounted - OTA updates require SD card")
-        print("Skipping update")
+        JEBLogger.warning("CODE", "⚠️ SD card not mounted - OTA updates require SD card")
+        JEBLogger.warning("CODE", "Skipping update")
         clear_update_flag()
 
 except ImportError:
-    print("⚠️ Updater module not available")
+    JEBLogger.warning("CODE", "⚠️ Updater module not available")
 
 
 # --- WEB SERVER STARTUP (if enabled) ---
@@ -153,18 +157,16 @@ if config.get("web_server_enabled", False):
 
         # Check if WiFi is configured
         if config.get("wifi_ssid") and config.get("wifi_password"):
-            print("\n" + "="*50)
-            print("   WEB SERVER INITIALIZATION")
-            print("="*50)
+            JEBLogger.info("CODE", " --- WEB SERVER INITIALIZATION --- ")
             web_server = WebServerManager(config)
-            print("Web server manager initialized - will start with app")
+            JEBLogger.info("CODE", "Web server manager initialized - will start with app")
         else:
-            print("⚠️ WiFi credentials not configured - web server disabled")
-            print("Configure wifi_ssid and wifi_password in config.json")
+            JEBLogger.warning("CODE", "⚠️ WiFi credentials not configured - web server disabled")
+            JEBLogger.warning("CODE", "Configure wifi_ssid and wifi_password in config.json")
     except ImportError:
-        print("⚠️ WebServerManager not available - check dependencies")
+        JEBLogger.warning("CODE", "⚠️ WebServerManager not available - check dependencies")
     except Exception as e:
-        print(f"⚠️ Web server initialization error: {e}")
+        JEBLogger.error("CODE", f"⚠️ Web server initialization error: {e}")
 
 
 # --- APPLICATION RUN ---
@@ -176,13 +178,13 @@ type_name = config.get("type_name", "UNKNOWN")
 debug_mode = config.get("debug_mode", False)
 test_mode = config.get("test_mode", False)
 
-print(f"ROLE: {role}, ID: {type_id}, NAME: {type_name}")
+JEBLogger.info("CODE", f"ROLE: {role}, ID: {type_id}, NAME: {type_name}")
 
 # Add computed values to config for manager initialization
 config["root_data_dir"] = ROOT_DATA_DIR
 
 if test_mode:
-    print("⚠️ Running in TEST MODE. No main application will be loaded. ⚠️")
+    JEBLogger.warning("CODE", "⚠️ Running in TEST MODE. No main application will be loaded. ⚠️")
     from managers.console_manager import ConsoleManager
     app = ConsoleManager(role, type_id)
 else:
@@ -195,7 +197,7 @@ else:
         app = IndustrialSatelliteFirmware()
 
     else:
-        print("❗Unknown role/type_id combination. No application loaded.❗")
+        JEBLogger.error("CODE", "❗Unknown role/type_id combination. No application loaded.❗")
         while True:
             time.sleep(1)
 
@@ -203,11 +205,11 @@ else:
 if __name__ == "__main__":
     try:
         if app is None:
-            print("‼️No application loaded.‼️")
+            JEBLogger.error("CODE", "‼️No application loaded.‼️")
             while True:
                 time.sleep(1)
         else:
-            print(f"Starting main app loop for {type_name} ")
+            JEBLogger.info("CODE", f"Starting main app loop for {type_name} ")
 
             # If web server is enabled, run both app and web server concurrently
             if web_server is not None:
@@ -223,7 +225,7 @@ if __name__ == "__main__":
                     for i, result in enumerate(results):
                         if isinstance(result, Exception):
                             task_name = "app" if i == 0 else "web_server"
-                            print(f"Task {task_name} failed with error: {result}")
+                            JEBLogger.error("CODE", f"Task {task_name} failed with error: {result}")
                             import traceback
                             traceback.print_exception(type(result), result, result.__traceback__)
 
@@ -231,9 +233,9 @@ if __name__ == "__main__":
             else:
                 asyncio.run(app.start())
     except Exception as e:
-        print(f"🚨⛔ CRITICAL CRASH: {e}")
+        JEBLogger.error("CODE", f"🚨⛔ CRITICAL CRASH: {e}")
         import traceback
-        traceback.print_exception(e)
+        traceback.print_exception(type(e), e, e.__traceback__)
         # Reduced sleep to maintain watchdog margin before reload
         time.sleep(2)
         supervisor.reload()

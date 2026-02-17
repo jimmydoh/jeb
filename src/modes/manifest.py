@@ -18,7 +18,7 @@ MODE_REGISTRY = {
         "name": "MAIN MENU",
         "module_path": "modes.main_menu",
         "class_name": "MainMenu",
-        "icon": "home",
+        "icon": "DEFAULT",
         "requires": ["CORE"],
         "settings": []
     },
@@ -27,7 +27,7 @@ MODE_REGISTRY = {
         "name": "DASHBOARD",
         "module_path": "modes.main_menu",
         "class_name": "MainMenu",
-        "icon": "home",
+        "icon": "DEFAULT",
         "requires": ["CORE"],
         "settings": []
     },
@@ -35,8 +35,8 @@ MODE_REGISTRY = {
         "id": "SIMON",
         "name": "SIMON SAYS",
         "module_path": "modes.simon",
-        "class_name": "SimonMode",
-        "icon": "simon",
+        "class_name": "Simon",
+        "icon": "SIMON",
         "requires": ["CORE"],
         "settings": [
             {
@@ -57,8 +57,8 @@ MODE_REGISTRY = {
         "id": "JEBRIS",
         "name": "JEBRIS",
         "module_path": "modes.jebris",
-        "class_name": "JebrisMode",
-        "icon": "tetris",
+        "class_name": "JEBris",
+        "icon": "JEBRIS",
         "requires": ["CORE"],
         "settings": [
             {
@@ -79,8 +79,8 @@ MODE_REGISTRY = {
         "id": "SAFE",
         "name": "SAFE CRACKER",
         "module_path": "modes.safe_cracker",
-        "class_name": "SafeCrackerMode",
-        "icon": "dial",
+        "class_name": "SafeCracker",
+        "icon": "SAFE",
         "requires": ["CORE"],
         "settings": []
     },
@@ -88,10 +88,71 @@ MODE_REGISTRY = {
         "id": "IND_START",
         "name": "INDUSTRIAL STARTUP",
         "module_path": "modes.industrial_startup",
-        "class_name": "IndustrialStartupMode",
-        "icon": "factory",
+        "class_name": "IndustrialStartup",
+        "icon": "IND",
         "requires": ["INDUSTRIAL"],
         "settings": []
+    },
+    "PONG": {
+        "id": "PONG",
+        "name": "MINI PONG",
+        "module_path": "modes.pong",
+        "class_name": "Pong",
+        "icon": "PONG",
+        "requires": ["CORE"],
+        "optional": ["INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "mode",
+                "label": "MODE",
+                "options": ["1P", "2P"],
+                "default": "1P"
+            },
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY", "NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "ASTRO_BREAKER": {
+        "id": "ASTRO_BREAKER",
+        "name": "ASTRO BREAKER",
+        "module_path": "modes.astro_breaker",
+        "class_name": "AstroBreaker",
+        "icon": "ASTRO_BREAKER",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "TRENCH_RUN": {
+        "id": "TRENCH_RUN",
+        "name": "TRENCH RUN",
+        "module_path": "modes.trench_run",
+        "class_name": "TrenchRun",
+        "icon": "TRENCH_RUN",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "perspective",
+                "label": "VIEW",
+                "options": ["3RD_PERSON", "1ST_PERSON"],
+                "default": "3RD_PERSON"
+            }
+        ]
     }
 }
 

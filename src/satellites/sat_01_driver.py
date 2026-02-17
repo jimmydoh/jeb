@@ -8,6 +8,8 @@ Industrial Satellite and does not include hardware-specific code.
 
 from managers.hid_manager import HIDManager
 
+from utilities.logger import JEBLogger
+from utilities.payload_parser import parse_values, get_int
 from utilities.pins import Pins
 
 from .base_driver import SatelliteDriver
@@ -59,28 +61,38 @@ class IndustrialSatelliteDriver(SatelliteDriver):
             monitor_only=True
         )
 
-    def update_from_packet(self, data_str):
-        """Updates the attribute states in the HIDManager based on the received data string.
-
-        This method parses telemetry data from the satellite and updates local state.
-
-        Example:
-            0000,C,N,0,0
-            1111,U,4014*,1,1
-        """
+    def update_from_packet(self, val):
+        """Updates driver state from a received STATUS payload."""
         try:
             self.update_heartbeat()
-            data = data_str.split(",")
 
-            self.hid.set_remote_state(
-                buttons=None,
-                latching_toggles=data[0],   # e.g. "0001",
-                momentary_toggles=data[1],  # e.g. "U" or "D"
-                encoders=data[3],           # e.g. "0", "22", "97"
-                encoder_buttons=data[4],    # e.g. "0" or "1"
-                matrix_keypads=data[2],     # e.g. "N" or "4014*"
-                estop=None
-            )
+            # 1. Safely unwrap the binary optimization (handles tuples, bytes, or strings)
+            if isinstance(val, tuple):
+                val_str = bytes(val).decode('utf-8')
+            elif isinstance(val, (bytes, bytearray)):
+                val_str = val.decode('utf-8')
+            else:
+                val_str = str(val)
 
-        except (IndexError, ValueError):
-            print(f"Malformed packet from Sat {self.id}")
+            # 2. Split directly to preserve leading zeros! (DO NOT use parse_values)
+            data = val_str.strip().split(",")
+
+            # 3. Map to the true default order of HIDManager.get_status_bytes():
+            # [buttons, toggles, momentary, keypads, encoders, encoder_btns, estop]
+            if len(data) >= 7:
+                self.hid.set_remote_state(
+                    buttons=data[0],
+                    latching_toggles=data[1],
+                    momentary_toggles=data[2],
+                    matrix_keypads=data[3],
+                    encoders=data[4],
+                    encoder_buttons=data[5],
+                    estop=data[6],
+                    sid=self.sid
+                )
+                #JEBLogger.debug("DRIV", f"Update From Packet | {data}", src=self.sid)
+            else:
+                JEBLogger.warning("DRIV", f"Sent incomplete status payload: {val_str}", src=self.sid)
+
+        except Exception as e:
+            JEBLogger.error("DRIV", f"Malformed packet: {e}", src=self.sid)

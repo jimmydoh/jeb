@@ -42,7 +42,7 @@ class IndustrialStartup(GameMode):
                             self.core.audio.CH_VOICE,
                             level=0.8,
                             Wait=True)
-        await self.core.display.update_status("SYSTEM FAILURE", "SHUTTING DOWN...")
+        self.core.display.update_status("SYSTEM FAILURE", "SHUTTING DOWN...")
         await asyncio.sleep(2)
         return "GAME_OVER"
 
@@ -65,7 +65,7 @@ class IndustrialStartup(GameMode):
 
         # Initial check to confirm Satellite is connected
         if not self.sat or not self.sat.is_connected:
-            await self.core.display.update_status("ERROR", "SATELLITE OFFLINE")
+            self.core.display.update_status("ERROR", "SATELLITE OFFLINE")
             await asyncio.sleep(2)
             return "FAILURE"
 
@@ -76,7 +76,7 @@ class IndustrialStartup(GameMode):
 
             # --- STEP 0: INITIALIZATION ---
             if self.step == 0:
-                await self.core.display.update_status("LINK ESTABLISHED", "INITIALIZING...")
+                self.core.display.update_status("LINK ESTABLISHED", "INITIALIZING...")
                 self.core.audio.play("audio/ind/atmo/hum_1.wav",
                                     self.core.audio.CH_ATMO,
                                     level=0.2,
@@ -90,7 +90,7 @@ class IndustrialStartup(GameMode):
 
             # --- STEP 1: DUAL INPUT ---
             elif self.step == 1:
-                await self.core.display.update_status(
+                self.core.display.update_status(
                     "INDUSTRIAL CONTROL ONLINE",
                     "HOLD [A] + Prime Switch DOWN"
                     )
@@ -111,14 +111,14 @@ class IndustrialStartup(GameMode):
                         break
                     await asyncio.sleep(0.1)
 
-                await self.core.display.update_status("SUCCESSFULLY PRIMED", "POWERING UP...")
+                self.core.display.update_status("SUCCESSFULLY PRIMED", "POWERING UP...")
                 self.core.audio.play("audio/ind/sfx/power_up.wav",
                                     self.core.audio.CH_SFX)
                 self.step += 1
 
             # --- STEP 2: TOGGLE SEQUENCE ---
             elif self.step == 2:
-                await self.core.display.update_status("INIT SPLINE MODS", "CONFIRM STATES")
+                self.core.display.update_status("INIT SPLINE MODS", "CONFIRM STATES")
                 self.core.audio.play("audio/ind/atmo/hum_2.wav",
                                     self.core.audio.CH_ATMO,
                                     level=0.4,
@@ -135,7 +135,7 @@ class IndustrialStartup(GameMode):
                 while iteration < total_iterations:
                     # Set all toggle LEDs to blue
                     for i in range(6):
-                        self.sat.send_cmd("LEDBREATH", f"{i},0,0,200,0.0,0.5,1,2.0")
+                        self.sat.send("LEDBREATH", f"{i},0,0,200,0.0,0.5,1,2.0")
                     await asyncio.sleep(0.5)
 
                     # Calculate dynamic blink speed (gets faster every round)
@@ -163,7 +163,7 @@ class IndustrialStartup(GameMode):
                     self.sat.snapshot_state()
 
                     # Reaction Loop
-                    await self.core.display.update_status(
+                    self.core.display.update_status(
                         f"PHASE: {iteration+1}/10",
                         "AWAITING SIGNAL..."
                     )
@@ -172,7 +172,7 @@ class IndustrialStartup(GameMode):
 
                     while not success and not wrong_input:
                         # Pulse the target LED Amber
-                        self.sat.send_cmd(
+                        self.sat.send(
                             "LEDFLASH",
                             f"{target_idx},255,165,0,0.0,0.5,3,{blink_speed},{blink_speed}"
                         )
@@ -212,10 +212,10 @@ class IndustrialStartup(GameMode):
                                             self.core.audio.CH_SFX,
                                             level=0.8,
                                             Interrupt=True)
-                        self.sat.send_cmd("LED", f"{target_idx},0,255,0,0.0,0.5,2")
+                        self.sat.send("LED", f"{target_idx},0,255,0,0.0,0.5,2")
                         # TODO Add progress animation for matrix
                         await asyncio.sleep(0.5)
-                        self.sat.send_cmd("LED", f"{target_idx},100,100,255,0.0,0.5,2")
+                        self.sat.send("LED", f"{target_idx},100,100,255,0.0,0.5,2")
 
                     elif wrong_input:
                         self.core.audio.play("audio/ind/sfx/toggle_error.wav",
@@ -224,12 +224,12 @@ class IndustrialStartup(GameMode):
                                             Interrupt=True)
                         # Flash ALL toggle LEDs Red
                         for _ in range(6):
-                            self.sat.send_cmd("LEDFLASH", f"{_},255,0,0,1.5,0.5,1,0.25,0.25")
+                            self.sat.send("LEDFLASH", f"{_},255,0,0,1.5,0.5,1,0.25,0.25")
                         await asyncio.sleep(0.3)
                         # Loop continues, iterations do NOT increase
 
                 # Completed all iterations
-                await self.core.display.update_status("PHASE COMPLETE", "CORE STABILIZED")
+                self.core.display.update_status("PHASE COMPLETE", "CORE STABILIZED")
                 self.core.audio.play("audio/ind/voice/toggle_done.wav",
                                     self.core.audio.CH_VOICE,
                                     level=narration_vol,
@@ -240,7 +240,7 @@ class IndustrialStartup(GameMode):
 
             # --- STEP 3: AUTH CODE ENTRY ---
             elif self.step == 3:
-                await self.core.display.update_status("AWAIT AUTH CODE", "ADMIN ACCESS")
+                self.core.display.update_status("AWAIT AUTH CODE", "ADMIN ACCESS")
                 self.core.audio.play("audio/ind/atmo/hum_2.wav",
                                     self.core.audio.CH_ATMO,
                                     level=0.6,
@@ -259,7 +259,7 @@ class IndustrialStartup(GameMode):
 
                     # Display the code one by one
                     for digit in target_sequence:
-                        await self.core.display.update_status("ENTRY CODE:", digit)
+                        self.core.display.update_status("ENTRY CODE:", digit)
                         # TODO Display on matrix as well
                         self.core.audio.play(f"audio/ind/voice/v_{digit}.wav",
                                             self.core.audio.CH_VOICE,
@@ -276,7 +276,7 @@ class IndustrialStartup(GameMode):
                     while len(user_entry) < 8 and ticks_diff(ticks_ms(), start_time) < 10000:
                         if self.sat.keypad != "N":
                             user_entry += self.sat.keypad
-                            self.sat.send_cmd("DSP",user_entry)
+                            self.sat.send("DSP",user_entry)
                             self.core.audio.play("audio/ind/sfx/keypad_click.wav",
                                                 self.core.audio.CH_SFX,
                                                 level=0.8)
@@ -285,7 +285,7 @@ class IndustrialStartup(GameMode):
 
                     # If it does not match, prompt retry
                     if user_entry != target_sequence:
-                        await self.core.display.update_status("AUTH FAILED", "RE-TRANSMITTING")
+                        self.core.display.update_status("AUTH FAILED", "RE-TRANSMITTING")
                         self.core.audio.play("audio/ind/sfx/fail.wav",
                                             self.core.audio.CH_SFX,
                                             level=0.6,
@@ -295,11 +295,11 @@ class IndustrialStartup(GameMode):
                                             level=narration_vol,
                                             Wait=True)
                         user_entry = ""
-                        self.sat.send_cmd("DSP","********")
+                        self.sat.send("DSP","********")
                         await asyncio.sleep(2)
 
                 # Success
-                await self.core.display.update_status("AUTH CODE ACCEPTED", "ACCESS GRANTED")
+                self.core.display.update_status("AUTH CODE ACCEPTED", "ACCESS GRANTED")
                 self.core.audio.play("audio/ind/sfx/success.wav",
                                     self.core.audio.CH_SFX,
                                     level=0.8,
@@ -308,7 +308,7 @@ class IndustrialStartup(GameMode):
 
             # --- STEP 4: ALIGN BRACKETS ---
             elif self.step == 4:
-                await self.core.display.update_status("ALIGN BRACKETS", "DUAL ENCODER SYNC")
+                self.core.display.update_status("ALIGN BRACKETS", "DUAL ENCODER SYNC")
                 self.core.audio.play("audio/ind/atmo/hum_3.wav",
                                     self.core.audio.CH_ATMO,
                                     level=0.8,
@@ -348,7 +348,7 @@ class IndustrialStartup(GameMode):
                     # Collision (Critical Failure)
                     if left_pos >= right_pos:
                         self.core.matrix.fill(Palette.RED, show=True, anim_mode="BLINK", speed=2.0)
-                        await self.core.display.update_status("CRITICAL ERROR", "BRACKET COLLISION")
+                        self.core.display.update_status("CRITICAL ERROR", "BRACKET COLLISION")
                         self.core.audio.play("audio/ind/sfx/crash.wav",
                                             self.core.audio.CH_SFX,
                                             level=1.0)

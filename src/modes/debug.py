@@ -18,7 +18,7 @@ class DebugMode(UtilityMode):
     async def run(self):
         """Run the Debug Mode."""
         self.core.display.update_status("DEBUG MODE", "RUNNING DIAGNOSTICS")
-        self.core.matrix.show_icon("DEBUG", anim="BLINK", speed=1.0)
+        self.core.matrix.show_icon("DEBUG", anim_mode="BLINK", speed=1.0)
 
         # Example diagnostic routine
         for i in range(5):
