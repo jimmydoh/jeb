@@ -371,9 +371,43 @@ def test_backward_compatibility():
     matrix_manager.fill((0, 255, 0), anim_mode="PULSE")
     matrix_manager.draw_quadrant(0, (0, 0, 255))
     
+    # New brightness parameter should work
+    matrix_manager.draw_pixel(1, 1, (255, 128, 64), brightness=0.5)
+    
     assert matrix_manager._active_count > 0, "Animations should be active"
     
     print("✓ Backward compatibility test passed")
+
+
+def test_matrix_manager_brightness_parameter():
+    """Test MatrixManager draw_pixel with brightness parameter."""
+    print("\nTesting MatrixManager brightness parameter...")
+    
+    mock_pixel = MockJEBPixel(64)
+    matrix_manager = MatrixManager(mock_pixel)
+    
+    # Test draw_pixel with brightness
+    matrix_manager.draw_pixel(0, 0, (200, 100, 50), brightness=0.5)
+    
+    # Row 0 is even, so index = 0 * 8 + 0 = 0
+    slot = matrix_manager.active_animations[0]
+    assert slot.active
+    assert slot.color == (100, 50, 25), \
+        f"Expected (100, 50, 25), got {slot.color}"
+    
+    # Test with brightness > 1.0 (should clamp)
+    matrix_manager.draw_pixel(1, 0, (255, 128, 64), brightness=2.0)
+    slot = matrix_manager.active_animations[1]
+    assert slot.color == (255, 128, 64), \
+        f"Brightness > 1.0 should clamp, got {slot.color}"
+    
+    # Test with brightness = 0.0
+    matrix_manager.draw_pixel(2, 0, (180, 90, 45), brightness=0.0)
+    slot = matrix_manager.active_animations[2]
+    assert slot.color == (0, 0, 0), \
+        f"Brightness 0.0 should give black, got {slot.color}"
+    
+    print("✓ MatrixManager brightness parameter test passed")
 
 
 if __name__ == "__main__":
@@ -398,6 +432,7 @@ if __name__ == "__main__":
         test_matrix_manager_draw_quadrant()
         test_led_manager_set_led_with_animations()
         test_backward_compatibility()
+        test_matrix_manager_brightness_parameter()
         
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")

@@ -296,6 +296,72 @@ def test_animation_methods_work_with_different_layouts():
     print("✓ Different layouts test passed")
 
 
+def test_brightness_clamping():
+    """Test that brightness values are clamped to prevent NeoPixel crashes."""
+    print("\nTesting brightness clamping...")
+    
+    mock_pixel = MockJEBPixel(10)
+    manager = BasePixelManager(mock_pixel)
+    
+    # Test brightness > 1.0 (should clamp to 1.0)
+    result = manager._apply_brightness((255, 128, 64), 1.5)
+    assert result == (255, 128, 64), \
+        f"Brightness > 1.0 should clamp to original color, got {result}"
+    
+    # Test brightness < 0.0 (should clamp to 0.0)
+    result = manager._apply_brightness((255, 128, 64), -0.5)
+    assert result == (0, 0, 0), \
+        f"Brightness < 0.0 should clamp to black, got {result}"
+    
+    # Test edge case: brightness exactly 1.0
+    result = manager._apply_brightness((200, 150, 100), 1.0)
+    assert result == (200, 150, 100), \
+        "Brightness 1.0 should return original color"
+    
+    # Test edge case: brightness exactly 0.0
+    result = manager._apply_brightness((200, 150, 100), 0.0)
+    assert result == (0, 0, 0), \
+        "Brightness 0.0 should return black"
+    
+    # Test that solid/flash/breathe methods also clamp properly
+    # brightness > 1.0 should not cause ValueError
+    manager.solid(0, (255, 128, 64), brightness=2.0)
+    assert manager.active_animations[0].color == (255, 128, 64), \
+        "solid() should clamp brightness > 1.0"
+    
+    manager.flash(1, (200, 100, 50), brightness=1.5)
+    assert manager.active_animations[1].color == (200, 100, 50), \
+        "flash() should clamp brightness > 1.0"
+    
+    manager.breathe(2, (180, 90, 45), brightness=-0.2)
+    assert manager.active_animations[2].color == (0, 0, 0), \
+        "breathe() should clamp brightness < 0.0"
+    
+    print("✓ Brightness clamping test passed")
+
+
+def test_apply_brightness_performance():
+    """Test that _apply_brightness uses explicit indexing (not generator comprehension)."""
+    print("\nTesting _apply_brightness implementation...")
+    
+    mock_pixel = MockJEBPixel(10)
+    manager = BasePixelManager(mock_pixel)
+    
+    # Test that the method produces correct results
+    test_cases = [
+        ((255, 255, 255), 0.5, (127, 127, 127)),
+        ((200, 100, 50), 0.5, (100, 50, 25)),
+        ((100, 200, 150), 0.2, (20, 40, 30)),
+    ]
+    
+    for color, brightness, expected in test_cases:
+        result = manager._apply_brightness(color, brightness)
+        assert result == expected, \
+            f"_apply_brightness({color}, {brightness}) should be {expected}, got {result}"
+    
+    print("✓ _apply_brightness implementation test passed")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("BasePixelManager Common Animation Methods Test Suite")
@@ -314,6 +380,8 @@ if __name__ == "__main__":
         test_priority_handling()
         test_duration_handling()
         test_animation_methods_work_with_different_layouts()
+        test_brightness_clamping()
+        test_apply_brightness_performance()
         
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")

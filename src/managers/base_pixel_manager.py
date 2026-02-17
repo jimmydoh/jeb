@@ -167,6 +167,38 @@ class BasePixelManager:
 
             slot.set(anim_type, color, speed, start_t, duration, priority)
 
+    def _apply_brightness(self, base_color, brightness):
+        """
+        Stateless, highly optimized brightness calculation.
+        
+        Args:
+            base_color: Tuple of (r, g, b) values
+            brightness: Float from 0.0 to 1.0 (values outside range are clamped)
+        
+        Returns:
+            Tuple of brightness-adjusted (r, g, b) values
+        
+        Note:
+            - Clamps brightness to [0.0, 1.0] to prevent NeoPixel ValueErrors
+            - Uses explicit tuple indexing for better performance on RP2350
+            - Avoids generator comprehensions to reduce heap fragmentation
+        """
+        # Clamp brightness to prevent NeoPixel ValueErrors
+        brightness = max(0.0, min(1.0, brightness))
+        
+        if brightness >= 1.0:
+            return base_color
+        if brightness <= 0.0:
+            return (0, 0, 0)
+
+        # Explicit tuple indexing is significantly faster on RP2350 
+        # and avoids generator comprehensions in memory
+        return (
+            int(base_color[0] * brightness),
+            int(base_color[1] * brightness),
+            int(base_color[2] * brightness)
+        )
+
     # --- COMMON ANIMATION TRIGGERS ---
     # These methods provide convenient wrappers for common animation patterns
     # and can be used by all subclasses regardless of layout type.
@@ -183,7 +215,7 @@ class BasePixelManager:
             priority: Animation priority level
         """
         targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
-        adjusted_color = tuple(int(c * brightness) for c in color)
+        adjusted_color = self._apply_brightness(color, brightness)
         for i in targets:
             self.set_animation(i, "SOLID", adjusted_color, duration=duration, priority=priority)
 
@@ -200,7 +232,7 @@ class BasePixelManager:
             speed: Blink speed (flashes per second)
         """
         targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
-        adjusted_color = tuple(int(c * brightness) for c in color)
+        adjusted_color = self._apply_brightness(color, brightness)
         for i in targets:
             self.set_animation(i, "BLINK", adjusted_color, duration=duration, speed=speed, priority=priority)
 
@@ -217,7 +249,7 @@ class BasePixelManager:
             speed: Breathing speed (cycles per second)
         """
         targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
-        adjusted_color = tuple(int(c * brightness) for c in color)
+        adjusted_color = self._apply_brightness(color, brightness)
         for i in targets:
             self.set_animation(i, "PULSE", adjusted_color, duration=duration, speed=speed, priority=priority)
 
