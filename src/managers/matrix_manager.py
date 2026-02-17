@@ -6,12 +6,13 @@ import asyncio
 from utilities.palette import Palette
 from utilities.icons import Icons
 
-from .base_pixel_manager import BasePixelManager
+from .base_pixel_manager import BasePixelManager, PixelLayout
 
 class MatrixManager(BasePixelManager):
     """Class to manage Matrix style LED arrays, such as the GlowBit 64 LED Matrix."""
     def __init__(self, jeb_pixel):
-        super().__init__(jeb_pixel)
+        # Declare MATRIX_2D layout with 8x8 dimensions
+        super().__init__(jeb_pixel, layout_type=PixelLayout.MATRIX_2D, dimensions=(8, 8))
 
         self.palette = Palette.PALETTE_LIBRARY
         self.icons = Icons.ICON_LIBRARY
