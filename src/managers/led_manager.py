@@ -15,7 +15,7 @@ class LEDManager(BasePixelManager):
     # --- BASIC TRIGGERS ---
     def set_led(self, index, color, brightness=1.0, anim=None, duration=None, priority=2, speed=1.0):
         """Sets a specific LED (or all LEDs) to a color with optional animation."""
-        targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
+        targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
         for i in targets:
             if anim is None:
                 self.solid_led(i, color, brightness=brightness, duration=duration, priority=priority)
@@ -28,7 +28,7 @@ class LEDManager(BasePixelManager):
 
     def off_led(self, index, priority=99):
         """Turns off a specific LED (or all LEDs)."""
-        targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
+        targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
         # Stop animation using the base class method
         for i in targets:
             if self.clear_animation(i, priority):
