@@ -303,10 +303,10 @@ class WebServerManager:
                     except Exception as e:
                         print(f"Error reading file {filepath}: {e}")
                 
-                filename = path.split("/")[-1]
+                filename = normalized_path.split("/")[-1]
                 
                 # Return response with generator for chunked transfer
-                return Response(request, file_generator(path), 
+                return Response(request, file_generator(normalized_path), 
                               content_type="application/octet-stream",
                               headers={"Content-Disposition": f"attachment; filename={filename}"})
             except Exception as e:
@@ -328,11 +328,16 @@ class WebServerManager:
                 
                 # Security: Prevent directory traversal and validate paths
                 normalized_path = self._sanitize_path("/sd", path)
-                normalized_filename = self._sanitize_path("", filename)
                 
-                # Check for directory traversal in both path and filename
-                if ".." in normalized_filename:
-                    return Response(request, '{"error": "Invalid path - directory traversal not allowed"}', 
+                # For filename, we just need to remove any path components
+                # and ensure it doesn't contain directory traversal
+                filename_parts = filename.split("/")
+                # Take only the last part (the actual filename)
+                clean_filename = filename_parts[-1] if filename_parts else filename
+                
+                # Check for directory traversal attempts in filename
+                if ".." in clean_filename or "/" in clean_filename:
+                    return Response(request, '{"error": "Invalid filename - directory traversal not allowed"}', 
                                   content_type="application/json", status=400)
                 
                 # Ensure path is within SD card
@@ -354,7 +359,7 @@ class WebServerManager:
                                   content_type="application/json", status=413)
                 
                 # Write file in chunks to minimize memory usage
-                filepath = f"{path}/{filename}"
+                filepath = f"{normalized_path}/{clean_filename}"
                 with open(filepath, "wb") as f:
                     for i in range(0, len(content), self.CHUNK_SIZE):
                         f.write(content[i:i+self.CHUNK_SIZE])

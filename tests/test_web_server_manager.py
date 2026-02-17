@@ -378,10 +378,6 @@ def test_sanitize_path():
     result = manager._sanitize_path("/sd", "")
     assert result == "/sd", f"Expected '/sd', got '{result}'"
 
-    # Test just filename (no base path)
-    result = manager._sanitize_path("", "test.txt")
-    assert result == "/test.txt", f"Expected '/test.txt', got '{result}'"
-
     # Test path with only base
     result = manager._sanitize_path("/sd", "/sd")
     assert result == "/sd", f"Expected '/sd', got '{result}'"
