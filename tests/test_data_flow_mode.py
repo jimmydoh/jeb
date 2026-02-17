@@ -30,7 +30,7 @@ def test_data_flow_in_manifest():
     assert data_flow_metadata["name"] == "DATA FLOW", "DATA_FLOW mode name incorrect"
     assert data_flow_metadata["module_path"] == "modes.data_flow", "DATA_FLOW module path incorrect"
     assert data_flow_metadata["class_name"] == "DataFlowMode", "DATA_FLOW class name incorrect"
-    assert data_flow_metadata["icon"] == "game", "DATA_FLOW icon incorrect"
+    assert data_flow_metadata["icon"] == "DATA_FLOW", "DATA_FLOW icon incorrect"
     assert "CORE" in data_flow_metadata["requires"], "DATA_FLOW should require CORE"
     
     print("✓ DATA_FLOW mode metadata is correct")
@@ -66,9 +66,21 @@ def test_data_flow_imports():
     except SyntaxError as e:
         raise AssertionError(f"Syntax error in data_flow.py: {e}")
 
+def test_data_flow_icon_exists():
+    """Test that DATA_FLOW icon exists in icon library."""
+    from utilities.icons import Icons
+    
+    assert "DATA_FLOW" in Icons.ICON_LIBRARY, "DATA_FLOW icon not found in ICON_LIBRARY"
+    
+    data_flow_icon = Icons.ICON_LIBRARY["DATA_FLOW"]
+    assert len(data_flow_icon) == 64, "DATA_FLOW icon should have 64 pixels (8x8 matrix)"
+    
+    print("✓ DATA_FLOW icon exists and has correct dimensions")
+
 if __name__ == "__main__":
     test_data_flow_mode_file_exists()
     test_data_flow_in_manifest()
     test_data_flow_difficulty_settings()
     test_data_flow_imports()
+    test_data_flow_icon_exists()
     print("\n✅ All Data Flow mode tests passed!")

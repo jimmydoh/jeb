@@ -159,7 +159,7 @@ MODE_REGISTRY = {
         "name": "DATA FLOW",
         "module_path": "modes.data_flow",
         "class_name": "DataFlowMode",
-        "icon": "game",
+        "icon": "DATA_FLOW",
         "requires": ["CORE"],
         "settings": [
             {

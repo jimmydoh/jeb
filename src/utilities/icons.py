@@ -216,6 +216,17 @@ class Icons:
         0, 0, 4, 4, 0, 0, 0, 0   # Paddle (green)
     ]
 
+    DATA_FLOW = [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        4, 4,13,13, 0, 0, 0, 0,  # Source (green) -> beam (amber)
+        4, 4,13, 0,11, 0, 0, 0,  # Source (green) -> beam -> mirror (cyan)
+        0, 0, 0, 0,11, 0,13, 6,  # Mirror (cyan) -> beam -> target (gold)
+        0, 0, 0, 0, 0, 0,13, 6,  # Beam path -> target (gold)
+        0, 0, 0, 0,12, 0, 0, 0,  # Second mirror (magenta)
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    ]
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "SIMON": SIMON,
@@ -225,6 +236,7 @@ class Icons:
         "FAILURE": FAILURE,
         "PONG": PONG,
         "ASTRO_BREAKER": ASTRO_BREAKER,
+        "DATA_FLOW": DATA_FLOW,
         "0": ZERO,
         "1": ONE,
         "2": TWO,
