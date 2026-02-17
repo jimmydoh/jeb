@@ -177,10 +177,10 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
                     for i in range(4):
                         if self.hid.is_latching_toggled(i):
                             JEBLogger.info("FIRM", f"Local Idle Toggle {i} ON", src=self.id)
-                            self.leds.set_led(i, Palette.GREEN, priority=5) 
+                            self.leds.set_led(i, Palette.GREEN, priority=5)
                         else:
                             JEBLogger.info("FIRM", f"Local Idle Toggle {i} OFF", src=self.id)
-                            self.leds.off_led(i, priority=5)
+                            self.leds.set_led(i, Palette.AMBER, priority=5)
 
                     # 2. Keypad typing directly to 14-Segment Displays
                     key = self.hid.get_keypad_next_key(0) # Assuming index 0 is your matrix keypad

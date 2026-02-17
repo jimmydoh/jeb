@@ -454,4 +454,10 @@ class SatelliteFirmware:
         tasks.extend(await self.custom_start())
 
         # Run all tasks concurrently
-        await asyncio.gather(*tasks)
+        try:
+            await asyncio.gather(*tasks)
+        except Exception as e:
+            print(f"Unexpected Error in satellite tasks: {e}")
+            import traceback
+            traceback.print_exc()
+            await asyncio.sleep(1)  # Prevent tight loop on repeated errors
