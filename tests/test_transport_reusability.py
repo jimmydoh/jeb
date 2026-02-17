@@ -203,7 +203,7 @@ def test_custom_command_set():
     transport = UARTTransport(mock_uart, ROBOT_COMMANDS, ROBOT_DESTINATIONS)
     
     # Send a robotics command
-    msg = Message("BROADCAST", "MOVE_FORWARD", "100,50")
+    msg = Message("ARM", "BROADCAST", "MOVE_FORWARD", "100,50")
     transport.send(msg)
     drain_tx_buffer(transport, mock_uart)
     
@@ -216,6 +216,7 @@ def test_custom_command_set():
     received = receive_message_sync(transport)
     
     assert received is not None
+    assert received.source == "ARM"
     assert received.destination == "BROADCAST"
     assert received.command == "MOVE_FORWARD"
     
@@ -242,8 +243,8 @@ def test_minimal_command_set():
     mock_uart = MockUARTManager()
     transport = UARTTransport(mock_uart, SENSOR_COMMANDS, SENSOR_DESTINATIONS)
     
-    # Send a sensor command
-    msg = Message("ALL", "READ", "TEMP")
+    # Send a sensor command (use numeric ID for source)
+    msg = Message("0101", "ALL", "READ", "TEMP")
     transport.send(msg)
     drain_tx_buffer(transport, mock_uart)
     

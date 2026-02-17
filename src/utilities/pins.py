@@ -91,6 +91,7 @@ class Pins:
             cls.ADC_SENSE_C = getattr(board, "GP28") # 5V Main Rail
             # SPARE cls.ADC_SENSE_D = getattr(board, "GP29") # 5V LED Rail
             cls.EXPANDER = cls.Expander.initialize(profile=profile, type_id=type_id)
+            cls.EXPANDER = cls.Expander
 
             # Keypad Maps for 3x3
             cls.KEYPAD_MAP_3x3 = [
@@ -118,8 +119,10 @@ class Pins:
                 cls.EXPANDER.LATCHING_4
             ]
             cls.EXPANDER_MOMENTARY = [
-                cls.EXPANDER.MOMENTARY_1_UP,
-                cls.EXPANDER.MOMENTARY_1_DOWN
+                [
+                    cls.EXPANDER.MOMENTARY_1_UP,
+                    cls.EXPANDER.MOMENTARY_1_DOWN
+                ]
             ]
 
             # I2C Address Map

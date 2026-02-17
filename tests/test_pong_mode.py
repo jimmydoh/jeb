@@ -29,8 +29,8 @@ def test_pong_in_manifest():
     assert pong_metadata["id"] == "PONG", "PONG mode ID incorrect"
     assert pong_metadata["name"] == "MINI PONG", "PONG mode name incorrect"
     assert pong_metadata["module_path"] == "modes.pong", "PONG module path incorrect"
-    assert pong_metadata["class_name"] == "PongMode", "PONG class name incorrect"
-    assert pong_metadata["icon"] == "pong", "PONG icon incorrect"
+    assert pong_metadata["class_name"] == "Pong", "PONG class name incorrect"
+    assert pong_metadata["icon"] == "PONG", "PONG icon incorrect"
     assert "CORE" in pong_metadata["requires"], "PONG should require CORE"
     
     print("✓ PONG mode metadata is correct")

@@ -307,7 +307,7 @@ class JEBris(GameMode):
     async def pre_game_over(self):
         """Initial custom end game sequence before showing final score and high score."""
         # Fill matrix with flashing red
-        await self.core.matrix.fill(
+        self.core.matrix.fill(
             Palette.RED,
             anim_mode="BLINK",
             duration=2.0,

@@ -21,6 +21,10 @@ class JEBPixel:
             return (0,0,0)
         return self.parent[self.start + index]
 
+    def __len__(self):
+        """Returns the number of pixels in this segment."""
+        return self.n
+
     def fill(self, color):
         """Fills the entire segment with a single color."""
         for i in range(self.start, self.start + self.n):
@@ -28,7 +32,7 @@ class JEBPixel:
 
     def show(self):
         """Updates the segment's buffer memory only.
-        
+
         Note: Hardware write is now centralized in CoreManager.render_loop().
         This method is kept for API compatibility but no longer triggers hardware writes.
         """

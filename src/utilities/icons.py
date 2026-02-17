@@ -226,17 +226,32 @@ class Icons:
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0
     ]
+    
+    TRENCH_RUN = [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        1, 9, 0, 0, 0, 9, 1, 1,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        1, 1, 9, 0, 0, 0, 9, 1,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 7, 0, 0, 0, 0
+    ]
 
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
+        "MENU": DEFAULT,
         "SIMON": SIMON,
         "SAFE": SAFE,
+        "JEBRIS": JEBRIS,
+        "PONG": PONG,
         "IND": IND,
         "SUCCESS": SUCCESS,
         "FAILURE": FAILURE,
         "PONG": PONG,
         "ASTRO_BREAKER": ASTRO_BREAKER,
         "DATA_FLOW": DATA_FLOW,
+        "TRENCH_RUN": TRENCH_RUN,
         "0": ZERO,
         "1": ONE,
         "2": TWO,

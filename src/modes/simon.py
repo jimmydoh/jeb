@@ -75,12 +75,12 @@ class Simon(GameMode):
         self.level = 1
 
         # --- INTRO ---
-        await self.core.display.update_status("SIMON", sub_text)
-        await self.core.matrix.show_icon("SIMON", anim="PULSE", speed=2.0)
+        self.core.display.update_status("SIMON", sub_text)
+        self.core.matrix.show_icon("SIMON", anim_mode="PULSE", speed=2.0)
 
         # Setup button LEDs
         for i in range(4):
-            await self.core.leds.solid_led(i, self.colors[i], brightness=0.5, priority=1)
+            self.core.leds.solid_led(i, self.colors[i], brightness=0.5, priority=1)
 
         await asyncio.sleep(1.5)
         self.core.matrix.clear()
@@ -100,7 +100,7 @@ class Simon(GameMode):
 
             # Reset the button LEDs to off state
             for i in range(4):
-                await self.core.leds.off_led(i)
+                self.core.leds.off_led(i)
 
             # Confirm final speed factor
             final_speed = (self.speed_factor - (self.speed_step * (self.level - 1))) * self.speed_multiplier
@@ -109,14 +109,12 @@ class Simon(GameMode):
             for val in sequence:
                 # Visual: Light up specific quadrant and button LED
                 if self.variant != "BLIND":
-                    await self.core.matrix.draw_quadrant(
+                    self.core.matrix.draw_quadrant(
                         val,
                         self.colors[val],
-                        brightness = 0.8,
-                        anim_mode="SOLID",
                         duration=final_speed
                     )
-                    await self.core.leds.set_led(
+                    self.core.leds.set_led(
                         val,
                         self.colors[val],
                         brightness=0.8,
@@ -136,18 +134,18 @@ class Simon(GameMode):
 
                 # Visual: Turn off
                 if self.variant != "BLIND":
-                    await self.core.matrix.draw_quadrant(val, Palette.OFF)
-                    await self.core.leds.off_led(val)
+                    self.core.matrix.draw_quadrant(val, Palette.OFF)
+                    self.core.leds.off_led(val)
 
                 # Short gap between notes
                 await asyncio.sleep(0.05)
 
             # 3. User Input Phase
-            await self.core.display.update_status(f"LEVEL {self.level} - LENGTH {len(sequence)}", "YOUR TURN")
+            self.core.display.update_status(f"LEVEL {self.level} - LENGTH {len(sequence)}", "YOUR TURN")
 
             # Setup button LEDs
             for i in range(4):
-                await self.core.leds.breathe_led(
+                self.core.leds.breathe_led(
                     i,
                     self.colors[i],
                     brightness=0.5,
@@ -177,7 +175,7 @@ class Simon(GameMode):
                             self.core.audio.CH_SFX,
                             level=0.8
                         )
-                        await self.core.display.update_status("TIMEOUT!", "TOO SLOW")
+                        self.core.display.update_status("TIMEOUT!", "TOO SLOW")
                         await asyncio.sleep(1.0)
                         return await self.pre_game_over()
 
@@ -188,13 +186,11 @@ class Simon(GameMode):
                             last_interaction_time = ticks_ms()
 
                             # Immediate Feedback
-                            await self.core.matrix.draw_quadrant(
+                            self.core.matrix.draw_quadrant(
                                 i,
                                 self.colors[i],
-                                brightness=0.8,
-                                anim_mode="SOLID"
                             )
-                            await self.core.leds.set_led(
+                            self.core.leds.set_led(
                                 i,
                                 self.colors[i],
                                 brightness=0.8,
@@ -210,9 +206,9 @@ class Simon(GameMode):
                                 await asyncio.sleep(0.01)
 
                             # Turn off the matrix quadrant and restore breathing LED
-                            await self.core.matrix.draw_quadrant(i, Palette.OFF)
-                            await self.core.leds.off_led(i)
-                            await self.core.leds.breathe_led(
+                            self.core.matrix.draw_quadrant(i, Palette.OFF)
+                            self.core.leds.off_led(i)
+                            self.core.leds.breathe_led(
                                 i,
                                 self.colors[i],
                                 brightness=0.5,
@@ -234,15 +230,14 @@ class Simon(GameMode):
             # of the sequence is flashed on with each beep. The victory tone is
             # played 0.8 seconds after the last colour of the sequence has been
             # pressed and released.
-            await self.core.leds.start_rainbow(
+            self.core.leds.start_rainbow(
                 speed=0.08,
                 brightness=0.8,
                 duration=0.48
             )
-            await self.core.matrix.draw_quadrant(
+            self.core.matrix.draw_quadrant(
                 sequence[-1],
                 self.colors[sequence[-1]],
-                brightness=0.8,
                 anim_mode="FLASH",
                 speed=0.08,
                 duration=0.48
@@ -277,14 +272,14 @@ class Simon(GameMode):
             par_time = self.level * (self.timeout_ms / 3)  # 1/3 of the timeout per note
             if round_duration < par_time:
                 bonus = (par_time - round_duration) // 100 * self.score_multiplier
-                await self.core.display.update_status(
+                self.core.display.update_status(
                     f"ROUND SCORE: {round_score}",
                     f"SPEED BONUS: +{int(bonus)}"
                 )
                 round_score += int(bonus)
             else:
                 bonus = (round_duration - par_time) // 250 * self.score_multiplier
-                await self.core.display.update_status(
+                self.core.display.update_status(
                     f"ROUND SCORE: {round_score}",
                     f"SPEED PENALTY: -{int(bonus)}"
                 )
@@ -292,16 +287,16 @@ class Simon(GameMode):
             await asyncio.sleep(1)
 
             self.score += round_score
-            await self.core.display.update_status(f"ROUND: {round_score}", f"TOTAL: {self.score}")
+            self.core.display.update_status(f"ROUND: {round_score}", f"TOTAL: {self.score}")
             await asyncio.sleep(1)
 
-            await self.core.leds.off_led(-1) # Turn off all button LEDs
-            await self.core.matrix.clear()   # Clear matrix before next round
+            self.core.leds.off_led(-1) # Turn off all button LEDs
+            self.core.matrix.clear()   # Clear matrix before next round
 
     async def pre_game_over(self):
         """Initial custom end game sequence before showing final score and high score."""
         # Fill matrix with flashing red
-        await self.core.matrix.fill(
+        self.core.matrix.fill(
             Palette.RED,
             anim_mode="BLINK",
             duration=2.0,

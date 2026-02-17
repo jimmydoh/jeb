@@ -25,20 +25,20 @@ class Palette:
     AMBER  = (255, 191, 0)
 
     PALETTE_LIBRARY = {
-        "OFF": OFF,
-        "RED": RED,
-        "BLUE": BLUE,
-        "YELLOW": YELLOW,
-        "GREEN": GREEN,
-        "WHITE": WHITE,
-        "GOLD": GOLD,
-        "SILVER": SILVER,
-        "PURPLE": PURPLE,
-        "ORANGE": ORANGE,
-        "PINK": PINK,
-        "CYAN": CYAN,
-        "MAGENTA": MAGENTA,
-        "AMBER": AMBER
+        0: OFF,
+        1: RED,
+        2: BLUE,
+        3: YELLOW,
+        4: GREEN,
+        5: WHITE,
+        6: GOLD,
+        7: SILVER,
+        8: PURPLE,
+        9: ORANGE,
+        10: PINK,
+        11: CYAN,
+        12: MAGENTA,
+        13: AMBER
     }
 
     @staticmethod

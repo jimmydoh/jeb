@@ -19,6 +19,7 @@ from transport.protocol import (
     CMD_HELLO,
     CMD_ID_ASSIGN,
     CMD_REBOOT,
+    CMD_MODE,
     COMMAND_MAP,
     DEST_MAP,
     MAX_INDEX_VALUE,
@@ -26,6 +27,11 @@ from transport.protocol import (
 )
 
 from utilities.pins import Pins
+
+POW_INPUT = "input_20v"
+POW_BUS = "satbus_20v"
+POW_MAIN = "main_5v"
+POW_LED = "led_5v"
 
 class SatelliteFirmware:
     """
@@ -58,11 +64,13 @@ class SatelliteFirmware:
         self.last_sync_frame = 0
         self.time_offset = 0.0  # Estimated time difference from Core (in seconds)
 
+        self.operating_mode = "IDLE"
+
         # Common Hardware
         # Init power manager first for voltage readings
         self.power = PowerManager(
             Pins.SENSE_PINS,
-            ["input", "satbus", "main"],
+            [POW_INPUT, POW_BUS, POW_MAIN],
             Pins.MOSFET_CONTROL,
             Pins.SATBUS_DETECT
         )
@@ -89,7 +97,8 @@ class SatelliteFirmware:
 
         self._system_handlers = {
             CMD_ID_ASSIGN: self._handle_id_assign,
-            CMD_REBOOT: self._handle_reboot_command
+            CMD_REBOOT: self._handle_reboot_command,
+            CMD_MODE: self._handle_mode_command
         }
 
         self.watchdog = WatchdogManager(
@@ -121,6 +130,7 @@ class SatelliteFirmware:
                 )
 
     async def _handle_id_assign(self, val):
+        #print(f"{self.sat_type_id}-{self.id}: Handling ID_ASSIGN with value: {val}")
         if isinstance(val, bytes):
             val = val.decode('utf-8')
         type_prefix = val[:2]
@@ -134,38 +144,59 @@ class SatelliteFirmware:
                 # I don't have an ID yet, use the current index
                 new_index = current_index + 1
                 self.id = f"{type_prefix}{new_index:02d}"
+                #print(f"{self.sat_type_id}-{self.id}: Assigned new ID based on NEW_SAT: {self.id}")
 
             # Send back a HELLO
-            if not self.transport_up.send(Message(self.id, CMD_HELLO, self.sat_type_name)):
+            #print(f"{self.sat_type_id}-{self.id}: Sending HELLO message upstream for ID assignment with ID: {self.id}")
+            if not self.transport_up.send(Message(self.id, "CORE", CMD_HELLO, self.sat_type_name)):
                 # Ignore send failure, will retry on next status update or command
-                print(f"Failed to send HELLO message for ID assignment of {self.id}")
+                print(f"{self.sat_type_id}-{self.id}: Failed to send HELLO message for ID assignment of {self.id}")
 
             # Forward downstream
-            msg_out = Message("ALL", CMD_ID_ASSIGN, self.id)
+            msg_out = Message("CORE", "ALL", CMD_ID_ASSIGN, self.id)
             if not self.transport_down.send(msg_out):
                 # Ignore send failure, will retry on next status update or command
-                print(f"Failed to forward ID assignment of {self.id} downstream")
+                print(f"{self.sat_type_id}-{self.id}: Failed to forward ID assignment of {self.id} downstream")
         else:
             # Pass original downstream
-            msg_out = Message("ALL", CMD_ID_ASSIGN, val)
+            msg_out = Message("CORE","ALL", CMD_ID_ASSIGN, val)
             if not self.transport_down.send(msg_out):
                 # Ignore send failure, will retry on next status update or command
-                print(f"Failed to forward ID assignment of {self.id} downstream")
+                print(f"{self.sat_type_id}-{self.id}: Failed to forward ID assignment of {self.id} downstream")
 
     async def _handle_reboot_command(self, val):
         # Log reboot and reason if provided to console and send LOG upstream before rebooting
         reason = val.decode('utf-8') if isinstance(val, bytes) else str(val)
         if reason:
-            print(f"Reboot command received with reason: {reason}. Rebooting now...")
+            print(f"{self.sat_type_id}-{self.id}: Reboot command received with reason: {reason}. Rebooting now...")
             log_msg = f"REBOOT_CMD: {reason}"
         else:
-            print("Reboot command received. Rebooting now...")
+            print(f"{self.sat_type_id}-{self.id}: Reboot command received. Rebooting now...")
             log_msg = "REBOOT_CMD: No reason provided"
-        if not self.transport_up.send(Message(self.id, "LOG", log_msg)):
+        if not self.transport_up.send(Message(self.id, "CORE", "LOG", log_msg)):
             # Ignore send failure, non critical logging message
-            print(f"Failed to send reboot log message upstream for {self.id}")
+            print(f"{self.sat_type_id}-{self.id}: Failed to send reboot log message upstream")
         # Use the WatchdogManager to reboot (1 second delay)
         self.watchdog.force_reboot()
+
+    async def _handle_mode_command(self, val):
+        """Processes an upstream mode change request."""
+        if isinstance(val, bytes):
+            val = val.decode('utf-8')
+        new_mode = val.strip().upper()
+        
+        if new_mode in ("IDLE", "ACTIVE"):
+            if self.operating_mode != new_mode:
+                self.operating_mode = new_mode
+                # Notify upstream that the switch was successful
+                if not self.transport_up.send(Message(self.id, "CORE", "LOG", f"MODE_CHANGED:{new_mode}")):
+                    pass
+                # Trigger subclass specific cleanups
+                await self.on_mode_change(new_mode)
+
+    async def on_mode_change(self, new_mode):
+        """Virtual hook for subclasses to react to mode transitions."""
+        pass
 
     async def monitor_connection(self):
         """Background task to manage the downstream RJ45 power pass-through."""
@@ -180,19 +211,19 @@ class SatelliteFirmware:
 
             # Scenario: Physical link detected but power is currently OFF
             if self.power.satbus_connected and not self.power.sat_pwr.value:
-                msg_out = Message(self.id, "LOG", "LINK_DETECTED:INIT_PWR")
+                msg_out = Message(self.id, "CORE", "LOG", "LINK_DETECTED:INIT_PWR")
                 if not self.transport_up.send(msg_out):
                     # Ignore send failure, non critical logging message
                     pass
                 # Perform soft-start to protect the bus
                 success, error = await self.power.soft_start_satellites()
                 if success:
-                    msg_out = Message(self.id, "LOG", "LINK_ACTIVE")
+                    msg_out = Message(self.id, "CORE", "LOG", "LINK_ACTIVE")
                     if not self.transport_up.send(msg_out):
                         # Ignore send failure, non critical logging message
                         pass
                 else:
-                    msg_out = Message(self.id, "ERROR", f"PWR_FAILED:{error}")
+                    msg_out = Message(self.id, "CORE", "ERROR", f"PWR_FAILED:{error}")
                     if not self.transport_up.send(msg_out):
                         # TODO: Implement retry logic for power fail message
                         pass
@@ -200,7 +231,7 @@ class SatelliteFirmware:
             # Scenario: Physical link lost while power is ON
             elif not self.power.satbus_connected and self.power.sat_pwr.value:
                 self.power.emergency_kill() # Immediate hardware cut-off
-                msg_out = Message(self.id, "ERROR", "LINK_LOST")
+                msg_out = Message(self.id, "CORE", "ERROR", "LINK_LOST")
                 if not self.transport_up.send(msg_out):
                     # TODO: Implement retry logic for link lost message
                     pass
@@ -218,7 +249,7 @@ class SatelliteFirmware:
             now = time.monotonic()
 
             # Safety Check: Downstream Bus Failure cut-off
-            if self.power.sat_pwr.value and v["bus"] < 17.0:
+            if self.power.sat_pwr.value and v[POW_BUS] < 17.0:
                 self.power.emergency_kill() # Instant cut-off
 
             # Suppress power monitoring messages during initial
@@ -232,8 +263,9 @@ class SatelliteFirmware:
                 if not self.transport_up.send(
                     Message(
                         self.id,
+                        "CORE",
                         "POWER",
-                        [v['in'], v['bus'], v['log']]
+                        [v[POW_INPUT], v[POW_BUS], v[POW_MAIN]]
                     )
                 ):
                     # Ignore send failure, will retry on next status update or command
@@ -242,22 +274,24 @@ class SatelliteFirmware:
                     last_broadcast = now
 
             # Send Error Message for Logic rail sagging
-            if v["log"] < 4.7:
+            if v[POW_MAIN] < 4.7:
                 if not self.transport_up.send(
                     Message(
                         self.id,
+                        "CORE",
                         "ERROR",
-                        f"LOGIC_BROWNOUT:{v['log']}V"
+                        f"LOGIC_BROWNOUT:{v[POW_MAIN]}V"
                     )
                 ):
                     # TODO: Implement retry logic for critical error messages like brownouts
                     pass
 
             # Send Error Message for Downstream Bus Failure
-            if self.power.sat_pwr.value and v["bus"] < 17.0:
+            if self.power.sat_pwr.value and v[POW_BUS] < 17.0:
                 if not self.transport_up.send(
                     Message(
                         self.id,
+                        "CORE",
                         "ERROR",
                         "BUS_SHUTDOWN:LOW_V"
                     )
@@ -299,7 +333,8 @@ class SatelliteFirmware:
         handler = self._system_handlers.get(cmd)
         if handler:
             await handler(val)
-            return
+            return True
+        return False # Command was not handled
 
     async def _task_tx_upstream(self):
         """
@@ -311,27 +346,35 @@ class SatelliteFirmware:
             # Initial Discovery Phase: Broadcast NEW_SAT message until ID is assigned
             if not self.id:
                 if time.monotonic() - self.last_tx > 3.0:
-                    msg_out = Message("SAT", "NEW_SAT", self.sat_type_id)
+                    msg_out = Message(f"{self.sat_type_id}00", "CORE", "NEW_SAT", self.sat_type_id)
                     if self.transport_up.send(msg_out):
                         self.last_tx = time.monotonic()
                     else:
                         # Back off slightly on send failure
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(1)
 
-            # Normal Operation: Send STATUS message when triggered or every 2 seconds
+            # Normal Operation: Send STATUS message when triggered or every 3 seconds
             else:
-                # Check if update needed (event trigger or timeout)
-                if self._status_event.is_set() or time.monotonic() - self.last_tx > 2.0:
-                    # Use get_status_bytes() to avoid string allocation overhead
-                    msg_out = Message(self.id, "STATUS", self._get_status_bytes())
+                if self.operating_mode == "IDLE":
+                    # IDLE STATE: Suppress constant status updates, send a minimalist heartbeat every 3s
+                    if time.monotonic() - self.last_tx > 3.0:
+                        msg_out = Message(self.id, "CORE", "PING")
+                        if self.transport_up.send(msg_out):
+                            self.last_tx = time.monotonic()
+                            self._status_event.clear()
+                else:
+                    # Check if update needed (event trigger or timeout)
+                    if self._status_event.is_set() or time.monotonic() - self.last_tx > 3.0:
+                        # Use get_status_bytes() to avoid string allocation overhead
+                        msg_out = Message(self.id, "CORE", "STATUS", self._get_status_bytes())
 
-                    if self.transport_up.send(msg_out):
-                        self.last_tx = time.monotonic()
-                        self._status_event.clear()
-                    elif self._status_event.is_set():
-                        # If triggered by event but failed, retry quickly
-                        await asyncio.sleep(0.05)
-                        continue
+                        if self.transport_up.send(msg_out):
+                            self.last_tx = time.monotonic()
+                            self._status_event.clear()
+                        elif self._status_event.is_set():
+                            # If triggered by event but failed, retry quickly
+                            await asyncio.sleep(0.05)
+                            continue
 
             # Base loop delay to yield to other tasks
             await asyncio.sleep(0.1)
@@ -352,9 +395,11 @@ class SatelliteFirmware:
                 message = await self.transport_up.receive()
 
                 if message:
+                    #print(f"{self.sat_type_id}-{self.id}: Received upstream message: {message}")
                     # 1. Local Processing
                     # Process if addressed to us (ID match) or broadcast (ALL)
                     if message.destination == self.id or message.destination == "ALL":
+                        #print(f"{self.sat_type_id}-{self.id}: Processing command '{message.command}' with payload: {message.payload}")
                         await self._process_local_cmd(message.command, message.payload)
                     if not message.destination == self.id:
                         # 2. Forward Downstream (Application-level Relay)
@@ -409,4 +454,10 @@ class SatelliteFirmware:
         tasks.extend(await self.custom_start())
 
         # Run all tasks concurrently
-        await asyncio.gather(*tasks)
+        try:
+            await asyncio.gather(*tasks)
+        except Exception as e:
+            print(f"Unexpected Error in satellite tasks: {e}")
+            import traceback
+            traceback.print_exc()
+            await asyncio.sleep(1)  # Prevent tight loop on repeated errors
