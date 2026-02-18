@@ -254,6 +254,7 @@ class UARTTransport(BaseTransport):
     RING_BUFFER_SIZE = 2048  # Fixed 2KB ring buffer
     MAX_PACKET_SIZE = 256    # Maximum packet size for scanning and scratchpad
     BATCH_LIMIT = 10         # Max messages to process per loop iteration
+    MAX_TX_CHUNK = 32        # Max bytes to transmit per iteration to prevent event loop blocking
 
     def __init__(self, uart_hw, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None):
         """Initialize UART transport.
@@ -668,6 +669,11 @@ class UARTTransport(BaseTransport):
                 else:
                     # Wraps around; write from tail to end of buffer first
                     chunk = self._tx_mv[tail:size]
+
+                # Limit chunk size to prevent blocking the event loop
+                # (e.g., 256 bytes at 115200 baud = >20ms blocking time)
+                if len(chunk) > self.MAX_TX_CHUNK:
+                    chunk = chunk[:self.MAX_TX_CHUNK]
 
                 written = self.uart.write(chunk)
 
