@@ -47,7 +47,7 @@
 - **Web-Based Configurator**: Browser-based field service interface for remote configuration, file management, and system monitoring
 - **Rich I/O**: 
   - 128x64 OLED display (I2C)
-  - 8x8 NeoPixel matrix (GlowBit 64)
+  - 8x8 NeoPixel matrix (GlowBit 64) with support for arbitrary matrix configurations (dual, quad, strips, custom)
   - I2S audio amplifier support
   - SD card storage
   - Rotary encoder with button
@@ -511,6 +511,7 @@ Detailed hardware and implementation documentation is available in the `docs/` d
 - **[BINARY_PROTOCOL.md](docs/BINARY_PROTOCOL.md)**: Binary protocol specification and message format
 - **[CRC_IMPLEMENTATION.md](docs/CRC_IMPLEMENTATION.md)**: CRC implementation and validation details
 - **[LED_RENDERING.md](docs/LED_RENDERING.md)**: LED rendering optimization, frame sync, and animation architecture
+- **[MATRIX_ARBITRARY_CONFIGURATIONS.md](docs/MATRIX_ARBITRARY_CONFIGURATIONS.md)**: Arbitrary matrix configuration support for dual, quad, and custom LED matrix layouts
 - **[OPTIMIZATION_SUMMARY.md](docs/OPTIMIZATION_SUMMARY.md)**: Performance optimizations and system improvements
 - **[OTA_UPDATE.md](docs/OTA_UPDATE.md)**: Over-The-Air firmware update system (Pico 2W)
 - **[WEB_CONFIGURATOR.md](docs/WEB_CONFIGURATOR.md)**: Web-based field service configurator with remote configuration and monitoring
