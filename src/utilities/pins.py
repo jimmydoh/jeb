@@ -2,6 +2,18 @@
 """Centralized Pin Map for JEB Project"""
 import board
 
+# Voltage Divider Multipliers
+# These represent the inverse of the physical voltage divider ratios
+# and are used to calculate actual voltages from ADC readings.
+# Formula: actual_voltage = adc_voltage * multiplier
+# 
+# For 20V sensing: Voltage divider ratio = 6.8kΩ/(47kΩ + 6.8kΩ) = 0.1263
+#                  Multiplier = 1/0.1263 ≈ 7.919
+# For 5V sensing:  Voltage divider ratio = 10kΩ/(10kΩ + 10kΩ) = 0.5
+#                  Multiplier = 1/0.5 = 2.0
+DIVIDER_MULTIPLIER_20V = 1 / 0.1263  # ≈7.919
+DIVIDER_MULTIPLIER_5V = 1 / 0.5      # = 2.0
+
 class Pins:
     """Centralized Pin Map for JEB Project"""
     @classmethod
@@ -51,6 +63,19 @@ class Pins:
                 cls.EXPANDER.BUTTON_C,
                 cls.EXPANDER.BUTTON_D
             ]
+
+            # ADC Configuration
+            # Defines which ADC to use for power sensing and role assignments
+            cls.ADC_CONFIG = {
+                "chip_type": "NATIVE",  # Use native analogio ADC pins
+                "address": None,  # Not used for native ADC
+                "channels": [
+                    {"name": "input_20v", "pin": cls.ADC_SENSE_A, "multiplier": DIVIDER_MULTIPLIER_20V},
+                    {"name": "satbus_20v", "pin": cls.ADC_SENSE_B, "multiplier": DIVIDER_MULTIPLIER_20V},
+                    {"name": "main_5v", "pin": cls.ADC_SENSE_C, "multiplier": DIVIDER_MULTIPLIER_5V},
+                    {"name": "led_5v", "pin": cls.ADC_SENSE_D, "multiplier": DIVIDER_MULTIPLIER_5V},
+                ]
+            }
 
             # I2C Address Map
             cls.I2C_ADDRESSES = {
@@ -124,6 +149,18 @@ class Pins:
                     cls.EXPANDER.MOMENTARY_1_DOWN
                 ]
             ]
+
+            # ADC Configuration
+            # Defines which ADC to use for power sensing and role assignments
+            cls.ADC_CONFIG = {
+                "chip_type": "NATIVE",  # Use native analogio ADC pins
+                "address": None,  # Not used for native ADC
+                "channels": [
+                    {"name": "input_20v", "pin": cls.ADC_SENSE_A, "multiplier": DIVIDER_MULTIPLIER_20V},
+                    {"name": "satbus_20v", "pin": cls.ADC_SENSE_B, "multiplier": DIVIDER_MULTIPLIER_20V},
+                    {"name": "main_5v", "pin": cls.ADC_SENSE_C, "multiplier": DIVIDER_MULTIPLIER_5V},
+                ]
+            }
 
             # I2C Address Map
             cls.I2C_ADDRESSES = {

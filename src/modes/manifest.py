@@ -153,6 +153,44 @@ MODE_REGISTRY = {
                 "default": "3RD_PERSON"
             }
         ]
+    },
+    "DATA_FLOW": {
+        "id": "DATA_FLOW",
+        "name": "DATA FLOW",
+        "module_path": "modes.data_flow",
+        "class_name": "DataFlowMode",
+        "icon": "DATA_FLOW",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "SNAKE": {
+        "id": "SNAKE",
+        "name": "CYBER SNAKE",
+        "module_path": "modes.cyber_snake",
+        "class_name": "CyberSnakeMode",
+        "icon": "SNAKE",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "edges",
+                "label": "EDGES",
+                "options": ["WRAP", "WALLS"],
+                "default": "WRAP"
+            }
+        ]
     }
 }
 

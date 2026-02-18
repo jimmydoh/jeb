@@ -4,17 +4,18 @@
 from utilities.payload_parser import parse_values, get_int, get_float, get_str
 from utilities.palette import Palette
 
-from .base_pixel_manager import BasePixelManager
+from .base_pixel_manager import BasePixelManager, PixelLayout
 
 class LEDManager(BasePixelManager):
     """Class to control a number of individual LED elements in a 'straight line' format."""
     def __init__(self, jeb_pixel):
-        super().__init__(jeb_pixel)
+        # Declare LINEAR layout for LED strips/strings
+        super().__init__(jeb_pixel, layout_type=PixelLayout.LINEAR, dimensions=(jeb_pixel.n,))
 
     # --- BASIC TRIGGERS ---
     def set_led(self, index, color, brightness=1.0, anim=None, duration=None, priority=2, speed=1.0):
         """Sets a specific LED (or all LEDs) to a color with optional animation."""
-        targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
+        targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
         for i in targets:
             if anim is None:
                 self.solid_led(i, color, brightness=brightness, duration=duration, priority=priority)
@@ -27,7 +28,7 @@ class LEDManager(BasePixelManager):
 
     def off_led(self, index, priority=99):
         """Turns off a specific LED (or all LEDs)."""
-        targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
+        targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
         # Stop animation using the base class method
         for i in targets:
             if self.clear_animation(i, priority):
@@ -103,35 +104,30 @@ class LEDManager(BasePixelManager):
     # --- SIMPLE ANIMATION TRIGGERS ---
     def solid_led(self, index, color, brightness=0.2, duration=None, priority=2):
         """Sets a SOLID animation (static color) to a specific LED (or all LEDs)."""
-        targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
-        for i in targets:
-            self.set_animation(i, "SOLID", tuple(int(c * brightness) for c in color), duration=duration, priority=priority)
+        self.solid(index, color, brightness=brightness, duration=duration, priority=priority)
 
     def flash_led(self, index, color, brightness=0.2, duration=None, priority=2, speed=0.1, off_speed=None):
         """Flashes a specific LED (or all LEDs) for a duration."""
-        targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
-        for i in targets:
-            self.set_animation(i, "BLINK", tuple(int(c * brightness) for c in color), duration=duration, speed=speed, priority=priority)
+        # Note: off_speed parameter is ignored (legacy compatibility)
+        self.flash(index, color, brightness=brightness, duration=duration, priority=priority, speed=speed)
 
     def breathe_led(self, index, color, brightness=1.0, duration=None, priority=2, speed=2.0):
         """Commences a breathing animation on a specific LED (or all LEDs)."""
-        targets = range(len(self.pixels)) if index < 0 or index >= len(self.pixels) else [index]
-        for i in targets:
-            self.set_animation(i, "PULSE", tuple(int(c * brightness) for c in color), duration=duration, speed=speed, priority=priority)
+        self.breathe(index, color, brightness=brightness, duration=duration, priority=priority, speed=speed)
 
     # --- COMPLEX ANIMATION TRIGGERS ---
     def start_cylon(self, color, duration=None, speed=0.08):
         """Starts a Cylon animation across all LEDs."""
-        self.fill_animation("SCANNER", color, speed=speed, duration=duration, priority=1)
+        self.cylon(color, duration=duration, speed=speed, priority=1)
 
     def start_centrifuge(self, color, duration=None, speed=0.1):
         """A looping 'spinning' effect with motion blur."""
-        self.fill_animation("CHASER", color, speed=speed, duration=duration, priority=1)
+        self.centrifuge(color, duration=duration, speed=speed, priority=1)
 
     def start_rainbow(self, duration=None, speed=0.01):
         """Smoothly cycles colors across the whole strip."""
-        self.fill_animation("RAINBOW", None, speed=speed, duration=duration, priority=1)
+        self.rainbow(duration=duration, speed=speed, priority=1)
 
     def start_glitch(self, colors, duration=None, speed=0.05):
         """Randomly 'pops' pixels from a list of colors to simulate instability."""
-        self.fill_animation("GLITCH", colors, speed=speed, duration=duration, priority=1)
+        self.glitch(colors, duration=duration, speed=speed, priority=1)

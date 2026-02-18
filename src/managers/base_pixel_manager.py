@@ -5,8 +5,16 @@ import asyncio
 import time
 import math
 import random
+from enum import Enum
 
 from utilities.palette import Palette
+
+class PixelLayout(Enum):
+    """Defines the physical layout type of pixel arrays."""
+    LINEAR = "linear"           # 1D strip, string, or straight line
+    MATRIX_2D = "matrix_2d"     # 2D grid/matrix (e.g., 8x8)
+    CIRCLE = "circle"           # Circular/ring arrangement
+    CUSTOM = "custom"           # Custom/irregular layout
 
 class AnimationSlot:
     """Reusable animation slot to avoid object churn."""
@@ -46,11 +54,27 @@ class AnimationSlot:
 class BasePixelManager:
     """
     Base class for managing NeoPixel animations via a non-blocking loop.
-    Supports: BLINK, PULSE, RAINBOW, GLITCH, DECAY, SCANNER (Cylon), CHASER.
+    Supports: SOLID, BLINK, PULSE, RAINBOW, GLITCH, DECAY, SCANNER (Cylon), CHASER.
+    
+    Provides shape/layout awareness for implementing subclasses to enable
+    layout-specific animation behavior.
     """
-    def __init__(self, pixel_object):
+    def __init__(self, pixel_object, layout_type=PixelLayout.LINEAR, dimensions=None):
+        """
+        Initialize pixel manager with shape/layout awareness.
+        
+        Args:
+            pixel_object: JEBPixel wrapper object
+            layout_type: PixelLayout enum indicating physical arrangement
+            dimensions: Tuple of dimensions, e.g., (width, height) for MATRIX_2D,
+                       (radius,) for CIRCLE, or (length,) for LINEAR
+        """
         self.pixels = pixel_object # JEBPixel wrapper
         self.num_pixels = self.pixels.n
+        
+        # Shape/layout properties
+        self._layout_type = layout_type
+        self._dimensions = dimensions or (self.num_pixels,)
 
         # Fixed-size list for animations (one slot per pixel)
         # Each slot is a reusable AnimationSlot object
@@ -58,6 +82,26 @@ class BasePixelManager:
 
         # Track active animation count to avoid O(n) checks
         self._active_count = 0
+
+    def get_layout_type(self):
+        """Returns the layout type (PixelLayout enum)."""
+        return self._layout_type
+
+    def get_dimensions(self):
+        """Returns the dimensions tuple for this pixel array."""
+        return self._dimensions
+
+    def get_shape(self):
+        """
+        Returns shape information as a dict for convenience.
+        
+        Returns:
+            dict with 'type' (PixelLayout) and 'dimensions' (tuple)
+        """
+        return {
+            'type': self._layout_type,
+            'dimensions': self._dimensions
+        }
 
     def clear(self):
         """Stops all animations and clears LEDs."""
@@ -122,6 +166,140 @@ class BasePixelManager:
                 self._active_count += 1
 
             slot.set(anim_type, color, speed, start_t, duration, priority)
+
+    def _apply_brightness(self, base_color, brightness):
+        """
+        Stateless, highly optimized brightness calculation.
+        
+        Args:
+            base_color: Tuple of (r, g, b) values
+            brightness: Float from 0.0 to 1.0 (values outside range are clamped)
+        
+        Returns:
+            Tuple of brightness-adjusted (r, g, b) values
+        
+        Note:
+            - Clamps brightness to [0.0, 1.0] to prevent NeoPixel ValueErrors
+            - Uses explicit tuple indexing for better performance on RP2350
+            - Avoids generator comprehensions to reduce heap fragmentation
+        """
+        # Clamp brightness to prevent NeoPixel ValueErrors
+        brightness = max(0.0, min(1.0, brightness))
+        
+        if brightness >= 1.0:
+            return base_color
+        if brightness <= 0.0:
+            return (0, 0, 0)
+
+        # Explicit tuple indexing is significantly faster on RP2350 
+        # and avoids generator comprehensions in memory
+        return (
+            int(base_color[0] * brightness),
+            int(base_color[1] * brightness),
+            int(base_color[2] * brightness)
+        )
+
+    # --- COMMON ANIMATION TRIGGERS ---
+    # These methods provide convenient wrappers for common animation patterns
+    # and can be used by all subclasses regardless of layout type.
+
+    def solid(self, index, color, brightness=1.0, duration=None, priority=2):
+        """
+        Sets a SOLID animation (static color) to a specific pixel or all pixels.
+        
+        Args:
+            index: Pixel index, or -1/out-of-range for all pixels
+            color: RGB tuple (r, g, b)
+            brightness: Brightness multiplier (0.0-1.0)
+            duration: Optional duration in seconds
+            priority: Animation priority level
+        """
+        targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
+        adjusted_color = self._apply_brightness(color, brightness)
+        for i in targets:
+            self.set_animation(i, "SOLID", adjusted_color, duration=duration, priority=priority)
+
+    def flash(self, index, color, brightness=1.0, duration=None, priority=2, speed=1.0):
+        """
+        Flashes a specific pixel or all pixels (BLINK animation).
+        
+        Args:
+            index: Pixel index, or -1/out-of-range for all pixels
+            color: RGB tuple (r, g, b)
+            brightness: Brightness multiplier (0.0-1.0)
+            duration: Optional duration in seconds
+            priority: Animation priority level
+            speed: Blink speed (flashes per second)
+        """
+        targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
+        adjusted_color = self._apply_brightness(color, brightness)
+        for i in targets:
+            self.set_animation(i, "BLINK", adjusted_color, duration=duration, speed=speed, priority=priority)
+
+    def breathe(self, index, color, brightness=1.0, duration=None, priority=2, speed=2.0):
+        """
+        Commences a breathing/pulse animation on a specific pixel or all pixels.
+        
+        Args:
+            index: Pixel index, or -1/out-of-range for all pixels
+            color: RGB tuple (r, g, b)
+            brightness: Brightness multiplier (0.0-1.0)
+            duration: Optional duration in seconds
+            priority: Animation priority level
+            speed: Breathing speed (cycles per second)
+        """
+        targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
+        adjusted_color = self._apply_brightness(color, brightness)
+        for i in targets:
+            self.set_animation(i, "PULSE", adjusted_color, duration=duration, speed=speed, priority=priority)
+
+    def cylon(self, color, duration=None, speed=0.08, priority=1):
+        """
+        Starts a Cylon/scanner animation across all pixels.
+        Animation behavior adapts to layout type.
+        
+        Args:
+            color: RGB tuple (r, g, b)
+            duration: Optional duration in seconds
+            speed: Scanner speed
+            priority: Animation priority level
+        """
+        self.fill_animation("SCANNER", color, speed=speed, duration=duration, priority=priority)
+
+    def centrifuge(self, color, duration=None, speed=0.1, priority=1):
+        """
+        A looping 'spinning' effect with motion blur (CHASER animation).
+        
+        Args:
+            color: RGB tuple (r, g, b)
+            duration: Optional duration in seconds
+            speed: Spin speed
+            priority: Animation priority level
+        """
+        self.fill_animation("CHASER", color, speed=speed, duration=duration, priority=priority)
+
+    def rainbow(self, duration=None, speed=0.01, priority=1):
+        """
+        Smoothly cycles colors across all pixels (RAINBOW animation).
+        
+        Args:
+            duration: Optional duration in seconds
+            speed: Color cycle speed
+            priority: Animation priority level
+        """
+        self.fill_animation("RAINBOW", None, speed=speed, duration=duration, priority=priority)
+
+    def glitch(self, colors, duration=None, speed=0.05, priority=1):
+        """
+        Randomly 'pops' pixels from a list of colors to simulate instability.
+        
+        Args:
+            colors: List of RGB tuples to randomly display
+            duration: Optional duration in seconds
+            speed: Glitch speed
+            priority: Animation priority level
+        """
+        self.fill_animation("GLITCH", colors, speed=speed, duration=duration, priority=priority)
 
     async def animate_loop(self, step=True):
         """Unified background task to handle all pixel animations."""

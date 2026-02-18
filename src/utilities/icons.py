@@ -216,6 +216,17 @@ class Icons:
         0, 0, 4, 4, 0, 0, 0, 0   # Paddle (green)
     ]
 
+    DATA_FLOW = [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        4, 4,13,13, 0, 0, 0, 0,  # Source (green) -> beam (amber)
+        4, 4,13, 0,11, 0, 0, 0,  # Source (green) -> beam -> mirror (cyan)
+        0, 0, 0, 0,11, 0,13, 6,  # Mirror (cyan) -> beam -> target (gold)
+        0, 0, 0, 0, 0, 0,13, 6,  # Beam path -> target (gold)
+        0, 0, 0, 0,12, 0, 0, 0,  # Second mirror (magenta)
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    ]
+    
     TRENCH_RUN = [
         0, 0, 0, 0, 0, 0, 0, 0,
         1, 9, 0, 0, 0, 9, 1, 1,
@@ -225,6 +236,17 @@ class Icons:
         1, 1, 9, 0, 0, 0, 9, 1,
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 7, 0, 0, 0, 0
+    ]
+
+    SNAKE = [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 4, 4, 4, 0, 0, 0,  # Snake head (green)
+        0, 0, 4, 0, 4, 0, 0, 0,  # Snake eyes
+        0, 0, 4, 4, 4, 0, 0, 0,  # Snake body
+        0, 0, 0, 4, 0, 0, 0, 0,  # Body continues
+        0, 0, 4, 4, 4, 0, 0, 0,  # Body
+        0, 4, 4, 0, 0, 0, 0, 0,  # Tail
+        0, 0, 0, 0, 1, 0, 0, 0   # Apple (red)
     ]
 
     ICON_LIBRARY = {
@@ -237,9 +259,10 @@ class Icons:
         "IND": IND,
         "SUCCESS": SUCCESS,
         "FAILURE": FAILURE,
-        "PONG": PONG,
         "ASTRO_BREAKER": ASTRO_BREAKER,
+        "DATA_FLOW": DATA_FLOW,
         "TRENCH_RUN": TRENCH_RUN,
+        "SNAKE": SNAKE,
         "0": ZERO,
         "1": ONE,
         "2": TWO,

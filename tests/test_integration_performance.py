@@ -166,7 +166,7 @@ def test_end_to_end_binary_flow():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, {})
 
     # Send LED command: LED 0, RGB(255, 128, 64), 2.0s duration, 0.8 brightness, priority 3
-    msg_out = Message("0101", "LED", "0,255,128,64")
+    msg_out = Message("CORE", "0101", "LED", "0,255,128,64")
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
 
@@ -256,7 +256,7 @@ def test_struct_unpack_ultimate_performance():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, {})
 
     # Send LED command
-    msg_out = Message("0101", "LED", "10,20,30,40,50,60,70")
+    msg_out = Message("CORE", "0101", "LED", "10,20,30,40,50,60,70")
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
 
@@ -304,7 +304,7 @@ def test_backward_compatibility():
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
     # Text command: DSP with message
-    msg_out = Message("0101", "DSP", "HELLO WORLD")
+    msg_out = Message("CORE", "0101", "DSP", "HELLO WORLD")
     transport.send(msg_out)
     drain_tx_buffer(transport, mock_uart)
 
@@ -339,7 +339,7 @@ def test_mixed_commands():
         mock_uart = MockUARTManager()
         transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
-        msg_out = Message("0101", cmd, payload)
+        msg_out = Message("CORE", "0101", cmd, payload)
         transport.send(msg_out)
         drain_tx_buffer(transport, mock_uart)
 
