@@ -14,7 +14,7 @@
 ## Technology Stack
 
 ### Primary Language & Runtime
-- **CircuitPython 9.x/10.x+** for embedded firmware (source code in `src/`)
+- **CircuitPython 10.x+** for embedded firmware (source code in `src/`)
 - **Python 3.11+** for testing and development tools
 - **Platform**: Raspberry Pi Pico 2 (RP2350) microcontroller
 
@@ -120,7 +120,7 @@ src/
 ├── managers/               # Hardware/system managers
 ├── satellites/             # Satellite firmware and drivers
 ├── transport/              # Communication layer
-└── utils/                  # Utility functions
+└── utilities/              # Utility functions
 
 tests/
 ├── test_*.py               # Unit tests (one per module)
@@ -182,7 +182,7 @@ class MockAudioManager:
 
 ### Adding a New Mode
 1. Create `src/modes/new_mode.py` inheriting from `BaseMode`
-2. Implement `enter()`, `exit()`, `update()`, `handle_input()` methods
+2. Implement `enter()`, `exit()`, `run()` methods
 3. Register mode in mode manager
 4. Create tests for mode logic
 5. Add documentation to relevant docs
@@ -211,7 +211,7 @@ class MockAudioManager:
 ## Important Constraints & Gotchas
 
 ### Memory Constraints
-- **Limited RAM**: Pico 2 has ~512KB total, CircuitPython uses significant portion
+- **Limited RAM**: Pico 2 has 520KB total, CircuitPython uses significant portion
 - **Avoid large allocations**: Use generators, streaming, chunked processing
 - **Free memory explicitly**: Use `gc.collect()` after large allocations
 - **Audio files**: Keep WAV files small, use mono/8-bit when possible
@@ -223,7 +223,7 @@ class MockAudioManager:
 - **No numpy/scipy**: Implement algorithms from scratch
 
 ### Hardware Timing
-- **Watchdog**: Must be fed every 8 seconds (async tasks should complete quickly)
+- **Watchdog**: Must be fed every 5 seconds (async tasks should complete quickly)
 - **UART timing**: 115200 baud, ensure proper async handling
 - **NeoPixel updates**: ~30µs per pixel, batch updates
 - **ADC settling**: Allow time between channel switches
@@ -246,16 +246,16 @@ If tests reveal source code bugs, open a GitHub issue with details instead of fi
 
 ## Custom Agents
 
-### Test Specialist Agent
+### Test Maintenance Agent
 - **Purpose**: Automated test repair and coverage expansion
-- **Activate**: `@workspace /test-specialist`
+- **Activate**: `@workspace /test-maintenance-agent`
 - **Capabilities**: Fix failing tests, create new tests, update mocks
 - **Constraint**: NEVER modifies source code, only test files
 - **Documentation**: See `.github/copilot/USAGE.md` for detailed guide
 
 ### Usage Example
 ```
-@workspace /test-specialist
+@workspace /test-maintenance-agent
 
 Fix test_audio_manager.py - MockAudioManager is missing the pause() method
 that was added to the real AudioManager class.
