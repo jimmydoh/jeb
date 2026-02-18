@@ -259,7 +259,6 @@ class Icons:
         "IND": IND,
         "SUCCESS": SUCCESS,
         "FAILURE": FAILURE,
-        "PONG": PONG,
         "ASTRO_BREAKER": ASTRO_BREAKER,
         "DATA_FLOW": DATA_FLOW,
         "TRENCH_RUN": TRENCH_RUN,
