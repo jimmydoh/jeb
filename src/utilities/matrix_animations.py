@@ -4,6 +4,13 @@
 This module provides reusable, asyncio-based animation functions that can be used
 with any matrix manager implementation. Animations are designed to be non-blocking
 and can run as background tasks.
+
+Future matrix-specific animations (like slide animations, wipes, etc.) should be
+added to this module rather than as methods in MatrixManager. This promotes:
+- Reusability across different matrix implementations
+- Easier testing and maintenance
+- Separation of concerns (manager vs. animation logic)
+- Extensibility for new animation types
 """
 
 import asyncio
