@@ -14,33 +14,52 @@ class MatrixManager(BasePixelManager):
     
     Supports arbitrary matrix configurations including:
     - Single 8x8 matrix (default)
-    - Dual or quad 8x8 matrices working together
+    - Dual or quad 8x8 matrices working together (tiled panels)
     - Multiple 1x8 strips arranged as a matrix
     - Individual LEDs arranged as a matrix
+    
+    For tiled panel configurations (e.g., four 8x8 panels forming a 16x16 display),
+    the manager handles the physical panel layout correctly, where each panel has
+    its own pixel range due to how they are chained together.
     """
-    def __init__(self, jeb_pixel, width=8, height=8):
+    def __init__(self, jeb_pixel, width=8, height=8, panel_width=None, panel_height=None):
         """Initialize MatrixManager with configurable dimensions.
         
         Args:
             jeb_pixel: JEBPixel wrapper object
-            width: Width of the matrix in pixels (default: 8)
-            height: Height of the matrix in pixels (default: 8)
+            width: Width of the entire display in pixels (default: 8)
+            height: Height of the entire display in pixels (default: 8)
+            panel_width: Width of each physical panel in pixels (default: same as width)
+            panel_height: Height of each physical panel in pixels (default: same as height)
+            
+        For single panels, panel_width and panel_height default to width and height.
+        For tiled configurations (e.g., four 8x8 panels as 16x16), specify:
+            MatrixManager(jeb_pixel, width=16, height=16, panel_width=8, panel_height=8)
         """
         # Declare MATRIX_2D layout with configurable dimensions
         super().__init__(jeb_pixel, layout_type=PixelLayout.MATRIX_2D, dimensions=(width, height))
         
-        # Store dimensions for easy access
+        # Store display dimensions
         self.width = width
         self.height = height
+        
+        # Store panel dimensions (default to display dimensions for single panel)
+        self.panel_width = panel_width if panel_width is not None else width
+        self.panel_height = panel_height if panel_height is not None else height
 
         self.palette = Palette.PALETTE_LIBRARY
         self.icons = Icons.ICON_LIBRARY
 
     def _get_idx(self, x, y):
-        """Maps 2D coordinates to Serpentine 1D index.
+        """Maps 2D coordinates to 1D pixel index with panel-aware addressing.
         
-        Uses serpentine (zig-zag) pattern where even rows go left-to-right
-        and odd rows go right-to-left.
+        For single panels, uses serpentine (zig-zag) pattern where even rows go 
+        left-to-right and odd rows go right-to-left.
+        
+        For tiled panels (e.g., four 8x8 panels forming 16x16), correctly maps
+        coordinates accounting for how panels are physically chained together.
+        Each panel has its own pixel range, and serpentine addressing applies
+        within each panel.
         
         Args:
             x: X coordinate (0 to width-1)
@@ -49,9 +68,27 @@ class MatrixManager(BasePixelManager):
         Returns:
             1D pixel index
         """
-        if y % 2 == 0:
-            return (y * self.width) + x
-        return (y * self.width) + (self.width - 1 - x)
+        # Determine which panel this coordinate is in
+        panel_x = x // self.panel_width
+        panel_y = y // self.panel_height
+        
+        # Local coordinates within the panel
+        local_x = x % self.panel_width
+        local_y = y % self.panel_height
+        
+        # Calculate panel index (reading left-to-right, top-to-bottom)
+        panels_per_row = self.width // self.panel_width
+        panel_idx = panel_y * panels_per_row + panel_x
+        
+        # Calculate pixel index within the panel (serpentine)
+        if local_y % 2 == 0:
+            local_idx = (local_y * self.panel_width) + local_x
+        else:
+            local_idx = (local_y * self.panel_width) + (self.panel_width - 1 - local_x)
+        
+        # Final pixel index = panel start + local index
+        pixels_per_panel = self.panel_width * self.panel_height
+        return panel_idx * pixels_per_panel + local_idx
 
     def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None, brightness=1.0):
         """Sets a specific pixel on the matrix.

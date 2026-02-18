@@ -2,51 +2,67 @@
 
 ## Overview
 
-The `MatrixManager` has been extended to support arbitrary matrix configurations beyond the original 8x8 GlowBit 64 LED matrix. This enables flexible matrix layouts including dual, quad, strip-based, and custom configurations.
+The `MatrixManager` has been extended to support arbitrary matrix configurations beyond the original 8x8 GlowBit 64 LED matrix. This enables flexible matrix layouts including dual, quad, strip-based, and custom configurations with proper panel-based addressing for tiled displays.
+
+## Key Concept: Panel-Based Addressing
+
+When multiple physical LED matrices (panels) are chained together, each panel maintains its own sequential pixel range. For example, with four 8×8 panels forming a 16×16 display:
+
+- **Panel 0** (top-left): pixels 0-63
+- **Panel 1** (top-right): pixels 64-127
+- **Panel 2** (bottom-left): pixels 128-191
+- **Panel 3** (bottom-right): pixels 192-255
+
+Within each panel, serpentine (zig-zag) addressing applies where even rows go left-to-right and odd rows go right-to-left.
 
 ## Features
 
-- **Backward Compatible**: Default 8x8 configuration works without changes to existing code
+- **Backward Compatible**: Default 8×8 configuration works without changes to existing code
+- **Panel-Based Addressing**: Correctly handles tiled panel configurations
 - **Arbitrary Dimensions**: Support for any width × height matrix configuration
-- **Serpentine Layout**: Maintains efficient serpentine (zig-zag) pixel addressing
+- **Serpentine Layout**: Efficient serpentine (zig-zag) pixel addressing within each panel
 - **Automatic Scaling**: Methods like `show_progress_grid()` and `draw_quadrant()` adapt to matrix size
 - **Bounds Checking**: Invalid coordinates are safely ignored
 
 ## Usage
 
-### Default 8x8 Matrix (Backward Compatible)
+### Default 8×8 Matrix (Backward Compatible)
 
 ```python
 from managers.matrix_manager import MatrixManager
 
 # Original usage - still works
 matrix = MatrixManager(jeb_pixel)
-# Defaults to width=8, height=8
+# Defaults to width=8, height=8, panel_width=8, panel_height=8
 ```
 
-### Custom Matrix Configurations
+### Tiled Panel Configurations
+
+For tiled configurations (e.g., multiple 8×8 panels forming a larger display), you **must** specify the panel dimensions:
 
 ```python
-# Dual 8x8 horizontal (16x8) - two matrices side-by-side
-matrix = MatrixManager(jeb_pixel, width=16, height=8)
+# Four 8×8 panels forming a 16×16 display
+matrix = MatrixManager(jeb_pixel, width=16, height=16, panel_width=8, panel_height=8)
 
-# Dual 8x8 vertical (8x16) - two matrices stacked
-matrix = MatrixManager(jeb_pixel, width=8, height=16)
+# Two 8×8 panels side-by-side (16×8)
+matrix = MatrixManager(jeb_pixel, width=16, height=8, panel_width=8, panel_height=8)
 
-# Quad 8x8 (16x16) - four matrices in a 2x2 grid
-matrix = MatrixManager(jeb_pixel, width=16, height=16)
+# Two 8×8 panels stacked vertically (8×16)
+matrix = MatrixManager(jeb_pixel, width=8, height=16, panel_width=8, panel_height=8)
+```
 
-# LED strips as matrix (8x4) - four 1x8 strips
-matrix = MatrixManager(jeb_pixel, width=8, height=4)
+### Single Large Panel or Custom Configurations
 
-# Small custom matrix (4x4)
-matrix = MatrixManager(jeb_pixel, width=4, height=4)
+For single panels or non-tiled configurations, panel dimensions default to display dimensions:
 
-# Large custom matrix (32x32)
-matrix = MatrixManager(jeb_pixel, width=32, height=32)
-
-# Non-square matrix (12x6)
+```python
+# Single custom-sized matrix (no tiling)
 matrix = MatrixManager(jeb_pixel, width=12, height=6)
+# panel_width and panel_height default to 12 and 6
+
+# LED strips as a single matrix (no panel subdivision)
+matrix = MatrixManager(jeb_pixel, width=8, height=4)
+# Treats the entire 8×4 as one panel
 ```
 
 ## Supported Configurations
@@ -87,26 +103,68 @@ matrix = MatrixManager(jeb_pixel, width=12, height=6)
 └─────────┴─────────┘
 ```
 
-## Serpentine (Zig-Zag) Layout
+## Panel-Based Addressing in Detail
 
-The MatrixManager uses a serpentine layout where even rows go left-to-right and odd rows go right-to-left. This is optimized for common LED matrix wiring.
+### Four 8×8 Panels as 16×16 Display
 
-### Example: 4x4 Matrix Pixel Indices
+When four 8×8 panels are chained together to form a 16×16 display, the pixel indices are **not** a simple 16-wide serpentine. Instead, each panel maintains its own range:
 
 ```
-Physical Layout:
-┌──┬──┬──┬──┐
-│ 0│ 1│ 2│ 3│  Row 0 (even): left→right
-├──┼──┼──┼──┤
-│ 7│ 6│ 5│ 4│  Row 1 (odd):  right→left
-├──┼──┼──┼──┤
-│ 8│ 9│10│11│  Row 2 (even): left→right
-├──┼──┼──┼──┤
-│15│14│13│12│  Row 3 (odd):  right→left
-└──┴──┴──┴──┘
+Visual Layout (coordinates):
+┌─────────────────┬─────────────────┐
+│ Panel 0         │ Panel 1         │
+│ (0,0) to (7,7)  │ (8,0) to (15,7) │
+│ Pixels: 0-63    │ Pixels: 64-127  │
+├─────────────────┼─────────────────┤
+│ Panel 2         │ Panel 3         │
+│ (0,8) to (7,15) │ (8,8) to (15,15)│
+│ Pixels: 128-191 │ Pixels: 192-255 │
+└─────────────────┴─────────────────┘
 ```
 
-This layout minimizes wiring complexity when chaining LED strips together.
+#### Example Pixel Indices
+
+For a 16×16 display with `panel_width=8, panel_height=8`:
+
+| Coordinate | Panel | Local Coord | Pixel Index | Explanation |
+|------------|-------|-------------|-------------|-------------|
+| (0, 0) | 0 | (0, 0) | 0 | Top-left of display |
+| (7, 0) | 0 | (7, 0) | 7 | Top-right of panel 0 |
+| (8, 0) | 1 | (0, 0) | **64** | Top-left of panel 1 (NOT 8!) |
+| (15, 0) | 1 | (7, 0) | 71 | Top-right of display |
+| (0, 1) | 0 | (0, 1) | 15 | Row 1 of panel 0 (serpentine) |
+| (8, 1) | 1 | (0, 1) | 79 | Row 1 of panel 1 (serpentine) |
+| (0, 8) | 2 | (0, 0) | **128** | Top-left of panel 2 |
+| (15, 15) | 3 | (7, 7) | 248 | Bottom-right of display |
+
+Note how pixel (8, 0) maps to index 64 (start of panel 1), **not** index 8 which would be the case with simple serpentine addressing.
+
+### Serpentine Within Each Panel
+
+Within each 8×8 panel, serpentine addressing applies:
+
+```
+Panel 0 (8×8) pixel indices:
+┌──┬──┬──┬──┬──┬──┬──┬──┐
+│ 0│ 1│ 2│ 3│ 4│ 5│ 6│ 7│  Row 0: left→right
+├──┼──┼──┼──┼──┼──┼──┼──┤
+│15│14│13│12│11│10│ 9│ 8│  Row 1: right→left
+├──┼──┼──┼──┼──┼──┼──┼──┤
+│16│17│18│19│20│21│22│23│  Row 2: left→right
+├──┼──┼──┼──┼──┼──┼──┼──┤
+│31│30│29│28│27│26│25│24│  Row 3: right→left
+├──┼──┼──┼──┼──┼──┼──┼──┤
+│32│33│34│35│36│37│38│39│  Row 4: left→right
+├──┼──┼──┼──┼──┼──┼──┼──┤
+│47│46│45│44│43│42│41│40│  Row 5: right→left
+├──┼──┼──┼──┼──┼──┼──┼──┤
+│48│49│50│51│52│53│54│55│  Row 6: left→right
+├──┼──┼──┼──┼──┼──┼──┼──┤
+│63│62│61│60│59│58│57│56│  Row 7: right→left
+└──┴──┴──┴──┴──┴──┴──┴──┘
+```
+
+This same serpentine pattern applies within **every** panel, whether it's panel 0, 1, 2, or 3.
 
 ## API Methods
 

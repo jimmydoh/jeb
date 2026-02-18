@@ -119,20 +119,40 @@ sys.modules['managers.base_pixel_manager'] = type('MockModule', (), {
 class MatrixManager:
     """Test implementation of MatrixManager with arbitrary dimensions."""
     
-    def __init__(self, jeb_pixel, width=8, height=8):
+    def __init__(self, jeb_pixel, width=8, height=8, panel_width=None, panel_height=None):
         """Initialize MatrixManager with configurable dimensions."""
         self.pixels = jeb_pixel
         self.num_pixels = jeb_pixel.n
         self.width = width
         self.height = height
+        self.panel_width = panel_width if panel_width is not None else width
+        self.panel_height = panel_height if panel_height is not None else height
         self.palette = MockPalette.PALETTE_LIBRARY
         self.icons = MockIcons.ICON_LIBRARY
         
     def _get_idx(self, x, y):
-        """Maps 2D coordinates to Serpentine 1D index."""
-        if y % 2 == 0:
-            return (y * self.width) + x
-        return (y * self.width) + (self.width - 1 - x)
+        """Maps 2D coordinates to 1D pixel index with panel-aware addressing."""
+        # Determine which panel this coordinate is in
+        panel_x = x // self.panel_width
+        panel_y = y // self.panel_height
+        
+        # Local coordinates within the panel
+        local_x = x % self.panel_width
+        local_y = y % self.panel_height
+        
+        # Calculate panel index (reading left-to-right, top-to-bottom)
+        panels_per_row = self.width // self.panel_width
+        panel_idx = panel_y * panels_per_row + panel_x
+        
+        # Calculate pixel index within the panel (serpentine)
+        if local_y % 2 == 0:
+            local_idx = (local_y * self.panel_width) + local_x
+        else:
+            local_idx = (local_y * self.panel_width) + (self.panel_width - 1 - local_x)
+        
+        # Final pixel index = panel start + local index
+        pixels_per_panel = self.panel_width * self.panel_height
+        return panel_idx * pixels_per_panel + local_idx
     
     def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None, brightness=1.0):
         """Sets a specific pixel on the matrix."""
@@ -210,105 +230,144 @@ def test_single_8x8_matrix_default():
     print("  ✓ 8x8 matrix default test passed")
 
 
-def test_dual_8x8_horizontal():
-    """Test dual 8x8 matrices arranged horizontally (16x8)."""
-    print("\nTesting dual 8x8 horizontal (16x8)...")
+def test_quad_8x8_panels():
+    """Test four 8x8 panels forming a 16x16 display with panel-based addressing."""
+    print("\nTesting quad 8x8 panels (16x16 with panel_width=8, panel_height=8)...")
     
-    # Create 16x8 matrix (128 pixels)
+    # Create 16x16 matrix from four 8x8 panels (256 pixels)
+    jeb_pixel = MockJEBPixel(256)
+    matrix = MatrixManager(jeb_pixel, width=16, height=16, panel_width=8, panel_height=8)
+    
+    # Verify dimensions
+    assert matrix.width == 16
+    assert matrix.height == 16
+    assert matrix.panel_width == 8
+    assert matrix.panel_height == 8
+    assert matrix.num_pixels == 256
+    
+    # Test panel-based addressing
+    # Panel 0 (top-left): pixels 0-63
+    # Panel 1 (top-right): pixels 64-127
+    # Panel 2 (bottom-left): pixels 128-191
+    # Panel 3 (bottom-right): pixels 192-255
+    
+    # Top-left corner of display (panel 0, pixel 0)
+    assert matrix._get_idx(0, 0) == 0
+    
+    # Top-right corner of first panel (panel 0, pixel 7)
+    assert matrix._get_idx(7, 0) == 7
+    
+    # Top-left corner of second panel (panel 1, pixel 0)
+    # This should be pixel 64, NOT pixel 8!
+    assert matrix._get_idx(8, 0) == 64, f"Expected 64, got {matrix._get_idx(8, 0)}"
+    
+    # Top-right corner of second panel (panel 1, pixel 7)
+    assert matrix._get_idx(15, 0) == 71
+    
+    # Second row, first pixel (panel 0, row 1, reversed due to serpentine)
+    # In an 8x8 panel, row 1 pixel 0 is at index 15 (serpentine)
+    assert matrix._get_idx(0, 1) == 15
+    
+    # Second row, 9th pixel (panel 1, row 1, pixel 0 in panel coordinates)
+    # Panel 1 starts at 64, row 1 in serpentine is 15
+    assert matrix._get_idx(8, 1) == 64 + 15  # 79
+    
+    # Bottom-left corner of display (panel 2, pixel 0)
+    assert matrix._get_idx(0, 8) == 128
+    
+    # Bottom-right corner of display (panel 3, local (7,7))
+    # Panel 3 starts at 192, local (7,7) with y=7 (odd row, serpentine)
+    # local_idx = 7*8 + (8-1-7) = 56 + 0 = 56
+    assert matrix._get_idx(15, 15) == 192 + 56  # 248
+    
+    print("  ✓ Panel-based addressing test passed")
+
+
+def test_dual_8x8_horizontal():
+    """Test dual 8x8 matrices arranged horizontally (16x8) with panel addressing."""
+    print("\nTesting dual 8x8 horizontal (16x8 with panel_width=8, panel_height=8)...")
+    
+    # Create 16x8 matrix (128 pixels) - two 8x8 panels side by side
     jeb_pixel = MockJEBPixel(128)
-    matrix = MatrixManager(jeb_pixel, width=16, height=8)
+    matrix = MatrixManager(jeb_pixel, width=16, height=8, panel_width=8, panel_height=8)
     
     # Verify dimensions
     assert matrix.width == 16
     assert matrix.height == 8
     assert matrix.num_pixels == 128
     
-    # Test pixel mapping for 16-wide matrix
-    # Top-left (0, 0) -> 0
+    # Test pixel mapping for panel-based addressing
+    # Panel 0 (left): pixels 0-63
+    # Panel 1 (right): pixels 64-127
+    
+    # Top-left of display (panel 0, pixel 0)
     assert matrix._get_idx(0, 0) == 0
-    # Top-right (15, 0) -> 15 (even row)
-    assert matrix._get_idx(15, 0) == 15
-    # Second row left (0, 1) -> 31 (odd row, reversed)
-    assert matrix._get_idx(0, 1) == 31
-    # Second row right (15, 1) -> 16 (odd row, reversed)
-    assert matrix._get_idx(15, 1) == 16
+    
+    # Top-right of first panel (panel 0, pixel 7)
+    assert matrix._get_idx(7, 0) == 7
+    
+    # Top-left of second panel (panel 1, pixel 0) - should be 64
+    assert matrix._get_idx(8, 0) == 64, f"Expected 64, got {matrix._get_idx(8, 0)}"
+    
+    # Top-right of display (panel 1, pixel 7)
+    assert matrix._get_idx(15, 0) == 71
+    
+    # Second row first pixel (panel 0, serpentine row 1)
+    assert matrix._get_idx(0, 1) == 15
+    
+    # Second row 9th pixel (panel 1, serpentine row 1)
+    assert matrix._get_idx(8, 1) == 79
     
     # Test drawing pixels
     matrix.draw_pixel(0, 0, MockPalette.RED)
     assert matrix.pixels[0] == MockPalette.RED
     
-    matrix.draw_pixel(15, 0, MockPalette.BLUE)
-    assert matrix.pixels[15] == MockPalette.BLUE
+    matrix.draw_pixel(8, 0, MockPalette.BLUE)  # First pixel of second panel
+    assert matrix.pixels[64] == MockPalette.BLUE
     
     # Test out-of-bounds (should not crash)
     matrix.draw_pixel(16, 0, MockPalette.GREEN)  # Out of bounds
     matrix.draw_pixel(0, 8, MockPalette.GREEN)  # Out of bounds
     
-    print("  ✓ 16x8 matrix test passed")
+    print("  ✓ 16x8 panel-based matrix test passed")
 
 
 def test_dual_8x8_vertical():
-    """Test dual 8x8 matrices arranged vertically (8x16)."""
-    print("\nTesting dual 8x8 vertical (8x16)...")
+    """Test dual 8x8 matrices arranged vertically (8x16) with panel addressing."""
+    print("\nTesting dual 8x8 vertical (8x16 with panel_width=8, panel_height=8)...")
     
-    # Create 8x16 matrix (128 pixels)
+    # Create 8x16 matrix (128 pixels) - two 8x8 panels stacked
     jeb_pixel = MockJEBPixel(128)
-    matrix = MatrixManager(jeb_pixel, width=8, height=16)
+    matrix = MatrixManager(jeb_pixel, width=8, height=16, panel_width=8, panel_height=8)
     
     # Verify dimensions
     assert matrix.width == 8
     assert matrix.height == 16
     assert matrix.num_pixels == 128
     
-    # Test pixel mapping
-    # Top-left (0, 0) -> 0
+    # Test pixel mapping for panel-based addressing
+    # Panel 0 (top): pixels 0-63
+    # Panel 1 (bottom): pixels 64-127
+    
+    # Top-left of display (panel 0, pixel 0)
     assert matrix._get_idx(0, 0) == 0
-    # Row 1 (odd), left (0, 1) -> 15
+    
+    # Row 1 of first panel (serpentine)
     assert matrix._get_idx(0, 1) == 15
-    # Bottom-left (0, 15) -> 8*15 + (8-1) = 127 (odd row)
-    assert matrix._get_idx(0, 15) == 127
-    # Bottom-right (7, 15) -> 8*15 = 120 (odd row)
-    assert matrix._get_idx(7, 15) == 120
     
-    print("  ✓ 8x16 matrix test passed")
-
-
-def test_quad_8x8():
-    """Test quad 8x8 matrices (16x16)."""
-    print("\nTesting quad 8x8 (16x16)...")
+    # Row 7 of first panel (row 7, odd, so right-to-left)
+    # (0, 7) in local coords with y=7 (odd): (7*8) + (8-1-0) = 56 + 7 = 63
+    assert matrix._get_idx(0, 7) == 63
+    assert matrix._get_idx(7, 7) == 56
     
-    # Create 16x16 matrix (256 pixels)
-    jeb_pixel = MockJEBPixel(256)
-    matrix = MatrixManager(jeb_pixel, width=16, height=16)
+    # First row of second panel (row 8 in display coords, row 0 in panel coords)
+    assert matrix._get_idx(0, 8) == 64
     
-    # Verify dimensions
-    assert matrix.width == 16
-    assert matrix.height == 16
-    assert matrix.num_pixels == 256
+    # Bottom-right of display (panel 1, local (7,7))
+    # Panel 1 starts at 64, local (7,7) with y=7 (odd): (7*8) + (8-1-7) = 56
+    assert matrix._get_idx(7, 15) == 64 + 56  # 120
     
-    # Test corner pixels
-    assert matrix._get_idx(0, 0) == 0  # Top-left
-    assert matrix._get_idx(15, 0) == 15  # Top-right (even row)
-    assert matrix._get_idx(0, 15) == 16*15 + 15  # Bottom-left (odd row)
-    assert matrix._get_idx(15, 15) == 16*15  # Bottom-right (odd row)
-    
-    # Test quadrants
-    matrix.draw_quadrant(0, MockPalette.RED)  # Top-left
-    # Top-left quadrant should be 8x8, starting at (0,0)
-    # Check a few pixels in top-left quadrant
-    assert matrix.pixels[matrix._get_idx(0, 0)] == MockPalette.RED
-    assert matrix.pixels[matrix._get_idx(4, 4)] == MockPalette.RED
-    
-    matrix.draw_quadrant(1, MockPalette.GREEN)  # Top-right
-    assert matrix.pixels[matrix._get_idx(8, 0)] == MockPalette.GREEN
-    
-    matrix.draw_quadrant(2, MockPalette.BLUE)  # Bottom-left
-    assert matrix.pixels[matrix._get_idx(0, 8)] == MockPalette.BLUE
-    
-    matrix.draw_quadrant(3, MockPalette.YELLOW)  # Bottom-right
-    assert matrix.pixels[matrix._get_idx(8, 8)] == MockPalette.YELLOW
-    
-    print("  ✓ 16x16 matrix test passed")
+    print("  ✓ 8x16 panel-based matrix test passed")
 
 
 def test_strip_as_matrix():
@@ -474,9 +533,9 @@ def run_all_tests():
     
     try:
         test_single_8x8_matrix_default()
+        test_quad_8x8_panels()
         test_dual_8x8_horizontal()
         test_dual_8x8_vertical()
-        test_quad_8x8()
         test_strip_as_matrix()
         test_small_matrix()
         test_progress_grid_different_sizes()
