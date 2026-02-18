@@ -6,12 +6,13 @@ import asyncio
 from utilities.palette import Palette
 from utilities.icons import Icons
 
-from .base_pixel_manager import BasePixelManager
+from .base_pixel_manager import BasePixelManager, PixelLayout
 
 class MatrixManager(BasePixelManager):
     """Class to manage Matrix style LED arrays, such as the GlowBit 64 LED Matrix."""
     def __init__(self, jeb_pixel):
-        super().__init__(jeb_pixel)
+        # Declare MATRIX_2D layout with 8x8 dimensions
+        super().__init__(jeb_pixel, layout_type=PixelLayout.MATRIX_2D, dimensions=(8, 8))
 
         self.palette = Palette.PALETTE_LIBRARY
         self.icons = Icons.ICON_LIBRARY
@@ -22,45 +23,29 @@ class MatrixManager(BasePixelManager):
             return (y * 8) + x
         return (y * 8) + (7 - x)
 
-    def _get_dimmed_color(self, base_color, brightness):
-        """
-        Stateless brightness calculation.
-        Sacrifices a tiny amount of CPU speed for significantly better memory stability.
-
-        Args:
-            base_color: Tuple of (r, g, b) values
-            brightness: Float from 0.0 to 1.0
-
-        Returns:
-            Tuple of brightness-adjusted (r, g, b) values
-
-        Note:
-            On RP2350 (150MHz+), this math is incredibly fast. Removed the cache
-            to prevent heap fragmentation in CircuitPython's non-compacting GC.
-        """
-        if brightness >= 1.0:
-            return base_color
-        if brightness <= 0.0:
-            return (0, 0, 0)
-
-        # On RP2350, this math is incredibly fast
-        return (
-            int(base_color[0] * brightness),
-            int(base_color[1] * brightness),
-            int(base_color[2] * brightness)
-        )
-
-    def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None):
+    def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None, brightness=1.0):
         """Sets a specific pixel on the matrix.
 
         Note: The 'show' parameter is deprecated and ignored.
         Hardware writes are now centralized in CoreManager.render_loop().
+        
+        Args:
+            x: X coordinate (0-7)
+            y: Y coordinate (0-7)
+            color: RGB tuple (r, g, b)
+            show: Deprecated, ignored
+            anim_mode: Animation mode ("SOLID", "PULSE", "BLINK", etc.)
+            speed: Animation speed
+            duration: Optional duration in seconds
+            brightness: Brightness multiplier (0.0-1.0)
         """
         if 0 <= x < 8 and 0 <= y < 8:
             idx = self._get_idx(x, y)
-
             anim_mode = anim_mode if anim_mode else "SOLID"
-            self.set_animation(idx, anim_mode, color, speed, duration)
+            
+            # Use base class method with brightness support
+            adjusted_color = self._apply_brightness(color, brightness)
+            self.set_animation(idx, anim_mode, adjusted_color, speed, duration)
 
         # Note: 'show' parameter is ignored - render loop handles hardware writes
 
@@ -96,8 +81,8 @@ class MatrixManager(BasePixelManager):
                             pixel_value = icon_data[y * 8 + x]
                             if pixel_value != 0:
                                 base = color if color else self.palette[pixel_value]
-                                px_color = self._get_dimmed_color(base, brightness)
-                                self.draw_pixel(target_x, y, px_color)
+                                # Use base class brightness calculation
+                                self.draw_pixel(target_x, y, base, brightness=brightness)
                 # Note: Hardware write is now handled by CoreManager.render_loop()
                 await asyncio.sleep(0.05)
         except asyncio.CancelledError:
@@ -139,12 +124,11 @@ class MatrixManager(BasePixelManager):
 
                 if pixel_value != 0:
                     base = color if color else self.palette[pixel_value]
-                    px_color = self._get_dimmed_color(base, brightness)
-
+                    # Use draw_pixel with brightness parameter
                     if anim_mode:
-                        self.set_animation(idx, anim_mode, px_color, speed)
+                        self.draw_pixel(x, y, base, anim_mode=anim_mode, speed=speed, brightness=brightness)
                     else:
-                        self.draw_pixel(x, y, px_color)
+                        self.draw_pixel(x, y, base, brightness=brightness)
 
         # Note: Hardware write is now handled by CoreManager.render_loop()
 
