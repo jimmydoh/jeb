@@ -205,7 +205,7 @@ async def run_all_tests():
         print("ALL TX CHUNKING TESTS PASSED ✓")
         print("=" * 70)
         print("\nThe TX chunking implementation successfully:")
-        print("  • Defines MAX_TX_CHUNK constant (32 bytes)")
+        print(f"  • Defines MAX_TX_CHUNK constant ({UARTTransport.MAX_TX_CHUNK} bytes)")
         print("  • Limits chunk size in _tx_worker to prevent event loop blocking")
         print("  • Handles large packets by splitting them into smaller chunks")
         print("  • Maintains correct behavior for small messages")
