@@ -380,11 +380,13 @@ class WebServerManager:
                 # This bypasses request.body which would load everything into RAM at once
                 filepath = f"{normalized_path}/{clean_filename}"
                 bytes_written = 0
+                upload_method = "unknown"
                 
                 with open(filepath, "wb") as f:
                     # Try to use streaming interface if available
                     # First, check for request.stream (newer adafruit_httpserver versions)
                     if hasattr(request, 'stream') and request.stream:
+                        upload_method = "stream"
                         while True:
                             chunk = request.stream.read(self.CHUNK_SIZE)
                             if not chunk:
@@ -392,7 +394,11 @@ class WebServerManager:
                             f.write(chunk)
                             bytes_written += len(chunk)
                     # Fallback: Try to access underlying socket directly
+                    # NOTE: Accessing _socket is a workaround for older adafruit_httpserver versions
+                    # that don't expose a streaming API. This may break with library updates.
                     elif hasattr(request, '_socket') and request._socket:
+                        upload_method = "socket"
+                        self.log("⚠️ Using _socket fallback for chunked upload (consider updating adafruit_httpserver)")
                         remaining = content_length
                         while remaining > 0:
                             chunk_size = min(self.CHUNK_SIZE, remaining)
@@ -403,14 +409,16 @@ class WebServerManager:
                             bytes_written += len(chunk)
                             remaining -= len(chunk)
                     # Last resort fallback: use request.body (original behavior)
-                    # This may still cause MemoryError but is needed for compatibility
+                    # WARNING: This loads entire file into RAM and may cause MemoryError
                     else:
+                        upload_method = "body"
+                        self.log("⚠️ Falling back to request.body - may cause MemoryError for large files")
                         content = request.body
                         for i in range(0, len(content), self.CHUNK_SIZE):
                             f.write(content[i:i+self.CHUNK_SIZE])
                         bytes_written = len(content)
                 
-                self.log(f"File uploaded: {filepath} ({bytes_written} bytes)")
+                self.log(f"File uploaded: {filepath} ({bytes_written} bytes, method: {upload_method})")
                 return Response(request, f'{{"status": "success", "path": "{filepath}", "size": {bytes_written}}}', 
                               content_type="application/json")
             except MemoryError:
