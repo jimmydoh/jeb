@@ -16,6 +16,7 @@ The fix: Limit the maximum number of bytes written per loop iteration
 import sys
 import os
 import asyncio
+import pytest
 
 # Add paths
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -50,6 +51,7 @@ class MockUART:
         self.read_buffer = bytearray()
 
 
+@pytest.mark.asyncio
 async def test_tx_chunk_size_limit():
     """Test that TX chunks are limited to MAX_TX_CHUNK size."""
     print("\nTesting TX chunk size limiting...")
@@ -112,6 +114,7 @@ async def test_tx_chunk_size_limit():
     print("✓ TX chunk size limit test passed")
 
 
+@pytest.mark.asyncio
 async def test_max_tx_chunk_constant_exists():
     """Test that MAX_TX_CHUNK constant is defined."""
     print("\nTesting MAX_TX_CHUNK constant...")
@@ -132,6 +135,7 @@ async def test_max_tx_chunk_constant_exists():
     print("✓ MAX_TX_CHUNK constant test passed")
 
 
+@pytest.mark.asyncio
 async def test_multiple_small_messages():
     """Test that small messages still work correctly."""
     print("\nTesting multiple small messages...")
