@@ -87,13 +87,13 @@ The Pygame UI uses this registry to manipulate voltage values in real-time.
 
 ### Native ADC
 - Healthy: 49650 raw (about 2.5V at 3.3V reference)
-- Through 11:1 divider: represents ~20V on the rail
-- Through 2:1 divider: represents ~5V on the rail
+- With PowerManager RATIO_20V (0.1263): represents ~19.8V on the 20V rail (2.5V / 0.1263)
+- With PowerManager RATIO_5V (0.5): represents ~5.0V on the 5V rail (2.5V / 0.5)
 
 ### I2C ADC (ADS1115)
 - Healthy: 2.5V direct reading
-- Through 11:1 divider: represents ~27.5V on the rail
-- Through 2:1 divider: represents ~5V on the rail
+- Through 11:1 divider: represents ~27.5V on the rail (2.5V × 11.0)
+- Through 2:1 divider: represents ~5V on the rail (2.5V × 2.0)
 
 ## Example Code Usage
 

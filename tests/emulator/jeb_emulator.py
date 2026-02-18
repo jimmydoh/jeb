@@ -313,7 +313,7 @@ sys.modules['analogio'] = type('MockAnalogIO', (), {'AnalogIn': MockAnalogIn})
 class MockADS1115:
     def __init__(self, i2c, address=0x48):
         self.address = address
-        self.i2c = i2c
+        self.i2c = i2c  # Stored to match real ADS1115 API signature
         # Adafruit pins mapping
         self.P0, self.P1, self.P2, self.P3 = 0, 1, 2, 3
         HardwareMocks.register('i2c_adc', self, key=address)
