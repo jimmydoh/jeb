@@ -1,20 +1,32 @@
 """
 ADC Manager - Generic Analog-to-Digital Converter interface.
+Supports both I2C expansion ADCs (e.g., ADS1115) and native analogio pins.
 Supports lazy-loading to prevent crashes if libraries/hardware are missing.
 """
 
 class ADCManager:
-    def __init__(self, i2c_bus, chip_type="ADS1115", address=0x48):
+    def __init__(self, i2c_bus=None, chip_type="ADS1115", address=0x48):
         """
         Initializes the generic ADC Manager.
         
-        :param i2c_bus: The initialized busio.I2C object.
-        :param chip_type: String identifier for the hardware (e.g., "ADS1115").
-        :param address: I2C address of the chip.
+        :param i2c_bus: The initialized busio.I2C object (required for I2C ADCs, None for native).
+        :param chip_type: String identifier for the hardware (e.g., "ADS1115", "NATIVE").
+        :param address: I2C address of the chip (only used for I2C ADCs).
+        
+        Note: When using chip_type="ADS1115" or other I2C ADCs, i2c_bus must be provided.
+              When using chip_type="NATIVE", i2c_bus should be None.
         """
         self.i2c_bus = i2c_bus
         self.chip_type = chip_type.upper()
         self.address = address
+        
+        # Validate that I2C bus is provided for I2C chip types
+        if self.chip_type != "NATIVE" and i2c_bus is None:
+            print(f"⚠️ ADCManager: I2C bus required for chip type '{self.chip_type}'")
+            # Set hardware to None and don't attempt initialization
+            self.hardware = None
+            self.channels = {}
+            return
         
         self.hardware = None
         self.channels = {} # Stores mapped names to channel objects and multipliers
@@ -35,16 +47,34 @@ class ADCManager:
                 print(f"⚠️ ADCManager: Failed to import adafruit_ads1x15. ADC offline.")
             except Exception as e:
                 print(f"⚠️ ADCManager: Hardware not found on I2C bus. ({e})")
+        elif self.chip_type == "NATIVE":
+            try:
+                # For native ADC pins, we don't need hardware initialization
+                # The analogio.AnalogIn will be created per-channel in add_channel
+                self.hardware = True  # Marker to indicate native ADC is available
+                print(f"✅ ADCManager: {self.chip_type} ADC initialized (analogio)")
+            except Exception as e:
+                print(f"⚠️ ADCManager: Failed to initialize native ADC. ({e})")
         else:
             print(f"⚠️ ADCManager: Unsupported chip type '{self.chip_type}'")
 
-    def add_channel(self, name, pin_index, divider_multiplier=1.0):
+    def add_channel(self, name, pin_or_index, divider_multiplier=1.0):
         """
         Maps a physical ADC pin to a logical name and applies voltage divider math.
         
         :param name: String name for the reading (e.g., "20V_MAIN").
-        :param pin_index: Integer representing the pin (0, 1, 2, 3).
+        :param pin_or_index: For I2C ADCs (e.g., ADS1115): Integer pin index (0-3).
+                             For NATIVE ADCs: board pin object (e.g., board.GP26).
         :param divider_multiplier: The inverse of the physical voltage divider (e.g., 11.0).
+                                   This is the factor to multiply the ADC voltage by to get
+                                   the actual voltage being measured.
+        
+        Examples:
+            # I2C ADC (ADS1115)
+            adc.add_channel("20V_BUS", pin_or_index=0, divider_multiplier=11.0)
+            
+            # Native ADC
+            adc.add_channel("20V_BUS", pin_or_index=board.GP26, divider_multiplier=11.0)
         """
         if not self.hardware:
             return
@@ -61,17 +91,35 @@ class ADCManager:
                     3: self.ads_module.P3
                 }
                 
-                if pin_index not in pin_map:
-                    raise ValueError(f"Invalid pin_index {pin_index} for {self.chip_type}")
+                if pin_or_index not in pin_map:
+                    raise ValueError(f"Invalid pin_index {pin_or_index} for {self.chip_type}")
                     
                 self.channels[name] = {
-                    "analog_in": AnalogIn(self.hardware, pin_map[pin_index]),
-                    "multiplier": float(divider_multiplier)
+                    "analog_in": AnalogIn(self.hardware, pin_map[pin_or_index]),
+                    "multiplier": float(divider_multiplier),
+                    "type": "I2C"
                 }
-                print(f"   - Mapped '{name}' to Pin {pin_index} (x{divider_multiplier})")
+                print(f"   - Mapped '{name}' to Pin {pin_or_index} (x{divider_multiplier})")
                 
             except Exception as e:
                 print(f"⚠️ ADCManager: Failed to configure channel '{name}' - {e}")
+        
+        elif self.chip_type == "NATIVE":
+            try:
+                import analogio
+                
+                # For native pins, pin_or_index should be a board pin object
+                analog_in = analogio.AnalogIn(pin_or_index)
+                
+                self.channels[name] = {
+                    "analog_in": analog_in,
+                    "multiplier": float(divider_multiplier),
+                    "type": "NATIVE"
+                }
+                print(f"   - Mapped '{name}' to native ADC pin (x{divider_multiplier})")
+                
+            except Exception as e:
+                print(f"⚠️ ADCManager: Failed to configure native channel '{name}' - {e}")
 
     def read(self, name):
         """
@@ -83,9 +131,15 @@ class ADCManager:
             
         channel = self.channels[name]
         try:
-            # .voltage returns the actual voltage hitting the pin (e.g., 1.81V)
-            raw_voltage = channel["analog_in"].voltage
-            # Multiply it back to real-world bus voltage (e.g., 1.81V * 11.0 = 19.91V)
+            if channel.get("type") == "NATIVE":
+                # For native ADC, calculate voltage from raw value
+                # Native ADC reading: value is 0-65535, reference is 3.3V
+                raw_voltage = (channel["analog_in"].value * 3.3) / 65535
+            else:
+                # For I2C ADC (ADS1115), use the .voltage property directly
+                raw_voltage = channel["analog_in"].voltage
+            
+            # Apply voltage divider multiplication
             return raw_voltage * channel["multiplier"]
         except Exception:
             return 0.0

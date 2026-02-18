@@ -2,45 +2,32 @@
 
 import asyncio
 
-import analogio
 import digitalio
 
 class PowerManager:
     """
     Class to manage power sensing and MOSFET control for satellite bus.
 
-    TODO: Remove magic strings
+    Now uses ADCManager for all voltage readings instead of direct analogio access.
     """
-    def __init__(self, sense_pins, sense_names, mosfet_pin, detect_pin):
-
-        # Dynamic ADC Assignments
-        # Standard Order: [input_20v, satbus_20v, main_5v, led_5v]
-
-        # Check that sense_pins and sense_names lengths match
-        if sense_names is not None and len(sense_pins) != len(sense_names):
-            raise ValueError("Length of sense_pins and sense_names must match.")
-
-        if sense_names is not None:
-            self.sense_names = sense_names
-            for i, p in enumerate(sense_pins):
-                setattr(self, f"sense_{sense_names[i]}", analogio.AnalogIn(p))
-                setattr(self, f"v_{sense_names[i]}", [0.0, 0.0, 99.0]) # Last, Max, Min
-        else:
-            self.sense_names = []
-            for i, p in enumerate(sense_pins):
-                setattr(self, f"sense_{i}", analogio.AnalogIn(p))
-                setattr(self, f"v_{i}", [0.0, 0.0, 99.0]) # Last, Max, Min
-                self.sense_names.append(i)
-
-        # Ideal ADC Sensors:
-        # self.sense_input_20v      - Pre-MOSFET 20V Input
-        # self.sense_satbus_20v     - Post-MOSFET 20V Bus
-        # self.sense_main_5v   - 5V Logic Rail
-        # self.sense_led_5v     - 5V LED Rail
-        # self.v_input_20v = [0.0, 0.0, 99.0] # Last, Max, Min
-        # self.v_satbus_20v = [0.0, 0.0, 99.0] # Last, Max, Min
-        # self.v_main_5v = [0.0, 0.0, 99.0] # Last, Max, Min
-        # self.v_led_5v = [0.0, 0.0, 99.0] # Last, Max, Min
+    def __init__(self, adc_manager, sense_names, mosfet_pin, detect_pin):
+        """
+        Initialize PowerManager with ADCManager for voltage sensing.
+        
+        :param adc_manager: ADCManager instance configured with voltage sensing channels
+        :param sense_names: List of channel names to monitor (e.g., ["input_20v", "satbus_20v", ...])
+        :param mosfet_pin: Pin for MOSFET control
+        :param detect_pin: Pin for satellite bus detection
+        """
+        # Store ADCManager reference
+        self.adc = adc_manager
+        
+        # Store sense names and initialize voltage tracking
+        self.sense_names = sense_names if sense_names is not None else []
+        
+        # Initialize voltage tracking for each channel: [Last, Max, Min]
+        for name in self.sense_names:
+            setattr(self, f"v_{name}", [0.0, 0.0, 99.0])
 
         # MOSFET Control
         self.sat_pwr = digitalio.DigitalInOut(mosfet_pin)
@@ -51,30 +38,21 @@ class PowerManager:
         self.sat_detect = digitalio.DigitalInOut(detect_pin)
         self.sat_detect.pull = digitalio.Pull.UP # RJ45 Pins 7&8 bridge to GND
 
-        # Scaling Factors
-        # TODO: Allow for calibration and custom resistor values via config file
-        self.RATIO_20V = 0.1263  # 47k / 6.8k
-        self.RATIO_5V = 0.5      # 10k / 10k
-
         # Soft Start Configuration
         # Blanking time allows satellite input capacitors to charge before
         # voltage checks begin, preventing false brownout detection
         self.SOFT_START_BLANKING_TIME = 0.015  # 15ms blanking period
 
-    def get_v(self, sensor, ratio):
-        """Converts ADC reading to actual voltage based on divider ratio."""
-        return round(((sensor.value * 3.3) / 65535) / ratio, 2)
-
     @property
     def status(self):
         """Primary touch point - updates voltage readings and returns as Dict."""
         for name in self.sense_names:
-            sensor = getattr(self, f"sense_{name}")
-            ratio = self.RATIO_20V if "20v" in name else self.RATIO_5V
-            v_attr = f"v_{name}"
-            v_list = getattr(self, v_attr)
+            # Read voltage from ADCManager (already has divider math applied)
+            voltage = self.adc.read(name)
+            v_list = getattr(self, f"v_{name}")
 
-            v_list[0] = self.get_v(sensor, ratio)
+            # Round to 2 decimal places for consistency
+            v_list[0] = round(voltage, 2)
 
             # Update max/min records
             if v_list[0] > v_list[1]:

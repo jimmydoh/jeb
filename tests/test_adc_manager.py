@@ -14,6 +14,22 @@ class MockModule:
         return MockModule()
 
 
+# Mock native AnalogIn for analogio
+class MockNativeAnalogIn:
+    """Mock AnalogIn for native analogio."""
+    def __init__(self, pin):
+        self.pin = pin
+        # Default: simulates 1.81V ((1.81/3.3) * 65535 ≈ 35931 in 0-65535 range for 0-3.3V)
+        self.value = 35931
+        
+
+class MockAnalogioModule:
+    """Mock analogio module with AnalogIn."""
+    @staticmethod
+    def AnalogIn(pin):
+        return MockNativeAnalogIn(pin)
+
+
 sys.modules['digitalio'] = MockModule()
 sys.modules['busio'] = MockModule()
 sys.modules['board'] = MockModule()
@@ -24,7 +40,7 @@ sys.modules['audiobusio'] = MockModule()
 sys.modules['audiocore'] = MockModule()
 sys.modules['audiomixer'] = MockModule()
 sys.modules['audiopwmio'] = MockModule()
-sys.modules['analogio'] = MockModule()
+sys.modules['analogio'] = MockAnalogioModule()
 sys.modules['microcontroller'] = MockModule()
 sys.modules['watchdog'] = MockModule()
 sys.modules['storage'] = MockModule()
@@ -111,14 +127,14 @@ def test_adc_manager_add_channel():
     adc = ADCManager(mock_i2c)
     
     # Add a 20V channel with 11:1 voltage divider
-    adc.add_channel("20V_MAIN", pin_index=0, divider_multiplier=11.0)
+    adc.add_channel("20V_MAIN", pin_or_index=0, divider_multiplier=11.0)
     
     assert "20V_MAIN" in adc.channels
     assert adc.channels["20V_MAIN"]["multiplier"] == 11.0
     assert adc.channels["20V_MAIN"]["analog_in"] is not None
     
     # Add a 5V channel with 2:1 voltage divider
-    adc.add_channel("5V_LED", pin_index=2, divider_multiplier=2.0)
+    adc.add_channel("5V_LED", pin_or_index=2, divider_multiplier=2.0)
     
     assert "5V_LED" in adc.channels
     assert adc.channels["5V_LED"]["multiplier"] == 2.0
@@ -134,7 +150,7 @@ def test_adc_manager_read_channel():
     adc = ADCManager(mock_i2c)
     
     # Add channel and configure it
-    adc.add_channel("20V_MAIN", pin_index=0, divider_multiplier=11.0)
+    adc.add_channel("20V_MAIN", pin_or_index=0, divider_multiplier=11.0)
     
     # Mock voltage is 1.81V by default, which should be 19.91V with 11x multiplier
     voltage = adc.read("20V_MAIN")
@@ -170,10 +186,10 @@ def test_adc_manager_read_all():
     adc = ADCManager(mock_i2c)
     
     # Add multiple channels
-    adc.add_channel("20V_MAIN", pin_index=0, divider_multiplier=11.0)
-    adc.add_channel("20V_SAT", pin_index=1, divider_multiplier=11.0)
-    adc.add_channel("5V_LED", pin_index=2, divider_multiplier=2.0)
-    adc.add_channel("5V_LOGIC", pin_index=3, divider_multiplier=2.0)
+    adc.add_channel("20V_MAIN", pin_or_index=0, divider_multiplier=11.0)
+    adc.add_channel("20V_SAT", pin_or_index=1, divider_multiplier=11.0)
+    adc.add_channel("5V_LED", pin_or_index=2, divider_multiplier=2.0)
+    adc.add_channel("5V_LOGIC", pin_or_index=3, divider_multiplier=2.0)
     
     # Read all channels
     all_voltages = adc.read_all()
@@ -208,7 +224,7 @@ def test_adc_manager_voltage_divider_math():
     ]
     
     for name, pin, multiplier, raw_v, expected_v in test_cases:
-        adc.add_channel(name, pin_index=pin, divider_multiplier=multiplier)
+        adc.add_channel(name, pin_or_index=pin, divider_multiplier=multiplier)
         
         # Set the mock voltage
         adc.channels[name]["analog_in"]._voltage = raw_v
@@ -236,7 +252,7 @@ def test_adc_manager_unsupported_chip():
     assert adc.chip_type == "UNSUPPORTED_CHIP"
     
     # Adding channels should do nothing
-    adc.add_channel("TEST", pin_index=0, divider_multiplier=1.0)
+    adc.add_channel("TEST", pin_or_index=0, divider_multiplier=1.0)
     assert len(adc.channels) == 0
     
     # Reading should return 0.0
@@ -254,7 +270,7 @@ def test_adc_manager_invalid_pin_index():
     adc = ADCManager(mock_i2c)
     
     # Try to add a channel with invalid pin index
-    adc.add_channel("INVALID", pin_index=999, divider_multiplier=1.0)
+    adc.add_channel("INVALID", pin_or_index=999, divider_multiplier=1.0)
     
     # Channel should not be added
     assert "INVALID" not in adc.channels
@@ -288,6 +304,100 @@ def test_adc_manager_lazy_loading():
     print("✓ ADCManager lazy loading test passed")
 
 
+def test_adc_manager_native_initialization():
+    """Test ADCManager initializes with NATIVE chip type."""
+    print("\nTesting ADCManager native ADC initialization...")
+    
+    # For native ADC, i2c_bus should be None
+    adc = ADCManager(i2c_bus=None, chip_type="NATIVE")
+    
+    assert adc.i2c_bus is None
+    assert adc.chip_type == "NATIVE"
+    assert adc.hardware is not None  # Should be True for native
+    assert isinstance(adc.channels, dict)
+    assert len(adc.channels) == 0
+    
+    print("✓ ADCManager native initialization test passed")
+
+
+def test_adc_manager_native_add_channel():
+    """Test adding native ADC channels."""
+    print("\nTesting ADCManager native channel addition...")
+    
+    # Mock board pin
+    class MockPin:
+        pass
+    
+    mock_pin = MockPin()
+    
+    adc = ADCManager(i2c_bus=None, chip_type="NATIVE")
+    
+    # Add a native 20V channel with voltage divider
+    adc.add_channel("20V_INPUT", mock_pin, divider_multiplier=11.0)
+    
+    assert "20V_INPUT" in adc.channels
+    assert adc.channels["20V_INPUT"]["multiplier"] == 11.0
+    assert adc.channels["20V_INPUT"]["type"] == "NATIVE"
+    assert adc.channels["20V_INPUT"]["analog_in"] is not None
+    
+    print("✓ ADCManager native channel addition test passed")
+
+
+def test_adc_manager_native_read_channel():
+    """Test reading voltage from a native ADC channel."""
+    print("\nTesting ADCManager native voltage reading...")
+    
+    class MockPin:
+        pass
+    
+    mock_pin = MockPin()
+    
+    adc = ADCManager(i2c_bus=None, chip_type="NATIVE")
+    adc.add_channel("20V_INPUT", mock_pin, divider_multiplier=11.0)
+    
+    # Mock the analog_in value (simulating 1.81V at the pin = 19.91V with 11x multiplier)
+    # Native ADC value is 0-65535 for 0-3.3V
+    # 1.81V = (1.81/3.3) * 65535 = 35931
+    adc.channels["20V_INPUT"]["analog_in"].value = 35931
+    
+    voltage = adc.read("20V_INPUT")
+    expected = 1.81 * 11.0  # Should be ~19.91V
+    
+    assert abs(voltage - expected) < 0.1, f"Expected ~{expected}V, got {voltage}V"
+    
+    print(f"  ✓ Read voltage: {voltage}V (expected ~{expected}V)")
+    print("✓ ADCManager native voltage reading test passed")
+
+
+def test_adc_manager_mixed_channels():
+    """Test ADCManager with both I2C and native channels would work independently."""
+    print("\nTesting ADCManager design supports mixed usage...")
+    
+    # Create I2C ADC manager
+    mock_i2c = MockModule()
+    adc_i2c = ADCManager(mock_i2c, chip_type="ADS1115")
+    adc_i2c.add_channel("I2C_CHANNEL", 0, divider_multiplier=2.0)
+    
+    # Create native ADC manager
+    class MockPin:
+        pass
+    
+    mock_pin = MockPin()
+    adc_native = ADCManager(i2c_bus=None, chip_type="NATIVE")
+    adc_native.add_channel("NATIVE_CHANNEL", mock_pin, divider_multiplier=11.0)
+    
+    # Both should work independently
+    assert "I2C_CHANNEL" in adc_i2c.channels
+    assert "NATIVE_CHANNEL" in adc_native.channels
+    
+    # Verify types are correct
+    assert adc_i2c.channels["I2C_CHANNEL"]["type"] == "I2C"
+    assert adc_native.channels["NATIVE_CHANNEL"]["type"] == "NATIVE"
+    
+    print("  ✓ I2C and native ADC managers work independently")
+    print("✓ ADCManager mixed channels test passed")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("ADCManager Test Suite")
@@ -302,6 +412,10 @@ if __name__ == "__main__":
     test_adc_manager_unsupported_chip()
     test_adc_manager_invalid_pin_index()
     test_adc_manager_lazy_loading()
+    test_adc_manager_native_initialization()
+    test_adc_manager_native_add_channel()
+    test_adc_manager_native_read_channel()
+    test_adc_manager_mixed_channels()
     
     print("\n" + "=" * 60)
     print("ALL TESTS PASSED ✓")
@@ -313,3 +427,5 @@ if __name__ == "__main__":
     print("  • Automatic voltage divider math")
     print("  • Graceful degradation when hardware is offline")
     print("  • Support for ADS1115 I2C ADC chips")
+    print("  • Support for native analogio ADC pins")
+    print("  • Uniform interface for both I2C and native ADCs")
