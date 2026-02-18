@@ -2,6 +2,7 @@
 """Manages Matrix style LEDs."""
 
 import asyncio
+from enum import Enum
 
 from utilities.palette import Palette
 from utilities.icons import Icons
@@ -9,40 +10,45 @@ from utilities import matrix_animations
 
 from .base_pixel_manager import BasePixelManager, PixelLayout
 
+class PanelLayout(Enum):
+    Z_PATTERN = "z_pattern"          # [0, 1] / [2, 3] -> Left-to-right, row by row (Current PR)
+    SERPENTINE = "serpentine"        # [0, 1] / [3, 2] -> Left-to-right, right-to-left
+    CUSTOM = "custom"                # Manual list mapping
+
 class MatrixManager(BasePixelManager):
     """Class to manage Matrix style LED arrays, such as the GlowBit 64 LED Matrix.
-    
+
     Supports arbitrary matrix configurations including:
     - Single 8x8 matrix (default)
     - Dual or quad 8x8 matrices working together (tiled panels)
     - Multiple 1x8 strips arranged as a matrix
     - Individual LEDs arranged as a matrix
-    
+
     For tiled panel configurations (e.g., four 8x8 panels forming a 16x16 display),
     the manager handles the physical panel layout correctly, where each panel has
     its own pixel range due to how they are chained together.
     """
-    def __init__(self, jeb_pixel, width=8, height=8, panel_width=None, panel_height=None):
+    def __init__(self, jeb_pixel, width=8, height=8, panel_width=None, panel_height=None, chain_layout=PanelLayout.Z_PATTERN, custom_chain_map=None):
         """Initialize MatrixManager with configurable dimensions.
-        
+
         Args:
             jeb_pixel: JEBPixel wrapper object
             width: Width of the entire display in pixels (default: 8)
             height: Height of the entire display in pixels (default: 8)
             panel_width: Width of each physical panel in pixels (default: same as width)
             panel_height: Height of each physical panel in pixels (default: same as height)
-            
+
         For single panels, panel_width and panel_height default to width and height.
         For tiled configurations (e.g., four 8x8 panels as 16x16), specify:
             MatrixManager(jeb_pixel, width=16, height=16, panel_width=8, panel_height=8)
         """
         # Declare MATRIX_2D layout with configurable dimensions
         super().__init__(jeb_pixel, layout_type=PixelLayout.MATRIX_2D, dimensions=(width, height))
-        
+
         # Store display dimensions
         self.width = width
         self.height = height
-        
+
         # Store panel dimensions (default to display dimensions for single panel)
         self.panel_width = panel_width if panel_width is not None else width
         self.panel_height = panel_height if panel_height is not None else height
@@ -50,52 +56,86 @@ class MatrixManager(BasePixelManager):
         self.palette = Palette.PALETTE_LIBRARY
         self.icons = Icons.ICON_LIBRARY
 
+        self.chain_layout = chain_layout
+        self.custom_chain_map = custom_chain_map
+
+        if self.chain_layout == PanelLayout.CUSTOM and not self.custom_chain_map:
+            raise ValueError("custom_chain_map must be provided when using CUSTOM layout")
+
+        self._build_index_lut()
+
+    def _get_panel_chain_index(self, panel_x, panel_y, panels_per_row):
+        """Determines the hardware wiring index for a physical panel position."""
+        if self.chain_layout == PanelLayout.Z_PATTERN:
+            return panel_y * panels_per_row + panel_x
+
+        elif self.chain_layout == PanelLayout.SERPENTINE:
+            if panel_y % 2 == 0:
+                # Even rows: Left to right
+                return panel_y * panels_per_row + panel_x
+            else:
+                # Odd rows: Right to left
+                return panel_y * panels_per_row + (panels_per_row - 1 - panel_x)
+
+        elif self.chain_layout == PanelLayout.CUSTOM:
+            # custom_chain_map is expected to be a 1D list mapped row-major
+            # Example for 2x2 grid: [0, 1, 3, 2] means bottom-left panel is 3rd in the chain
+            return self.custom_chain_map[panel_y * panels_per_row + panel_x]
+
+    def _build_index_lut(self):
+        """Precomputes coordinate mapping to save CPU cycles during rendering."""
+        lut = []
+        panels_per_row = self.width // self.panel_width
+        pixels_per_panel = self.panel_width * self.panel_height
+
+        for y in range(self.height):
+            for x in range(self.width):
+                panel_x = x // self.panel_width
+                panel_y = y // self.panel_height
+                local_x = x % self.panel_width
+                local_y = y % self.panel_height
+
+                # Use the new layout logic here
+                panel_idx = self._get_panel_chain_index(panel_x, panel_y, panels_per_row)
+
+                # Standard serpentine logic WITHIN the individual panel
+                if local_y % 2 == 0:
+                    local_idx = (local_y * self.panel_width) + local_x
+                else:
+                    local_idx = (local_y * self.panel_width) + (self.panel_width - 1 - local_x)
+
+                lut.append(panel_idx * pixels_per_panel + local_idx)
+
+        self._idx_map = tuple(lut)
+
     def _get_idx(self, x, y):
-        """Maps 2D coordinates to 1D pixel index with panel-aware addressing.
-        
-        For single panels, uses serpentine (zig-zag) pattern where even rows go 
+        """
+        Maps 2D coordinates to 1D pixel index with panel-aware addressing using
+        a precomputed lookup table for efficiency.
+
+        For single panels, uses serpentine (zig-zag) pattern where even rows go
         left-to-right and odd rows go right-to-left.
-        
+
         For tiled panels (e.g., four 8x8 panels forming 16x16), correctly maps
         coordinates accounting for how panels are physically chained together.
         Each panel has its own pixel range, and serpentine addressing applies
         within each panel.
-        
+
         Args:
             x: X coordinate (0 to width-1)
             y: Y coordinate (0 to height-1)
-            
+
         Returns:
             1D pixel index
         """
-        # Determine which panel this coordinate is in
-        panel_x = x // self.panel_width
-        panel_y = y // self.panel_height
-        
-        # Local coordinates within the panel
-        local_x = x % self.panel_width
-        local_y = y % self.panel_height
-        
-        # Calculate panel index (reading left-to-right, top-to-bottom)
-        panels_per_row = self.width // self.panel_width
-        panel_idx = panel_y * panels_per_row + panel_x
-        
-        # Calculate pixel index within the panel (serpentine)
-        if local_y % 2 == 0:
-            local_idx = (local_y * self.panel_width) + local_x
-        else:
-            local_idx = (local_y * self.panel_width) + (self.panel_width - 1 - local_x)
-        
-        # Final pixel index = panel start + local index
-        pixels_per_panel = self.panel_width * self.panel_height
-        return panel_idx * pixels_per_panel + local_idx
+        return self._idx_map[y * self.width + x]
 
     def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None, brightness=1.0):
         """Sets a specific pixel on the matrix.
 
         Note: The 'show' parameter is deprecated and ignored.
         Hardware writes are now centralized in CoreManager.render_loop().
-        
+
         Args:
             x: X coordinate (0 to width-1)
             y: Y coordinate (0 to height-1)
@@ -109,7 +149,7 @@ class MatrixManager(BasePixelManager):
         if 0 <= x < self.width and 0 <= y < self.height:
             idx = self._get_idx(x, y)
             anim_mode = anim_mode if anim_mode else "SOLID"
-            
+
             # Use base class method with brightness support
             adjusted_color = self._apply_brightness(color, brightness)
             self.set_animation(idx, anim_mode, adjusted_color, speed, duration)
@@ -144,7 +184,7 @@ class MatrixManager(BasePixelManager):
         Displays a predefined icon on the matrix with optional animation.
         anim_mode: None, "PULSE", "BLINK" are non-blocking via the animate_loop.
         anim_mode: "SLIDE_LEFT" is non-blocking (spawned as background task).
-        
+
         Note: Icons are designed for 8x8 matrices. On larger matrices, the icon
         is displayed in the top-left corner. On smaller matrices, the icon is clipped.
         """
@@ -161,10 +201,9 @@ class MatrixManager(BasePixelManager):
         # Icon data is 8x8, so we need to handle different matrix sizes
         icon_width = 8
         icon_height = 8
-        
+
         for y in range(min(icon_height, self.height)):
             for x in range(min(icon_width, self.width)):
-                idx = self._get_idx(x, y)
                 pixel_value = icon_data[y * icon_width + x]
 
                 if pixel_value != 0:
@@ -175,12 +214,10 @@ class MatrixManager(BasePixelManager):
                     else:
                         self.draw_pixel(x, y, base, brightness=brightness)
 
-        # Note: Hardware write is now handled by CoreManager.render_loop()
-
     # TODO Refactor progress grid to use animations
     def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):
         """Fills the matrix like a rising 'tank' of fluid.
-        
+
         Fills from bottom to top, adapting to any matrix size.
         """
         self.fill(Palette.OFF, show=False)
@@ -195,14 +232,14 @@ class MatrixManager(BasePixelManager):
 
     def draw_quadrant(self, quad_idx, color, anim_mode=None, speed=1.0, duration=None):
         """Fills one of four quadrants: 0=TopLeft, 1=TopRight, 2=BottomLeft, 3=BottomRight.
-        
+
         Quadrant size is calculated as half the matrix dimensions, rounded down.
         Works with any matrix size, not just 8x8.
         """
         # Calculate quadrant dimensions
         quad_width = self.width // 2
         quad_height = self.height // 2
-        
+
         # Define start X, Y for each quadrant based on calculated dimensions
         offsets = [
             (0, 0),                          # Top-left
