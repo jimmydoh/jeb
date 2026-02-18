@@ -4,7 +4,11 @@
 import sys
 import os
 import json
-import pytest
+
+try:
+    import pytest
+except ImportError:
+    pytest = None  # pytest is optional, only needed for async tests
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -47,6 +51,8 @@ class MockServer:
 class MockRequest:
     def __init__(self):
         self.query_params = {}
+        self.body = b""
+        self.headers = {}
 
     def json(self):
         return {}
@@ -67,6 +73,13 @@ sys.modules['adafruit_httpserver'] = type('obj', (object,), {
     'GET': type('GET', (), {'__name__': 'GET'}),
     'POST': type('POST', (), {'__name__': 'POST'})
 })()
+
+# Mock gc module for CircuitPython compatibility
+import gc as _gc
+if not hasattr(_gc, 'mem_free'):
+    # Add CircuitPython-specific gc methods for testing
+    _gc.mem_free = lambda: 100000  # Return 100KB of free memory for tests
+    _gc.mem_alloc = lambda: 50000  # Return 50KB allocated for tests
 
 # Import directly to avoid CircuitPython dependencies in other managers
 import importlib.util
@@ -103,24 +116,28 @@ def test_initialization():
 
     print("  ✓ Initialization test passed")
 
-@pytest.mark.asyncio
-async def test_wifi_connection():
-    """Test WiFi connection functionality (async)."""
-    print("\nTesting WiFi connection...")
+if pytest:
+    @pytest.mark.asyncio
+    async def test_wifi_connection():
+        """Test WiFi connection functionality (async)."""
+        print("\nTesting WiFi connection...")
 
-    config = {
-        "wifi_ssid": "TestNetwork",
-        "wifi_password": "TestPassword123",
-        "web_server_enabled": True
-    }
+        config = {
+            "wifi_ssid": "TestNetwork",
+            "wifi_password": "TestPassword123",
+            "web_server_enabled": True
+        }
 
-    manager = WebServerManager(config)
-    connected = await manager.connect_wifi()
+        manager = WebServerManager(config)
+        connected = await manager.connect_wifi()
 
-    assert connected == True
-    assert manager.connected == True
+        assert connected == True
+        assert manager.connected == True
 
-    print("  ✓ WiFi connection test passed")
+        print("  ✓ WiFi connection test passed")
+else:
+    # Skip async test if pytest not available
+    pass
 
 
 def test_logging():
@@ -512,6 +529,46 @@ def test_path_security_integration():
     print("  ✓ Path security integration test passed")
 
 
+def test_chunked_upload_with_headers():
+    """Test that file uploads use Content-Length header for size validation."""
+    print("\nTesting chunked upload with Content-Length header...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    manager = WebServerManager(config)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    # Find the upload_file route
+    upload_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/files/upload":
+            upload_route = func
+            break
+
+    assert upload_route is not None, "Upload route not found"
+
+    # Test: Upload with Content-Length exceeding max size
+    # This is the key test - it should reject BEFORE trying to access request.body
+    request = MockRequest()
+    request.query_params = {"path": "/sd", "filename": "test_large.txt"}
+    # Set Content-Length larger than MAX_UPLOAD_SIZE_BYTES (50KB)
+    large_size = manager.MAX_UPLOAD_SIZE_BYTES + 1000
+    request.headers = {"Content-Length": str(large_size)}
+    # Don't set request.body - if the code tries to access it, it will use the empty default
+    # The key is that it should reject based on Content-Length header alone
+    
+    response = upload_route(request)
+    assert response.status == 413, f"Should reject large upload based on Content-Length header alone, got status {response.status}"
+    assert "too large" in response.body.lower() or "large" in response.body.lower(), f"Error message should mention size, got: {response.body}"
+    
+    print("  ✓ Chunked upload with Content-Length header test passed")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -531,6 +588,7 @@ def run_all_tests():
         test_sanitize_path,
         test_filename_validation,
         test_path_security_integration,
+        test_chunked_upload_with_headers,
     ]
 
     try:
