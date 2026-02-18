@@ -238,6 +238,17 @@ class Icons:
         0, 0, 0, 7, 0, 0, 0, 0
     ]
 
+    SNAKE = [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 4, 4, 4, 0, 0, 0,  # Snake head (green)
+        0, 0, 4, 0, 4, 0, 0, 0,  # Snake eyes
+        0, 0, 4, 4, 4, 0, 0, 0,  # Snake body
+        0, 0, 0, 4, 0, 0, 0, 0,  # Body continues
+        0, 0, 4, 4, 4, 0, 0, 0,  # Body
+        0, 4, 4, 0, 0, 0, 0, 0,  # Tail
+        0, 0, 0, 0, 1, 0, 0, 0   # Apple (red)
+    ]
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -252,6 +263,7 @@ class Icons:
         "ASTRO_BREAKER": ASTRO_BREAKER,
         "DATA_FLOW": DATA_FLOW,
         "TRENCH_RUN": TRENCH_RUN,
+        "SNAKE": SNAKE,
         "0": ZERO,
         "1": ONE,
         "2": TWO,
