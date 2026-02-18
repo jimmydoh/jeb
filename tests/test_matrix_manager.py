@@ -40,8 +40,8 @@ async def mock_animate_slide_left(matrix_manager, icon_data, color=None, brightn
                         pixel_value = icon_data[y * 8 + x]
                         if pixel_value != 0:
                             base = color if color else matrix_manager.palette.get(pixel_value, (255, 255, 255))
-                            px_color = tuple(int(c * brightness) for c in base)
-                            matrix_manager.draw_pixel(target_x, y, px_color)
+                            # Use the manager's draw_pixel with brightness parameter
+                            matrix_manager.draw_pixel(target_x, y, base, brightness=brightness)
             matrix_manager.pixels.show()
             await asyncio.sleep(0.05)
     except asyncio.CancelledError:
@@ -144,17 +144,19 @@ class MockMatrixManager:
         self.pixels.fill((0, 0, 0))
         self.pixels.show()
 
-    def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None):
+    def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None, brightness=1.0):
         """Sets a specific pixel on the matrix."""
         if 0 <= x < 8 and 0 <= y < 8:
             idx = self._get_idx(x, y)
+            # Apply brightness to color
+            adjusted_color = tuple(int(c * brightness) for c in color)
             if anim_mode:
                 slot = self.active_animations[idx]
                 if not slot.active:
                     self._active_count += 1
-                slot.set(anim_mode, color, speed, time.time(), duration, 0)
+                slot.set(anim_mode, adjusted_color, speed, time.time(), duration, 0)
             else:
-                self.pixels[idx] = color
+                self.pixels[idx] = adjusted_color
         if show:
             self.pixels.show()
 
