@@ -144,16 +144,33 @@ class CoreManager:
         # Init Pins
         Pins.initialize(profile="CORE", type_id="00")
 
-        # Init power manager first for voltage readings
+        # Init I2C bus
+        self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
+
+        # Init ADC Manager for voltage sensing
+        from managers.adc_manager import ADCManager
+        adc_config = Pins.ADC_CONFIG
+        self.adc = ADCManager(
+            i2c_bus=self.i2c if adc_config["chip_type"] != "NATIVE" else None,
+            chip_type=adc_config["chip_type"],
+            address=adc_config.get("address", 0x48)
+        )
+        
+        # Configure ADC channels from Pins configuration
+        for channel in adc_config["channels"]:
+            self.adc.add_channel(
+                channel["name"],
+                channel["pin"],
+                channel["multiplier"]
+            )
+
+        # Init power manager with ADCManager
         self.power = PowerManager(
-            Pins.SENSE_PINS,
+            self.adc,
             [POW_INPUT, POW_BUS, POW_MAIN, POW_LED],
             Pins.MOSFET_CONTROL,
             Pins.SATBUS_DETECT,
         )
-
-        # Init I2C bus
-        self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
 
         # UART for satellite communication
         uart_hw = busio.UART(

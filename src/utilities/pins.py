@@ -52,6 +52,19 @@ class Pins:
                 cls.EXPANDER.BUTTON_D
             ]
 
+            # ADC Configuration
+            # Defines which ADC to use for power sensing and role assignments
+            cls.ADC_CONFIG = {
+                "chip_type": "NATIVE",  # Use native analogio ADC pins
+                "address": None,  # Not used for native ADC
+                "channels": [
+                    {"name": "input_20v", "pin": cls.ADC_SENSE_A, "multiplier": 1/0.1263},  # 20V with voltage divider
+                    {"name": "satbus_20v", "pin": cls.ADC_SENSE_B, "multiplier": 1/0.1263},  # 20V with voltage divider
+                    {"name": "main_5v", "pin": cls.ADC_SENSE_C, "multiplier": 1/0.5},  # 5V with voltage divider
+                    {"name": "led_5v", "pin": cls.ADC_SENSE_D, "multiplier": 1/0.5},  # 5V with voltage divider
+                ]
+            }
+
             # I2C Address Map
             cls.I2C_ADDRESSES = {
                 "OLED": 0x3C,
@@ -124,6 +137,18 @@ class Pins:
                     cls.EXPANDER.MOMENTARY_1_DOWN
                 ]
             ]
+
+            # ADC Configuration
+            # Defines which ADC to use for power sensing and role assignments
+            cls.ADC_CONFIG = {
+                "chip_type": "NATIVE",  # Use native analogio ADC pins
+                "address": None,  # Not used for native ADC
+                "channels": [
+                    {"name": "input_20v", "pin": cls.ADC_SENSE_A, "multiplier": 1/0.1263},  # 20V with voltage divider
+                    {"name": "satbus_20v", "pin": cls.ADC_SENSE_B, "multiplier": 1/0.1263},  # 20V with voltage divider
+                    {"name": "main_5v", "pin": cls.ADC_SENSE_C, "multiplier": 1/0.5},  # 5V with voltage divider
+                ]
+            }
 
             # I2C Address Map
             cls.I2C_ADDRESSES = {
