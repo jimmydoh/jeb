@@ -24,6 +24,32 @@ class MockIcons:
     }
 
 
+# Mock standalone animation function (matches utilities/matrix_animations.py)
+async def mock_animate_slide_left(matrix_manager, icon_data, color=None, brightness=1.0):
+    """
+    Mock implementation of animate_slide_left for testing.
+    Matches the signature and behavior of utilities.matrix_animations.animate_slide_left
+    """
+    try:
+        for offset in range(8, -1, -1):  # Slide from right to left
+            matrix_manager.fill(MockPalette.OFF, show=False)
+            for y in range(8):
+                for x in range(8):
+                    target_x = x - offset
+                    if 0 <= target_x < 8:
+                        pixel_value = icon_data[y * 8 + x]
+                        if pixel_value != 0:
+                            base = color if color else matrix_manager.palette.get(pixel_value, (255, 255, 255))
+                            # Use the manager's draw_pixel with brightness parameter
+                            matrix_manager.draw_pixel(target_x, y, base, brightness=brightness)
+            matrix_manager.pixels.show()
+            await asyncio.sleep(0.05)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        print(f"Error in SLIDE_LEFT animation: {e}")
+
+
 # Mock the animation slot from base_pixel_manager
 class AnimationSlot:
     __slots__ = ('active', 'type', 'color', 'speed', 'start', 'duration', 'priority')
@@ -118,17 +144,19 @@ class MockMatrixManager:
         self.pixels.fill((0, 0, 0))
         self.pixels.show()
 
-    def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None):
+    def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None, brightness=1.0):
         """Sets a specific pixel on the matrix."""
         if 0 <= x < 8 and 0 <= y < 8:
             idx = self._get_idx(x, y)
+            # Apply brightness to color
+            adjusted_color = tuple(int(c * brightness) for c in color)
             if anim_mode:
                 slot = self.active_animations[idx]
                 if not slot.active:
                     self._active_count += 1
-                slot.set(anim_mode, color, speed, time.time(), duration, 0)
+                slot.set(anim_mode, adjusted_color, speed, time.time(), duration, 0)
             else:
-                self.pixels[idx] = color
+                self.pixels[idx] = adjusted_color
         if show:
             self.pixels.show()
 
@@ -138,26 +166,6 @@ class MockMatrixManager:
         self.pixels.fill(color)
         if show:
             self.pixels.show()
-
-    @pytest.mark.asyncio
-    async def _animate_slide_left(self, icon_data, color, brightness):
-        """
-        Internal method to perform SLIDE_LEFT animation.
-        Runs as a background task to avoid blocking the caller.
-        """
-        for offset in range(8, -1, -1):  # Slide from right to left
-            self.fill(MockPalette.OFF, show=False)
-            for y in range(8):
-                for x in range(8):
-                    target_x = x - offset
-                    if 0 <= target_x < 8:
-                        pixel_value = icon_data[y * 8 + x]
-                        if pixel_value != 0:
-                            base = color if color else self.palette.get(pixel_value, (255, 255, 255))
-                            px_color = tuple(int(c * brightness) for c in base)
-                            self.draw_pixel(target_x, y, px_color)
-            self.pixels.show()
-            await asyncio.sleep(0.05)
 
     @pytest.mark.asyncio
     async def show_icon(
@@ -181,7 +189,7 @@ class MockMatrixManager:
 
         # Handle SLIDE_LEFT Animation - Spawn as background task
         if anim_mode == "SLIDE_LEFT":
-            asyncio.create_task(self._animate_slide_left(icon_data, color, brightness))
+            asyncio.create_task(mock_animate_slide_left(self, icon_data, color, brightness))
             return
 
         for y in range(8):
