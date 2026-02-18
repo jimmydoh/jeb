@@ -53,7 +53,8 @@ async def animate_slide_left(matrix_manager, icon_data, color=None, brightness=1
                             base = color if color else matrix_manager.palette.get(pixel_value, (255, 255, 255))
                             # Use the manager's draw_pixel with brightness parameter
                             matrix_manager.draw_pixel(target_x, y, base, brightness=brightness)
-            # Note: Hardware write is now handled by CoreManager.render_loop()
+            # Note: Pixel buffer updates happen above via draw_pixel().
+            # Hardware write to LEDs is handled by CoreManager.render_loop() at 60Hz.
             await asyncio.sleep(0.05)
     except asyncio.CancelledError:
         # Task was cancelled - clean up and exit gracefully
