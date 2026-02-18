@@ -290,20 +290,53 @@ class MockBusioModule:
 
 sys.modules['busio'] = MockBusioModule()
 
-# --- ANALOGIO MOCK (For Power Monitoring) ---
+# --- ANALOGIO MOCK (For Native ADC Power Monitoring) ---
 class MockAnalogIn:
     def __init__(self, pin):
         self.pin = pin
+        self._value = 49650  # Default ~2.5V raw
+        
+        # Register so the Pygame UI can dynamically manipulate rail voltages
+        HardwareMocks.register('analog_pin', self, key=str(pin))
 
     @property
     def value(self):
-        # CircuitPython ADC returns a 16-bit int (0 to 65535).
-        # 49650 simulates a healthy reading on the rail.
-        return 49650
+        return self._value
+        
+    @value.setter
+    def value(self, val):
+        self._value = max(0, min(65535, int(val))) # Clamp to 16-bit int
 
 sys.modules['analogio'] = type('MockAnalogIO', (), {'AnalogIn': MockAnalogIn})
 
+# --- ADAFRUIT_ADS1X15 I2C ADC MOCK ---
+class MockADS1115:
+    def __init__(self, i2c, address=0x48):
+        self.address = address
+        self.i2c = i2c
+        # Adafruit pins mapping
+        self.P0, self.P1, self.P2, self.P3 = 0, 1, 2, 3
+        HardwareMocks.register('i2c_adc', self, key=address)
 
+class MockADSAnalogIn:
+    def __init__(self, ads, pin):
+        self.ads = ads
+        self.pin = pin
+        self._voltage = 2.5 # Default 2.5V direct reading
+        HardwareMocks.register('ads_channel', self, key=pin)
+
+    @property
+    def voltage(self):
+        # I2C ADCs return calculated float voltages, unlike analogio's raw 16-bit value
+        return self._voltage
+        
+    @voltage.setter
+    def voltage(self, val):
+        self._voltage = float(val)
+
+sys.modules['adafruit_ads1x15'] = type('MockADS', (), {})
+sys.modules['adafruit_ads1x15.ads1115'] = type('MockADS1115Mod', (), {'ADS1115': MockADS1115})
+sys.modules['adafruit_ads1x15.analog_in'] = type('MockADSAnalogInMod', (), {'AnalogIn': MockADSAnalogIn})
 
 # neopixels
 class MockNeoPixel:

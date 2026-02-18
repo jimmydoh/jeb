@@ -254,6 +254,42 @@ async def run_hardware_spy_loop(core, satellite, screen):
                             else:
                                 JEBLogger.note("EMUL", "<<< PHYSICAL ACTION: SATELLITE CABLE UNPLUGGED <<<", src="EMUL")
 
+                    # [NEW] ADC Voltage Manipulation for Testing
+                    # Simulate Native ADC voltage drop (for native analogio-based power monitoring)
+                    if event.key == pygame.K_v and is_pressed:
+                        # Try to simulate a brownout on native ADC pin (typically board.GP26)
+                        native_pin = HardwareMocks.get("CORE", "analog_pin", "board.GP26")
+                        if native_pin:
+                            native_pin.value = 10000  # Drop voltage significantly (~0.5V)
+                            JEBLogger.warning("EMUL", "⚡ SIMULATED VOLTAGE DROP (Native ADC GP26) -> 10000 (~0.5V)", src="EMUL")
+                        else:
+                            JEBLogger.note("EMUL", "No native analog pin found at GP26", src="EMUL")
+                    
+                    # Restore Native ADC voltage
+                    if event.key == pygame.K_b and is_pressed:
+                        native_pin = HardwareMocks.get("CORE", "analog_pin", "board.GP26")
+                        if native_pin:
+                            native_pin.value = 49650  # Restore to healthy ~2.5V
+                            JEBLogger.note("EMUL", "✅ RESTORED VOLTAGE (Native ADC GP26) -> 49650 (~2.5V)", src="EMUL")
+                    
+                    # Simulate I2C ADC voltage drop (for ADS1115-based power monitoring)
+                    if event.key == pygame.K_n and is_pressed:
+                        # Try to drop voltage on I2C ADC channel P0
+                        i2c_pin = HardwareMocks.get("CORE", "ads_channel", 0)  # 0 is P0
+                        if i2c_pin:
+                            i2c_pin.voltage = 0.5  # Drop directly to 0.5V
+                            JEBLogger.warning("EMUL", "⚡ SIMULATED VOLTAGE DROP (I2C ADC P0) -> 0.5V", src="EMUL")
+                        else:
+                            JEBLogger.note("EMUL", "No I2C ADC channel found at P0", src="EMUL")
+                    
+                    # Restore I2C ADC voltage
+                    if event.key == pygame.K_m and is_pressed:
+                        i2c_pin = HardwareMocks.get("CORE", "ads_channel", 0)
+                        if i2c_pin:
+                            i2c_pin.voltage = 2.5  # Restore to healthy 2.5V
+                            JEBLogger.note("EMUL", "✅ RESTORED VOLTAGE (I2C ADC P0) -> 2.5V", src="EMUL")
+
+
             # ==========================================
             # 2. RENDERING
             # ==========================================
