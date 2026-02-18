@@ -448,6 +448,14 @@ The project includes a comprehensive test suite in the `tests/` directory with u
 - Performance benchmarks for critical paths (brightness calculations, payload encoding)
 - Hardware-specific tests for satellite communication and protocol validation
 
+**Test Maintenance Agent**: The repository includes a custom GitHub Copilot agent specifically designed for test repair and coverage expansion. See [`.github/copilot/`](.github/copilot/) for:
+- Automated repair of failing or flaky unit tests
+- Expansion of test coverage for untested modules
+- Issue creation for source code bugs (without modifying source code)
+- Best practices and examples for testing CircuitPython applications
+
+For usage instructions and examples, see [`.github/copilot/USAGE.md`](.github/copilot/USAGE.md).
+
 ### Development Roadmap
 
 **CORE Unit:**

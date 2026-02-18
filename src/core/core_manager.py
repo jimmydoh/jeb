@@ -41,7 +41,6 @@ POW_BUS = "satbus_20v"
 POW_MAIN = "main_5v"
 POW_LED = "led_5v"
 
-
 class SafeMode:
     """Minimal fail-safe mode with zero external hardware dependencies.
     
