@@ -2,85 +2,54 @@
 """Unit tests for RenderManager sync drift hysteresis."""
 
 import sys
+import os
+
+# Mock CircuitPython modules BEFORE any imports
+class MockModule:
+    """Generic mock module."""
+    def __getattr__(self, name):
+        return MockModule()
+    
+    def __call__(self, *args, **kwargs):
+        return MockModule()
+
+# Mock all CircuitPython dependencies
+sys.modules['adafruit_ticks'] = MockModule()
+sys.modules['digitalio'] = MockModule()
+sys.modules['busio'] = MockModule()
+sys.modules['board'] = MockModule()
+sys.modules['neopixel'] = MockModule()
+sys.modules['microcontroller'] = MockModule()
+sys.modules['watchdog'] = MockModule()
+sys.modules['audiocore'] = MockModule()
+sys.modules['audiobusio'] = MockModule()
+sys.modules['audiomixer'] = MockModule()
+sys.modules['analogio'] = MockModule()
+sys.modules['audiopwmio'] = MockModule()
+sys.modules['synthio'] = MockModule()
+sys.modules['ulab'] = MockModule()
+sys.modules['adafruit_mcp230xx'] = MockModule()
+sys.modules['adafruit_mcp230xx.mcp23017'] = MockModule()
+sys.modules['adafruit_displayio_ssd1306'] = MockModule()
+sys.modules['adafruit_display_text'] = MockModule()
+sys.modules['displayio'] = MockModule()
+sys.modules['terminalio'] = MockModule()
+sys.modules['adafruit_httpserver'] = MockModule()
+
+# Add src directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
+# Import the REAL RenderManager from production code
+from managers.render_manager import RenderManager
 
 
-# Mock pixel object
+# Mock pixel object (dependency for RenderManager)
 class MockPixelObject:
     def __init__(self):
         self.show_called = 0
 
     def show(self):
         self.show_called += 1
-
-
-# Minimal RenderManager implementation for testing
-class RenderManager:
-    """
-    Manages the centralized render loop (default 60Hz), frame sync, and hardware writes.
-    """
-    DEFAULT_FRAME_RATE = 60  # Default frame rate in Hz
-    DRIFT_ADJUSTMENT_FACTOR = 0.1  # 10% adjustment for gradual sync correction
-    MIN_SLEEP_DURATION = 0.005  # Minimum sleep to prevent event loop starvation
-    MIN_FRAME_RATE = 10  # Minimum frame rate when backing off (Hz)
-    BACKOFF_THRESHOLD = 5  # Number of consecutive lag frames before backing off
-    BACKOFF_FACTOR = 0.9  # Reduce frame rate by 10% when backing off
-    RECOVERY_THRESHOLD = 20  # Number of consecutive good frames before recovering
-    RECOVERY_FACTOR = 1.05  # Increase frame rate by 5% when recovering
-
-    def __init__(self, pixel_object, watchdog_flags=None, sync_role="NONE", network_manager=None):
-        """
-        Args:
-            pixel_object: The NeoPixel object to call .show() on.
-            watchdog_flags: Dictionary to set 'render': True.
-            sync_role: "MASTER" (broadcasts sync), "SLAVE" (tracks drift), or "NONE".
-            network_manager: Reference to sat_network (if MASTER) to send broadcasts.
-        """
-        self.pixels = pixel_object
-        self.watchdog = watchdog_flags
-        self.sync_role = sync_role
-        self.network = network_manager
-
-        # Mutable frame rate settings
-        self.target_frame_rate = self.DEFAULT_FRAME_RATE
-
-        # List of managers to step() every frame (e.g., LEDManager, MatrixManager)
-        self._animators = []
-
-        # Sync State
-        self.frame_counter = 0
-        self.last_sync_broadcast = 0.0
-        self.sleep_adjustment = 0.0  # For gradual drift correction
-
-        # Adaptive frame rate tracking
-        self.consecutive_lag_frames = 0
-        self.consecutive_good_frames = 0
-
-    def add_animator(self, manager):
-        """Register a manager that needs its .animate_loop(step=True) called."""
-        self._animators.append(manager)
-
-    def apply_sync(self, core_frame):
-        """Called by SLAVE devices when they receive a SYNC packet."""
-        if self.sync_role == "SLAVE":
-            estimated_core = core_frame + 1
-            drift = self.frame_counter - estimated_core
-            abs_drift = abs(drift)
-
-            if abs_drift > 2:
-                # Large drift: snap immediately to prevent visible desync
-                self.frame_counter = estimated_core
-            elif abs_drift == 1:
-                # Small drift: gradually adjust via sleep time modification
-                # If satellite is ahead (drift > 0), sleep MORE to slow down
-                # If satellite is behind (drift < 0), sleep LESS to speed up
-                frame_time = 1.0 / self.target_frame_rate
-                if drift > 0:
-                    # Satellite ahead: slow down by sleeping more
-                    adjustment = self.DRIFT_ADJUSTMENT_FACTOR * frame_time
-                else:
-                    # Satellite behind: speed up by sleeping less
-                    adjustment = -self.DRIFT_ADJUSTMENT_FACTOR * frame_time
-                self.sleep_adjustment = adjustment
 
 
 def test_sync_large_drift_snaps():
