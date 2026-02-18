@@ -334,9 +334,34 @@ class MockADSAnalogIn:
     def voltage(self, val):
         self._voltage = float(val)
 
-sys.modules['adafruit_ads1x15'] = type('MockADS', (), {})
-sys.modules['adafruit_ads1x15.ads1115'] = type('MockADS1115Mod', (), {'ADS1115': MockADS1115})
-sys.modules['adafruit_ads1x15.analog_in'] = type('MockADSAnalogInMod', (), {'AnalogIn': MockADSAnalogIn})
+# Create module objects that support both attribute access and importing
+class MockADS1115Module:
+    """Submodule mock for adafruit_ads1x15.ads1115"""
+    ADS1115 = MockADS1115
+    # Add pin constants at module level too
+    P0 = 0
+    P1 = 1
+    P2 = 2
+    P3 = 3
+
+class MockAnalogInModule:
+    """Submodule mock for adafruit_ads1x15.analog_in"""
+    AnalogIn = MockADSAnalogIn
+
+class MockADS1x15Module:
+    """Parent package mock for adafruit_ads1x15"""
+    def __init__(self):
+        # Make submodules available as attributes
+        self.ads1115 = MockADS1115Module()
+        self.analog_in = MockAnalogInModule()
+
+# Register the modules in sys.modules
+_ads1x15_parent = MockADS1x15Module()
+sys.modules['adafruit_ads1x15'] = _ads1x15_parent
+sys.modules['adafruit_ads1x15.ads1115'] = _ads1x15_parent.ads1115
+sys.modules['adafruit_ads1x15.analog_in'] = _ads1x15_parent.analog_in
+
+
 
 # neopixels
 class MockNeoPixel:
