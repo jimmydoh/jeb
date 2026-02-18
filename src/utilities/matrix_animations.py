@@ -49,7 +49,8 @@ async def animate_slide_left(matrix_manager, icon_data, color=None, brightness=1
                     if 0 <= target_x < 8:
                         pixel_value = icon_data[y * 8 + x]
                         if pixel_value != 0:
-                            base = color if color else matrix_manager.palette[pixel_value]
+                            # Use .get() with fallback for safety in case of invalid palette indices
+                            base = color if color else matrix_manager.palette.get(pixel_value, (255, 255, 255))
                             # Use the manager's draw_pixel with brightness parameter
                             matrix_manager.draw_pixel(target_x, y, base, brightness=brightness)
             # Note: Hardware write is now handled by CoreManager.render_loop()
