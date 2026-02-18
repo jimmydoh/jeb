@@ -169,6 +169,28 @@ MODE_REGISTRY = {
                 "default": "NORMAL"
             }
         ]
+    },
+    "SNAKE": {
+        "id": "SNAKE",
+        "name": "CYBER SNAKE",
+        "module_path": "modes.cyber_snake",
+        "class_name": "CyberSnakeMode",
+        "icon": "SNAKE",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "edges",
+                "label": "EDGES",
+                "options": ["WRAP", "WALLS"],
+                "default": "WRAP"
+            }
+        ]
     }
 }
 
