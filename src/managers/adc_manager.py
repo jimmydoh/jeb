@@ -12,10 +12,17 @@ class ADCManager:
         :param i2c_bus: The initialized busio.I2C object (required for I2C ADCs, None for native).
         :param chip_type: String identifier for the hardware (e.g., "ADS1115", "NATIVE").
         :param address: I2C address of the chip (only used for I2C ADCs).
+        
+        Note: When using chip_type="ADS1115" or other I2C ADCs, i2c_bus must be provided.
+              When using chip_type="NATIVE", i2c_bus should be None.
         """
         self.i2c_bus = i2c_bus
         self.chip_type = chip_type.upper()
         self.address = address
+        
+        # Validate that I2C bus is provided for I2C chip types
+        if self.chip_type != "NATIVE" and i2c_bus is None:
+            print(f"⚠️ ADCManager: I2C bus required for chip type '{self.chip_type}'")
         
         self.hardware = None
         self.channels = {} # Stores mapped names to channel objects and multipliers
@@ -52,8 +59,18 @@ class ADCManager:
         Maps a physical ADC pin to a logical name and applies voltage divider math.
         
         :param name: String name for the reading (e.g., "20V_MAIN").
-        :param pin_or_index: For I2C ADCs: integer pin index (0-3). For NATIVE: board pin object.
+        :param pin_or_index: For I2C ADCs (e.g., ADS1115): Integer pin index (0-3).
+                             For NATIVE ADCs: board pin object (e.g., board.GP26).
         :param divider_multiplier: The inverse of the physical voltage divider (e.g., 11.0).
+                                   This is the factor to multiply the ADC voltage by to get
+                                   the actual voltage being measured.
+        
+        Examples:
+            # I2C ADC (ADS1115)
+            adc.add_channel("20V_BUS", pin_or_index=0, divider_multiplier=11.0)
+            
+            # Native ADC
+            adc.add_channel("20V_BUS", pin_or_index=board.GP26, divider_multiplier=11.0)
         """
         if not self.hardware:
             return

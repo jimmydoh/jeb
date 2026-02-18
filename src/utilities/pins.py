@@ -2,6 +2,13 @@
 """Centralized Pin Map for JEB Project"""
 import board
 
+# Voltage Divider Multipliers
+# These represent the inverse of the physical voltage divider ratios
+# and are used to calculate actual voltages from ADC readings.
+# Formula: actual_voltage = adc_voltage * multiplier
+DIVIDER_MULTIPLIER_20V = 1 / 0.1263  # 47kΩ / 6.8kΩ divider ≈ 7.919
+DIVIDER_MULTIPLIER_5V = 1 / 0.5      # 10kΩ / 10kΩ divider = 2.0
+
 class Pins:
     """Centralized Pin Map for JEB Project"""
     @classmethod
@@ -58,10 +65,10 @@ class Pins:
                 "chip_type": "NATIVE",  # Use native analogio ADC pins
                 "address": None,  # Not used for native ADC
                 "channels": [
-                    {"name": "input_20v", "pin": cls.ADC_SENSE_A, "multiplier": 1/0.1263},  # 20V with voltage divider
-                    {"name": "satbus_20v", "pin": cls.ADC_SENSE_B, "multiplier": 1/0.1263},  # 20V with voltage divider
-                    {"name": "main_5v", "pin": cls.ADC_SENSE_C, "multiplier": 1/0.5},  # 5V with voltage divider
-                    {"name": "led_5v", "pin": cls.ADC_SENSE_D, "multiplier": 1/0.5},  # 5V with voltage divider
+                    {"name": "input_20v", "pin": cls.ADC_SENSE_A, "multiplier": DIVIDER_MULTIPLIER_20V},
+                    {"name": "satbus_20v", "pin": cls.ADC_SENSE_B, "multiplier": DIVIDER_MULTIPLIER_20V},
+                    {"name": "main_5v", "pin": cls.ADC_SENSE_C, "multiplier": DIVIDER_MULTIPLIER_5V},
+                    {"name": "led_5v", "pin": cls.ADC_SENSE_D, "multiplier": DIVIDER_MULTIPLIER_5V},
                 ]
             }
 
@@ -144,9 +151,9 @@ class Pins:
                 "chip_type": "NATIVE",  # Use native analogio ADC pins
                 "address": None,  # Not used for native ADC
                 "channels": [
-                    {"name": "input_20v", "pin": cls.ADC_SENSE_A, "multiplier": 1/0.1263},  # 20V with voltage divider
-                    {"name": "satbus_20v", "pin": cls.ADC_SENSE_B, "multiplier": 1/0.1263},  # 20V with voltage divider
-                    {"name": "main_5v", "pin": cls.ADC_SENSE_C, "multiplier": 1/0.5},  # 5V with voltage divider
+                    {"name": "input_20v", "pin": cls.ADC_SENSE_A, "multiplier": DIVIDER_MULTIPLIER_20V},
+                    {"name": "satbus_20v", "pin": cls.ADC_SENSE_B, "multiplier": DIVIDER_MULTIPLIER_20V},
+                    {"name": "main_5v", "pin": cls.ADC_SENSE_C, "multiplier": DIVIDER_MULTIPLIER_5V},
                 ]
             }
 
