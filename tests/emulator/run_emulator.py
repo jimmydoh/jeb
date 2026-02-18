@@ -302,7 +302,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 "N/M - I2C ADC: Drop/Restore voltage",
                 "P - Toggle satellite connection"
             ]
-            help_font = pygame.font.SysFont("Courier", 10)
+            help_font = pygame.font.SysFont("Courier", 12)
             for i, line in enumerate(help_lines):
                 help_surf = help_font.render(line, True, (80, 80, 80))
                 screen.blit(help_surf, (10, 10 + i * 12))
