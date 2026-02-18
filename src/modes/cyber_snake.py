@@ -215,10 +215,7 @@ class CyberSnakeMode(GameMode):
                     available_spots.append((x, y))
                     
         if available_spots:
-            self.apple = random.choice(available_spots)
-        else:
-            # Perfect Game! (Filled the screen)
-            pass 
+            self.apple = random.choice(available_spots) 
 
     # --- HARDWARE & RENDERING ---
 
@@ -258,6 +255,7 @@ class CyberSnakeMode(GameMode):
         await asyncio.sleep(1.0)
 
     def update_leds_death(self):
+        """Sets all core LEDs to red during the death sequence."""
         if not hasattr(self.core, 'leds'): return
         for i in range(4):
             if hasattr(self.core.leds, 'set_pixel'):
