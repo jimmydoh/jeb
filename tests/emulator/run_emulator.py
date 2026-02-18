@@ -295,6 +295,18 @@ async def run_hardware_spy_loop(core, satellite, screen):
             # ==========================================
             screen.fill((30, 32, 40)) # Dark sleek enclosure background
 
+            # --- HELP TEXT (Top Left) ---
+            help_lines = [
+                "Keyboard Controls:",
+                "V/B - Native ADC: Drop/Restore voltage",
+                "N/M - I2C ADC: Drop/Restore voltage",
+                "P - Toggle satellite connection"
+            ]
+            help_font = pygame.font.SysFont("courier", 10)
+            for i, line in enumerate(help_lines):
+                help_surf = help_font.render(line, True, (80, 80, 80))
+                screen.blit(help_surf, (10, 10 + i * 12))
+
             # --- SPY: OLED DISPLAY ---
             oled_rect = pygame.Rect(OLED_X, OLED_Y, OLED_W, OLED_H)
             pygame.draw.rect(screen, (10, 10, 12), oled_rect)
