@@ -6,8 +6,13 @@ import board
 # These represent the inverse of the physical voltage divider ratios
 # and are used to calculate actual voltages from ADC readings.
 # Formula: actual_voltage = adc_voltage * multiplier
-DIVIDER_MULTIPLIER_20V = 1 / 0.1263  # 47kΩ / 6.8kΩ divider ≈ 7.919
-DIVIDER_MULTIPLIER_5V = 1 / 0.5      # 10kΩ / 10kΩ divider = 2.0
+# 
+# For 20V sensing: Voltage divider ratio = 6.8kΩ/(47kΩ + 6.8kΩ) = 0.1263
+#                  Multiplier = 1/0.1263 ≈ 7.919
+# For 5V sensing:  Voltage divider ratio = 10kΩ/(10kΩ + 10kΩ) = 0.5
+#                  Multiplier = 1/0.5 = 2.0
+DIVIDER_MULTIPLIER_20V = 1 / 0.1263  # ≈7.919
+DIVIDER_MULTIPLIER_5V = 1 / 0.5      # = 2.0
 
 class Pins:
     """Centralized Pin Map for JEB Project"""

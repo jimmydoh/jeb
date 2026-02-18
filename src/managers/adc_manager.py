@@ -23,6 +23,10 @@ class ADCManager:
         # Validate that I2C bus is provided for I2C chip types
         if self.chip_type != "NATIVE" and i2c_bus is None:
             print(f"⚠️ ADCManager: I2C bus required for chip type '{self.chip_type}'")
+            # Set hardware to None and don't attempt initialization
+            self.hardware = None
+            self.channels = {}
+            return
         
         self.hardware = None
         self.channels = {} # Stores mapped names to channel objects and multipliers

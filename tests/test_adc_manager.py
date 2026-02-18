@@ -19,7 +19,8 @@ class MockNativeAnalogIn:
     """Mock AnalogIn for native analogio."""
     def __init__(self, pin):
         self.pin = pin
-        self.value = 35931  # Default: simulates 1.81V (0-65535 range for 0-3.3V)
+        # Default: simulates 1.81V ((1.81/3.3) * 65535 ≈ 35931 in 0-65535 range for 0-3.3V)
+        self.value = 35931
         
 
 class MockAnalogioModule:
