@@ -5,27 +5,32 @@ import sys
 import os
 import tempfile
 
-# Constants for buffer sizes (matching AudioManager implementation)
-WAVE_FILE_BUFFER_SIZE = 256
-READ_BUFFER_SIZE = 1024
-MAX_PRELOAD_SIZE_BYTES = 20 * 1024  # 20KB
-
-
-# Mock audiocore and related modules since they're CircuitPython specific
-# Note: These mocks simplify the actual CircuitPython API for testing purposes
-class MockRawSample:
-    """Mock RawSample for testing.
+# Mock CircuitPython modules BEFORE any imports
+class MockModule:
+    """Generic mock module."""
+    def __getattr__(self, name):
+        return MockModule()
     
-    Note: This is a simplified mock. The actual CircuitPython audiocore.RawSample
-    may have a slightly different API, but this is sufficient for testing the
-    preload logic which focuses on file size checks and caching behavior.
-    """
-    def __init__(self, audio_data, channel_count, sample_rate, bits_per_sample):
-        self.audio_data = audio_data
-        self.channel_count = channel_count
-        self.sample_rate = sample_rate
-        self.bits_per_sample = bits_per_sample
+    def __call__(self, *args, **kwargs):
+        return MockModule()
 
+# Mock audiocore module with necessary classes
+class MockRawSample:
+    """Mock RawSample for testing."""
+    def __init__(self, *args, **kwargs):
+        # Accept various argument patterns
+        if len(args) > 0:
+            # Could be (file) or (audio_data, channel_count, sample_rate, bits_per_sample)
+            if hasattr(args[0], 'read'):
+                # File-like object
+                self.file = args[0]
+            else:
+                # Audio data
+                self.audio_data = args[0]
+                if len(args) >= 4:
+                    self.channel_count = args[1] if len(args) > 1 else kwargs.get('channel_count', 1)
+                    self.sample_rate = args[2] if len(args) > 2 else kwargs.get('sample_rate', 22050)
+                    self.bits_per_sample = args[3] if len(args) > 3 else kwargs.get('bits_per_sample', 16)
 
 class MockWaveFile:
     """Mock WaveFile for testing."""
@@ -33,35 +38,19 @@ class MockWaveFile:
         self.sample_rate = 22050
         self.channel_count = 1
         self.bits_per_sample = 16
-        self._position = 0
-        self._data_size = 100  # Simulate small audio data
-    
-    def readinto(self, samples):
-        """Simulate reading audio data."""
-        if self._position >= self._data_size:
-            return 0
-        chunk_size = min(len(samples), self._data_size - self._position)
-        for i in range(chunk_size):
-            samples[i] = i % 256
-        self._position += chunk_size
-        return chunk_size
-
 
 class MockAudioCore:
     """Mock audiocore module."""
     RawSample = MockRawSample
     WaveFile = MockWaveFile
 
-
 class MockAudioBusIO:
     """Mock audiobusio module."""
     class I2SOut:
         def __init__(self, sck, ws, sd):
             pass
-        
         def play(self, mixer):
             pass
-
 
 class MockAudioMixer:
     """Mock audiomixer module."""
@@ -70,82 +59,34 @@ class MockAudioMixer:
             self.voice_count = voice_count
             self.voice = [None] * voice_count
 
-
-# Replace the imports
+# Mock all CircuitPython dependencies
 sys.modules['audiobusio'] = MockAudioBusIO
 sys.modules['audiocore'] = MockAudioCore
 sys.modules['audiomixer'] = MockAudioMixer
-sys.modules['asyncio'] = __import__('asyncio')
+sys.modules['adafruit_ticks'] = MockModule()
+sys.modules['digitalio'] = MockModule()
+sys.modules['busio'] = MockModule()
+sys.modules['board'] = MockModule()
+sys.modules['neopixel'] = MockModule()
+sys.modules['microcontroller'] = MockModule()
+sys.modules['watchdog'] = MockModule()
+sys.modules['analogio'] = MockModule()
+sys.modules['audiopwmio'] = MockModule()
+sys.modules['synthio'] = MockModule()
+sys.modules['ulab'] = MockModule()
+sys.modules['adafruit_mcp230xx'] = MockModule()
+sys.modules['adafruit_mcp230xx.mcp23017'] = MockModule()
+sys.modules['adafruit_displayio_ssd1306'] = MockModule()
+sys.modules['adafruit_display_text'] = MockModule()
+sys.modules['displayio'] = MockModule()
+sys.modules['terminalio'] = MockModule()
+sys.modules['adafruit_httpserver'] = MockModule()
 
+# Add src directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-# Simple AudioManager implementation for testing
-class AudioManager:
-    """Simplified AudioManager for testing preload functionality."""
-    def __init__(self, sck=None, ws=None, sd=None, voice_count=3, root_data_dir="/"):
-        self.root_data_dir = root_data_dir
-        self._cache = {}
-    
-    def preload(self, files):
-        """
-        Loads small WAV files into memory permanently.
-        Call this during boot for UI sounds (ticks, clicks, beeps).
-        Decodes the audio into RAM and closes file handles immediately.
-        
-        Files larger than 20KB are skipped and will be streamed from disk instead.
-        This prevents MemoryError on RP2350 with limited RAM (520KB).
-        """
-        import os
-        
-        for filename in files:
-            try:
-                filepath = self.root_data_dir + filename
-                
-                # Check file size before attempting to load
-                try:
-                    file_size = os.stat(filepath)[6]  # st_size is at index 6
-                except OSError:
-                    print(f"Audio Error: Could not stat {filename}")
-                    continue
-                
-                # Only preload files smaller than 20KB
-                if file_size > MAX_PRELOAD_SIZE_BYTES:
-                    print(f"Audio Info: Skipping preload of {filename} ({file_size} bytes > {MAX_PRELOAD_SIZE_BYTES} bytes). Will stream from disk.")
-                    continue
-                
-                # Open the file, read it completely, then close it
-                f = open(filepath, "rb")
-                try:
-                    wav = MockAudioCore.WaveFile(f, bytearray(WAVE_FILE_BUFFER_SIZE))
-                    
-                    # Extract audio properties
-                    sample_rate = wav.sample_rate
-                    channel_count = wav.channel_count
-                    bits_per_sample = wav.bits_per_sample
-                    
-                    # Read all audio data into memory
-                    audio_data = bytearray()
-                    while True:
-                        samples = bytearray(READ_BUFFER_SIZE)
-                        num_read = wav.readinto(samples)
-                        if num_read == 0:
-                            break
-                        audio_data.extend(samples[:num_read])
-                    
-                    # Create RawSample from the decoded data
-                    raw_sample = MockAudioCore.RawSample(
-                        audio_data,
-                        channel_count=channel_count,
-                        sample_rate=sample_rate,
-                        bits_per_sample=bits_per_sample
-                    )
-                    
-                    self._cache[filepath] = raw_sample
-                    print(f"Audio Info: Preloaded {filename} ({file_size} bytes)")
-                finally:
-                    # Always close the file handle
-                    f.close()
-            except OSError:
-                print(f"Audio Error: Could not preload {filename}")
+# Import the REAL AudioManager from production code
+from managers.audio_manager import AudioManager, MAX_PRELOAD_SIZE_BYTES
 
 
 def create_test_file(directory, filename, size):
@@ -156,6 +97,12 @@ def create_test_file(directory, filename, size):
     return filepath
 
 
+# Mock pin objects for AudioManager initialization
+class MockPin:
+    """Mock pin object for testing."""
+    pass
+
+
 def test_preload_small_file():
     """Test that small files (< 20KB) are preloaded successfully."""
     print("Testing small file preload...")
@@ -164,8 +111,13 @@ def test_preload_small_file():
         # Create a small test file (10KB)
         small_file = create_test_file(tmpdir, "small.wav", 10240)
         
-        # Create AudioManager with temp directory as root
-        manager = AudioManager(root_data_dir=tmpdir + "/")
+        # Create AudioManager with temp directory as root (with mock pins)
+        manager = AudioManager(
+            sck=MockPin(),
+            ws=MockPin(),
+            sd=MockPin(),
+            root_data_dir=tmpdir + "/"
+        )
         
         # Preload the file
         manager.preload(["small.wav"])
@@ -188,8 +140,13 @@ def test_preload_large_file():
         # Create a large test file (30KB)
         large_file = create_test_file(tmpdir, "large.wav", 30720)
         
-        # Create AudioManager with temp directory as root
-        manager = AudioManager(root_data_dir=tmpdir + "/")
+        # Create AudioManager with temp directory as root (with mock pins)
+        manager = AudioManager(
+            sck=MockPin(),
+            ws=MockPin(),
+            sd=MockPin(),
+            root_data_dir=tmpdir + "/"
+        )
         
         # Preload the file
         manager.preload(["large.wav"])
@@ -213,8 +170,13 @@ def test_preload_boundary():
         exactly_20kb = create_test_file(tmpdir, "exactly_20kb.wav", 20480)
         just_over = create_test_file(tmpdir, "just_over.wav", 20481)
         
-        # Create AudioManager with temp directory as root
-        manager = AudioManager(root_data_dir=tmpdir + "/")
+        # Create AudioManager with temp directory as root (with mock pins)
+        manager = AudioManager(
+            sck=MockPin(),
+            ws=MockPin(),
+            sd=MockPin(),
+            root_data_dir=tmpdir + "/"
+        )
         
         # Preload all files
         manager.preload(["just_under.wav", "exactly_20kb.wav", "just_over.wav"])
@@ -242,8 +204,13 @@ def test_preload_multiple_files():
         file3 = create_test_file(tmpdir, "file3.wav", 25000)
         file4 = create_test_file(tmpdir, "file4.wav", 10000)
         
-        # Create AudioManager with temp directory as root
-        manager = AudioManager(root_data_dir=tmpdir + "/")
+        # Create AudioManager with temp directory as root (with mock pins)
+        manager = AudioManager(
+            sck=MockPin(),
+            ws=MockPin(),
+            sd=MockPin(),
+            root_data_dir=tmpdir + "/"
+        )
         
         # Preload all files
         manager.preload(["file1.wav", "file2.wav", "file3.wav", "file4.wav"])
@@ -268,8 +235,13 @@ def test_preload_nonexistent_file():
     print("\nTesting non-existent file handling...")
     
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create AudioManager with temp directory as root
-        manager = AudioManager(root_data_dir=tmpdir + "/")
+        # Create AudioManager with temp directory as root (with mock pins)
+        manager = AudioManager(
+            sck=MockPin(),
+            ws=MockPin(),
+            sd=MockPin(),
+            root_data_dir=tmpdir + "/"
+        )
         
         # Try to preload a non-existent file
         manager.preload(["nonexistent.wav"])

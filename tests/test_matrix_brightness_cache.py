@@ -1,48 +1,49 @@
 #!/usr/bin/env python3
-"""Unit tests for MatrixManager stateless brightness calculation."""
+"""Unit tests for BasePixelManager stateless brightness calculation."""
 
 import sys
 import os
 
-
-# Mock the base class that MatrixManager inherits from
-class AnimationSlot:
-    """Reusable animation slot to avoid object churn."""
-    __slots__ = ('active', 'type', 'color', 'speed', 'start', 'duration', 'priority')
+# Mock CircuitPython modules BEFORE any imports
+class MockModule:
+    """Generic mock module."""
+    def __getattr__(self, name):
+        return MockModule()
     
-    def __init__(self):
-        self.active = False
-        self.type = None
-        self.color = None
-        self.speed = 1.0
-        self.start = 0.0
-        self.duration = None
-        self.priority = 0
-    
-    def set(self, anim_type, color, speed, start, duration, priority):
-        """Update slot properties in place."""
-        self.active = True
-        self.type = anim_type
-        self.color = color
-        self.speed = speed
-        self.start = start
-        self.duration = duration
-        self.priority = priority
-    
-    def clear(self):
-        """Mark slot as inactive without deallocating."""
-        self.active = False
+    def __call__(self, *args, **kwargs):
+        return MockModule()
+
+# Mock all CircuitPython dependencies
+sys.modules['adafruit_ticks'] = MockModule()
+sys.modules['digitalio'] = MockModule()
+sys.modules['busio'] = MockModule()
+sys.modules['board'] = MockModule()
+sys.modules['neopixel'] = MockModule()
+sys.modules['microcontroller'] = MockModule()
+sys.modules['watchdog'] = MockModule()
+sys.modules['audiocore'] = MockModule()
+sys.modules['audiobusio'] = MockModule()
+sys.modules['audiomixer'] = MockModule()
+sys.modules['analogio'] = MockModule()
+sys.modules['audiopwmio'] = MockModule()
+sys.modules['synthio'] = MockModule()
+sys.modules['ulab'] = MockModule()
+sys.modules['adafruit_mcp230xx'] = MockModule()
+sys.modules['adafruit_mcp230xx.mcp23017'] = MockModule()
+sys.modules['adafruit_displayio_ssd1306'] = MockModule()
+sys.modules['adafruit_display_text'] = MockModule()
+sys.modules['displayio'] = MockModule()
+sys.modules['terminalio'] = MockModule()
+sys.modules['adafruit_httpserver'] = MockModule()
+
+# Add src directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
+# Import the REAL BasePixelManager from production code
+from managers.base_pixel_manager import BasePixelManager
 
 
-class BasePixelManager:
-    """Minimal mock of BasePixelManager."""
-    def __init__(self, pixel_object):
-        self.pixels = pixel_object
-        self.num_pixels = self.pixels.n
-        self.active_animations = [AnimationSlot() for _ in range(self.num_pixels)]
-        self._active_count = 0
-
-
+# Mock pixel object for testing (dependency for BasePixelManager)
 class MockPixelObject:
     """Mock pixel object for testing."""
     def __init__(self, n=64):
@@ -63,47 +64,12 @@ class MockPixelObject:
         pass
 
 
-# Now define the MatrixManager with the stateless brightness calculation
-class MatrixManager(BasePixelManager):
-    """Test version of MatrixManager with stateless brightness calculation."""
-    def __init__(self, jeb_pixel):
-        super().__init__(jeb_pixel)
-    
-    def _get_dimmed_color(self, base_color, brightness):
-        """
-        Stateless brightness calculation.
-        Sacrifices a tiny amount of CPU speed for significantly better memory stability.
-        
-        Args:
-            base_color: Tuple of (r, g, b) values
-            brightness: Float from 0.0 to 1.0
-            
-        Returns:
-            Tuple of brightness-adjusted (r, g, b) values
-            
-        Note:
-            On RP2350 (150MHz+), this math is incredibly fast. Removed the cache
-            to prevent heap fragmentation in CircuitPython's non-compacting GC.
-        """
-        if brightness >= 1.0:
-            return base_color
-        if brightness <= 0.0:
-            return (0, 0, 0)
-            
-        # On RP2350, this math is incredibly fast
-        return (
-            int(base_color[0] * brightness),
-            int(base_color[1] * brightness),
-            int(base_color[2] * brightness)
-        )
-
-
 def test_stateless_initialization():
     """Test that the manager initializes without a cache."""
     print("Testing stateless initialization...")
     
     mock_pixels = MockPixelObject()
-    manager = MatrixManager(mock_pixels)
+    manager = BasePixelManager(mock_pixels)
     
     assert not hasattr(manager, '_brightness_cache'), "Manager should not have _brightness_cache attribute"
     assert not hasattr(manager, '_CACHE_SIZE_LIMIT'), "Manager should not have _CACHE_SIZE_LIMIT attribute"
@@ -111,29 +77,55 @@ def test_stateless_initialization():
     print("✓ Stateless initialization test passed")
 
 
-def test_get_dimmed_color_basic():
-    """Test basic functionality of _get_dimmed_color."""
-    print("\nTesting _get_dimmed_color basic functionality...")
+def test_apply_brightness_basic():
+    """Test basic functionality of _apply_brightness."""
+    print("\nTesting _apply_brightness basic functionality...")
     
     mock_pixels = MockPixelObject()
-    manager = MatrixManager(mock_pixels)
+    manager = BasePixelManager(mock_pixels)
     
     # Test with brightness = 1.0 (should return original color)
     base_color = (200, 100, 50)
-    result = manager._get_dimmed_color(base_color, 1.0)
+    result = manager._apply_brightness(base_color, 1.0)
     assert result == base_color, f"Brightness 1.0 should return original color, got {result}"
     
     # Test with brightness = 0.5
-    result = manager._get_dimmed_color(base_color, 0.5)
+    result = manager._apply_brightness(base_color, 0.5)
     expected = (100, 50, 25)  # 200*0.5=100, 100*0.5=50, 50*0.5=25
     assert result == expected, f"Expected {expected}, got {result}"
     
     # Test with brightness = 0.0 (should return black)
-    result = manager._get_dimmed_color(base_color, 0.0)
+    result = manager._apply_brightness(base_color, 0.0)
     expected = (0, 0, 0)
     assert result == expected, f"Expected {expected}, got {result}"
     
-    print("✓ _get_dimmed_color basic functionality test passed")
+    print("✓ _apply_brightness basic functionality test passed")
+
+
+def test_brightness_clamping():
+    """Test that brightness is clamped to [0.0, 1.0] range."""
+    print("\nTesting brightness clamping...")
+    
+    mock_pixels = MockPixelObject()
+    manager = BasePixelManager(mock_pixels)
+    
+    base_color = (200, 100, 50)
+    
+    # Test with brightness > 1.0 (should be clamped to 1.0)
+    result = manager._apply_brightness(base_color, 1.5)
+    assert result == base_color, f"Brightness > 1.0 should be clamped to 1.0, got {result}"
+    
+    result = manager._apply_brightness(base_color, 2.0)
+    assert result == base_color, f"Brightness > 1.0 should be clamped to 1.0, got {result}"
+    
+    # Test with brightness < 0.0 (should be clamped to 0.0)
+    result = manager._apply_brightness(base_color, -0.5)
+    assert result == (0, 0, 0), f"Brightness < 0.0 should be clamped to 0.0, got {result}"
+    
+    result = manager._apply_brightness(base_color, -1.0)
+    assert result == (0, 0, 0), f"Brightness < 0.0 should be clamped to 0.0, got {result}"
+    
+    print("✓ Brightness clamping test passed")
 
 
 def test_stateless_calculation():
@@ -141,144 +133,90 @@ def test_stateless_calculation():
     print("\nTesting stateless calculation...")
     
     mock_pixels = MockPixelObject()
-    manager = MatrixManager(mock_pixels)
+    manager = BasePixelManager(mock_pixels)
     
     base_color = (150, 150, 150)
     brightness = 0.75
     
     # First call - should calculate result
-    result1 = manager._get_dimmed_color(base_color, brightness)
+    result1 = manager._apply_brightness(base_color, brightness)
+    expected = (112, 112, 112)  # 150*0.75 = 112.5, int() = 112
+    assert result1 == expected, f"Expected {expected}, got {result1}"
     
     # Second call with same parameters - should calculate again (no cache)
-    result2 = manager._get_dimmed_color(base_color, brightness)
+    result2 = manager._apply_brightness(base_color, brightness)
+    assert result2 == expected, f"Expected {expected}, got {result2}"
     
-    assert result1 == result2, "Results should be identical"
+    # Results should be identical (even without caching)
+    assert result1 == result2, "Stateless calculation should give consistent results"
     
-    # Verify there is no cache
-    assert not hasattr(manager, '_brightness_cache'), "Manager should not have cache"
+    # Verify no cache attribute exists
+    assert not hasattr(manager, '_brightness_cache'), "Manager should not have caching"
     
     print("✓ Stateless calculation test passed")
 
 
-def test_brightness_precision():
-    """Test that brightness values are calculated with proper precision."""
-    print("\nTesting brightness precision...")
+def test_various_brightness_levels():
+    """Test various brightness levels to ensure correctness."""
+    print("\nTesting various brightness levels...")
     
     mock_pixels = MockPixelObject()
-    manager = MatrixManager(mock_pixels)
+    manager = BasePixelManager(mock_pixels)
     
     base_color = (200, 100, 50)
     
-    # Test various brightness values - each should calculate independently
-    brightness_values = [0.751, 0.752, 0.753, 0.754]
-    
-    results = []
-    for brightness in brightness_values:
-        result = manager._get_dimmed_color(base_color, brightness)
-        results.append(result)
-    
-    # Results use direct multiplication then int() truncation
-    # int(200 * 0.751) = 150, int(200 * 0.752) = 150, etc.
-    # All give same result due to int() truncation
-    assert all(r == results[0] for r in results), "Similar brightness values should produce same result after int() truncation"
-    
-    print("✓ Brightness precision test passed")
-
-
-def test_multiple_colors_calculated():
-    """Test that different base colors produce correct results."""
-    print("\nTesting multiple colors calculated...")
-    
-    mock_pixels = MockPixelObject()
-    manager = MatrixManager(mock_pixels)
-    
-    colors = [
-        (255, 0, 0),    # Red
-        (0, 255, 0),    # Green
-        (0, 0, 255),    # Blue
+    # Test multiple brightness levels
+    test_cases = [
+        (0.0, (0, 0, 0)),
+        (0.25, (50, 25, 12)),   # 200*0.25=50, 100*0.25=25, 50*0.25=12.5->12
+        (0.5, (100, 50, 25)),
+        (0.75, (150, 75, 37)),  # 200*0.75=150, 100*0.75=75, 50*0.75=37.5->37
+        (1.0, (200, 100, 50)),
     ]
-    brightness = 0.5
     
-    results = []
-    for color in colors:
-        result = manager._get_dimmed_color(color, brightness)
-        results.append(result)
+    for brightness, expected in test_cases:
+        result = manager._apply_brightness(base_color, brightness)
+        assert result == expected, f"Brightness {brightness}: expected {expected}, got {result}"
+        print(f"  ✓ Brightness {brightness}: {base_color} → {result}")
     
-    # Verify results are correct
-    assert results[0] == (127, 0, 0), f"Red dimmed should be (127, 0, 0), got {results[0]}"
-    assert results[1] == (0, 127, 0), f"Green dimmed should be (0, 127, 0), got {results[1]}"
-    assert results[2] == (0, 0, 127), f"Blue dimmed should be (0, 0, 127), got {results[2]}"
-    
-    print("✓ Multiple colors calculated test passed")
-
-
-def test_calculation_correctness():
-    """Test that calculations are always correct without caching."""
-    print("\nTesting calculation correctness...")
-    
-    mock_pixels = MockPixelObject()
-    manager = MatrixManager(mock_pixels)
-    
-    base_color = (200, 100, 50)
-    brightness = 0.8
-    
-    # Simulate calling for many pixels (like in show_icon)
-    results = []
-    for _ in range(100):
-        result = manager._get_dimmed_color(base_color, brightness)
-        results.append(result)
-    
-    # All results should be identical and correct
-    expected = (160, 80, 40)  # 200*0.8=160, 100*0.8=80, 50*0.8=40
-    assert all(r == expected for r in results), f"All results should be {expected}"
-    
-    print("✓ Calculation correctness test passed")
+    print("✓ Various brightness levels test passed")
 
 
 def test_edge_cases():
-    """Test edge cases for brightness values."""
+    """Test edge cases like black base color, white base color, etc."""
     print("\nTesting edge cases...")
     
     mock_pixels = MockPixelObject()
-    manager = MatrixManager(mock_pixels)
+    manager = BasePixelManager(mock_pixels)
     
-    base_color = (100, 100, 100)
+    # Test with black base color
+    result = manager._apply_brightness((0, 0, 0), 0.5)
+    assert result == (0, 0, 0), "Black should stay black at any brightness"
     
-    # Test brightness = 0
-    result = manager._get_dimmed_color(base_color, 0)
-    assert result == (0, 0, 0), "Brightness 0 should return black"
+    # Test with white base color
+    result = manager._apply_brightness((255, 255, 255), 0.5)
+    expected = (127, 127, 127)  # 255*0.5 = 127.5 -> 127
+    assert result == expected, f"Expected {expected}, got {result}"
     
-    # Test brightness = 1.0 (exactly)
-    result = manager._get_dimmed_color(base_color, 1.0)
-    assert result == base_color, "Brightness 1.0 should return original"
-    
-    # Test brightness > 1.0 (should clamp to original)
-    result = manager._get_dimmed_color(base_color, 1.5)
-    assert result == base_color, "Brightness > 1.0 should return original"
-    
-    # Test very small brightness
-    result = manager._get_dimmed_color(base_color, 0.01)
-    assert result == (1, 1, 1), "Very small brightness should work"
-    
-    # Test with (0, 0, 0) base color
-    result = manager._get_dimmed_color((0, 0, 0), 0.5)
-    assert result == (0, 0, 0), "Black should remain black at any brightness"
+    # Test with single channel color
+    result = manager._apply_brightness((255, 0, 0), 0.5)
+    expected = (127, 0, 0)
+    assert result == expected, f"Expected {expected}, got {result}"
     
     print("✓ Edge cases test passed")
 
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("MatrixManager Stateless Brightness Calculation Test Suite")
+    print("BasePixelManager Stateless Brightness Calculation Test Suite")
     print("=" * 60)
     
     try:
         test_stateless_initialization()
-        test_get_dimmed_color_basic()
+        test_apply_brightness_basic()
+        test_brightness_clamping()
         test_stateless_calculation()
-        test_brightness_precision()
-        test_multiple_colors_calculated()
-        test_calculation_correctness()
+        test_various_brightness_levels()
         test_edge_cases()
         
         print("\n" + "=" * 60)
@@ -293,3 +231,4 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
