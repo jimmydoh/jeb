@@ -14,7 +14,7 @@ class DataFlowMode(GameMode):
     
     Features:
     - Procedurally generated laser-routing puzzles
-    - Rotary encoder seamlessly maps 1D rotation to a 2D cursor (0-63)
+    - Rotary encoder seamlessly maps 1D rotation to a 2D cursor
     - Buttons 1 & 2 act as UP/DOWN to jump entire rows at a time
     - Instant ray-casting physics to trace the data stream
     - Synthio audio for tactile cursor movement and routing
@@ -22,7 +22,6 @@ class DataFlowMode(GameMode):
     
     # Game constants
     AMBIENT_HUM_PROBABILITY = 0.05  # 5% chance per frame to play ambient hum
-    MAX_BEAM_PATH_LENGTH = 64  # Maximum beam path length (prevents infinite loops)
     MAX_GENERATION_ATTEMPTS = 100  # Maximum attempts to generate a valid level
     
     METADATA = {
@@ -43,14 +42,17 @@ class DataFlowMode(GameMode):
     def __init__(self, core):
         super().__init__(core, "DATA FLOW", "Optical Routing Puzzle")
         
-        self.cursor_pos = 0  # 0 to 63 (maps to 8x8 grid)
+        self.grid_w = self.core.matrix.width   # Grid width in pixels
+        self.grid_h = self.core.matrix.height  # Grid height in pixels
+        
+        self.cursor_pos = 0  # 0 to (grid_w*grid_h - 1), maps to 2D grid
         self.last_encoder_pos = 0
         
         # Track edge-triggers for Button 0 (Rotate), Button 1 (Up), Button 2 (Down)
         self.last_btn_states = {0: False, 1: False, 2: False}
         
         self.source = (0, 0)
-        self.target = (7, 7)
+        self.target = (self.grid_w - 1, self.grid_h - 1)
         self.mirrors = {} # dict of (x,y) -> {'type': int} (0 = '/', 1 = '\')
         self.beam_path = []
         
@@ -117,7 +119,7 @@ class DataFlowMode(GameMode):
         
         if current_encoder != self.last_encoder_pos:
             delta = current_encoder - self.last_encoder_pos
-            self.cursor_pos = (self.cursor_pos + delta) % 64
+            self.cursor_pos = (self.cursor_pos + delta) % (self.grid_w * self.grid_h)
             self.last_encoder_pos = current_encoder
             
             # Ultra-short tactile click for dial rotation
@@ -136,8 +138,8 @@ class DataFlowMode(GameMode):
 
         # Button 0: Rotate Mirror
         if btn_pressed[0]:
-            cx = self.cursor_pos % 8
-            cy = self.cursor_pos // 8
+            cx = self.cursor_pos % self.grid_w
+            cy = self.cursor_pos // self.grid_w
             
             if (cx, cy) in self.mirrors:
                 self.mirrors[(cx, cy)]['type'] = 1 - self.mirrors[(cx, cy)]['type']
@@ -146,15 +148,15 @@ class DataFlowMode(GameMode):
             else:
                 self.core.synth.play_note(200.0, "UI_ERROR", duration=0.05)
                 
-        # Button 1: Jump UP one row (-8)
+        # Button 1: Jump UP one row (-grid_w)
         if btn_pressed[1]:
-            self.cursor_pos = (self.cursor_pos - 8) % 64
+            self.cursor_pos = (self.cursor_pos - self.grid_w) % (self.grid_w * self.grid_h)
             # Slightly higher pitch to distinguish from normal rotation
             self.core.synth.play_note(1200.0, "UI_SELECT", duration=0.015)
 
-        # Button 2: Jump DOWN one row (+8)
+        # Button 2: Jump DOWN one row (+grid_w)
         if btn_pressed[2]:
-            self.cursor_pos = (self.cursor_pos + 8) % 64
+            self.cursor_pos = (self.cursor_pos + self.grid_w) % (self.grid_w * self.grid_h)
             # Slightly lower pitch
             self.core.synth.play_note(800.0, "UI_SELECT", duration=0.015)
 
@@ -165,11 +167,11 @@ class DataFlowMode(GameMode):
         x, y = self.source
         dx, dy = 1, 0  # Source always faces right
         
-        for _ in range(self.MAX_BEAM_PATH_LENGTH):
+        for _ in range(self.grid_w * self.grid_h):
             x += dx
             y += dy
             
-            if not (0 <= x < 8 and 0 <= y < 8):
+            if not (0 <= x < self.grid_w and 0 <= y < self.grid_h):
                 break
                 
             self.beam_path.append((x, y))
@@ -197,7 +199,7 @@ class DataFlowMode(GameMode):
         for attempt in range(self.MAX_GENERATION_ATTEMPTS):
             self.mirrors.clear()
             
-            x, y = 0, random.randint(1, 6)
+            x, y = 0, random.randint(1, max(1, self.grid_h - 2))
             self.source = (x, y)
             dx, dy = 1, 0
             
@@ -208,7 +210,7 @@ class DataFlowMode(GameMode):
                 for _ in range(steps):
                     x += dx
                     y += dy
-                    if not (0 <= x < 8 and 0 <= y < 8):
+                    if not (0 <= x < self.grid_w and 0 <= y < self.grid_h):
                         valid_path = False
                         break
                 
@@ -231,7 +233,7 @@ class DataFlowMode(GameMode):
                 for _ in range(steps):
                     x += dx
                     y += dy
-                    if not (0 <= x < 8 and 0 <= y < 8):
+                    if not (0 <= x < self.grid_w and 0 <= y < self.grid_h):
                         valid_path = False
                         break
                         
@@ -247,10 +249,13 @@ class DataFlowMode(GameMode):
     def generate_fallback_level(self):
         """A simple hardcoded level in case procedural generation fails."""
         self.mirrors.clear()
-        self.source = (0, 3)
-        self.target = (7, 5)
-        self.mirrors[(3, 3)] = {'type': 0}
-        self.mirrors[(3, 5)] = {'type': 1}
+        mx = max(1, self.grid_w // 2 - 1)
+        sy = max(0, self.grid_h // 2 - 1)
+        ty = min(self.grid_h - 1, self.grid_h // 2 + 1)
+        self.source = (0, sy)
+        self.target = (self.grid_w - 1, ty)
+        self.mirrors[(mx, sy)] = {'type': 0}
+        self.mirrors[(mx, ty)] = {'type': 1}
 
     # --- RENDERING & SEQUENCES ---
 
@@ -292,6 +297,6 @@ class DataFlowMode(GameMode):
         self.core.matrix.draw_pixel(self.target[0], self.target[1], target_color)
         
         if (now % 400) > 200:
-            cx = self.cursor_pos % 8
-            cy = self.cursor_pos // 8
+            cx = self.cursor_pos % self.grid_w
+            cy = self.cursor_pos // self.grid_w
             self.core.matrix.draw_pixel(cx, cy, Palette.WHITE)
