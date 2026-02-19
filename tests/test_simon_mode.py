@@ -115,7 +115,7 @@ def test_simon_mode_file_exists():
 def test_simon_mode_valid_syntax():
     """simon.py must have valid Python syntax."""
     path = os.path.join(os.path.dirname(__file__), '..', 'src', 'modes', 'simon.py')
-    with open(path) as fh:
+    with open(path,"r",encoding="utf-8") as fh:
         code = fh.read()
     compile(code, path, 'exec')
 
@@ -133,7 +133,7 @@ def test_simon_in_manifest():
 def test_simon_uses_draw_wedge_not_draw_quadrant():
     """simon.py must call draw_wedge, not draw_quadrant, for quadrant flashing."""
     path = os.path.join(os.path.dirname(__file__), '..', 'src', 'modes', 'simon.py')
-    with open(path) as fh:
+    with open(path, "r", encoding="utf-8") as fh:
         code = fh.read()
     assert 'draw_wedge' in code, "simon.py must use draw_wedge for quadrant flashing"
     assert 'draw_quadrant' not in code, "simon.py must not reference draw_quadrant"

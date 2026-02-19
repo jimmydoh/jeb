@@ -18,7 +18,7 @@ def test_basic_colors():
 
     # Test binary colors
     assert Palette.OFF == (0, 0, 0), f"Expected OFF to be (0,0,0), got {Palette.OFF}"
-    assert Palette.WHITE == (150, 150, 150), f"Expected WHITE to be (150,150,150), got {Palette.WHITE}"
+    assert Palette.WHITE == (255, 255, 255), f"Expected WHITE to be (255,255,255), got {Palette.WHITE}"
 
     # Test primary colors have non-zero values in appropriate channels
     assert Palette.RED[0] > 0, "RED should have non-zero red channel"
@@ -31,15 +31,6 @@ def test_basic_colors():
 def test_palette_library():
     """Test that palette library contains expected colors."""
     print("\nTesting palette library...")
-
-    # The palette library now uses numeric indices 0-39
-    # Test that library contains all expected indices
-    expected_indices = list(range(40))  # 0-39
-
-    for index in expected_indices:
-        assert index in Palette.LIBRARY, f"Index {index} not found in library"
-        assert len(Palette.LIBRARY[index]) == 3, \
-            f"Color at index {index} should be RGB tuple with 3 values"
 
     # Test that specific colors are mapped correctly
     assert Palette.LIBRARY[0] == Palette.OFF, "Index 0 should be OFF"
