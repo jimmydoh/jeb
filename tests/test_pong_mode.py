@@ -80,7 +80,7 @@ def test_pong_icon_exists():
     assert "PONG" in Icons.ICON_LIBRARY, "PONG icon not found in ICON_LIBRARY"
     
     pong_icon = Icons.ICON_LIBRARY["PONG"]
-    assert len(pong_icon) == 64, "PONG icon should have 64 pixels (8x8 matrix)"
+    assert len(pong_icon) == 256, "PONG icon should have 256 pixels (16x16 matrix)"
     
     print("✓ PONG icon exists and has correct dimensions")
 

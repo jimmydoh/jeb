@@ -1,5 +1,5 @@
 # File: src/modes/pong.py
-"""Pong Game Mode - Classic Mini Pong for 8x8 LED Matrix."""
+"""Pong Game Mode - Classic Mini Pong for 16x16 LED Matrix."""
 
 import asyncio
 import math
@@ -17,11 +17,12 @@ class Pong(GameMode):
     Mini Pong Game Mode.
 
     Features:
-    - 8x8 LED matrix as playing field
-    - 2-pixel bats on each side (player bottom, top player/CPU)
-    - Player 1 controls bottom bat with core rotary encoder
-    - Player 2 controls top bat with industrial satellite encoder (2P mode)
+    - 16x16 LED matrix as playing field
+    - 2-pixel bats on each side (player left, CPU/player 2 right)
+    - Player 1 controls left bat with core rotary encoder
+    - Player 2 controls right bat with industrial satellite encoder (2P mode)
     - CPU opponent with difficulty-based AI (1P mode)
+    - Single-pixel vertical net at centre column
     - Score display on OLED in middle info section
     - Scoring system for 1P mode based on win margin
     """
@@ -30,19 +31,19 @@ class Pong(GameMode):
         super().__init__(core, "PONG", "Classic Pong Game")
 
         # Game constants
-        self.MATRIX_WIDTH = 8
-        self.MATRIX_HEIGHT = 8
-        self.BAT_WIDTH = 2  # 2-pixel wide bat
+        self.MATRIX_WIDTH = 16
+        self.MATRIX_HEIGHT = 16
+        self.BAT_SIZE = 2  # 2-pixel tall bat
 
         # Ball state
         self.ball_x = 0.0
         self.ball_y = 0.0
-        self.ball_dx = 0.0  # Ball velocity X
-        self.ball_dy = 0.0  # Ball velocity Y
+        self.ball_dx = 0.0  # Ball velocity X (left-right)
+        self.ball_dy = 0.0  # Ball velocity Y (up-down)
 
-        # Bat positions (0-6, centered position of 2-pixel bat)
-        self.player_bat_x = 3  # Bottom bat (player 1)
-        self.cpu_bat_x = 3     # Top bat (CPU or player 2)
+        # Bat Y positions (0 to MATRIX_HEIGHT-BAT_SIZE, centre of 2-pixel bat)
+        self.player_bat_y = 7  # Left bat (player 1)
+        self.cpu_bat_y = 7     # Right bat (CPU or player 2)
 
         # Scores
         self.player_score = 0
@@ -188,8 +189,8 @@ class Pong(GameMode):
 
     def reset_ball(self):
         """Reset ball to center with random direction."""
-        self.ball_x = 4.0
-        self.ball_y = 4.0
+        self.ball_x = float(self.MATRIX_WIDTH // 2 - 1)   # centre of play area
+        self.ball_y = float(self.MATRIX_HEIGHT // 2 - 1)  # centre row
 
         # Random starting angle (avoid too horizontal)
         angle = random.choice([30, 45, 60, 120, 135, 150, 210, 225, 240, 300, 315, 330])
@@ -198,11 +199,11 @@ class Pong(GameMode):
 
     def update_player_bat(self):
         """Update player bat position from encoder."""
-        # Get encoder position and map to bat position (0-6)
+        # Get encoder position and map to bat Y position (0 to MATRIX_HEIGHT-BAT_SIZE)
         encoder_pos = self.core.hid.encoder_positions[0]
-        # Map encoder to 0-6 range (allows 2-pixel bat to fit in 8-pixel width)
-        # Python's modulo with negative numbers wraps naturally: -1 % 7 = 6, -2 % 7 = 5, etc.
-        self.player_bat_x = encoder_pos % 7
+        max_bat_pos = self.MATRIX_HEIGHT - self.BAT_SIZE  # = 14
+        # Python's modulo with negative numbers wraps naturally
+        self.player_bat_y = encoder_pos % (max_bat_pos + 1)
 
     def update_cpu_bat(self, now):
         """Update CPU bat position with AI."""
@@ -212,22 +213,20 @@ class Pong(GameMode):
 
         self.last_cpu_update = now
 
-        # Simple AI: Move towards ball X position
-        # Center 2-pixel bat on ball: bat occupies [target_x, target_x+1]
-        # Ball at 4.0 should center at [3, 4] or [4, 5], so target = int(ball_x - 0.5) ≈ int(ball_x)
-        # This gives reasonable tracking without being perfect
-        if self.ball_x < 0.5:
-            target_x = 0
-        elif self.ball_x > 6.5:
-            target_x = 6
+        # Simple AI: Move towards ball Y position
+        max_bat_pos = self.MATRIX_HEIGHT - self.BAT_SIZE  # = 14
+        if self.ball_y < 0.5:
+            target_y = 0
+        elif self.ball_y > max_bat_pos - 0.5:
+            target_y = max_bat_pos
         else:
-            target_x = int(self.ball_x)
+            target_y = int(self.ball_y)
 
         # Move CPU bat towards target
-        if self.cpu_bat_x < target_x:
-            self.cpu_bat_x = min(self.cpu_bat_x + 1, target_x)
-        elif self.cpu_bat_x > target_x:
-            self.cpu_bat_x = max(self.cpu_bat_x - 1, target_x)
+        if self.cpu_bat_y < target_y:
+            self.cpu_bat_y = min(self.cpu_bat_y + 1, target_y)
+        elif self.cpu_bat_y > target_y:
+            self.cpu_bat_y = max(self.cpu_bat_y - 1, target_y)
 
     def update_player2_bat(self):
         """Update player 2 bat position from industrial satellite encoder."""
@@ -238,9 +237,10 @@ class Pong(GameMode):
         # Check that encoder_positions list has at least one element
         if len(self.industrial_sat.hid.encoder_positions) > 0:
             encoder_pos = self.industrial_sat.hid.encoder_positions[0]
-            # Map encoder to 0-6 range (allows 2-pixel bat to fit in 8-pixel width)
-            # Python's modulo with negative numbers wraps naturally: -1 % 7 = 6, -2 % 7 = 5, etc.
-            self.cpu_bat_x = encoder_pos % 7
+            # Map encoder to 0-14 range (allows 2-pixel bat to fit in 16-pixel height)
+            # Python's modulo with negative numbers wraps naturally
+            max_bat_pos = self.MATRIX_HEIGHT - self.BAT_SIZE  # = 14
+            self.cpu_bat_y = encoder_pos % (max_bat_pos + 1)
 
     def update_ball(self):
         """Update ball position and handle collisions."""
@@ -248,45 +248,44 @@ class Pong(GameMode):
         self.ball_x += self.ball_dx
         self.ball_y += self.ball_dy
 
-        # Wall collisions (left/right)
-        if self.ball_x <= 0:
-            self.ball_x = 0
-            self.ball_dx = abs(self.ball_dx)
-        elif self.ball_x >= 7:
-            self.ball_x = 7
-            self.ball_dx = -abs(self.ball_dx)
+        # Wall collisions (top/bottom)
+        if self.ball_y <= 0:
+            self.ball_y = 0
+            self.ball_dy = abs(self.ball_dy)
+        elif self.ball_y >= self.MATRIX_HEIGHT - 1:
+            self.ball_y = self.MATRIX_HEIGHT - 1
+            self.ball_dy = -abs(self.ball_dy)
 
-        # Top bat collision (CPU at y=0)
-        if self.ball_y <= 0.5 and self.ball_dy < 0:
-            ball_x_int = int(self.ball_x)
-            if self.cpu_bat_x <= ball_x_int <= self.cpu_bat_x + 1:
-                self.ball_y = 0.5
-                self.ball_dy = abs(self.ball_dy)
+        # Left bat collision (Player 1 at column 0)
+        if self.ball_x <= 0.5 and self.ball_dx < 0:
+            ball_y_int = int(self.ball_y)
+            if self.player_bat_y <= ball_y_int <= self.player_bat_y + 1:
+                self.ball_x = 0.5
+                self.ball_dx = abs(self.ball_dx)
                 # Add slight angle based on where ball hits bat
-                # Bat center is at position + 0.5 (between the two pixels)
-                offset = self.ball_x - (self.cpu_bat_x + 0.5)
-                self.ball_dx += offset * 0.05
+                offset = self.ball_y - (self.player_bat_y + 0.5)
+                self.ball_dy += offset * 0.05
 
-        # Bottom bat collision (player at y=7)
-        if self.ball_y >= 6.5 and self.ball_dy > 0:
-            ball_x_int = int(self.ball_x)
-            if self.player_bat_x <= ball_x_int <= self.player_bat_x + 1:
-                self.ball_y = 6.5
-                self.ball_dy = -abs(self.ball_dy)
+        # Right bat collision (CPU/P2 at column MATRIX_WIDTH-2)
+        right_bat_x = self.MATRIX_WIDTH - 2  # column 14
+        if self.ball_x >= right_bat_x - 0.5 and self.ball_dx > 0:
+            ball_y_int = int(self.ball_y)
+            if self.cpu_bat_y <= ball_y_int <= self.cpu_bat_y + 1:
+                self.ball_x = right_bat_x - 0.5
+                self.ball_dx = -abs(self.ball_dx)
                 # Add slight angle based on where ball hits bat
-                # Bat center is at position + 0.5 (between the two pixels)
-                offset = self.ball_x - (self.player_bat_x + 0.5)
-                self.ball_dx += offset * 0.05
+                offset = self.ball_y - (self.cpu_bat_y + 0.5)
+                self.ball_dy += offset * 0.05
 
     def check_score(self):
         """Check if someone scored and update scores."""
-        # CPU scores (ball went past player bat)
-        if self.ball_y > 7:
+        # CPU/P2 scores (ball went past player 1 bat on the left)
+        if self.ball_x < 0:
             self.cpu_score += 1
             return True
 
-        # Player scores (ball went past CPU bat)
-        if self.ball_y < 0:
+        # Player 1 scores (ball went past CPU/P2 bat on the right)
+        if self.ball_x > self.MATRIX_WIDTH - 2:
             self.player_score += 1
             return True
 
@@ -339,22 +338,28 @@ class Pong(GameMode):
         # Clear matrix
         self.core.matrix.clear()
 
-        # Draw CPU bat (top, y=0)
-        for i in range(2):
-            x = self.cpu_bat_x + i
-            if 0 <= x < 8:
-                self.core.matrix.draw_pixel(x, 0, Palette.RED)
+        # Draw single-pixel vertical net at centre column
+        net_x = self.MATRIX_WIDTH // 2 - 1  # column 7
+        for y in range(self.MATRIX_HEIGHT):
+            self.core.matrix.draw_pixel(net_x, y, Palette.BLUE)
 
-        # Draw player bat (bottom, y=7)
-        for i in range(2):
-            x = self.player_bat_x + i
-            if 0 <= x < 8:
-                self.core.matrix.draw_pixel(x, 7, Palette.GREEN)
+        # Draw player bat (left side, column 0)
+        for i in range(self.BAT_SIZE):
+            y = self.player_bat_y + i
+            if 0 <= y < self.MATRIX_HEIGHT:
+                self.core.matrix.draw_pixel(0, y, Palette.GREEN)
+
+        # Draw CPU/P2 bat (right side, column MATRIX_WIDTH-2)
+        right_bat_x = self.MATRIX_WIDTH - 2  # column 14
+        for i in range(self.BAT_SIZE):
+            y = self.cpu_bat_y + i
+            if 0 <= y < self.MATRIX_HEIGHT:
+                self.core.matrix.draw_pixel(right_bat_x, y, Palette.RED)
 
         # Draw ball
         ball_x_int = int(self.ball_x)
         ball_y_int = int(self.ball_y)
-        if 0 <= ball_x_int < 8 and 0 <= ball_y_int < 8:
+        if 0 <= ball_x_int < self.MATRIX_WIDTH and 0 <= ball_y_int < self.MATRIX_HEIGHT:
             self.core.matrix.draw_pixel(ball_x_int, ball_y_int, Palette.WHITE)
 
     async def show_victory(self):
