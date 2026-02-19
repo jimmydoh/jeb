@@ -15,15 +15,21 @@ class SafeCracker(GameMode):
         super().__init__(core, "SAFE CRACKER", "Crack the safe by turning the dial")
 
     def _draw_safe_dial(self, value, highlight):
-        """Draws a rotary dial position on the 8x8 Matrix."""
+        """Draws a rotary dial position on the 16x16 Matrix."""
         # Clear buffer
-        self.core.matrix.pixels.fill((0, 0, 0))
+        self.core.matrix.clear()
 
-        # 1. Draw Hub (Dim Center)
-        # Center indices are (3,3), (3,4), (4,3), (4,4)
+        # Compute center and radius from actual matrix dimensions
+        w = self.core.matrix.width
+        h = self.core.matrix.height
+        cx = (w - 1) / 2.0
+        cy = (h - 1) / 2.0
+        radius = (min(w, h) - 1) / 2.0
+
+        # 1. Draw Hub (Dim Center 2x2 pixels)
         hub_color = (20, 20, 20)
-        for x in [3, 4]:
-            for y in [3, 4]:
+        for x in [w // 2 - 1, w // 2]:
+            for y in [h // 2 - 1, h // 2]:
                 self.core.matrix.draw_pixel(x, y, hub_color)
 
         # 2. Calculate Pointer Position
@@ -32,12 +38,12 @@ class SafeCracker(GameMode):
         # In Grid: Top is Y=0.
         # Angle 0 -> Sin(0)=0, Cos(0)=1. Y = Cy - R*Cos(0) = Cy - R. Correct.
         angle = (value / 100.0) * 2 * math.pi
-        px = int(3.5 + 3.5 * math.sin(angle))
-        py = int(3.5 - 3.5 * math.cos(angle))
+        px = int(cx + radius * math.sin(angle))
+        py = int(cy - radius * math.cos(angle))
 
-        # Clamp to 0-7 just in case
-        px = max(0, min(7, px))
-        py = max(0, min(7, py))
+        # Clamp to valid matrix bounds just in case
+        px = max(0, min(w - 1, px))
+        py = max(0, min(h - 1, py))
 
         # 3. Draw Pointer
         pointer_color = (Palette.WHITE) if highlight else (Palette.CYAN)
@@ -158,8 +164,8 @@ class SafeCracker(GameMode):
 
             if is_on_target:
                 self.core.matrix.draw_pixel(
-                    3,
-                    3,
+                    self.core.matrix.width // 2 - 1,
+                    self.core.matrix.height // 2 - 1,
                     (255, 255, 255),
                     show=True,
                     anim_mode="BLINK",
