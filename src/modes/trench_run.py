@@ -1,4 +1,4 @@
-"""Trench Run Game Mode - Endless Sci-Fi runner for 8x8 LED Matrix."""
+"""Trench Run Game Mode - Endless Sci-Fi runner for 16x16 LED Matrix."""
 
 import asyncio
 import random
@@ -42,13 +42,13 @@ class TrenchRunMode(GameMode):
     }
 
     # Matrix dimensions
-    MATRIX_WIDTH = 8
-    MATRIX_HEIGHT = 8
+    MATRIX_WIDTH = 16
+    MATRIX_HEIGHT = 16
 
     def __init__(self, core):
         super().__init__(core, "TRENCH RUN", "Endless Space Dodger")
 
-        self.player_pos = 3
+        self.player_pos = self.MATRIX_WIDTH // 2
 
         # Walls are stored as dicts: {'y': float, 'gap_x': int}
         self.walls = []
@@ -192,7 +192,7 @@ class TrenchRunMode(GameMode):
                     render_gap = wall['gap_x']
                 else: # 1ST_PERSON
                     # Shift the gap rendering so the player is effectively locked at index 3
-                    render_gap = (wall['gap_x'] - self.player_pos + 3) % self.MATRIX_WIDTH
+                    render_gap = (wall['gap_x'] - self.player_pos + self.MATRIX_WIDTH // 2) % self.MATRIX_WIDTH
 
                 # Calculate the exact indices to leave blank
                 gap_indices = [(render_gap + i) % self.MATRIX_WIDTH for i in range(self.gap_width)]
@@ -208,5 +208,5 @@ class TrenchRunMode(GameMode):
             # Ship moves across the bottom row
             self.core.matrix.draw_pixel(self.player_pos, self.MATRIX_HEIGHT - 1, Palette.CYAN)
         else:
-            # Ship is anchored in the center (index 3)
-            self.core.matrix.draw_pixel(3, self.MATRIX_HEIGHT - 1, Palette.CYAN)
+            # Ship is anchored in the center
+            self.core.matrix.draw_pixel(self.MATRIX_WIDTH // 2, self.MATRIX_HEIGHT - 1, Palette.CYAN)
