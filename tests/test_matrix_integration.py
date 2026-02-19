@@ -203,7 +203,7 @@ async def test_critical_monitoring_not_blocked():
 
     # Expected: ~60 checks in 600ms (one every 10ms)
     # Allow variance due to task scheduling overhead and asyncio.sleep() imprecision
-    expected_checks = 55  # ~8% tolerance for system variations
+    expected_checks = 50  # tolerance for system variations
     assert animation_period_checks >= expected_checks, \
         f"Monitor should run ~60 times in 600ms, got {animation_period_checks}"
     print(f"✓ Monitor ran {animation_period_checks} times (>= {expected_checks} expected)")

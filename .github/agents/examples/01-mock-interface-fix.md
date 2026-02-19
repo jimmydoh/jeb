@@ -23,7 +23,7 @@ AttributeError: 'MockAudioManager' object has no attribute 'pause'
 
 **Prompt to Copilot**:
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 The test_audio_manager.py file is failing with:
 AttributeError: 'MockAudioManager' object has no attribute 'pause'
@@ -47,17 +47,17 @@ class MockAudioManager:
         self.stopped = False
         self.paused = False  # NEW: Added to track pause state
         self.current_track = None
-    
+
     def play(self, track):
         """Mock play method."""
         self.playing = True
         self.current_track = track
-    
+
     def stop(self):
         """Mock stop method."""
         self.playing = False
         self.stopped = True
-    
+
     def pause(self):  # NEW: Added pause method
         """Mock pause method."""
         self.paused = True

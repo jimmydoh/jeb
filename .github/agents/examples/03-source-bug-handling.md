@@ -22,7 +22,7 @@ MemoryError: Unable to allocate 524288 bytes
 
 **Prompt to Copilot**:
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 test_updater.py::test_download_large_file is failing with MemoryError.
 
@@ -86,12 +86,12 @@ CHUNK_SIZE = 4096  # 4KB chunks
 
 def download_firmware(self, url):
     response = requests.get(url, stream=True)
-    
+
     with open('/tmp/firmware.bin', 'wb') as f:
         for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
             if chunk:
                 f.write(chunk)
-    
+
     return '/tmp/firmware.bin'
 ```
 
@@ -101,7 +101,7 @@ Alternatively, use a fixed-size buffer and write directly to filesystem:
 def download_firmware(self, url, output_path):
     response = requests.get(url, stream=True)
     buffer = bytearray(4096)  # Fixed 4KB buffer
-    
+
     with open(output_path, 'wb') as f:
         while True:
             bytes_read = response.readinto(buffer)
@@ -118,11 +118,11 @@ The failing test is in `tests/test_updater.py:145-165`:
 def test_download_large_file():
     """Test downloading large firmware files."""
     updater = Updater()
-    
+
     # Simulate 500KB firmware file
     mock_response.content = b'x' * 500000
     mock_response.headers = {'content-length': '500000'}
-    
+
     # This should work but currently crashes
     result = updater.download_firmware("https://example.com/firmware.bin")
     assert result is not None
@@ -154,16 +154,16 @@ import pytest
 @pytest.mark.skip(reason="Source bug - see issue #45")
 def test_download_large_file():
     """Test downloading large firmware files.
-    
+
     Note: This test is skipped pending fix for issue #45.
     The updater currently crashes with MemoryError for large files.
     """
     updater = Updater()
-    
+
     # Simulate 500KB firmware file
     mock_response.content = b'x' * 500000
     mock_response.headers = {'content-length': '500000'}
-    
+
     result = updater.download_firmware("https://example.com/firmware.bin")
     assert result is not None
 ```
@@ -208,7 +208,7 @@ Skip test_download_large_file pending bug fix (issue #45)
 When the bug is fixed, use the agent again:
 
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 Issue #45 has been fixed. Can you re-enable the test_download_large_file
 test and verify it passes?

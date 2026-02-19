@@ -45,14 +45,14 @@
 - **Advanced Sensing**: Four-channel ADC monitoring for voltage rails (20V raw/bus, 5V logic/LED)
 - **Over-The-Air Updates**: Wi-Fi-based firmware updates via manifest synchronization (Pico 2W)
 - **Web-Based Configurator**: Browser-based field service interface for remote configuration, file management, and system monitoring
-- **Rich I/O**: 
+- **Rich I/O**:
   - 128x64 OLED display (I2C)
   - 8x8 NeoPixel matrix (GlowBit 64) with support for arbitrary matrix configurations (dual, quad, strips, custom)
   - I2S audio amplifier support
   - SD card storage
   - Rotary encoder with button
   - Four programmable buttons via I/O expander
-- **Safety Systems**: 
+- **Safety Systems**:
   - MOSFET firewall with boot protection
   - Watchdog timer (8s timeout)
   - Software UVLO (< 18V blocks startup)
@@ -173,7 +173,7 @@ The system uses an **asynchronous event-driven architecture** built on CircuitPy
 - **LEDs**: 5x NeoPixels with async animation engine
 
 #### Communication
-- **Dual UART**: 
+- **Dual UART**:
   - Upstream (GP0/GP1): Communicates with Core/previous satellite
   - Downstream (GP4/GP5): Relays to next satellite in chain
 - **Detection**: Automatic upstream/downstream device sensing
@@ -218,7 +218,7 @@ The system uses an **asynchronous event-driven architecture** built on CircuitPy
    ```bash
    # For CORE unit:
    cp examples/config-example-core.json /path/to/CIRCUITPY/config.json
-   
+
    # For Satellite 01:
    cp examples/config-example-sat-01.json /path/to/CIRCUITPY/config.json
    ```
@@ -448,7 +448,7 @@ The project includes a comprehensive test suite in the `tests/` directory with u
 - Performance benchmarks for critical paths (brightness calculations, payload encoding)
 - Hardware-specific tests for satellite communication and protocol validation
 
-**Test Maintenance Agent**: The repository includes a custom GitHub Copilot agent specifically designed for test repair and coverage expansion. See [`.github/copilot/`](.github/copilot/) for:
+**Test Specialist**: The repository includes a custom GitHub Copilot agent specifically designed for test repair and coverage expansion. See [`.github/copilot/`](.github/copilot/) for:
 - Automated repair of failing or flaky unit tests
 - Expansion of test coverage for untested modules
 - Issue creation for source code bugs (without modifying source code)

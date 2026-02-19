@@ -153,7 +153,7 @@ class MockAudioManager:
     def __init__(self):
         self.playing = False
         self.current_track = None
-    
+
     def play(self, track):
         self.playing = True
         self.current_track = track
@@ -246,16 +246,16 @@ If tests reveal source code bugs, open a GitHub issue with details instead of fi
 
 ## Custom Agents
 
-### Test Maintenance Agent
+### Test Specialist
 - **Purpose**: Automated test repair and coverage expansion
-- **Activate**: `@workspace /test-maintenance-agent`
+- **Activate**: `@workspace /test-specialist`
 - **Capabilities**: Fix failing tests, create new tests, update mocks
 - **Constraint**: NEVER modifies source code, only test files
 - **Documentation**: See `.github/copilot/USAGE.md` for detailed guide
 
 ### Usage Example
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 Fix test_audio_manager.py - MockAudioManager is missing the pause() method
 that was added to the real AudioManager class.
