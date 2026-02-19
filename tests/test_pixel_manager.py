@@ -2,69 +2,51 @@
 """Unit tests for BasePixelManager animation slot optimization."""
 
 import sys
+import os
 
-
-# Define AnimationSlot class directly for testing (copy from base_pixel_manager.py)
-class AnimationSlot:
-    """Reusable animation slot to avoid object churn."""
-    __slots__ = ('active', 'type', 'color', 'speed', 'start', 'duration', 'priority')
+# Mock CircuitPython modules BEFORE any imports
+class MockModule:
+    """Generic mock module."""
+    def __getattr__(self, name):
+        return MockModule()
     
-    def __init__(self):
-        self.active = False
-        self.type = None
-        self.color = None
-        self.speed = 1.0
-        self.start = 0.0
-        self.duration = None
-        self.priority = 0
-    
-    def set(self, anim_type, color, speed, start, duration, priority):
-        """Update slot properties in place."""
-        self.active = True
-        self.type = anim_type
-        self.color = color
-        self.speed = speed
-        self.start = start
-        self.duration = duration
-        self.priority = priority
-    
-    def clear(self):
-        """Mark slot as inactive without deallocating."""
-        self.active = False
+    def __call__(self, *args, **kwargs):
+        return MockModule()
+
+# Mock all CircuitPython-specific modules
+sys.modules['digitalio'] = MockModule()
+sys.modules['busio'] = MockModule()
+sys.modules['board'] = MockModule()
+sys.modules['adafruit_mcp230xx'] = MockModule()
+sys.modules['adafruit_mcp230xx.mcp23017'] = MockModule()
+sys.modules['adafruit_ticks'] = MockModule()
+sys.modules['audiobusio'] = MockModule()
+sys.modules['audiocore'] = MockModule()
+sys.modules['audiomixer'] = MockModule()
+sys.modules['analogio'] = MockModule()
+sys.modules['microcontroller'] = MockModule()
+sys.modules['watchdog'] = MockModule()
+sys.modules['audiopwmio'] = MockModule()
+sys.modules['synthio'] = MockModule()
+sys.modules['ulab'] = MockModule()
+sys.modules['neopixel'] = MockModule()
+sys.modules['adafruit_displayio_ssd1306'] = MockModule()
+sys.modules['adafruit_display_text'] = MockModule()
+sys.modules['adafruit_display_text.label'] = MockModule()
+sys.modules['adafruit_ht16k33'] = MockModule()
+sys.modules['adafruit_ht16k33.segments'] = MockModule()
+
+# Add src directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
+# Import production classes
+from managers.base_pixel_manager import AnimationSlot, BasePixelManager
 
 
-# Mock BasePixelManager for testing clear_animation
+# Mock pixel object for testing
 class MockPixelObject:
     def __init__(self, n):
         self.n = n
-
-class MockBasePixelManager:
-    """Minimal mock of BasePixelManager to test clear_animation."""
-    def __init__(self, num_pixels):
-        self.num_pixels = num_pixels
-        self.active_animations = [AnimationSlot() for _ in range(num_pixels)]
-        self._active_count = 0
-    
-    def clear_animation(self, idx, priority=0):
-        """Clear animation for a specific pixel."""
-        if idx < 0 or idx >= self.num_pixels:
-            return False
-        
-        slot = self.active_animations[idx]
-        if slot.active:
-            if priority < slot.priority:
-                return False
-            slot.clear()
-            self._active_count -= 1
-            return True
-        return False
-    
-    def set_animation_for_test(self, idx, anim_type, priority):
-        """Helper to set up animation for testing."""
-        slot = self.active_animations[idx]
-        if not slot.active:
-            self._active_count += 1
-        slot.set(anim_type, (255, 0, 0), 1.0, 0.0, None, priority)
 
 
 def test_animation_slot_initialization():
@@ -171,7 +153,8 @@ def test_clear_animation_abstraction():
     """Test that clear_animation properly abstracts slot manipulation."""
     print("\nTesting clear_animation abstraction...")
     
-    manager = MockBasePixelManager(5)
+    mock_pixels = MockPixelObject(5)
+    manager = BasePixelManager(mock_pixels)
     
     # Test 1: Clear animation that doesn't exist returns False
     result = manager.clear_animation(0, priority=1)
@@ -179,7 +162,7 @@ def test_clear_animation_abstraction():
     assert manager._active_count == 0, "Active count should be 0"
     
     # Test 2: Set and clear animation successfully
-    manager.set_animation_for_test(0, "BLINK", priority=2)
+    manager.set_animation(0, "BLINK", (255, 0, 0), 1.0, None, priority=2)
     assert manager._active_count == 1, "Active count should be 1"
     result = manager.clear_animation(0, priority=2)
     assert result is True, "Clearing active slot with sufficient priority should return True"
@@ -187,7 +170,7 @@ def test_clear_animation_abstraction():
     assert manager._active_count == 0, "Active count should be decremented"
     
     # Test 3: Priority check - cannot clear higher priority animation
-    manager.set_animation_for_test(1, "PULSE", priority=5)
+    manager.set_animation(1, "PULSE", (255, 0, 0), 1.0, None, priority=5)
     assert manager._active_count == 1, "Active count should be 1"
     result = manager.clear_animation(1, priority=3)
     assert result is False, "Clearing with insufficient priority should return False"

@@ -1,51 +1,46 @@
 #!/usr/bin/env python3
-"""Test that AnimationSlot ensures color immutability by converting lists to tuples.
-
-Note: This test duplicates the AnimationSlot class implementation to avoid CircuitPython
-dependencies (audiobusio, etc.) that prevent importing from the actual source in a
-standard Python environment. The implementation is kept in sync manually.
-"""
+"""Test that AnimationSlot ensures color immutability by converting lists to tuples."""
 
 import sys
+import os
 
-# AnimationSlot is duplicated here to avoid CircuitPython dependencies
-# Keep in sync with src/managers/base_pixel_manager.py
+# Mock CircuitPython modules BEFORE any imports
+class MockModule:
+    """Generic mock module."""
+    def __getattr__(self, name):
+        return MockModule()
+    
+    def __call__(self, *args, **kwargs):
+        return MockModule()
 
+# Mock all CircuitPython-specific modules
+sys.modules['digitalio'] = MockModule()
+sys.modules['busio'] = MockModule()
+sys.modules['board'] = MockModule()
+sys.modules['adafruit_mcp230xx'] = MockModule()
+sys.modules['adafruit_mcp230xx.mcp23017'] = MockModule()
+sys.modules['adafruit_ticks'] = MockModule()
+sys.modules['audiobusio'] = MockModule()
+sys.modules['audiocore'] = MockModule()
+sys.modules['audiomixer'] = MockModule()
+sys.modules['analogio'] = MockModule()
+sys.modules['microcontroller'] = MockModule()
+sys.modules['watchdog'] = MockModule()
+sys.modules['audiopwmio'] = MockModule()
+sys.modules['synthio'] = MockModule()
+sys.modules['ulab'] = MockModule()
+sys.modules['neopixel'] = MockModule()
+sys.modules['adafruit_displayio_ssd1306'] = MockModule()
+sys.modules['adafruit_display_text'] = MockModule()
+sys.modules['adafruit_display_text.label'] = MockModule()
+sys.modules['adafruit_ht16k33'] = MockModule()
+sys.modules['adafruit_ht16k33.segments'] = MockModule()
 
-class AnimationSlot:
-    """Reusable animation slot to avoid object churn."""
-    __slots__ = ('active', 'type', 'color', 'speed', 'start', 'duration', 'priority')
+# Add src directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-    def __init__(self):
-        self.active = False
-        self.type = None
-        self.color = None
-        self.speed = 1.0
-        self.start = 0.0
-        self.duration = None
-        self.priority = 0
-
-    def set(self, anim_type, color, speed, start, duration, priority):
-        """Update slot properties in place.
-
-        Args:
-            color: Can be a single color tuple (r,g,b), a list/tuple of colors,
-                   or None for effects like RAINBOW.
-                   Lists are converted to tuples for immutability.
-        """
-        self.active = True
-        self.type = anim_type
-        # Convert lists to tuples to prevent accidental mutation
-        # Tuples and None are kept as-is (already immutable)
-        self.color = tuple(color) if isinstance(color, list) else color
-        self.speed = speed
-        self.start = start
-        self.duration = duration
-        self.priority = priority
-
-    def clear(self):
-        """Mark slot as inactive without deallocating."""
-        self.active = False
+# Import production AnimationSlot
+from managers.base_pixel_manager import AnimationSlot
 
 
 def test_list_color_converted_to_tuple():

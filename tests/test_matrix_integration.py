@@ -1,9 +1,49 @@
 #!/usr/bin/env python3
 """Integration test to verify the animation fix works in realistic scenarios."""
 
+import sys
+import os
 import pytest
 import asyncio
 import time
+
+# Mock CircuitPython modules BEFORE any imports
+class MockModule:
+    """Generic mock module."""
+    def __getattr__(self, name):
+        return MockModule()
+    
+    def __call__(self, *args, **kwargs):
+        return MockModule()
+
+# Mock all CircuitPython-specific modules
+sys.modules['digitalio'] = MockModule()
+sys.modules['busio'] = MockModule()
+sys.modules['board'] = MockModule()
+sys.modules['adafruit_mcp230xx'] = MockModule()
+sys.modules['adafruit_mcp230xx.mcp23017'] = MockModule()
+sys.modules['adafruit_ticks'] = MockModule()
+sys.modules['audiobusio'] = MockModule()
+sys.modules['audiocore'] = MockModule()
+sys.modules['audiomixer'] = MockModule()
+sys.modules['analogio'] = MockModule()
+sys.modules['microcontroller'] = MockModule()
+sys.modules['watchdog'] = MockModule()
+sys.modules['audiopwmio'] = MockModule()
+sys.modules['synthio'] = MockModule()
+sys.modules['ulab'] = MockModule()
+sys.modules['neopixel'] = MockModule()
+sys.modules['adafruit_displayio_ssd1306'] = MockModule()
+sys.modules['adafruit_display_text'] = MockModule()
+sys.modules['adafruit_display_text.label'] = MockModule()
+sys.modules['adafruit_ht16k33'] = MockModule()
+sys.modules['adafruit_ht16k33.segments'] = MockModule()
+
+# Add src directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
+# Import production MatrixManager
+from managers.matrix_manager import MatrixManager
 
 
 class MockCriticalMonitor:
@@ -24,62 +64,6 @@ class MockCriticalMonitor:
             await asyncio.sleep(0.01)  # Check every 10ms
 
 
-# Mock implementations from previous test
-class MockPalette:
-    OFF = (0, 0, 0)
-
-class MockIcons:
-    DEFAULT = [2] * 64
-    ICON_LIBRARY = {"DEFAULT": DEFAULT}
-
-
-# Mock standalone animation function (matches utilities/matrix_animations.py)
-async def mock_animate_slide_left(matrix_manager, icon_data, color=None, brightness=1.0):
-    """
-    Mock implementation of animate_slide_left for testing.
-    Matches the signature and behavior of utilities.matrix_animations.animate_slide_left
-    """
-    try:
-        for offset in range(8, -1, -1):  # Slide from right to left
-            matrix_manager.fill(MockPalette.OFF, show=False)
-            for y in range(8):
-                for x in range(8):
-                    target_x = x - offset
-                    if 0 <= target_x < 8:
-                        pixel_value = icon_data[y * 8 + x]
-                        if pixel_value != 0:
-                            base = color if color else matrix_manager.palette.get(pixel_value, (255, 255, 255))
-                            # Use the manager's draw_pixel with brightness parameter
-                            matrix_manager.draw_pixel(target_x, y, base, brightness=brightness)
-            matrix_manager.pixels.show()
-            await asyncio.sleep(0.05)
-    except asyncio.CancelledError:
-        raise
-    except Exception as e:
-        print(f"Error in SLIDE_LEFT animation: {e}")
-
-
-class AnimationSlot:
-    __slots__ = ('active', 'type', 'color', 'speed', 'start', 'duration', 'priority')
-    def __init__(self):
-        self.active = False
-        self.type = None
-        self.color = None
-        self.speed = 1.0
-        self.start = 0.0
-        self.duration = None
-        self.priority = 0
-    def set(self, anim_type, color, speed, start, duration, priority):
-        self.active = True
-        self.type = anim_type
-        self.color = color
-        self.speed = speed
-        self.start = start
-        self.duration = duration
-        self.priority = priority
-    def clear(self):
-        self.active = False
-
 class MockJEBPixel:
     def __init__(self, num_pixels=64):
         self.n = num_pixels
@@ -95,57 +79,6 @@ class MockJEBPixel:
     def show(self):
         pass
 
-class MockMatrixManager:
-    """Simplified MatrixManager matching the actual implementation."""
-    def __init__(self, jeb_pixel):
-        self.pixels = jeb_pixel
-        self.num_pixels = self.pixels.n
-        self.palette = {1: (255, 0, 0), 2: (0, 0, 255)}
-        self.icons = MockIcons()
-        self.active_animations = [AnimationSlot() for _ in range(self.num_pixels)]
-        self._active_count = 0
-
-    def _get_idx(self, x, y):
-        if y % 2 == 0:
-            return (y * 8) + x
-        return (y * 8) + (7 - x)
-
-    def clear(self):
-        for slot in self.active_animations:
-            slot.clear()
-        self._active_count = 0
-        self.pixels.fill((0, 0, 0))
-        self.pixels.show()
-
-    def draw_pixel(self, x, y, color, show=False, brightness=1.0):
-        if 0 <= x < 8 and 0 <= y < 8:
-            idx = self._get_idx(x, y)
-            # Apply brightness to color
-            adjusted_color = tuple(int(c * brightness) for c in color)
-            self.pixels[idx] = adjusted_color
-        if show:
-            self.pixels.show()
-
-    def fill(self, color, show=True):
-        self.clear()
-        self.pixels.fill(color)
-        if show:
-            self.pixels.show()
-
-    @pytest.mark.asyncio
-    async def show_icon(self, icon_name, clear=True, anim_mode=None, color=None, brightness=1.0):
-        """Non-blocking show_icon - matches actual implementation."""
-        if clear:
-            self.clear()
-        icon_data = self.icons.ICON_LIBRARY.get(icon_name, self.icons.DEFAULT)
-
-        # Non-blocking: spawn as background task
-        if anim_mode == "SLIDE_LEFT":
-            asyncio.create_task(mock_animate_slide_left(self, icon_data, color, brightness))
-            return
-
-        # Other modes would go here...
-        self.pixels.show()
 
 @pytest.mark.asyncio
 async def test_critical_monitoring_not_blocked():
@@ -158,7 +91,7 @@ async def test_critical_monitoring_not_blocked():
 
     # Setup
     mock_pixel = MockJEBPixel(64)
-    matrix = MockMatrixManager(mock_pixel)
+    matrix = MatrixManager(mock_pixel)
     monitor = MockCriticalMonitor()
 
     # Start critical monitor
@@ -177,7 +110,7 @@ async def test_critical_monitoring_not_blocked():
     # Trigger multiple SLIDE_LEFT animations (simulating menu navigation)
     print("\nTriggering 5 SLIDE_LEFT animations...")
     for i in range(5):
-        await matrix.show_icon("DEFAULT", anim_mode="SLIDE_LEFT")
+        matrix.show_icon("DEFAULT", anim_mode="SLIDE_LEFT")
         await asyncio.sleep(0.05)  # Small delay between animations
 
     # Let animations complete while monitor runs
@@ -229,14 +162,14 @@ async def test_mode_transition_responsiveness():
     print("=" * 60)
 
     mock_pixel = MockJEBPixel(64)
-    matrix = MockMatrixManager(mock_pixel)
+    matrix = MatrixManager(mock_pixel)
 
     # Simulate rapid mode transitions (like menu navigation)
     start_time = time.time()
 
     for i in range(10):
         # Simulate mode change with animation
-        await matrix.show_icon("DEFAULT", anim_mode="SLIDE_LEFT")
+        matrix.show_icon("DEFAULT", anim_mode="SLIDE_LEFT")
         # Simulate other mode transition work
         await asyncio.sleep(0.01)
 
