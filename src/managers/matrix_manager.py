@@ -3,6 +3,7 @@
 
 import asyncio
 from enum import Enum
+import math
 
 from utilities.palette import Palette
 from utilities.icons import Icons
@@ -53,7 +54,7 @@ class MatrixManager(BasePixelManager):
         self.panel_width = panel_width if panel_width is not None else width
         self.panel_height = panel_height if panel_height is not None else height
 
-        self.palette = Palette.PALETTE_LIBRARY
+        self.palette = Palette.LIBRARY
         self.icons = Icons.ICON_LIBRARY
 
         self.chain_layout = chain_layout
@@ -198,21 +199,34 @@ class MatrixManager(BasePixelManager):
             asyncio.create_task(matrix_animations.animate_slide_left(self, icon_data, color, brightness))
             return
 
-        # Icon data is 8x8, so we need to handle different matrix sizes
-        icon_width = 8
-        icon_height = 8
+        data_len = len(icon_data)
+        icon_dim = int(math.sqrt(data_len))
 
-        for y in range(min(icon_height, self.height)):
-            for x in range(min(icon_width, self.width)):
+        icon_width = icon_dim
+        icon_height = icon_dim
+
+        # [CHANGE] Auto-Centering Logic
+        offset_x = (self.width - icon_width) // 2
+        offset_y = (self.height - icon_height) // 2
+
+        # Iterate over the ICON'S dimensions, not the matrix dimensions
+        for y in range(icon_height):
+            for x in range(icon_width):
                 pixel_value = icon_data[y * icon_width + x]
 
                 if pixel_value != 0:
                     base = color if color else self.palette[pixel_value]
-                    # Use draw_pixel with brightness parameter
-                    if anim_mode:
-                        self.draw_pixel(x, y, base, anim_mode=anim_mode, speed=speed, brightness=brightness)
-                    else:
-                        self.draw_pixel(x, y, base, brightness=brightness)
+
+                    # Calculate target position on matrix
+                    target_x = x + offset_x
+                    target_y = y + offset_y
+
+                    # Only draw if within bounds
+                    if 0 <= target_x < self.width and 0 <= target_y < self.height:
+                        if anim_mode:
+                            self.draw_pixel(target_x, target_y, base, anim_mode=anim_mode, speed=speed, brightness=brightness)
+                        else:
+                            self.draw_pixel(target_x, target_y, base, brightness=brightness)
 
     # TODO Refactor progress grid to use animations
     def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):

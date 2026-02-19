@@ -4,7 +4,7 @@ import os
 # 1. PATH INJECTION: Force Python to treat the 'src' folder as the root directory
 # This allows all absolute imports inside the JEB codebase (e.g., 'from managers.matrix_manager')
 # to resolve perfectly on the PC.
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
 SRC_DIR = os.path.join(PROJECT_ROOT, 'src')
 
 if SRC_DIR not in sys.path:
@@ -72,40 +72,41 @@ async def run_hardware_spy_loop(core, satellite, screen):
     # ==========================================
     # UI LAYOUT CONSTANTS (900x600 Widescreen)
     # ==========================================
-    WINDOW_SIZE_W = 900
-    WINDOW_SIZE_H = 600
+    WINDOW_SIZE_W = 1200
+    WINDOW_SIZE_H = 800
 
     # SATELLITE (Type 01 - Right Side)
-    SAT_X = 620
-    SAT_Y = 20
     SAT_W = 260
     SAT_H = 560
+    SAT_X = WINDOW_SIZE_W - SAT_W - 20
+    SAT_Y = 20
 
-    # OLED (Top Right)
+    # OLED (Top Left)
     OLED_W, OLED_H = 256, 128
-    OLED_X = WINDOW_SIZE_W - SAT_W - OLED_W - 20
+    OLED_X = 20
     OLED_Y = 20
 
     # MATRIX (Centered vertically/horizontally)
-    CELL_SIZE = 36
-    MATRIX_SIZE = 8 * CELL_SIZE
-    MATRIX_X = (WINDOW_SIZE_W - SAT_W - MATRIX_SIZE) // 2
-    MATRIX_Y = 160
+    CELL_SIZE = 24
+    MATRIX_DIM_X = 16
+    MATRIX_DIM_Y = 16
+    TILE_GAP = 3
+
+    # Calculate visual size including the center gap
+    MATRIX_VISUAL_W = (16 * CELL_SIZE) + TILE_GAP
+    MATRIX_X = (WINDOW_SIZE_W - SAT_W - MATRIX_VISUAL_W) // 2
+    MATRIX_Y = 180
 
     # BUTTONS / LEDS (Bottom Center, under matrix)
-    BTN_Y = 510
+    BTN_Y = MATRIX_Y + (16 * CELL_SIZE) + TILE_GAP + 60
     BTN_RADIUS = 26
-    BTN_SPACING = MATRIX_SIZE // 4
-    # Calculate 4 centers evenly spaced under the matrix
+    BTN_SPACING = MATRIX_VISUAL_W // 4
     BTN_CENTERS = [(MATRIX_X + (BTN_SPACING // 2) + (i * BTN_SPACING), BTN_Y) for i in range(4)]
 
-    # ENCODER (Bottom Right)
-    ENC_X = WINDOW_SIZE_W - SAT_W - 70
-    ENC_Y = 510
+    # ENCODER (To the right of buttons)
+    ENC_X = MATRIX_X + MATRIX_VISUAL_W + 60
+    ENC_Y = BTN_Y
     ENC_RADIUS = 35
-
-    # 4 Toggle Switches at the bottom of the satellite
-    SAT_TOGGLE_CENTERS = [(SAT_X + 40 + i*60, SAT_Y + 450) for i in range(4)]
 
     while True:
         try:
@@ -210,7 +211,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 elif event.type == pygame.MOUSEWHEEL:
                     mx, my = pygame.mouse.get_pos()
                     step_multiplier = 1
-                    if mx < 600: # Left side (Core Encoder)
+                    if mx < (WINDOW_SIZE_W - SAT_W): # Left side (Core Encoder)
                         if HardwareMocks.get("CORE", "encoder"):
                             HardwareMocks.get("CORE", "encoder").position += (event.y * step_multiplier)
                     else: # Right side (Satellite Encoder)
@@ -264,14 +265,14 @@ async def run_hardware_spy_loop(core, satellite, screen):
                             JEBLogger.warning("EMUL", "⚡ SIMULATED VOLTAGE DROP (Native ADC GP26) -> 10000 (~0.5V)", src="EMUL")
                         else:
                             JEBLogger.note("EMUL", "No native analog pin found at GP26", src="EMUL")
-                    
+
                     # Restore Native ADC voltage
                     if event.key == pygame.K_b and is_pressed:
                         native_pin = HardwareMocks.get("CORE", "analog_pin", "board.GP26")
                         if native_pin:
                             native_pin.value = 49650  # Restore to healthy ~2.5V
                             JEBLogger.note("EMUL", "✅ RESTORED VOLTAGE (Native ADC GP26) -> 49650 (~2.5V)", src="EMUL")
-                    
+
                     # Simulate I2C ADC voltage drop (for ADS1115-based power monitoring)
                     if event.key == pygame.K_n and is_pressed:
                         # Try to drop voltage on I2C ADC channel P0
@@ -281,7 +282,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                             JEBLogger.warning("EMUL", "⚡ SIMULATED VOLTAGE DROP (I2C ADC P0) -> 0.5V", src="EMUL")
                         else:
                             JEBLogger.note("EMUL", "No I2C ADC channel found at P0", src="EMUL")
-                    
+
                     # Restore I2C ADC voltage
                     if event.key == pygame.K_m and is_pressed:
                         i2c_pin = HardwareMocks.get("CORE", "ads_channel", 0)
@@ -305,7 +306,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
             help_font = pygame.font.SysFont("Courier", 12)
             for i, line in enumerate(help_lines):
                 help_surf = help_font.render(line, True, (80, 80, 80))
-                screen.blit(help_surf, (10, 10 + i * 12))
+                screen.blit(help_surf, (10, WINDOW_SIZE_H - 30 - i*15))
 
             # --- SPY: OLED DISPLAY ---
             oled_rect = pygame.Rect(OLED_X, OLED_Y, OLED_W, OLED_H)
@@ -337,20 +338,46 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 # 2. REMOVE CLIPPING MASK (So the matrix/buttons can draw normally)
                 screen.set_clip(None)
 
-            # --- SPY: MATRIX MANAGER ---
+            # --- SPY: 16x16 MATRIX RENDERER ---
+            # Draws four 8x8 quadrants with a gap
             if hasattr(core, 'matrix') and core.matrix:
-                for y in range(8):
-                    for x in range(8):
+                # Background container
+                bg_rect = (MATRIX_X - 10, MATRIX_Y - 10, MATRIX_VISUAL_W + 20, MATRIX_VISUAL_W + 20)
+                pygame.draw.rect(screen, (10, 10, 15), bg_rect, border_radius=5)
+
+                # [CHANGE] Iterate 0-15 for both axes
+                for y in range(16):
+                    for x in range(16):
+                        # Get Color from firmware
+                        # We use the public _get_idx logic to fetch the specific pixel index
+                        # corresponding to this logical X/Y
                         idx = core.matrix._get_idx(x, y)
-                        color = core.matrix.pixels[idx]
-                        rect = (MATRIX_X + (x * CELL_SIZE), MATRIX_Y + (y * CELL_SIZE), CELL_SIZE - 2, CELL_SIZE - 2)
 
                         try:
-                            safe_color = tuple(max(0, min(255, int(c))) for c in color)
-                        except TypeError:
-                            safe_color = (0, 0, 0)
+                            # Safely handle list length in case resize hasn't propagated
+                            if idx < len(core.matrix.pixels):
+                                color = core.matrix.pixels[idx]
+                            else:
+                                color = (0,0,0) # Out of bounds
+                        except:
+                            color = (0,0,0)
 
-                        pygame.draw.rect(screen, safe_color, rect)
+                        # [CHANGE] Calculate Visual Position (With Tiled Gaps)
+                        x_offset = 0 if x < 8 else TILE_GAP
+                        y_offset = 0 if y < 8 else TILE_GAP
+
+                        rect_x = MATRIX_X + (x * CELL_SIZE) + x_offset
+                        rect_y = MATRIX_Y + (y * CELL_SIZE) + y_offset
+
+                        rect = (rect_x, rect_y, CELL_SIZE - 2, CELL_SIZE - 2)
+
+                        safe_color = tuple(max(0, min(255, int(c))) for c in color)
+
+                        # Draw faint outline for unlit pixels
+                        if safe_color == (0,0,0):
+                            pygame.draw.rect(screen, (25, 25, 30), rect, 1)
+                        else:
+                            pygame.draw.rect(screen, safe_color, rect)
 
             # --- SPY: LED MANAGER (Illuminated Buttons) ---
             # Handle either 'leds' or 'led' depending on your core attribute
@@ -436,33 +463,33 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 # RENDER SAT 01 LEDs
                 # ==========================================
                 sat_pixels = HardwareMocks.get("SAT_01", "pixels")
-                
+
                 if sat_pixels:
                     led_y = SAT_Y + 25
                     for i in range(4):
-                        tx = SAT_X + 40 + i * 60 
-                        
+                        tx = SAT_X + 40 + i * 60
+
                         # Draw outer Bezel
-                        pygame.draw.circle(screen, (30, 30, 30), (tx, led_y), 12) 
-                        
+                        pygame.draw.circle(screen, (30, 30, 30), (tx, led_y), 12)
+
                         try:
-                            color = sat_pixels[i] 
-                            
+                            color = sat_pixels[i]
+
                             # Handle hex integers just in case
                             if isinstance(color, int):
                                 r = (color >> 16) & 0xFF
                                 g = (color >> 8) & 0xFF
                                 b = color & 0xFF
                                 color = (r, g, b)
-                                
+
                             safe_color = tuple(max(0, min(255, int(c))) for c in color[:3])
-                            
+
                             # If the color is lit (>0), draw the glowing dome
                             if any(c > 0 for c in safe_color):
                                 pygame.draw.circle(screen, safe_color, (tx, led_y), 9)
                             else:
                                 pygame.draw.circle(screen, (10, 10, 10), (tx, led_y), 9)
-                                
+
                         except Exception as e:
                             print(f"⚠️ [EMULATOR] LED Render Error on SAT_01 LED {i}: {e}")
 
@@ -544,13 +571,13 @@ async def run_hardware_spy_loop(core, satellite, screen):
 
 async def main():
     pygame.init()
-    # Update to the new square window size
-    screen = pygame.display.set_mode((900, 600))
+    screen = pygame.display.set_mode((1200, 800))
     pygame.display.set_caption("JEB Embedded Hardware Emulator")
 
     JEBLogger.note("CORE", " --- BOOTING CORE MANAGER --- ", src="EMUL")
     HardwareMocks.set_context("CORE")
     core = CoreManager()
+    core.matrix.fill((0,255,0))
 
     JEBLogger.note("SAT1", " --- BOOTING SAT TYPE 01 FIRMWARE --- ", src="EMUL")
     HardwareMocks.set_context("SAT_01")

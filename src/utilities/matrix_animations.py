@@ -14,16 +14,17 @@ added to this module rather than as methods in MatrixManager. This promotes:
 """
 
 import asyncio
+import math
 from utilities.palette import Palette
 
 
 async def animate_slide_left(matrix_manager, icon_data, color=None, brightness=1.0):
     """
     Performs a SLIDE_LEFT animation on a matrix display.
-    
+
     This animation slides an icon from right to left across the matrix.
     Designed to run as a background asyncio task without blocking the caller.
-    
+
     Args:
         matrix_manager: Instance of MatrixManager (or compatible class) with:
             - fill(color, show=False) method
@@ -32,30 +33,35 @@ async def animate_slide_left(matrix_manager, icon_data, color=None, brightness=1
         icon_data: List/array of 64 pixel values (8x8 matrix)
         color: Optional RGB tuple to override palette colors. If None, uses palette.
         brightness: Float from 0.0 to 1.0 for brightness adjustment
-    
+
     Raises:
         asyncio.CancelledError: If the task is cancelled during execution
-    
+
     Note:
         Hardware writes are centralized in CoreManager.render_loop().
         This function only updates the pixel buffer.
     """
     try:
-        for offset in range(8, -1, -1):  # Slide from right to left
+        data_len = len(icon_data)
+        icon_dim = int(math.sqrt(data_len))
+        y_offset_center = (matrix_manager.height - icon_dim) // 2
+
+        #Calculate steps to center the icon on the matrix
+        steps = icon_dim + (matrix_manager.width - icon_dim) // 2
+        left_edge_end = steps - icon_dim
+
+        for offset in range(icon_dim, -1 - left_edge_end, -1):
             matrix_manager.fill(Palette.OFF, show=False)
-            for y in range(8):
-                for x in range(8):
+            for y in range(icon_dim):
+                for x in range(icon_dim):
                     target_x = x - offset
-                    if 0 <= target_x < 8:
-                        pixel_value = icon_data[y * 8 + x]
+                    target_y = y + y_offset_center
+                    if 0 <= target_x < matrix_manager.width and 0 <= target_y < matrix_manager.height:
+                        pixel_value = icon_data[y * icon_dim + x]
                         if pixel_value != 0:
-                            # Use .get() with fallback for safety in case of invalid palette indices
                             base = color if color else matrix_manager.palette.get(pixel_value, (255, 255, 255))
-                            # Use the manager's draw_pixel with brightness parameter
-                            matrix_manager.draw_pixel(target_x, y, base, brightness=brightness)
-            # Note: Pixel buffer updates happen above via draw_pixel().
-            # Hardware write to LEDs is handled by CoreManager.render_loop() at 60Hz.
-            await asyncio.sleep(0.05)
+                            matrix_manager.draw_pixel(target_x, target_y, base, brightness=brightness)
+            await asyncio.sleep(0.01)
     except asyncio.CancelledError:
         # Task was cancelled - clean up and exit gracefully
         raise
