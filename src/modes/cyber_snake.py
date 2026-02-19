@@ -1,4 +1,4 @@
-"""Cyber Snake Game Mode - Classic Snake for 8x8 LED Matrix."""
+"""Cyber Snake Game Mode - Classic Snake for 16x16 LED Matrix."""
 
 import asyncio
 import random
@@ -85,7 +85,9 @@ class CyberSnakeMode(GameMode):
         self.apples_eaten = 0
         
         # Start in the middle, 3 segments long, facing UP
-        self.snake = [(3, 4), (3, 5), (3, 6)]
+        cx = self.core.matrix.width // 2 - 1
+        cy = self.core.matrix.height // 2 - 1
+        self.snake = [(cx, cy), (cx, cy + 1), (cx, cy + 2)]
         self.current_facing = 0
         self.target_facing = 0
         
@@ -158,11 +160,11 @@ class CyberSnakeMode(GameMode):
         
         # Handle Edges
         if self.edges == "WRAP":
-            new_head_x = new_head_x % 8
-            new_head_y = new_head_y % 8
+            new_head_x = new_head_x % self.core.matrix.width
+            new_head_y = new_head_y % self.core.matrix.height
         else:
             # WALLS
-            if not (0 <= new_head_x < 8 and 0 <= new_head_y < 8):
+            if not (0 <= new_head_x < self.core.matrix.width and 0 <= new_head_y < self.core.matrix.height):
                 return True # Wall Crash
                 
         new_head = (new_head_x, new_head_y)
@@ -209,8 +211,8 @@ class CyberSnakeMode(GameMode):
     def spawn_apple(self):
         """Spawns an apple on a free grid square."""
         available_spots = []
-        for x in range(8):
-            for y in range(8):
+        for x in range(self.core.matrix.width):
+            for y in range(self.core.matrix.height):
                 if (x, y) not in self.snake:
                     available_spots.append((x, y))
                     
