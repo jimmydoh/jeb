@@ -109,7 +109,7 @@ class Simon(GameMode):
             for val in sequence:
                 # Visual: Light up specific quadrant and button LED
                 if self.variant != "BLIND":
-                    self.core.matrix.draw_quadrant(
+                    self.core.matrix.draw_wedge(
                         val,
                         self.colors[val],
                         duration=final_speed
@@ -134,7 +134,7 @@ class Simon(GameMode):
 
                 # Visual: Turn off
                 if self.variant != "BLIND":
-                    self.core.matrix.draw_quadrant(val, Palette.OFF)
+                    self.core.matrix.draw_wedge(val, Palette.OFF)
                     self.core.leds.off_led(val)
 
                 # Short gap between notes
@@ -186,7 +186,7 @@ class Simon(GameMode):
                             last_interaction_time = ticks_ms()
 
                             # Immediate Feedback
-                            self.core.matrix.draw_quadrant(
+                            self.core.matrix.draw_wedge(
                                 i,
                                 self.colors[i],
                             )
@@ -206,7 +206,7 @@ class Simon(GameMode):
                                 await asyncio.sleep(0.01)
 
                             # Turn off the matrix quadrant and restore breathing LED
-                            self.core.matrix.draw_quadrant(i, Palette.OFF)
+                            self.core.matrix.draw_wedge(i, Palette.OFF)
                             self.core.leds.off_led(i)
                             self.core.leds.breathe_led(
                                 i,
@@ -235,7 +235,7 @@ class Simon(GameMode):
                 brightness=0.8,
                 duration=0.48
             )
-            self.core.matrix.draw_quadrant(
+            self.core.matrix.draw_wedge(
                 sequence[-1],
                 self.colors[sequence[-1]],
                 anim_mode="FLASH",

@@ -267,3 +267,43 @@ class MatrixManager(BasePixelManager):
             for x in range(quad_width):
                 self.draw_pixel(ox + x, oy + y, color, show=False, anim_mode=anim_mode, speed=speed, duration=duration)
         # Note: Hardware write is now handled by CoreManager.render_loop()
+
+    def draw_wedge(self, quad_idx, color, anim_mode=None, speed=1.0, duration=None):
+        """Draws a curved wedge (ring-sector) shape in one of four quadrants.
+
+        Unlike draw_quadrant which fills the entire rectangular quadrant, this
+        draws a quarter-circle arc shape with:
+        - An inner circular gap near the matrix centre
+        - A circular outer arc that naturally clips the quadrant corners
+
+        Quadrant indices: 0=TopLeft, 1=TopRight, 2=BottomLeft, 3=BottomRight.
+        All bounds derive from self.width and self.height (no hardcoded values).
+        """
+        cx = self.width / 2
+        cy = self.height / 2
+        half = min(cx, cy)
+
+        # Radii scale with matrix size
+        inner_r = half * 0.3   # Centre gap (~30% of half-dimension)
+        outer_r = half         # Outer arc at the half-dimension radius
+
+        quad_width = self.width // 2
+        quad_height = self.height // 2
+
+        offsets = [
+            (0, 0),                          # Top-left
+            (quad_width, 0),                 # Top-right
+            (0, quad_height),                # Bottom-left
+            (quad_width, quad_height)        # Bottom-right
+        ]
+        ox, oy = offsets[quad_idx]
+
+        for y in range(quad_height):
+            for x in range(quad_width):
+                # Use pixel centre for distance calculation (squared to avoid sqrt)
+                px = ox + x + 0.5
+                py = oy + y + 0.5
+                d_sq = (px - cx) ** 2 + (py - cy) ** 2
+                if inner_r * inner_r <= d_sq <= outer_r * outer_r:
+                    self.draw_pixel(ox + x, oy + y, color, show=False, anim_mode=anim_mode, speed=speed, duration=duration)
+        # Note: Hardware write is now handled by CoreManager.render_loop()
