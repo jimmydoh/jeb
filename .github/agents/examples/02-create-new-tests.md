@@ -15,7 +15,7 @@ The `LEDManager` class controls LED indicators on the JEB hardware:
 
 **Prompt to Copilot**:
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 According to TEST_COVERAGE_REPORT.md, the led_manager.py module has no tests.
 Can you create comprehensive tests for it?
@@ -53,7 +53,7 @@ class MockDigitalInOut:
         self.pin = pin
         self.value = False
         self.direction = None
-    
+
     def deinit(self):
         """Mock deinit."""
         pass
@@ -85,106 +85,106 @@ class MockBoard:
 def test_led_manager_initialization():
     """Test LEDManager initialization."""
     print("Testing LEDManager initialization...")
-    
+
     board = MockBoard()
     manager = LEDManager(board)
-    
+
     # Verify LEDs are initialized
     assert hasattr(manager, 'leds'), "Manager should have leds attribute"
     assert len(manager.leds) == 4, "Should have 4 LEDs"
-    
+
     print("✓ Initialization test passed")
 
 
 def test_set_led():
     """Test setting individual LED state."""
     print("\nTesting LED state control...")
-    
+
     board = MockBoard()
     manager = LEDManager(board)
-    
+
     # Turn LED on
     manager.set_led(0, True)
     assert manager.leds[0].value == True, "LED 0 should be on"
-    
+
     # Turn LED off
     manager.set_led(0, False)
     assert manager.leds[0].value == False, "LED 0 should be off"
-    
+
     print("✓ LED state control test passed")
 
 
 def test_clear():
     """Test clearing all LEDs."""
     print("\nTesting clear all LEDs...")
-    
+
     board = MockBoard()
     manager = LEDManager(board)
-    
+
     # Turn some LEDs on
     manager.set_led(0, True)
     manager.set_led(2, True)
-    
+
     # Clear all
     manager.clear()
-    
+
     # Verify all LEDs are off
     for led in manager.leds:
         assert led.value == False, "All LEDs should be off after clear"
-    
+
     print("✓ Clear test passed")
 
 
 def test_invalid_led_id():
     """Test error handling for invalid LED ID."""
     print("\nTesting invalid LED ID handling...")
-    
+
     board = MockBoard()
     manager = LEDManager(board)
-    
+
     # Try to set invalid LED ID
     try:
         manager.set_led(99, True)
         assert False, "Should raise error for invalid LED ID"
     except (IndexError, ValueError):
         pass  # Expected
-    
+
     print("✓ Invalid LED ID test passed")
 
 
 def test_led_pattern_error():
     """Test LED pattern setting."""
     print("\nTesting LED pattern...")
-    
+
     board = MockBoard()
     manager = LEDManager(board)
-    
+
     # Set error pattern (all LEDs blink)
     manager.set_pattern("error")
-    
+
     # Verify pattern was set
     assert hasattr(manager, 'current_pattern'), "Should have current_pattern"
     assert manager.current_pattern == "error", "Pattern should be 'error'"
-    
+
     print("✓ LED pattern test passed")
 
 
 def test_led_update():
     """Test LED update cycle."""
     print("\nTesting LED update...")
-    
+
     board = MockBoard()
     manager = LEDManager(board)
-    
+
     # Set a pattern
     manager.set_pattern("activity")
-    
+
     # Call update (animates pattern)
     manager.update()
-    
+
     # Verify update was called
     assert hasattr(manager, 'update_count') or True, "Update should execute"
-    
+
     print("✓ LED update test passed")
 
 
@@ -196,7 +196,7 @@ if __name__ == "__main__":
     test_invalid_led_id()
     test_led_pattern_error()
     test_led_update()
-    
+
     print("\n✓ All LEDManager tests passed!")
 ```
 

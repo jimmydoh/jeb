@@ -1,6 +1,6 @@
-# Quick Start: Test Maintenance Agent
+# Quick Start: Test Specialist
 
-Get started with the Test Maintenance Agent in 5 minutes.
+Get started with the Test Specialist in 5 minutes.
 
 ## What is it?
 
@@ -21,14 +21,14 @@ A specialized GitHub Copilot agent that:
 
 In GitHub Copilot Chat, type:
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 ```
 
 ### 2. Ask for Help
 
 **Example 1: Fix a failing test**
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 Fix test_audio_manager.py - it's failing with:
 AttributeError: 'MockAudioManager' object has no attribute 'pause'
@@ -36,14 +36,14 @@ AttributeError: 'MockAudioManager' object has no attribute 'pause'
 
 **Example 2: Create new tests**
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 Create tests for managers/led_manager.py - it currently has 0% coverage
 ```
 
 **Example 3: Handle a source bug**
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 test_updater.py is failing because updater.py has a memory bug.
 Should we fix it or open an issue?
@@ -58,7 +58,7 @@ Should we fix it or open an issue?
    ```
    The CI workflow failed with:
    [paste error here]
-   
+
    Can you fix this?
    ```
 3. Review and commit the fix
@@ -136,7 +136,7 @@ Should we fix it or open an issue?
 
 **Ready to start? Try this:**
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 Show me what you can help with for testing in this repository.
 ```
