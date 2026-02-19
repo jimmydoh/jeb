@@ -62,7 +62,7 @@ def test_astro_breaker_icon_exists():
     assert "ASTRO_BREAKER" in Icons.ICON_LIBRARY, "ASTRO_BREAKER icon not found in ICON_LIBRARY"
     
     astro_breaker_icon = Icons.ICON_LIBRARY["ASTRO_BREAKER"]
-    assert len(astro_breaker_icon) == 64, "ASTRO_BREAKER icon should have 64 pixels (8x8 matrix)"
+    assert len(astro_breaker_icon) == 256, "ASTRO_BREAKER icon should have 256 pixels (16x16 matrix)"
     
     print("✓ ASTRO_BREAKER icon exists and has correct dimensions")
 

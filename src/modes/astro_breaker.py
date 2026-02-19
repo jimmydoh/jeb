@@ -1,4 +1,4 @@
-"""Astro Breaker Game Mode - Sci-Fi Brick Breaker for 8x8 LED Matrix."""
+"""Astro Breaker Game Mode - Sci-Fi Brick Breaker for 16x16 LED Matrix."""
 
 import asyncio
 import math
@@ -15,8 +15,8 @@ class AstroBreakerMode(GameMode):
     Astro Breaker Game Mode.
 
     Features:
-    - 8x8 LED matrix playing field
-    - 2-pixel wide ship shield (paddle) controlled by core rotary encoder
+    - 16x16 LED matrix playing field
+    - 3-pixel wide ship shield (paddle) controlled by core rotary encoder
     - Plasma bolt (ball) physics
     - Multiple Brick Types (Normal, Multi-hit, Indestructible Cores)
     - Synthio procedural audio for physical interactions
@@ -27,7 +27,6 @@ class AstroBreakerMode(GameMode):
 
     # Game constants
     TARGET_FRAME_TIME_MS = 16  # ~60 FPS
-    MAX_PADDLE_X = 7  # Maximum paddle position (accounts for 2-pixel width on 8-pixel display)
     LAUNCH_ANGLES = [210, 225, 240, 300, 315, 330]  # Ball launch angle options (degrees)
 
     # Scoring constants
@@ -54,11 +53,11 @@ class AstroBreakerMode(GameMode):
     def __init__(self, core):
         super().__init__(core, "ASTRO BREAKER", "Sci-Fi Brick Breaker")
 
-        self.paddle_x = 3
-        self.paddle_width = 2
+        self.paddle_x = 7
+        self.paddle_width = 3
 
-        self.ball_x = 4.0
-        self.ball_y = 6.0
+        self.ball_x = 8.0
+        self.ball_y = 14.0
         self.ball_dx = 0.0
         self.ball_dy = 0.0
 
@@ -198,19 +197,19 @@ class AstroBreakerMode(GameMode):
         # 2. Audio sweep trigger (runs async)
         asyncio.create_task(self.core.synth.play_sequence(tones.FIREBALL, patch=Patches.ALARM))
 
-        # 3. Visual Shockwave animation from bottom (y=7) to top (y=0)
-        for y in range(7, -1, -1):
+        # 3. Visual Shockwave animation from bottom to top
+        for y in range(self.core.matrix.height - 1, -1, -1):
             self.core.matrix.clear()
 
             # Draw remaining bricks so they don't vanish before the wave hits them
             self.render_bricks()
 
             # Draw the bright shockwave line
-            for x in range(8):
+            for x in range(self.core.matrix.width):
                 self.core.matrix.draw_pixel(x, y, Palette.WHITE)
 
             # Deep bass rumble that rises in pitch as the wave moves up
-            freq = 100.0 + ((7 - y) * 20.0)
+            freq = 100.0 + ((self.core.matrix.height - 1 - y) * 10.0)
             self.core.synth.play_note(freq, Patches.ENGINE_HUM, duration=0.05)
 
             # Destroy bricks hit by the wave this frame
@@ -238,19 +237,25 @@ class AstroBreakerMode(GameMode):
         """Spawns different brick types based on row placement."""
         self.bricks.clear()
 
-        for x in range(8):
-            if x in [3, 4]:
+        width = self.core.matrix.width
+        center_left = width // 2 - 1
+        center_right = width // 2
+
+        for x in range(width):
+            if x in [center_left, center_right]:
                 self.bricks[(x, 0)] = {'type': 'CORE', 'hp': 1}
             else:
                 self.bricks[(x, 0)] = {'type': 'TOUGH', 'hp': 3}
 
-            self.bricks[(x, 1)] = {'type': 'TOUGH', 'hp': 2}
-            self.bricks[(x, 2)] = {'type': 'NORMAL', 'hp': 1}
+            self.bricks[(x, 1)] = {'type': 'TOUGH', 'hp': 3}
+            self.bricks[(x, 2)] = {'type': 'TOUGH', 'hp': 2}
+            self.bricks[(x, 3)] = {'type': 'NORMAL', 'hp': 1}
+            self.bricks[(x, 4)] = {'type': 'NORMAL', 'hp': 1}
 
     def reset_ball(self):
         """Reset plasma bolt to paddle position."""
-        self.ball_x = self.paddle_x + 0.5
-        self.ball_y = 6.0
+        self.ball_x = float(self.paddle_x + self.paddle_width // 2)
+        self.ball_y = float(self.core.matrix.height - 2)
 
         angle = random.choice(self.LAUNCH_ANGLES)
         self.ball_dx = self.current_speed * math.cos(math.radians(angle))
@@ -259,20 +264,23 @@ class AstroBreakerMode(GameMode):
     def update_paddle(self):
         """Update shield position from encoder."""
         encoder_pos = self.core.hid.encoder_positions[0]
-        self.paddle_x = encoder_pos % self.MAX_PADDLE_X
+        self.paddle_x = encoder_pos % (self.core.matrix.width - self.paddle_width + 1)
 
     def update_ball(self):
         """Update physics and handle collisions. Returns True if ball falls off bottom."""
         self.ball_x += self.ball_dx
         self.ball_y += self.ball_dy
 
+        width = self.core.matrix.width
+        height = self.core.matrix.height
+
         # Wall collisions
         if self.ball_x <= 0:
             self.ball_x = 0
             self.ball_dx = abs(self.ball_dx)
             self.core.synth.play_note(300.0, Patches.CLICK, duration=0.02)
-        elif self.ball_x >= 7:
-            self.ball_x = 7
+        elif self.ball_x >= width - 1:
+            self.ball_x = width - 1
             self.ball_dx = -abs(self.ball_dx)
             self.core.synth.play_note(300.0, Patches.CLICK, duration=0.02)
 
@@ -282,13 +290,14 @@ class AstroBreakerMode(GameMode):
             self.core.synth.play_note(300.0, Patches.CLICK, duration=0.02)
 
         # Paddle collision
-        if self.ball_y >= 6.5 and self.ball_dy > 0:
+        paddle_collision_y = float(height - 1.5)
+        if self.ball_y >= paddle_collision_y and self.ball_dy > 0:
             ball_x_int = int(self.ball_x)
-            if self.paddle_x <= ball_x_int <= self.paddle_x + 1:
-                self.ball_y = 6.5
+            if self.paddle_x <= ball_x_int <= self.paddle_x + self.paddle_width - 1:
+                self.ball_y = paddle_collision_y
                 self.ball_dy = -abs(self.ball_dy)
 
-                offset = self.ball_x - (self.paddle_x + 0.5)
+                offset = self.ball_x - (self.paddle_x + (self.paddle_width - 1) / 2.0)
                 self.ball_dx += offset * 0.1
 
                 speed = math.sqrt(self.ball_dx**2 + self.ball_dy**2)
@@ -321,7 +330,7 @@ class AstroBreakerMode(GameMode):
                     self.score += self.TOUGH_BRICK_DAMAGE_SCORE
                     self.core.synth.play_note(440.0, Patches.RETRO_SFX, duration=0.05)
 
-        if self.ball_y > 8:
+        if self.ball_y > height:
             return True
 
         return False
@@ -349,13 +358,16 @@ class AstroBreakerMode(GameMode):
         self.core.matrix.clear()
         self.render_bricks()
 
+        width = self.core.matrix.width
+        height = self.core.matrix.height
+
         # Draw Paddle
         for i in range(self.paddle_width):
             x = self.paddle_x + i
-            if 0 <= x < 8:
-                self.core.matrix.draw_pixel(x, 7, Palette.GREEN)
+            if 0 <= x < width:
+                self.core.matrix.draw_pixel(x, height - 1, Palette.GREEN)
 
         # Draw Ball
         bx, by = int(self.ball_x + 0.5), int(self.ball_y + 0.5)
-        if 0 <= bx < 8 and 0 <= by < 8:
+        if 0 <= bx < width and 0 <= by < height:
             self.core.matrix.draw_pixel(bx, by, Palette.YELLOW)
