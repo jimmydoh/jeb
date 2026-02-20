@@ -102,6 +102,9 @@ class HIDManager:
 
         # Pre-allocated buffer for get_status_string to reduce heap fragmentation
         self._status_buffer = bytearray(self._STATUS_BUFFER_SIZE)
+
+        # Idle tracking: timestamp (ms) of last detected hardware interaction
+        self.last_interaction_time = ticks_ms()
         #endregion
 
         #region --- Initialize Always Available Properties ---
@@ -853,9 +856,14 @@ class HIDManager:
                 dirty |= self._hw_expander_momentary_toggles()
 
         if dirty:
+            self.last_interaction_time = ticks_ms()
             JEBLogger.debug("HIDM", "HID HW `I want to clean your dusty cups`", src=sid)
 
         return dirty
+
+    def get_idle_time_ms(self):
+        """Return milliseconds elapsed since the last hardware interaction."""
+        return ticks_diff(ticks_ms(), self.last_interaction_time)
 
     def set_remote_state(self,
                          buttons,           # [bool, bool, ...]

@@ -18,11 +18,13 @@ from utilities.palette import Palette
 from utilities.payload_parser import parse_values, get_int
 
 from transport.protocol import (
+    CMD_MODE,
     CMD_SYNC_FRAME,
     CMD_SETENC,
     LED_COMMANDS,
     DSP_COMMANDS,
 )
+from transport import Message
 from managers.hid_manager import HIDManager
 from managers.led_manager import LEDManager
 from managers.render_manager import RenderManager
@@ -97,10 +99,12 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         self.last_interaction_time = 0
         self.attract_running = False
         self._idle_display_buffer = ""
+        self._sleeping = False
 
         self._system_handlers.update({
             CMD_SYNC_FRAME: self._handle_sync_frame,
             CMD_SETENC: self._handle_set_enc,
+            CMD_MODE: self._handle_mode_command,
         })
         JEBLogger.info("FIRM", "Industrial Satellite Firmware initialized.", src=self.id)
 
@@ -115,6 +119,31 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         else:
             values = parse_values(val)
             self.hid.reset_encoder(get_int(values, 0))
+
+    async def _handle_mode_command(self, val):
+        """Handle CMD_MODE from the Core (SLEEP or ACTIVE)."""
+        mode_str = val.strip() if isinstance(val, str) else str(val).strip()
+        JEBLogger.info("FIRM", f"MODE command: {mode_str}", src=self.id)
+        if mode_str == "SLEEP":
+            await self._enter_sleep()
+        elif mode_str == "ACTIVE":
+            await self._wake_local()
+
+    async def _enter_sleep(self):
+        """Enter satellite sleep state: blank display, breath LEDs, throttle loops."""
+        if self._sleeping:
+            return
+        self._sleeping = True
+        await self.segment.clear()
+        self.leds.set_led(-1, (0, 0, 32), brightness=0.1, anim="BREATH", speed=0.5)
+        self.renderer.target_frame_rate = 10
+
+    async def _wake_local(self):
+        """Exit satellite sleep state: restore display loops and LED rate."""
+        if not self._sleeping:
+            return
+        self._sleeping = False
+        self.renderer.target_frame_rate = self.renderer.DEFAULT_FRAME_RATE
 
     async def _process_local_cmd(self, cmd, val):
         """Process a command received from upstream that is addressed to this satellite.
@@ -162,6 +191,14 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             self.watchdog.check_in("hw_hid")
             changed = self.hid.hw_update(self.id)
             
+            if self._sleeping:
+                if changed:
+                    # Local interaction while sleeping: wake locally and notify Core
+                    await self._wake_local()
+                    self.transport_up.send(Message(self.id, "CORE", CMD_MODE, "ACTIVE"))
+                await asyncio.sleep(0.1)  # Throttled polling while sleeping
+                continue
+
             if changed:
                 # Any hardware interaction resets the attract mode timer
                 self.last_interaction_time = time.monotonic()

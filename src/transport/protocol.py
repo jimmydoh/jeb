@@ -150,7 +150,7 @@ ENCODING_RAW_BYTES = 'raw_bytes'
 PAYLOAD_SCHEMAS = {
     # Core commands
     CMD_HELLO: {'type': ENCODING_RAW_TEXT, 'desc': 'Hello message with optional text'},
-    CMD_MODE: {'type': ENCODING_RAW_TEXT, 'desc': 'Operating mode: IDLE or ACTIVE'},
+    CMD_MODE: {'type': ENCODING_RAW_TEXT, 'desc': 'Operating mode: IDLE, ACTIVE, or SLEEP'},
     "ID_ASSIGN": {'type': ENCODING_RAW_TEXT, 'desc': 'Device ID string like "0100"'},
     "NEW_SAT": {'type': ENCODING_RAW_TEXT, 'desc': 'Satellite type ID like "01"'},
     "ERROR": {'type': ENCODING_RAW_TEXT, 'desc': 'Error description text'},
