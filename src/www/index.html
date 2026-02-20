@@ -141,6 +141,41 @@
             font-size: 1.5em;
             color: #e0e0e0;
         }
+        .telemetry-chart-container {
+            margin-top: 20px;
+        }
+        .telemetry-chart-container h3 {
+            color: #4CAF50;
+            margin-bottom: 10px;
+            font-size: 1em;
+        }
+        canvas.sparkline {
+            display: block;
+            width: 100%;
+            height: 120px;
+            background: #1a1a1a;
+            border: 1px solid #444;
+            border-radius: 3px;
+        }
+        .telemetry-status {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+        .telemetry-status.connected { background: #2d5016; color: #90EE90; }
+        .telemetry-status.disconnected { background: #501616; color: #ffcccb; }
+        .sat-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            margin: 3px;
+        }
+        .sat-badge.online { background: #2d5016; color: #90EE90; }
+        .sat-badge.offline { background: #501616; color: #ffcccb; }
     </style>
 </head>
 <body>
@@ -155,6 +190,7 @@
             <button class="tab" onclick="showTab('logs')">Logs</button>
             <button class="tab" onclick="showTab('console')">Console</button>
             <button class="tab" onclick="showTab('actions')">Actions</button>
+            <button class="tab" onclick="showTab('telemetry')">Telemetry</button>
         </div>
         
         <div id="system" class="tab-content active">
@@ -237,6 +273,25 @@
             </div>
             <div id="actionStatus" class="status" style="display:none;"></div>
         </div>
+
+        <div id="telemetry" class="tab-content">
+            <h2>
+                Real-Time Telemetry
+                <span id="telemetryStatus" class="telemetry-status disconnected">Disconnected</span>
+            </h2>
+            <div style="margin-bottom: 15px;">
+                <button onclick="startTelemetry()">Connect</button>
+                <button class="secondary" onclick="stopTelemetry()">Disconnect</button>
+            </div>
+            <h3 style="color: #b0b0b0; margin-bottom: 10px;">Power Rails (V)</h3>
+            <div class="info-grid" id="telemetryVoltages"></div>
+            <h3 style="color: #b0b0b0; margin: 15px 0 10px;">Satellite Links</h3>
+            <div id="telemetrySatellites"><em style="color: #666;">No satellites detected</em></div>
+            <div class="telemetry-chart-container">
+                <h3>Bus Voltage History</h3>
+                <canvas id="voltageChart" class="sparkline" width="800" height="120"></canvas>
+            </div>
+        </div>
     </div>
     
     <script>
@@ -253,6 +308,7 @@
             if (tabName === 'files') loadFiles();
             if (tabName === 'logs') loadLogs();
             if (tabName === 'modes') loadModeSettings();
+            if (tabName === 'telemetry') startTelemetry();
         }
         
         async function loadSystemStatus() {
@@ -570,6 +626,132 @@
             }, 5000);
         }
         
+        // --- Telemetry / SSE ---
+        let _telemetryES = null;
+        const _voltageHistory = {};
+        const CHART_MAX_POINTS = 60;
+        const VOLTAGE_LABELS = {
+            input_20v:  'Input (20V)',
+            satbus_20v: 'SatBus (20V)',
+            main_5v:    'Logic (5V)',
+            led_5v:     'LED (5V)',
+        };
+
+        function startTelemetry() {
+            if (_telemetryES) return; // Already connected
+            _telemetryES = new EventSource('/api/telemetry/stream');
+
+            _telemetryES.onopen = function() {
+                const el = document.getElementById('telemetryStatus');
+                el.textContent = 'Connected';
+                el.className = 'telemetry-status connected';
+            };
+
+            _telemetryES.onmessage = function(e) {
+                try {
+                    const d = JSON.parse(e.data);
+                    updateTelemetryUI(d);
+                } catch (err) { /* ignore parse errors */ }
+            };
+
+            _telemetryES.onerror = function() {
+                const el = document.getElementById('telemetryStatus');
+                el.textContent = 'Reconnecting…';
+                el.className = 'telemetry-status disconnected';
+            };
+        }
+
+        function stopTelemetry() {
+            if (_telemetryES) {
+                _telemetryES.close();
+                _telemetryES = null;
+            }
+            const el = document.getElementById('telemetryStatus');
+            el.textContent = 'Disconnected';
+            el.className = 'telemetry-status disconnected';
+        }
+
+        function updateTelemetryUI(data) {
+            // --- Voltage cards ---
+            const power = data.power || {};
+            const voltEl = document.getElementById('telemetryVoltages');
+            let html = '';
+            for (const [key, label] of Object.entries(VOLTAGE_LABELS)) {
+                const v = power[key] !== undefined ? Number(power[key]).toFixed(2) : '—';
+                html += `<div class="info-card"><h3>${label}</h3><div class="value">${v} V</div></div>`;
+            }
+            // Show any extra voltage rails not in the label map
+            for (const [key, val] of Object.entries(power)) {
+                if (!VOLTAGE_LABELS[key]) {
+                    html += `<div class="info-card"><h3>${key}</h3><div class="value">${Number(val).toFixed(2)} V</div></div>`;
+                }
+            }
+            voltEl.innerHTML = html;
+
+            // --- Satellite badges ---
+            const sats = data.satellites || {};
+            const satEl = document.getElementById('telemetrySatellites');
+            const satKeys = Object.keys(sats);
+            if (satKeys.length === 0) {
+                satEl.innerHTML = '<em style="color: #666;">No satellites detected</em>';
+            } else {
+                satEl.innerHTML = satKeys.map(sid => {
+                    const online = sats[sid].active;
+                    return `<span class="sat-badge ${online ? 'online' : 'offline'}">SAT ${sid}: ${online ? 'ONLINE' : 'OFFLINE'}</span>`;
+                }).join('');
+            }
+
+            // --- Sparkline chart for bus voltage ---
+            const busKey = power['input_20v'] !== undefined ? 'input_20v' : Object.keys(power)[0];
+            if (busKey !== undefined && power[busKey] !== undefined) {
+                if (!_voltageHistory[busKey]) _voltageHistory[busKey] = [];
+                _voltageHistory[busKey].push(Number(power[busKey]));
+                if (_voltageHistory[busKey].length > CHART_MAX_POINTS) {
+                    _voltageHistory[busKey].shift();
+                }
+                drawSparkline('voltageChart', _voltageHistory[busKey], busKey);
+            }
+        }
+
+        function drawSparkline(canvasId, values, label) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            if (values.length < 2) return;
+
+            const min = Math.min(...values) - 0.5;
+            const max = Math.max(...values) + 0.5;
+            const range = max - min || 1;
+
+            // Grid lines
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            [0.25, 0.5, 0.75].forEach(frac => {
+                const y = Math.round(h * frac) + 0.5;
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+            });
+
+            // Line
+            ctx.strokeStyle = '#4CAF50';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            values.forEach((v, i) => {
+                const x = (i / (CHART_MAX_POINTS - 1)) * w;
+                const y = h - ((v - min) / range) * (h - 10) - 5;
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Label
+            ctx.fillStyle = '#b0b0b0';
+            ctx.font = '11px monospace';
+            ctx.fillText(`${label}  max:${Math.max(...values).toFixed(2)}V  min:${Math.min(...values).toFixed(2)}V`, 6, 14);
+        }
+
         // Auto-load initial data
         loadSystemStatus();
     </script>

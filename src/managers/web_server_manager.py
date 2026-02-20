@@ -47,13 +47,15 @@ class WebServerManager:
     MAX_UPLOAD_SIZE_BYTES = 50 * 1024  # Maximum upload size (50KB)
     DEFAULT_MAX_LOGS = 1000  # Default maximum log entries to keep
     
-    def __init__(self, config, console_buffer=None):
+    def __init__(self, config, console_buffer=None, power_manager=None, satellite_manager=None):
         """
         Initialize the web server manager.
         
         Args:
             config (dict): Configuration dictionary with wifi_ssid, wifi_password
             console_buffer (object): Optional console buffer for output capture
+            power_manager (PowerManager): Optional PowerManager for live telemetry
+            satellite_manager (SatelliteNetworkManager): Optional SatelliteNetworkManager for link telemetry
         """
         if not WIFI_AVAILABLE:
             raise RuntimeError("WiFi or adafruit_httpserver not available")
@@ -64,6 +66,8 @@ class WebServerManager:
         self.port = config.get("web_server_port", 80)
         self.enabled = config.get("web_server_enabled", False)
         self.console_buffer = console_buffer
+        self.power_manager = power_manager
+        self.satellite_manager = satellite_manager
         
         self.server = None
         self.pool = None
@@ -592,6 +596,68 @@ class WebServerManager:
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}', 
                               content_type="application/json", status=500)
+        
+        # API: Real-time telemetry via Server-Sent Events (SSE)
+        @self.server.route("/api/telemetry/stream", GET)
+        def telemetry_stream(request: Request):
+            """Stream live power and satellite telemetry as Server-Sent Events.
+
+            Yields one JSON data event per second containing:
+            - power: voltage readings from PowerManager (bus, logic, LED rails)
+            - satellites: link state for each satellite in SatelliteNetworkManager
+            - ts: monotonic timestamp
+
+            SSE comment lines (': keepalive') are sent between data events to
+            maintain the connection without flooding the client.
+            """
+            power_manager = self.power_manager
+            satellite_manager = self.satellite_manager
+
+            def sse_generator():
+                # Emit the first event immediately by pre-dating the last emit time
+                last_emit = time.monotonic() - 1.0
+                while True:
+                    now = time.monotonic()
+                    if now - last_emit >= 1.0:
+                        power_data = {}
+                        if power_manager is not None:
+                            try:
+                                power_data = power_manager.status
+                            except Exception:
+                                pass
+
+                        sat_data = {}
+                        if satellite_manager is not None:
+                            try:
+                                for sid, sat in satellite_manager.satellites.items():
+                                    sat_data[sid] = {"active": sat.is_active}
+                            except Exception:
+                                pass
+
+                        payload = json.dumps({
+                            "power": power_data,
+                            "satellites": sat_data,
+                            "ts": now,
+                        })
+                        last_emit = now
+                        yield f"data: {payload}\n\n"
+                    else:
+                        # SSE comment used as keepalive between data events.
+                        # Each yield returns control to adafruit_httpserver's poll()
+                        # which sleeps ~10ms before calling next(), so CPU impact
+                        # is minimal and no additional sleep is required here.
+                        yield ": keepalive\n\n"
+
+            return Response(
+                request,
+                sse_generator(),
+                content_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
     
     def _save_config(self):
         """Save configuration to config.json."""
