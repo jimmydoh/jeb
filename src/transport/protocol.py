@@ -40,6 +40,11 @@ CMD_DSPMATRIX = "DSPMATRIX"
 
 # Encoder Commands
 CMD_SETENC = "SETENC"
+CMD_SET_OFFSET = "SETOFF"
+
+# Global Animation Commands
+CMD_GLOBAL_RAINBOW = "GLOBALRBOW"
+CMD_GLOBAL_RAIN = "GLOBALRAIN"
 
 # File Transfer Commands
 CMD_FILE_START = "FILE_START"
@@ -84,6 +89,11 @@ COMMAND_MAP = {
 
     # Encoder commands
     CMD_SETENC: 0x30,
+    CMD_SET_OFFSET: 0x31,
+
+    # Global Animation commands
+    CMD_GLOBAL_RAINBOW: 0x60,
+    CMD_GLOBAL_RAIN: 0x61,
 
     # File Transfer commands
     CMD_FILE_START: 0x40,
@@ -115,12 +125,14 @@ LED_COMMANDS = {k for k in COMMAND_MAP if k.startswith("LED")}
 DSP_COMMANDS = {k for k in COMMAND_MAP if k.startswith("DSP")}
 FILE_COMMANDS = {CMD_FILE_START, CMD_FILE_CHUNK, CMD_FILE_END}
 UPDATE_COMMANDS = {CMD_VERSION_CHECK, CMD_UPDATE_START, CMD_UPDATE_WAIT}
+GLOBAL_ANIMATION_COMMANDS = {CMD_GLOBAL_RAINBOW, CMD_GLOBAL_RAIN}
 
 # Commands that are handled directly by the Firmware class
 SYSTEM_COMMANDS = {
     CMD_ID_ASSIGN,
     CMD_SYNC_FRAME,
     CMD_SETENC,
+    CMD_SET_OFFSET,
     CMD_NEW_SAT,
     CMD_MODE,
 }
@@ -178,6 +190,11 @@ PAYLOAD_SCHEMAS = {
 
     # Encoder
     "SETENC": {'type': ENCODING_NUMERIC_WORDS, 'desc': 'encoder position'},
+    CMD_SET_OFFSET: {'type': ENCODING_NUMERIC_WORDS, 'desc': 'global canvas offset: offset_x, offset_y'},
+
+    # Global Animation triggers
+    CMD_GLOBAL_RAINBOW: {'type': ENCODING_FLOATS, 'desc': 'speed (degrees/sec)'},
+    CMD_GLOBAL_RAIN: {'type': ENCODING_FLOATS, 'desc': 'speed (sec/step), density (0.0-1.0)'},
 
     # File Transfer
     CMD_FILE_START: {'type': ENCODING_RAW_TEXT, 'desc': 'filename,total_size e.g. "firmware.bin,4096"'},

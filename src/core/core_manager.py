@@ -222,6 +222,7 @@ class CoreManager:
             self.display,
             self.audio,
             self.abort_event,
+            config=config,
         )
         if self.debug_mode:
             self.sat_network.set_debug_mode(True)

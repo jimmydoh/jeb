@@ -8,6 +8,7 @@ from transport import Message
 from transport.protocol import (
     CMD_ACK,
     CMD_MODE,
+    CMD_SET_OFFSET,
     CMD_VERSION_CHECK,
     CMD_UPDATE_START,
     CMD_UPDATE_WAIT,
@@ -26,7 +27,7 @@ class SatelliteNetworkManager:
     - Satellite registry management
     """
 
-    def __init__(self, transport, display, audio, abort_event):
+    def __init__(self, transport, display, audio, abort_event, config=None):
         """Initialize the satellite network manager.
 
         Args:
@@ -34,11 +35,19 @@ class SatelliteNetworkManager:
             display: DisplayManager instance for status updates
             audio: AudioManager instance for audio feedback
             abort_event: Event to signal abort conditions
+            config: Optional configuration dict. May contain a
+                ``"satellite_offsets"`` key mapping satellite IDs to
+                ``{"offset_x": int, "offset_y": int}`` dicts used to
+                transmit the ``SETOFF`` command upon satellite connection.
         """
         self.transport = transport
         self.display = display
         self.audio = audio
         self.abort_event = abort_event
+
+        # Satellite spatial offsets for the global animation canvas.
+        # Keys are satellite IDs (e.g. "0101"), values are {"offset_x", "offset_y"}.
+        self._satellite_offsets = (config or {}).get("satellite_offsets", {})
 
         # Satellite Registry
         self.satellites = {}
@@ -214,6 +223,20 @@ class SatelliteNetworkManager:
 
             self.display.update_status("NEW SAT", f"{sid} sent HELLO {val}.")
             JEBLogger.info("NETM", f"New sat {sid} TYPE-{val} via HELLO.")
+
+            # Send spatial offset if configured so the satellite can register
+            # its LEDs on the correct position of the global animation canvas.
+            offset = self._satellite_offsets.get(sid)
+            if offset is not None:
+                offset_x = int(offset.get("offset_x", 0))
+                offset_y = int(offset.get("offset_y", 0))
+                self.transport.send(
+                    Message("CORE", sid, CMD_SET_OFFSET, [offset_x, offset_y])
+                )
+                JEBLogger.info(
+                    "NETM",
+                    f"Sent SETOFF ({offset_x},{offset_y}) to {sid}."
+                )
 
     async def _handle_new_sat_command(self, sid, val):
         """

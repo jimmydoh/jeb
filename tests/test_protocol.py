@@ -257,7 +257,7 @@ def test_command_categories():
         assert 0x20 <= value <= 0x2F, f"Display command '{cmd}' should be in range 0x20-0x2F"
 
     # Encoder commands (0x30-0x3F)
-    encoder_commands = ["SETENC"]
+    encoder_commands = ["SETENC", "SETOFF"]
     for cmd in encoder_commands:
         value = protocol.COMMAND_MAP[cmd]
         assert 0x30 <= value <= 0x3F, f"Encoder command '{cmd}' should be in range 0x30-0x3F"
@@ -274,6 +274,12 @@ def test_command_categories():
         value = protocol.COMMAND_MAP[cmd]
         assert 0x50 <= value <= 0x5F, f"Update command '{cmd}' should be in range 0x50-0x5F"
 
+    # Global animation commands (0x60-0x6F)
+    global_anim_commands = ["GLOBALRBOW", "GLOBALRAIN"]
+    for cmd in global_anim_commands:
+        value = protocol.COMMAND_MAP[cmd]
+        assert 0x60 <= value <= 0x6F, f"Global animation command '{cmd}' should be in range 0x60-0x6F"
+
     print("✓ All commands correctly organized by category")
 
 
@@ -287,6 +293,57 @@ def test_update_commands_group():
         f"UPDATE_COMMANDS should be {expected}, got {protocol.UPDATE_COMMANDS}"
 
     print(f"✓ UPDATE_COMMANDS contains correct commands: {protocol.UPDATE_COMMANDS}")
+
+
+def test_global_animation_commands_group():
+    """Test that GLOBAL_ANIMATION_COMMANDS group contains the new animation trigger commands."""
+    print("\nTesting GLOBAL_ANIMATION_COMMANDS group...")
+
+    assert hasattr(protocol, 'GLOBAL_ANIMATION_COMMANDS'), \
+        "GLOBAL_ANIMATION_COMMANDS group should be defined"
+    expected = {"GLOBALRBOW", "GLOBALRAIN"}
+    assert protocol.GLOBAL_ANIMATION_COMMANDS == expected, \
+        f"GLOBAL_ANIMATION_COMMANDS should be {expected}, got {protocol.GLOBAL_ANIMATION_COMMANDS}"
+
+    print(f"✓ GLOBAL_ANIMATION_COMMANDS contains correct commands: {protocol.GLOBAL_ANIMATION_COMMANDS}")
+
+
+def test_set_offset_command():
+    """Test CMD_SET_OFFSET is defined with correct encoding and code."""
+    print("\nTesting CMD_SET_OFFSET (SETOFF) command...")
+
+    assert hasattr(protocol, 'CMD_SET_OFFSET'), "CMD_SET_OFFSET should be defined"
+    assert protocol.CMD_SET_OFFSET == "SETOFF", "CMD_SET_OFFSET value should be 'SETOFF'"
+    assert "SETOFF" in protocol.COMMAND_MAP, "SETOFF should be in COMMAND_MAP"
+    assert protocol.COMMAND_MAP["SETOFF"] == 0x31, "SETOFF should map to byte 0x31"
+
+    # Schema check
+    assert "SETOFF" in protocol.PAYLOAD_SCHEMAS, "SETOFF should have a payload schema"
+    schema = protocol.PAYLOAD_SCHEMAS["SETOFF"]
+    assert schema['type'] == protocol.ENCODING_NUMERIC_WORDS, \
+        "SETOFF should use ENCODING_NUMERIC_WORDS for X/Y coordinates"
+
+    # Should be in SYSTEM_COMMANDS
+    assert "SETOFF" in protocol.SYSTEM_COMMANDS, "SETOFF should be in SYSTEM_COMMANDS"
+
+    print("✓ CMD_SET_OFFSET (SETOFF) correctly defined")
+
+
+def test_global_animation_trigger_commands():
+    """Test GLOBALRBOW and GLOBALRAIN command definitions."""
+    print("\nTesting GLOBALRBOW and GLOBALRAIN commands...")
+
+    for cmd_const, cmd_str in [('CMD_GLOBAL_RAINBOW', 'GLOBALRBOW'), ('CMD_GLOBAL_RAIN', 'GLOBALRAIN')]:
+        assert hasattr(protocol, cmd_const), f"{cmd_const} should be defined"
+        assert getattr(protocol, cmd_const) == cmd_str, \
+            f"{cmd_const} value should be '{cmd_str}'"
+        assert cmd_str in protocol.COMMAND_MAP, f"{cmd_str} should be in COMMAND_MAP"
+        assert cmd_str in protocol.PAYLOAD_SCHEMAS, f"{cmd_str} should have a payload schema"
+        schema = protocol.PAYLOAD_SCHEMAS[cmd_str]
+        assert schema['type'] == protocol.ENCODING_FLOATS, \
+            f"{cmd_str} should use ENCODING_FLOATS for speed/density parameters"
+
+    print("✓ GLOBALRBOW and GLOBALRAIN commands correctly defined")
 
 
 def run_all_tests():
@@ -311,6 +368,9 @@ def run_all_tests():
         test_float_payload_commands,
         test_command_categories,
         test_update_commands_group,
+        test_global_animation_commands_group,
+        test_set_offset_command,
+        test_global_animation_trigger_commands,
     ]
 
     passed = 0

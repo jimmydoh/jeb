@@ -114,6 +114,9 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
     async def _handle_sync_frame(self, val):
         # val is tuple (frame, time) from binary payload
         self.renderer.apply_sync(int(val[0]))
+        # Keep GlobalAnimationController in sync if one has been initialised
+        if self._global_anim_ctrl is not None:
+            self._global_anim_ctrl.sync_frame(int(val[0]))
 
     async def _handle_set_enc(self, val):
         # Handle both binary tuple and text formats
@@ -166,6 +169,15 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             await self.segment.apply_command(cmd, val)
             return True
         return False
+
+    def _register_global_anim_leds(self, offset_x, offset_y):
+        """Register onboard LEDs with the global animation controller at the given offset."""
+        self._global_anim_ctrl.register_led_strip(
+            self.leds,
+            offset_x=offset_x,
+            offset_y=offset_y,
+            orientation='horizontal',
+        )
 
     def _get_status_bytes(self):
         return self.hid.get_status_bytes()
