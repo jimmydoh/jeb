@@ -717,7 +717,8 @@ def test_route_registration():
         '/api/actions/ota-update',
         '/api/actions/toggle-debug',
         '/api/actions/reorder-satellites',
-        '/api/system/status'
+        '/api/system/status',
+        '/api/telemetry/stream',
     ]
 
     registered_paths = [path for path, _, _ in manager.server.routes]
@@ -964,6 +965,209 @@ def test_chunked_upload_with_headers():
     print("  ✓ Chunked upload with Content-Length header test passed")
 
 
+def test_telemetry_manager_params():
+    """Test that WebServerManager accepts power_manager and satellite_manager."""
+    print("\nTesting telemetry manager parameters...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True,
+    }
+
+    # Minimal mock for PowerManager
+    class MockPowerManager:
+        @property
+        def status(self):
+            return {"input_20v": 20.1, "satbus_20v": 19.8, "main_5v": 5.0, "led_5v": 4.95}
+
+    # Minimal mock for SatelliteNetworkManager
+    class MockSat:
+        is_active = True
+
+    class MockSatelliteManager:
+        satellites = {"0100": MockSat()}
+
+    pm = MockPowerManager()
+    sm = MockSatelliteManager()
+
+    manager = WebServerManager(config, power_manager=pm, satellite_manager=sm)
+    assert manager.power_manager is pm
+    assert manager.satellite_manager is sm
+
+    # Default (None) should also work
+    manager_default = WebServerManager(config)
+    assert manager_default.power_manager is None
+    assert manager_default.satellite_manager is None
+
+    print("  ✓ Telemetry manager parameters test passed")
+
+
+def test_telemetry_route_registered():
+    """Test that /api/telemetry/stream route is registered."""
+    print("\nTesting telemetry SSE route registration...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True,
+    }
+
+    manager = WebServerManager(config)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    registered_paths = [path for path, _, _ in manager.server.routes]
+    assert "/api/telemetry/stream" in registered_paths, "SSE route not registered"
+
+    print("  ✓ Telemetry SSE route registration test passed")
+
+
+def test_telemetry_sse_generator_with_managers():
+    """Test the SSE generator yields data events when managers are available."""
+    print("\nTesting SSE generator with mock managers...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True,
+    }
+
+    class MockPowerManager:
+        @property
+        def status(self):
+            return {"input_20v": 20.0, "main_5v": 5.0}
+
+    class MockSat:
+        is_active = True
+
+    class MockSatelliteManager:
+        satellites = {"0100": MockSat()}
+
+    manager = WebServerManager(
+        config,
+        power_manager=MockPowerManager(),
+        satellite_manager=MockSatelliteManager(),
+    )
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    # Locate the telemetry stream route handler
+    stream_handler = None
+    for path, _, func in manager.server.routes:
+        if path == "/api/telemetry/stream":
+            stream_handler = func
+            break
+    assert stream_handler is not None, "Telemetry stream route not found"
+
+    request = MockRequest()
+    response = stream_handler(request)
+
+    assert response.content_type == "text/event-stream", (
+        f"Expected text/event-stream, got {response.content_type}"
+    )
+
+    # Advance the generator to collect up to 3 chunks, looking for a data event
+    gen = response.body
+    data_event = None
+    # The first event fires immediately (last_emit is pre-dated by 1s),
+    # so we only need a small number of iterations to find the data chunk.
+    for _ in range(5):
+        chunk = next(gen)
+        if chunk.startswith("data: "):
+            data_event = chunk
+            break
+
+    assert data_event is not None, "Generator never yielded a data event"
+    # Strip SSE framing and parse JSON
+    payload = json.loads(data_event[len("data: "):].strip())
+    assert "power" in payload
+    assert "satellites" in payload
+    assert "ts" in payload
+    assert payload["power"]["input_20v"] == 20.0
+    assert payload["satellites"]["0100"]["active"] is True
+
+    print("  ✓ SSE generator with managers test passed")
+
+
+def test_telemetry_sse_generator_no_managers():
+    """Test that the SSE generator works gracefully without managers."""
+    print("\nTesting SSE generator without managers...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True,
+    }
+
+    manager = WebServerManager(config)  # No power_manager / satellite_manager
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    stream_handler = None
+    for path, _, func in manager.server.routes:
+        if path == "/api/telemetry/stream":
+            stream_handler = func
+            break
+    assert stream_handler is not None
+
+    request = MockRequest()
+    response = stream_handler(request)
+
+    gen = response.body
+    data_event = None
+    # First event fires immediately due to pre-dated last_emit.
+    for _ in range(5):
+        chunk = next(gen)
+        if chunk.startswith("data: "):
+            data_event = chunk
+            break
+
+    assert data_event is not None, "Generator never yielded a data event"
+    payload = json.loads(data_event[len("data: "):].strip())
+    assert payload["power"] == {}
+    assert payload["satellites"] == {}
+
+    print("  ✓ SSE generator without managers test passed")
+
+
+def test_telemetry_keepalive_chunks():
+    """Test that the SSE generator emits keepalive comment chunks between data events."""
+    print("\nTesting SSE keepalive chunks...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True,
+    }
+
+    manager = WebServerManager(config)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    stream_handler = None
+    for path, _, func in manager.server.routes:
+        if path == "/api/telemetry/stream":
+            stream_handler = func
+            break
+    assert stream_handler is not None
+
+    request = MockRequest()
+    response = stream_handler(request)
+
+    gen = response.body
+    # Collect enough chunks to capture the first data event (immediate) plus several
+    # keepalive comment chunks that follow. 5 chunks is sufficient: 1 data + 4 keepalives.
+    chunks = [next(gen) for _ in range(5)]
+    data_chunks = [c for c in chunks if c.startswith("data: ")]
+    keepalive_chunks = [c for c in chunks if c.startswith(": ")]
+
+    assert len(data_chunks) >= 1, "Should have at least one data event"
+    assert len(keepalive_chunks) > 0, "Should have keepalive comment chunks between events"
+
+    print("  ✓ SSE keepalive chunks test passed")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -984,6 +1188,11 @@ def run_all_tests():
         test_filename_validation,
         test_path_security_integration,
         test_chunked_upload_with_headers,
+        test_telemetry_manager_params,
+        test_telemetry_route_registered,
+        test_telemetry_sse_generator_with_managers,
+        test_telemetry_sse_generator_no_managers,
+        test_telemetry_keepalive_chunks,
     ]
 
     try:
