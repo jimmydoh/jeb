@@ -318,6 +318,10 @@ class SatelliteFirmware:
             _makedirs(dest_dir)
         _makedirs("/update")
         try:
+            os.remove(dest)
+        except OSError:
+            pass  # File doesn't exist yet
+        try:
             os.rename(self._update_receiver.staging_path, dest)
         except OSError as e:
             print(f"{self.sat_type_id}-{self.id}: Failed to stage {filename}: {e}")
@@ -343,6 +347,10 @@ class SatelliteFirmware:
                 dst_dir = "/".join(dst.split("/")[:-1])
                 if dst_dir and dst_dir != "/":
                     _makedirs(dst_dir)
+                try:
+                    os.remove(dst)
+                except OSError:
+                    pass  # File doesn't exist yet
                 try:
                     os.rename(src, dst)
                 except OSError as e:
@@ -545,9 +553,20 @@ class SatelliteFirmware:
                         self._version_check_sent = True
                         self.last_tx = now
 
-            # Update Mode: Receiving firmware update — suppress outgoing STATUS/PING
+            # Update Mode: Receiving firmware update — tick the receiver and watch for timeout
             elif self._update_mode:
-                pass
+                if self._update_receiver is not None:
+                    now_ms = int(time.monotonic() * 1000)
+                    self._update_receiver.tick(now_ms)
+                    # If receiver returned to IDLE after a timeout (not a successful transfer),
+                    # the Core has gone silent mid-transfer — abort update mode so the satellite
+                    # can retry the version handshake on its next connection.
+                    if (self._update_receiver._state == self._update_receiver.IDLE
+                            and not self._update_receiver.last_transfer_ok):
+                        print(f"{self.sat_type_id}-{self.id}: Update transfer timed out, aborting update mode")
+                        self._update_mode = False
+                        self._version_confirmed = False
+                        self._version_check_sent = False
 
             # Normal Operation: Send STATUS message when triggered or every 3 seconds
             else:

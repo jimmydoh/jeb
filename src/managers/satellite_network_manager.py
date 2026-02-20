@@ -337,44 +337,43 @@ class SatelliteNetworkManager:
         manifest_path = f"{base_path}/manifest.json"
 
         try:
-            import json
-            with open(manifest_path, 'r') as f:
-                manifest = json.load(f)
-        except (OSError, ValueError):
-            JEBLogger.warning("NETM", f"No satellite manifest at {manifest_path}, skipping update for {sid}")
-            self.transport.send(Message("CORE", sid, CMD_ACK, ""))
-            self._update_in_progress = None
-            return
-
-        files = manifest.get("files", [])
-        # +1 for manifest.json itself
-        file_count = len(files) + 1
-        total_bytes = sum(f.get("size", 0) for f in files)
-
-        self.transport.send(Message("CORE", sid, CMD_UPDATE_START, f"{file_count},{total_bytes}"))
-
-        from transport.file_transfer import FileTransferSender
-        sender = FileTransferSender(self.transport, "CORE")
-
-        # Send manifest.json first so the satellite can parse it when applying
-        success = await sender.send_file(sid, manifest_path, remote_filename="manifest.json")
-        if not success:
-            JEBLogger.error("NETM", f"Failed to send manifest to {sid}")
-            self._update_in_progress = None
-            return
-
-        # Send each firmware file with its full target path as the remote filename
-        for file_entry in files:
-            filepath = f"{base_path}/{file_entry['path']}"
-            remote_filename = file_entry['path']
-            success = await sender.send_file(sid, filepath, remote_filename=remote_filename)
-            if not success:
-                JEBLogger.error("NETM", f"Failed to send {filepath} to {sid}")
-                self._update_in_progress = None
+            try:
+                import json
+                with open(manifest_path, 'r') as f:
+                    manifest = json.load(f)
+            except (OSError, ValueError):
+                JEBLogger.warning("NETM", f"No satellite manifest at {manifest_path}, skipping update for {sid}")
+                self.transport.send(Message("CORE", sid, CMD_ACK, ""))
                 return
 
-        JEBLogger.info("NETM", f"Firmware update files sent to {sid}")
-        self._update_in_progress = None
+            files = manifest.get("files", [])
+            # +1 for manifest.json itself
+            file_count = len(files) + 1
+            total_bytes = sum(f.get("size", 0) for f in files)
+
+            self.transport.send(Message("CORE", sid, CMD_UPDATE_START, f"{file_count},{total_bytes}"))
+
+            from transport.file_transfer import FileTransferSender
+            sender = FileTransferSender(self.transport, "CORE")
+
+            # Send manifest.json first so the satellite can parse it when applying
+            success = await sender.send_file(sid, manifest_path, remote_filename="manifest.json")
+            if not success:
+                JEBLogger.error("NETM", f"Failed to send manifest to {sid}")
+                return
+
+            # Send each firmware file with its full target path as the remote filename
+            for file_entry in files:
+                filepath = f"{base_path}/{file_entry['path']}"
+                remote_filename = file_entry['path']
+                success = await sender.send_file(sid, filepath, remote_filename=remote_filename)
+                if not success:
+                    JEBLogger.error("NETM", f"Failed to send {filepath} to {sid}")
+                    return
+
+            JEBLogger.info("NETM", f"Firmware update files sent to {sid}")
+        finally:
+            self._update_in_progress = None
 
     async def monitor_messages(self, heartbeat_callback=None):
         """
