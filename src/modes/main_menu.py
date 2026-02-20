@@ -90,6 +90,9 @@ class MainMenu(UtilityMode):
         selected_game_idx = 0
         selected_setting_idx = 0
 
+        # Satellite topology tracking for hot-plug detection
+        last_sat_keys = frozenset(self.core.satellites.keys())
+
         # Render Tracking (Prevents unnecessary screen updates)
         self.core.display.use_standard_layout()
         needs_render = True
@@ -121,6 +124,16 @@ class MainMenu(UtilityMode):
                 await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
                 self._set_state("DASHBOARD")
                 focus_mode = "GAME"
+                needs_render = True
+
+            # --- SATELLITE TOPOLOGY CHECK ---
+            # Detect hot-plugged satellites and refresh menu items in-place
+            curr_sat_keys = frozenset(self.core.satellites.keys())
+            if curr_sat_keys != last_sat_keys:
+                last_sat_keys = curr_sat_keys
+                menu_items = self._build_menu_items()
+                if menu_items and selected_game_idx >= len(menu_items):
+                    selected_game_idx = len(menu_items) - 1
                 needs_render = True
 
             # =========================================
