@@ -9,5 +9,15 @@
     "wifi_password": "",
     "update_url": "",
     "web_server_enabled": false,
-    "web_server_port": 80
+    "web_server_port": 80,
+    "hardware_features": {
+        "audio": true,
+        "display": true,
+        "matrix": true,
+        "leds": true,
+        "hid": true,
+        "buzzer": true,
+        "power": true,
+        "segment": true
+    }
 }
