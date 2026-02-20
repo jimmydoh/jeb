@@ -106,6 +106,7 @@ class HIDManager:
 
         #region --- Initialize Always Available Properties ---
         self.monitor_only = monitor_only
+        self.has_expander = False  # True only if an I/O expander is successfully detected
 
         # Matrix Keypad Keymaps
         if matrix_keypads:
@@ -181,27 +182,29 @@ class HIDManager:
 
             # MCP230xx Expanded Inputs
             # Check for all required parameters
-            if mcp_chip and mcp_i2c and mcp_i2c_address:
-                self._mcp = None
-                self._mcp_int = None
-                MCP23017 = None
-                MCP23008 = None
-                self._expanded_buttons_keys = None
-                self._expanded_latching_keys = None
-                self._expanded_momentary_keys = None
+            self._mcp = None
+            self._mcp_int = None
+            self._expanded_buttons_keys = None
+            self._expanded_latching_keys = None
+            self._expanded_momentary_keys = None
 
+            if mcp_chip and mcp_i2c and mcp_i2c_address:
                 if mcp_chip == "MCP23017":
                     try:
                         from adafruit_mcp230xx.mcp23017 import MCP23017
                         self._mcp = MCP23017(mcp_i2c, mcp_i2c_address)
-                    except ImportError:
-                        MCP23017 = None
+                        self.has_expander = True
+                        print(f"✅ MCP Chip '{mcp_chip}' initialized at address {hex(mcp_i2c_address)}. Expanded inputs will be available. ✅")
+                    except (ImportError, OSError, ValueError):
+                        print(f"WARNING: HID: I/O Expander ({mcp_chip}) not found. Expanded buttons disabled.")
                 if mcp_chip == "MCP23008":
                     try:
                         from adafruit_mcp230xx.mcp23008 import MCP23008
                         self._mcp = MCP23008(mcp_i2c, mcp_i2c_address)
-                    except ImportError:
-                        MCP23008 = None
+                        self.has_expander = True
+                        print(f"✅ MCP Chip '{mcp_chip}' initialized at address {hex(mcp_i2c_address)}. Expanded inputs will be available. ✅")
+                    except (ImportError, OSError, ValueError):
+                        print(f"WARNING: HID: I/O Expander ({mcp_chip}) not found. Expanded buttons disabled.")
                 if mcp_int_pin:
                     import digitalio
                     # Wrap the raw pin in a DigitalInOut object
@@ -211,8 +214,7 @@ class HIDManager:
                     # Usually MCP interrupts are Active-Low, so we use a Pull-Up
                     self._mcp_int.pull = digitalio.Pull.UP
 
-                if MCP23017 or MCP23008:
-                    print(f"✅ MCP Chip '{mcp_chip}' initialized at address {hex(mcp_i2c_address)}. Expanded inputs will be available. ✅")
+                if self.has_expander:
                     try:
                         from utilities.mcp_keys import MCPKeys
 
@@ -837,7 +839,7 @@ class HIDManager:
         dirty |= self._hw_poll_encoder_buttons()
         dirty |= self._hw_poll_matrix_keypads()
         dirty |= self._hw_poll_estop()
-        if self._mcp: # Poll expander if available
+        if self.has_expander: # Poll expander if available
             if (self._mcp_int and not self._mcp_int.value) or not self._mcp_int:
                 # Interrupt Active LOW or no INT pin
                 if self._expanded_buttons_keys:

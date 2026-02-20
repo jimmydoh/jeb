@@ -15,7 +15,6 @@
         "display": true,
         "matrix": true,
         "leds": true,
-        "hid": true,
         "buzzer": true,
         "power": true,
         "segment": true

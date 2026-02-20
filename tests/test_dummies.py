@@ -402,7 +402,7 @@ def clean_manager_modules():
     _modules_to_clean = [
         "managers.audio_manager", "managers.synth_manager",
         "managers.display_manager", "managers.matrix_manager",
-        "managers.led_manager", "managers.hid_manager",
+        "managers.led_manager",
         "managers.buzzer_manager", "managers.power_manager",
         "managers.adc_manager", "managers.segment_manager",
     ]
@@ -425,7 +425,6 @@ class TestInjectHardwareDummies:
             "display": ["managers.display_manager"],
             "matrix":  ["managers.matrix_manager"],
             "leds":    ["managers.led_manager"],
-            "hid":     ["managers.hid_manager"],
             "buzzer":  ["managers.buzzer_manager"],
             "power":   ["managers.power_manager", "managers.adc_manager"],
             "segment": ["managers.segment_manager"],
@@ -436,7 +435,6 @@ class TestInjectHardwareDummies:
             "managers.display_manager": "dummies.display_manager",
             "managers.matrix_manager":  "dummies.matrix_manager",
             "managers.led_manager":     "dummies.led_manager",
-            "managers.hid_manager":     "dummies.hid_manager",
             "managers.buzzer_manager":  "dummies.buzzer_manager",
             "managers.power_manager":   "dummies.power_manager",
             "managers.adc_manager":     "dummies.adc_manager",
