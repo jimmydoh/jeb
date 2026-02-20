@@ -98,6 +98,16 @@ class DisplayManager:
         # Custom viewport for modes that need full control
         self.custom_group = displayio.Group()
 
+        # ===== AUDIO VISUALIZER COMPONENTS =====
+        # Pre-allocated once to avoid heap fragmentation during fast render loops
+        self._audio_bitmap = displayio.Bitmap(128, 64, 2)
+        self._audio_palette = displayio.Palette(2)
+        self._audio_palette[0] = 0x000000  # background
+        self._audio_palette[1] = 0xFFFFFF  # foreground
+        self._audio_grid = displayio.TileGrid(self._audio_bitmap, pixel_shader=self._audio_palette)
+        self._audio_group = displayio.Group()
+        self._audio_group.append(self._audio_grid)
+
         self.use_standard_layout()  # Start in standard layout by default
 
     # ===== LAYOUT MODE METHODS =====
@@ -277,22 +287,15 @@ class DisplayManager:
         """
         self.use_custom_layout()
 
-        palette = displayio.Palette(2)
-        palette[0] = 0x000000  # background
-        palette[1] = 0xFFFFFF  # waveform pixel
-
-        bitmap = displayio.Bitmap(128, 64, 2)
+        self._audio_bitmap.fill(0)  # Fast native clear
 
         width = min(len(samples), 128)
         for x in range(width):
             y = int((1.0 - float(samples[x])) * 63)
             y = max(0, min(63, y))
-            bitmap[x, y] = 1
+            self._audio_bitmap[x, y] = 1
 
-        tile_grid = displayio.TileGrid(bitmap, pixel_shader=palette)
-        content = displayio.Group()
-        content.append(tile_grid)
-        self.set_custom_content(content)
+        self.set_custom_content(self._audio_group)
 
     def show_eq_bands(self, band_heights, num_bands=16):
         """Render EQ frequency-band bars on the OLED display.
@@ -306,11 +309,7 @@ class DisplayManager:
         """
         self.use_custom_layout()
 
-        palette = displayio.Palette(2)
-        palette[0] = 0x000000  # background
-        palette[1] = 0xFFFFFF  # bar pixel
-
-        bitmap = displayio.Bitmap(128, 64, 2)
+        self._audio_bitmap.fill(0)  # Fast native clear
 
         band_count = min(len(band_heights), num_bands)
         bar_width = max(1, 128 // num_bands)
@@ -325,12 +324,9 @@ class DisplayManager:
 
             for x in range(bar_start_x, bar_end_x + 1):
                 for y in range(64 - pixel_height, 64):
-                    bitmap[x, y] = 1
+                    self._audio_bitmap[x, y] = 1
 
-        tile_grid = displayio.TileGrid(bitmap, pixel_shader=palette)
-        content = displayio.Group()
-        content.append(tile_grid)
-        self.set_custom_content(content)
+        self.set_custom_content(self._audio_group)
 
     def show_settings_menu(self, show=None):
         """Choose visibility of the settings menu, which replaces the main zone."""

@@ -268,17 +268,19 @@ async def main():
                 web_task = asyncio.create_task(WEB_SERVER.start())
                 coros.append(web_task)
 
-            results = await asyncio.gather(*coros, return_exceptions=True)
+            done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_EXCEPTION)
 
-            # Check for exceptions in either task
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    if i == 0:
-                        JEBLogger.error("CODE", f"Main application task failed with error: {result}")
-                    elif i == 1:
-                        JEBLogger.error("CODE", f"Web server task failed with error: {result}")
-                    import traceback
-                    traceback.print_exception(type(result), result, result.__traceback__)
+            # Cancel any surviving background tasks before the supervisor reload
+            for task in pending:
+                task.cancel()
+
+            # Log exceptions from completed tasks
+            import traceback
+            for task in done:
+                exc = task.exception()
+                if exc is not None:
+                    JEBLogger.error("CODE", f"Task failed with error: {exc}")
+                    traceback.print_exception(type(exc), exc, exc.__traceback__)
     except Exception as e:
         JEBLogger.error("CODE", f"🚨⛔ CRITICAL CRASH: {e}")
         import traceback
