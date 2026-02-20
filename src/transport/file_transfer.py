@@ -11,12 +11,25 @@ Sender                                Receiver
   |-- FILE_START (filename, size) -----> |  open staging file
   |<-- ACK ----------------------------- |
   |                                      |
-  |-- FILE_CHUNK (binary data) --------> |  append to staging file
+  |-- FILE_CHUNK (offset + data) ------> |  seek to offset, write data
   |<-- ACK / NACK -------------------- - |  NACK triggers retransmit
   |   (repeat for every chunk)           |
   |                                      |
   |-- FILE_END (SHA-256 hex) ----------> |  hash-verify staging file
   |<-- ACK / NACK ---------------------- |
+
+FILE_CHUNK wire format
+----------------------
+Each FILE_CHUNK payload is::
+
+    [offset: 4 bytes little-endian uint32] [chunk data: N bytes]
+
+Prepending the byte offset of the chunk within the file makes
+retransmissions idempotent: if the receiver already wrote a chunk but
+its ACK was lost on the UART line, the sender will re-send the same
+chunk with the same offset.  The receiver will seek to that offset and
+overwrite the data it already wrote rather than appending it a second
+time.  Without this guard a single lost ACK corrupts the file.
 
 The sender/receiver roles are deliberately agnostic: either side can
 initiate a transfer so that future Sat → Core log uploads work without
@@ -26,6 +39,7 @@ any protocol changes.
 import asyncio
 import hashlib
 import os
+import struct
 
 from .message import Message
 from .protocol import CMD_ACK, CMD_NACK, CMD_FILE_START, CMD_FILE_CHUNK, CMD_FILE_END
@@ -35,6 +49,9 @@ DEFAULT_CHUNK_SIZE = 128
 DEFAULT_STAGING_PATH = "/temp/pending.tmp"
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_MAX_RETRIES = 3
+
+# Number of bytes used to encode the chunk offset in a FILE_CHUNK payload
+_OFFSET_SIZE = 4  # uint32 little-endian
 
 
 def calculate_sha256(filepath):
@@ -126,20 +143,25 @@ class FileTransferSender:
 
         # --- FILE_CHUNK stream ---
         with open(filepath, "rb") as f:
+            offset = 0
             while True:
                 chunk = f.read(self.chunk_size)
                 if not chunk:
                     break
+                # Prepend 4-byte little-endian offset so the receiver can
+                # seek to the correct position and retransmissions are safe.
+                chunk_payload = struct.pack("<I", offset) + bytes(chunk)
                 success = False
                 for _ in range(self.max_retries):
                     self.transport.send(
-                        Message(self.source_id, destination, CMD_FILE_CHUNK, bytes(chunk))
+                        Message(self.source_id, destination, CMD_FILE_CHUNK, chunk_payload)
                     )
                     if await self._wait_for_ack():
                         success = True
                         break
                 if not success:
                     return False
+                offset += len(chunk)
 
         # --- FILE_END with SHA-256 ---
         sha256 = calculate_sha256(filepath)
@@ -246,7 +268,10 @@ class FileTransferReceiver:
                 pass  # Directory already exists
 
         try:
-            self._staging_file = open(self.staging_path, "wb")
+            # "w+b" creates or truncates the file and opens it for both
+            # reading and writing, so retransmitted chunks can seek to
+            # the correct offset and overwrite rather than appending.
+            self._staging_file = open(self.staging_path, "w+b")
             self._bytes_received = 0
             self._state = self.RECEIVING
             self._send_ack(msg.source)
@@ -269,9 +294,18 @@ class FileTransferReceiver:
         elif isinstance(chunk_data, str):
             chunk_data = chunk_data.encode("latin-1")
 
+        # Extract the 4-byte little-endian offset prepended by the sender.
+        if len(chunk_data) < _OFFSET_SIZE:
+            self._send_nack(msg.source)
+            return True
+
+        offset = struct.unpack("<I", chunk_data[:_OFFSET_SIZE])[0]
+        data = chunk_data[_OFFSET_SIZE:]
+
         try:
-            self._staging_file.write(chunk_data)
-            self._bytes_received += len(chunk_data)
+            self._staging_file.seek(offset)
+            self._staging_file.write(data)
+            self._bytes_received = max(self._bytes_received, offset + len(data))
             self._send_ack(msg.source)
         except OSError:
             self._send_nack(msg.source)

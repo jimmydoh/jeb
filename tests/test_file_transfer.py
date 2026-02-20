@@ -6,7 +6,9 @@ a mock bidirectional transport, with no real UART hardware required.
 """
 
 import asyncio
+import hashlib
 import os
+import struct
 import sys
 import tempfile
 
@@ -92,7 +94,6 @@ def make_staging_path(suffix=".tmp") -> str:
 
 def test_calculate_sha256_known_value():
     """SHA-256 of a known byte string must match the expected digest."""
-    import hashlib
 
     content = b"Hello, JEB!"
     path = make_temp_file(content)
@@ -115,7 +116,6 @@ def test_calculate_sha256_missing_file():
 
 def test_calculate_sha256_empty_file():
     """calculate_sha256 handles an empty file without error."""
-    import hashlib
 
     path = make_temp_file(b"")
     try:
@@ -288,8 +288,8 @@ async def test_sender_sends_chunks():
         chunk_msgs = [m for m in sender_t.sent_messages if m.command == CMD_FILE_CHUNK]
         # 256 bytes / 64 bytes per chunk = 4 chunks
         assert len(chunk_msgs) == 4, f"Expected 4 chunks, got {len(chunk_msgs)}"
-        # Reassemble and compare
-        reassembled = b"".join(m.payload for m in chunk_msgs)
+        # Reassemble: each chunk payload is [4-byte offset][chunk data]
+        reassembled = b"".join(m.payload[4:] for m in chunk_msgs)
         assert reassembled == content
     finally:
         os.unlink(path)
@@ -300,7 +300,6 @@ async def test_sender_sends_chunks():
 @pytest.mark.asyncio
 async def test_sender_sends_file_end_with_sha256():
     """Sender must emit FILE_END containing the correct SHA-256 hex digest."""
-    import hashlib
 
     sender_t, receiver_t = make_pipe()
 
@@ -478,14 +477,14 @@ async def test_receiver_writes_chunks():
     )
     sender_t.receive_nowait()  # consume ACK
 
-    # FILE_CHUNK
+    # FILE_CHUNK — payload must include the 4-byte little-endian offset prefix
     await receiver.handle_message(
-        Message("CORE", "0101", CMD_FILE_CHUNK, content)
+        Message("CORE", "0101", CMD_FILE_CHUNK, struct.pack("<I", 0) + content)
     )
     ack = sender_t.receive_nowait()
     assert ack is not None and ack.command == CMD_ACK
 
-    # Verify staged bytes
+    # Verify staged bytes (only the raw chunk data, not the offset prefix)
     receiver._close_staging_file()
     with open(staging, "rb") as f:
         written = f.read()
@@ -513,7 +512,6 @@ async def test_receiver_nacks_chunk_when_idle():
 @pytest.mark.asyncio
 async def test_receiver_validates_sha256_on_file_end():
     """Receiver must ACK FILE_END only when the SHA-256 hash matches."""
-    import hashlib
 
     sender_t, receiver_t = make_pipe()
     staging = make_staging_path()
@@ -528,13 +526,11 @@ async def test_receiver_validates_sha256_on_file_end():
     )
     sender_t.receive_nowait()  # ACK
 
-    # FILE_CHUNK
+    # FILE_CHUNK — include 4-byte offset prefix
     await receiver.handle_message(
-        Message("CORE", "0101", CMD_FILE_CHUNK, content)
+        Message("CORE", "0101", CMD_FILE_CHUNK, struct.pack("<I", 0) + content)
     )
     sender_t.receive_nowait()  # ACK
-
-    # FILE_END with correct hash
     await receiver.handle_message(
         Message("CORE", "0101", CMD_FILE_END, expected_hash)
     )
@@ -563,7 +559,7 @@ async def test_receiver_nacks_wrong_sha256():
     sender_t.receive_nowait()
 
     await receiver.handle_message(
-        Message("CORE", "0101", CMD_FILE_CHUNK, content)
+        Message("CORE", "0101", CMD_FILE_CHUNK, struct.pack("<I", 0) + content)
     )
     sender_t.receive_nowait()
 
@@ -603,7 +599,6 @@ async def test_receiver_ignores_non_file_commands():
 @pytest.mark.asyncio
 async def test_full_transfer_small_file():
     """Full transfer of a small file: content and hash must survive round-trip."""
-    import hashlib
 
     content = b"Small file content for integration test."
     source_path = make_temp_file(content)
@@ -681,7 +676,6 @@ async def test_full_transfer_binary_file():
 @pytest.mark.asyncio
 async def test_receiver_resets_state_after_successful_transfer():
     """Receiver must return to IDLE after a successful FILE_END."""
-    import hashlib
 
     sender_t, receiver_t = make_pipe()
     staging_path = make_staging_path()
@@ -693,7 +687,7 @@ async def test_receiver_resets_state_after_successful_transfer():
         Message("CORE", "0101", CMD_FILE_START, f"f.bin,{len(content)}")
     )
     sender_t.receive_nowait()
-    await receiver.handle_message(Message("CORE", "0101", CMD_FILE_CHUNK, content))
+    await receiver.handle_message(Message("CORE", "0101", CMD_FILE_CHUNK, struct.pack("<I", 0) + content))
     sender_t.receive_nowait()
     await receiver.handle_message(
         Message("CORE", "0101", CMD_FILE_END, hashlib.sha256(content).hexdigest())
@@ -707,6 +701,95 @@ async def test_receiver_resets_state_after_successful_transfer():
         os.unlink(staging_path)
 
     print("✓ Receiver returns to IDLE after successful transfer")
+
+
+@pytest.mark.asyncio
+async def test_lost_ack_does_not_corrupt_file():
+    """A lost ACK must not cause the file to be written twice.
+
+    Scenario:
+      1. Sender sends Chunk A.
+      2. Receiver writes Chunk A, sends ACK.
+      3. The ACK is dropped (never reaches the sender).
+      4. Sender times out and retransmits Chunk A with the same offset.
+      5. Receiver seeks to the same offset and overwrites — no duplication.
+      6. FILE_END SHA-256 check must still pass.
+    """
+
+    content = b"idempotent chunk write test"
+    source_path = make_temp_file(content)
+    staging_path = make_staging_path()
+
+    sender_t, receiver_t = make_pipe()
+    sender = FileTransferSender(
+        sender_t, source_id="CORE", chunk_size=128, timeout=0.3, max_retries=3
+    )
+    receiver = FileTransferReceiver(receiver_t, source_id="0101", staging_path=staging_path)
+
+    ack_dropped = {"dropped": False}
+
+    async def receiver_loop():
+        while True:
+            msg = await receiver_t.receive()
+            await receiver.handle_message(msg)
+            if msg.command == CMD_FILE_CHUNK and not ack_dropped["dropped"]:
+                # Silently discard the first ACK so the sender retransmits
+                sender_t._queue.get_nowait()  # pop the ACK off the sender's queue
+                ack_dropped["dropped"] = True
+            if msg.command == CMD_FILE_END:
+                break
+
+    try:
+        recv_task = asyncio.create_task(receiver_loop())
+        result = await sender.send_file("0101", source_path)
+        await recv_task
+
+        assert result is True, "Transfer must succeed despite lost ACK"
+
+        with open(staging_path, "rb") as f:
+            received = f.read()
+
+        expected_hash = hashlib.sha256(content).hexdigest()
+        assert received == content, (
+            f"File corrupted after lost ACK: got {len(received)} bytes, "
+            f"expected {len(content)} bytes"
+        )
+        assert hashlib.sha256(received).hexdigest() == expected_hash, \
+            "SHA-256 mismatch after lost-ACK retransmission"
+    finally:
+        os.unlink(source_path)
+        if os.path.exists(staging_path):
+            os.unlink(staging_path)
+
+    print("✓ Lost ACK does not corrupt file (idempotent chunk write)")
+
+
+@pytest.mark.asyncio
+async def test_receiver_nacks_chunk_without_offset():
+    """Receiver must NACK a FILE_CHUNK payload that is too short to contain an offset."""
+    sender_t, receiver_t = make_pipe()
+    staging = make_staging_path()
+    receiver = FileTransferReceiver(receiver_t, source_id="0101", staging_path=staging)
+
+    # Open a transfer so receiver is in RECEIVING state
+    await receiver.handle_message(
+        Message("CORE", "0101", CMD_FILE_START, "f.bin,4")
+    )
+    sender_t.receive_nowait()  # consume ACK
+
+    # Send a chunk with only 3 bytes — too short to hold a 4-byte offset
+    await receiver.handle_message(
+        Message("CORE", "0101", CMD_FILE_CHUNK, b"\x01\x02\x03")
+    )
+    response = sender_t.receive_nowait()
+    assert response is not None and response.command == CMD_NACK, \
+        "Expected NACK for payload shorter than offset header"
+
+    receiver._close_staging_file()
+    if os.path.exists(staging):
+        os.unlink(staging)
+
+    print("✓ Receiver NACKs FILE_CHUNK payload too short to contain offset")
 
 
 # ---------------------------------------------------------------------------
@@ -747,6 +830,8 @@ async def run_async_tests():
     await test_full_transfer_small_file()
     await test_full_transfer_binary_file()
     await test_receiver_resets_state_after_successful_transfer()
+    await test_lost_ack_does_not_corrupt_file()
+    await test_receiver_nacks_chunk_without_offset()
 
 
 if __name__ == "__main__":
