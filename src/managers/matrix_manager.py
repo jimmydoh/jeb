@@ -268,6 +268,35 @@ class MatrixManager(BasePixelManager):
                 self.draw_pixel(ox + x, oy + y, color, show=False, anim_mode=anim_mode, speed=speed, duration=duration)
         # Note: Hardware write is now handled by CoreManager.render_loop()
 
+    def draw_eq_bands(self, band_heights, colors=None):
+        """Draw EQ frequency-band bars on the matrix.
+
+        Renders vertical bars rising from the bottom of the matrix, one bar
+        per frequency band.  The number of bars is clamped to the matrix width.
+
+        Args:
+            band_heights: Iterable of bar heights (0 to self.height) per band.
+            colors: Optional list of (r, g, b) tuples, one per band.
+                    When omitted a low=RED / mid=GOLD / high=CYAN gradient is used.
+        """
+        self.clear()
+        num_bands = min(len(band_heights), self.width)
+
+        for x in range(num_bands):
+            height = max(0, min(self.height, band_heights[x]))
+
+            if colors and x < len(colors):
+                color = colors[x]
+            elif x < num_bands // 4:
+                color = Palette.RED
+            elif x < (num_bands * 3) // 4:
+                color = Palette.GOLD
+            else:
+                color = Palette.CYAN
+
+            for y in range(self.height - height, self.height):
+                self.draw_pixel(x, y, color)
+
     def draw_wedge(self, quad_idx, color, anim_mode=None, speed=1.0, duration=None):
         """Draws a curved wedge (ring-sector) shape in one of four quadrants.
 
