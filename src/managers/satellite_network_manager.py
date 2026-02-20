@@ -186,7 +186,7 @@ class SatelliteNetworkManager:
                     sid, self.transport
                 )
                 self.satellites[sid].update_heartbeat(increment=2000)
-                self.abort_event.set()  # Signal to restart the core manager to integrate the new satellite
+
             self.display.update_status("NEW SAT", f"{sid} sent HELLO {val}.")
             JEBLogger.info("NETM", f"New sat {sid} TYPE-{val} via HELLO.")
 
@@ -290,7 +290,7 @@ class SatelliteNetworkManager:
                         # Satellite is online now but was detected as offline
                         JEBLogger.info("NETM", f"Link restored with {sid}. Marking as active.")
                         self.display.update_status(f"LINK RESTORED", f"ID: {sid}")
-                        self.abort_event.set()  # Signal to restart the core manager to reset satellite state
+
                         self._spawn_audio_task(
                             self.audio.play,
                             "link_restored.wav",
@@ -304,7 +304,7 @@ class SatelliteNetworkManager:
                         sat.is_active = False
                         sat.was_offline = True
                         self.display.update_status(f"LINK LOST", f"ID: {sid}")
-                        self.abort_event.set()  # Signal to restart the core manager to reset satellite state
+
                         self._spawn_audio_task(
                             self.audio.play,
                             "link_lost.wav",
