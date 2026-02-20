@@ -62,7 +62,8 @@ def load_config():
         "debug_mode": False,  # Debug mode off by default
         "test_mode": True,  # Test mode on by default (real hardware should set to False)
         "web_server_enabled": False,  # Web server disabled by default
-        "web_server_port": 80  # Default HTTP port
+        "web_server_port": 80,  # Default HTTP port
+        "hardware_features": {}  # Empty dict means all hardware enabled
     }
     try:
         if file_exists("config.json"):
@@ -81,10 +82,84 @@ def load_config():
         JEBLogger.warning("CODE", "Using default configuration.")
         return default_config
 
+# --- HARDWARE DUMMY INJECTION ---
+
+def _inject_hardware_dummies(features):
+    """Replace disabled hardware manager modules with lightweight dummy classes.
+
+    Called immediately after config loading and strictly before CoreManager is
+    imported, so that all subsequent ``from managers.x import Y`` statements
+    transparently receive the dummy implementation.
+
+    Args:
+        features: dict mapping feature name -> bool (True = real hardware,
+                  False = inject dummy).  Unknown keys are silently ignored.
+    """
+    import sys
+
+    # Maps each feature flag to the real manager module(s) it controls
+    feature_map = {
+        "audio":   ["managers.audio_manager", "managers.synth_manager"],
+        "display": ["managers.display_manager"],
+        "matrix":  ["managers.matrix_manager"],
+        "leds":    ["managers.led_manager"],
+        "buzzer":  ["managers.buzzer_manager"],
+        "power":   ["managers.power_manager", "managers.adc_manager"],
+        "segment": ["managers.segment_manager"],
+    }
+
+    # Maps each real manager module to its dummy counterpart
+    dummy_map = {
+        "managers.audio_manager":   "dummies.audio_manager",
+        "managers.synth_manager":   "dummies.synth_manager",
+        "managers.display_manager": "dummies.display_manager",
+        "managers.matrix_manager":  "dummies.matrix_manager",
+        "managers.led_manager":     "dummies.led_manager",
+        "managers.buzzer_manager":  "dummies.buzzer_manager",
+        "managers.power_manager":   "dummies.power_manager",
+        "managers.adc_manager":     "dummies.adc_manager",
+        "managers.segment_manager": "dummies.segment_manager",
+    }
+
+    for feature, enabled in features.items():
+        if enabled or feature not in feature_map:
+            continue
+        for manager_module in feature_map[feature]:
+            dummy_module_name = dummy_map.get(manager_module)
+            if dummy_module_name is None:
+                continue
+            try:
+                __import__(dummy_module_name)
+                sys.modules[manager_module] = sys.modules[dummy_module_name]
+                JEBLogger.info("CODE", f"Dummy injected: {manager_module}")
+            except ImportError as e:
+                JEBLogger.warning("CODE", f"Could not load dummy for {manager_module}: {e}")
+
+
 # --- ENTRY POINT ---
 JEBLogger.info("CODE", "*** BOOTING JEB SYSTEM ***")
 JEBLogger.info("CODE", f"SD Card mounted: {SD_MOUNTED}")
 config = load_config()
+
+# Visual indicator: rapidly flash the onboard LED when test_mode is active
+if config.get("test_mode", False):
+    try:
+        import digitalio
+        import board as _board
+        _led = digitalio.DigitalInOut(_board.LED)
+        _led.direction = digitalio.Direction.OUTPUT
+        for _ in range(10):
+            _led.value = True
+            time.sleep(0.05)
+            _led.value = False
+            time.sleep(0.05)
+        _led.deinit()
+    except Exception:
+        pass  # Silently skip if onboard LED is unavailable
+
+# Inject dummy modules for any disabled hardware features before any
+# manager imports occur (including the CoreManager module-level imports).
+_inject_hardware_dummies(config.get("hardware_features", {}))
 
 # Do we have an SSID and Password
 if config.get("wifi_ssid") and config.get("wifi_password"):
