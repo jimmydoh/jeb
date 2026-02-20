@@ -9,6 +9,7 @@ It is designed to be passed to the Updater and WebServerManager to provide
 shared connectivity lifecycle management.
 """
 
+from utilities.logger import JEBLogger
 
 class WiFiManager:
     """
@@ -35,6 +36,8 @@ class WiFiManager:
         self.ssid = config.get("wifi_ssid", "")
         self.password = config.get("wifi_password", "")
 
+        self.online_callers = set()  # Track which callers want WiFi online
+
         # Lazily populated when connect() is called
         self._wifi = None
         self._socketpool = None
@@ -59,7 +62,7 @@ class WiFiManager:
         """Return the socket pool, or None if not connected."""
         return self._pool
 
-    def connect(self, timeout=30):
+    def connect(self, timeout=30, caller=None):
         """
         Connect to the configured WiFi network.
 
@@ -81,19 +84,22 @@ class WiFiManager:
                 self._wifi = _wifi
                 self._socketpool = _socketpool
             except ImportError:
-                print("WiFi modules not available")
+                JEBLogger.error("WIFI", "WiFi modules not available")
                 return False
 
         # Already connected - ensure pool exists
         if self._wifi.radio.connected:
             if self._pool is None:
                 self._pool = self._socketpool.SocketPool(self._wifi.radio)
-            print(f"Already connected to WiFi. IP: {self._wifi.radio.ipv4_address}")
+            JEBLogger.info("WIFI", f"Already connected to WiFi. IP: {self._wifi.radio.ipv4_address}")
+            # The caller thinks we are online
+            if caller and caller not in self.online_callers:
+                self.online_callers.add(caller)
             return True
 
         import time
         try:
-            print(f"Connecting to WiFi: {self.ssid}")
+            JEBLogger.info("WIFI", f"Connecting to WiFi: {self.ssid}")
             self._wifi.radio.connect(self.ssid, self.password, timeout=timeout)
 
             start = time.monotonic()
@@ -102,29 +108,49 @@ class WiFiManager:
 
             if self._wifi.radio.connected:
                 self._pool = self._socketpool.SocketPool(self._wifi.radio)
-                print(f"✓ Connected! IP: {self._wifi.radio.ipv4_address}")
+                JEBLogger.info("WIFI", f"✓ Connected! IP: {self._wifi.radio.ipv4_address}")
+                # The caller thinks we are online
+                if caller and caller not in self.online_callers:
+                    self.online_callers.add(caller)
                 return True
             else:
-                print("✗ WiFi connection timeout")
+                JEBLogger.error("WIFI", "✗ WiFi connection timeout")
+                # The caller DOES NOT think we are online
+                if caller and caller in self.online_callers:
+                    self.online_callers.remove(caller)
                 return False
 
         except Exception as e:
-            print(f"WiFi connection error: {e}")
+            JEBLogger.error("WIFI", f"WiFi connection error: {e}")
+            # The caller DOES NOT think we are online
+            if caller and caller in self.online_callers:
+                self.online_callers.remove(caller)
             return False
 
-    def disconnect(self):
+    def disconnect(self, caller=None):
         """
         Disconnect from WiFi and release the socket pool.
 
         Safe to call even if not currently connected.
         """
+        # The caller no longer thinks we are online
+        if caller and caller in self.online_callers:
+            self.online_callers.remove(caller)
+
         if self._wifi is not None and self._wifi.radio.connected:
             try:
+                # Only actually disconnect if no other callers want to be online
+                if self.online_callers:
+                    JEBLogger.info("WIFI", f"Not disconnecting WiFi, still needed by: {self.online_callers}")
+                    return
+                # Disconnect and clean up
                 self._wifi.radio.enabled = False
-                print("WiFi disconnected")
+                JEBLogger.info("WIFI", "WiFi disconnected")
+                self._pool = None
             except Exception as e:
-                print(f"Error disconnecting WiFi: {e}")
-        self._pool = None
+                JEBLogger.error("WIFI", f"Error disconnecting WiFi: {e}")
+        else:
+            JEBLogger.info("WIFI", "WiFi already disconnected")
 
     def create_http_session(self):
         """
@@ -142,5 +168,5 @@ class WiFiManager:
             import adafruit_requests
             return adafruit_requests.Session(self._pool, ssl.create_default_context())
         except ImportError:
-            print("adafruit_requests or ssl not available")
+            JEBLogger.error("WIFI", "adafruit_requests or ssl not available")
             return None
