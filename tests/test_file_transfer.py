@@ -793,6 +793,151 @@ async def test_receiver_nacks_chunk_without_offset():
 
 
 # ---------------------------------------------------------------------------
+# New robustness tests (items 1-3 from review)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_receiver_nacks_chunk_beyond_declared_size():
+    """Receiver must NACK a FILE_CHUNK that would write past the declared file size."""
+    sender_t, receiver_t = make_pipe()
+    staging = make_staging_path()
+    # Declare a 10-byte file
+    receiver = FileTransferReceiver(receiver_t, source_id="0101", staging_path=staging)
+
+    await receiver.handle_message(
+        Message("CORE", "0101", CMD_FILE_START, "f.bin,10")
+    )
+    sender_t.receive_nowait()  # consume ACK
+
+    # Send a chunk whose offset+length exceeds 10 bytes
+    # offset=8, data=4 bytes → would write bytes 8..12, but file is only 10
+    oversized_payload = struct.pack("<I", 8) + b"\x01\x02\x03\x04"
+    await receiver.handle_message(
+        Message("CORE", "0101", CMD_FILE_CHUNK, oversized_payload)
+    )
+    response = sender_t.receive_nowait()
+    assert response is not None and response.command == CMD_NACK, \
+        "Expected NACK when chunk writes past declared file size"
+
+    receiver._close_staging_file()
+    if os.path.exists(staging):
+        os.unlink(staging)
+
+    print("✓ Receiver NACKs FILE_CHUNK beyond declared file size")
+
+
+@pytest.mark.asyncio
+async def test_receiver_tick_expires_stale_transfer():
+    """tick() must close the staging file and reset to IDLE on timeout."""
+    sender_t, receiver_t = make_pipe()
+    staging = make_staging_path()
+    receiver = FileTransferReceiver(
+        receiver_t, source_id="0101", staging_path=staging,
+        transfer_timeout_ms=1000,
+    )
+
+    content = b"partial data"
+
+    # Start a transfer and send one chunk
+    await receiver.handle_message(
+        Message("CORE", "0101", CMD_FILE_START, f"f.bin,{len(content)}")
+    )
+    sender_t.receive_nowait()
+    await receiver.handle_message(
+        Message("CORE", "0101", CMD_FILE_CHUNK, struct.pack("<I", 0) + content)
+    )
+    sender_t.receive_nowait()
+
+    assert receiver._state == FileTransferReceiver.RECEIVING
+
+    # Simulate 500 ms passing — not yet timed out
+    last_time = receiver._last_chunk_time
+    receiver.tick(last_time + 500)
+    assert receiver._state == FileTransferReceiver.RECEIVING, \
+        "Should still be RECEIVING after 500 ms"
+
+    # Simulate 2000 ms passing — timeout exceeded
+    receiver.tick(last_time + 2000)
+    assert receiver._state == FileTransferReceiver.IDLE, \
+        "Should have reset to IDLE after timeout"
+    assert receiver._staging_file is None, \
+        "Staging file should be closed after timeout"
+
+    if os.path.exists(staging):
+        os.unlink(staging)
+
+    print("✓ tick() expires stale transfer and resets to IDLE")
+
+
+@pytest.mark.asyncio
+async def test_receiver_tick_no_effect_when_idle():
+    """tick() must be a no-op when the receiver is already IDLE."""
+    _sender_t, receiver_t = make_pipe()
+    receiver = FileTransferReceiver(receiver_t, source_id="0101")
+
+    assert receiver._state == FileTransferReceiver.IDLE
+    receiver.tick(99999999)  # should not raise or change state
+    assert receiver._state == FileTransferReceiver.IDLE
+
+    print("✓ tick() is a no-op when receiver is IDLE")
+
+
+def test_makedirs_single_level():
+    """_makedirs must create a single-level directory."""
+    from transport.file_transfer import _makedirs
+    import tempfile
+
+    base = tempfile.mkdtemp()
+    target = os.path.join(base, "newdir")
+    try:
+        _makedirs(target)
+        assert os.path.isdir(target), "Directory was not created"
+    finally:
+        if os.path.isdir(target):
+            os.rmdir(target)
+        os.rmdir(base)
+
+    print("✓ _makedirs creates a single-level directory")
+
+
+def test_makedirs_nested():
+    """_makedirs must recursively create nested directories."""
+    from transport.file_transfer import _makedirs
+    import tempfile
+
+    base = tempfile.mkdtemp()
+    target = os.path.join(base, "a", "b", "c")
+    try:
+        _makedirs(target)
+        assert os.path.isdir(target), "Nested directory was not created"
+    finally:
+        # Clean up recursively
+        for sub in [target,
+                    os.path.join(base, "a", "b"),
+                    os.path.join(base, "a"),
+                    base]:
+            if os.path.isdir(sub):
+                os.rmdir(sub)
+
+    print("✓ _makedirs recursively creates nested directories")
+
+
+def test_makedirs_existing_path():
+    """_makedirs must not raise when the path already exists."""
+    from transport.file_transfer import _makedirs
+    import tempfile
+
+    base = tempfile.mkdtemp()
+    try:
+        _makedirs(base)  # already exists — must not raise
+        assert os.path.isdir(base)
+    finally:
+        os.rmdir(base)
+
+    print("✓ _makedirs does not raise when path already exists")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -807,6 +952,9 @@ def run_sync_tests():
         test_no_duplicate_command_codes,
         test_encoding_raw_bytes_constant,
         test_file_chunk_schema_uses_raw_bytes,
+        test_makedirs_single_level,
+        test_makedirs_nested,
+        test_makedirs_existing_path,
     ]
     for t in tests:
         t()
@@ -832,6 +980,9 @@ async def run_async_tests():
     await test_receiver_resets_state_after_successful_transfer()
     await test_lost_ack_does_not_corrupt_file()
     await test_receiver_nacks_chunk_without_offset()
+    await test_receiver_nacks_chunk_beyond_declared_size()
+    await test_receiver_tick_expires_stale_transfer()
+    await test_receiver_tick_no_effect_when_idle()
 
 
 if __name__ == "__main__":

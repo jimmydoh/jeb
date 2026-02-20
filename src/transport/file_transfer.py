@@ -49,9 +49,36 @@ DEFAULT_CHUNK_SIZE = 128
 DEFAULT_STAGING_PATH = "/temp/pending.tmp"
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_MAX_RETRIES = 3
+DEFAULT_TRANSFER_TIMEOUT_MS = 10000  # 10 seconds without a chunk → abort
 
 # Number of bytes used to encode the chunk offset in a FILE_CHUNK payload
 _OFFSET_SIZE = 4  # uint32 little-endian
+
+
+def _makedirs(path):
+    """Recursively create *path* and all missing parent directories.
+
+    Equivalent to ``os.makedirs(path, exist_ok=True)`` but uses only the
+    ``os.mkdir`` call available in CircuitPython, so it works on deeply
+    nested paths like ``/sd/updates/temp``.
+    """
+    if not path:
+        return
+    # Build the list of ancestor paths to create, innermost last.
+    parts = []
+    current = path
+    while True:
+        parent = "/".join(current.split("/")[:-1])
+        if not parent or parent == current:
+            break
+        parts.append(current)
+        current = parent
+    # Create from outermost to innermost.
+    for directory in reversed(parts):
+        try:
+            os.mkdir(directory)
+        except OSError:
+            pass  # Already exists or not creatable — ignore
 
 
 def calculate_sha256(filepath):
@@ -198,6 +225,9 @@ class FileTransferReceiver:
         if msg.command in FILE_COMMANDS:
             await receiver.handle_message(msg)
 
+        # Also call tick() regularly so stale transfers time out:
+        receiver.tick(current_time_ms)
+
     After a successful transfer the staged file is available at
     ``receiver.staging_path``.  The caller is responsible for moving it
     to its final destination.
@@ -206,27 +236,41 @@ class FileTransferReceiver:
     IDLE = "IDLE"
     RECEIVING = "RECEIVING"
 
-    def __init__(self, transport, source_id, staging_path=DEFAULT_STAGING_PATH):
+    def __init__(
+        self,
+        transport,
+        source_id,
+        staging_path=DEFAULT_STAGING_PATH,
+        transfer_timeout_ms=DEFAULT_TRANSFER_TIMEOUT_MS,
+    ):
         """Initialise the receiver.
 
         Parameters:
             transport: Transport instance with a ``send()`` method.
             source_id (str): Source device ID used in outgoing ACK/NACK messages.
             staging_path (str): Path where incoming data is written.  The
-                parent directory is created automatically if absent.
+                parent directory tree is created automatically if absent.
+            transfer_timeout_ms (int): Milliseconds of inactivity after which
+                an in-progress transfer is considered stale and aborted.
+                Pass 0 to disable the timeout.
         """
         self.transport = transport
         self.source_id = source_id
         self.staging_path = staging_path
+        self.transfer_timeout_ms = transfer_timeout_ms
 
         self._state = self.IDLE
         self._expected_filename = None
         self._expected_size = None
         self._bytes_received = 0
         self._staging_file = None
+        self._last_chunk_time = None
 
     async def handle_message(self, msg):
         """Process an incoming file-transfer protocol message.
+
+        Call :meth:`tick` regularly (e.g. from the main application loop)
+        to expire stale in-progress transfers when the sender goes silent.
 
         Parameters:
             msg (Message): A message whose command is FILE_START, FILE_CHUNK,
@@ -244,6 +288,31 @@ class FileTransferReceiver:
             return await self._handle_end(msg)
         return False
 
+    def tick(self, current_time_ms):
+        """Expire a stale in-progress transfer.
+
+        Should be called regularly from the application main loop.  If the
+        receiver is in the ``RECEIVING`` state and no chunk has arrived for
+        longer than ``transfer_timeout_ms`` milliseconds, the staging file is
+        closed and the state machine resets to ``IDLE``.
+
+        Has no effect when the receiver is ``IDLE`` or when
+        ``transfer_timeout_ms`` is 0.
+
+        Parameters:
+            current_time_ms (int): Current monotonic time in milliseconds
+                (e.g. ``supervisor.ticks_ms()`` on CircuitPython or
+                ``int(time.monotonic() * 1000)`` in CPython tests).
+        """
+        if (
+            self.transfer_timeout_ms > 0
+            and self._state == self.RECEIVING
+            and self._last_chunk_time is not None
+            and current_time_ms - self._last_chunk_time > self.transfer_timeout_ms
+        ):
+            self._close_staging_file()
+            self._state = self.IDLE
+
     # ------------------------------------------------------------------
     # Internal handlers
     # ------------------------------------------------------------------
@@ -259,13 +328,9 @@ class FileTransferReceiver:
             self._send_nack(msg.source)
             return True
 
-        # Ensure staging directory exists
+        # Ensure the full staging directory tree exists
         staging_dir = "/".join(self.staging_path.split("/")[:-1])
-        if staging_dir:
-            try:
-                os.mkdir(staging_dir)
-            except OSError:
-                pass  # Directory already exists
+        _makedirs(staging_dir)
 
         try:
             # "w+b" creates or truncates the file and opens it for both
@@ -273,6 +338,7 @@ class FileTransferReceiver:
             # the correct offset and overwrite rather than appending.
             self._staging_file = open(self.staging_path, "w+b")
             self._bytes_received = 0
+            self._last_chunk_time = None
             self._state = self.RECEIVING
             self._send_ack(msg.source)
         except OSError:
@@ -302,10 +368,16 @@ class FileTransferReceiver:
         offset = struct.unpack("<I", chunk_data[:_OFFSET_SIZE])[0]
         data = chunk_data[_OFFSET_SIZE:]
 
+        # Reject writes that would extend the file beyond the declared size.
+        if self._expected_size is not None and offset + len(data) > self._expected_size:
+            self._send_nack(msg.source)
+            return True
+
         try:
             self._staging_file.seek(offset)
             self._staging_file.write(data)
             self._bytes_received = max(self._bytes_received, offset + len(data))
+            self._last_chunk_time = self._monotonic_ms()
             self._send_ack(msg.source)
         except OSError:
             self._send_nack(msg.source)
@@ -336,6 +408,21 @@ class FileTransferReceiver:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _monotonic_ms():
+        """Return a monotonic timestamp in milliseconds.
+
+        Uses ``time.monotonic_ns()`` on CPython (available in Python 3.3+)
+        and falls back to ``time.monotonic() * 1000`` for CircuitPython
+        environments that lack nanosecond resolution.
+        """
+        try:
+            import time
+            return time.monotonic_ns() // 1_000_000
+        except AttributeError:
+            import time
+            return int(time.monotonic() * 1000)
 
     def _send_ack(self, destination):
         self.transport.send(Message(self.source_id, destination, CMD_ACK, ""))
