@@ -144,12 +144,17 @@ class FileTransferSender:
         self.timeout = timeout
         self.max_retries = max_retries
 
-    async def send_file(self, destination, filepath):
+    async def send_file(self, destination, filepath, remote_filename=None):
         """Transfer *filepath* to *destination*.
 
         Parameters:
             destination (str): Target device ID (e.g. ``"0101"`` or ``"SAT"``).
             filepath (str): Absolute path to the local file to send.
+            remote_filename (str | None): Override the filename sent in the
+                FILE_START payload.  When ``None`` (default) the basename of
+                *filepath* is used.  Pass a relative path (e.g.
+                ``"managers/led_manager.mpy"``) to preserve directory structure
+                on the receiver side.
 
         Returns:
             bool: ``True`` if the file was transferred and the receiver
@@ -160,7 +165,7 @@ class FileTransferSender:
         """
         file_stat = os.stat(filepath)
         file_size = file_stat[6]
-        filename = filepath.split("/")[-1]
+        filename = remote_filename if remote_filename is not None else filepath.split("/")[-1]
 
         # --- FILE_START ---
         start_payload = f"{filename},{file_size}"
@@ -265,6 +270,7 @@ class FileTransferReceiver:
         self._bytes_received = 0
         self._staging_file = None
         self._last_chunk_time = None
+        self.last_transfer_ok = False  # True after a successful FILE_END hash verification
 
     async def handle_message(self, msg):
         """Process an incoming file-transfer protocol message.
@@ -319,6 +325,7 @@ class FileTransferReceiver:
 
     async def _handle_start(self, msg):
         self._close_staging_file()
+        self.last_transfer_ok = False  # Reset for the new transfer
 
         try:
             parts = msg.payload.split(",", 1)
@@ -399,8 +406,10 @@ class FileTransferReceiver:
         self._state = self.IDLE
 
         if actual_hash is not None and actual_hash == expected_hash:
+            self.last_transfer_ok = True
             self._send_ack(msg.source)
         else:
+            self.last_transfer_ok = False
             self._send_nack(msg.source)
 
         return True

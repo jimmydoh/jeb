@@ -20,6 +20,13 @@ from transport.protocol import (
     CMD_ID_ASSIGN,
     CMD_REBOOT,
     CMD_MODE,
+    CMD_ACK,
+    CMD_VERSION_CHECK,
+    CMD_UPDATE_START,
+    CMD_UPDATE_WAIT,
+    FILE_COMMANDS,
+    CMD_FILE_START,
+    CMD_FILE_END,
     COMMAND_MAP,
     DEST_MAP,
     MAX_INDEX_VALUE,
@@ -118,8 +125,21 @@ class SatelliteFirmware:
         self._system_handlers = {
             CMD_ID_ASSIGN: self._handle_id_assign,
             CMD_REBOOT: self._handle_reboot_command,
-            CMD_MODE: self._handle_mode_command
+            CMD_MODE: self._handle_mode_command,
+            CMD_ACK: self._handle_ack_command,
+            CMD_UPDATE_START: self._handle_update_start,
+            CMD_UPDATE_WAIT: self._handle_update_wait,
         }
+
+        # Version check and firmware update state
+        self._version_check_sent = False      # True after VERSION_CHECK sent to core
+        self._version_confirmed = False       # True after core ACK'd our version or update complete
+        self._version_check_retry_after = 0   # monotonic time after which to retry version check
+        self._update_mode = False             # True when receiving a firmware update
+        self._update_file_count = 0           # Total number of files to receive in update
+        self._update_files_received = 0       # Number of files successfully received so far
+        self._update_current_filename = None  # Filename being received in current transfer
+        self._update_receiver = None          # FileTransferReceiver for staged files
 
         self.watchdog = WatchdogManager(
             task_names=[],
@@ -217,6 +237,125 @@ class SatelliteFirmware:
     async def on_mode_change(self, new_mode):
         """Virtual hook for subclasses to react to mode transitions."""
         pass
+
+    def _read_local_version(self):
+        """Read the local firmware version from /version.json.
+
+        Returns:
+            str: Version string (e.g. ``"0.4.0"``), or ``"0.0.0"`` if the
+            file is absent or cannot be parsed.
+        """
+        try:
+            import json
+            with open('/version.json', 'r') as f:
+                data = json.load(f)
+            return data.get('version', '0.0.0')
+        except (OSError, ValueError, KeyError):
+            return '0.0.0'
+
+    async def _handle_ack_command(self, val):
+        """Handle ACK from core.
+
+        An ACK received while we are waiting for a version-check confirmation
+        means the core accepted our current firmware version and we may
+        proceed with normal operation.
+        """
+        if self._version_check_sent and not self._version_confirmed and not self._update_mode:
+            self._version_confirmed = True
+
+    async def _handle_update_start(self, val):
+        """Handle UPDATE_START from core — enter firmware update mode.
+
+        Parameters:
+            val: Payload containing ``"file_count,total_bytes"``.
+        """
+        if isinstance(val, bytes):
+            val = val.decode('utf-8')
+        elif not isinstance(val, str):
+            val = str(val)
+        try:
+            parts = val.split(',', 1)
+            self._update_file_count = int(parts[0])
+        except (ValueError, IndexError):
+            self._update_file_count = 1
+
+        self._update_mode = True
+        self._version_confirmed = True   # Stop retrying version check
+        self._update_files_received = 0
+        self._update_current_filename = None
+
+        from transport.file_transfer import FileTransferReceiver
+        self._update_receiver = FileTransferReceiver(
+            self.transport_up,
+            source_id=self.id,
+            staging_path="/update/staged.tmp"
+        )
+
+    async def _handle_update_wait(self, val):
+        """Handle UPDATE_WAIT from core — another satellite is being updated.
+
+        Resets the version-check state so it will be retried after a short
+        delay, once the other satellite's update is complete.
+        """
+        self._version_check_sent = False
+        self._version_check_retry_after = time.monotonic() + 10.0
+
+    async def _stage_received_file(self, filename):
+        """Move the staging file to ``/update/<filename>`` after a successful transfer.
+
+        Creates any required parent directories under ``/update/``.
+
+        Parameters:
+            filename (str): Relative target path of the received file
+                (e.g. ``"manifest.json"`` or ``"managers/led_manager.mpy"``).
+        """
+        import os
+        from transport.file_transfer import _makedirs
+
+        dest = f"/update/{filename}"
+        dest_dir = "/".join(dest.split("/")[:-1])
+        if dest_dir and dest_dir != "/update":
+            _makedirs(dest_dir)
+        _makedirs("/update")
+        try:
+            os.rename(self._update_receiver.staging_path, dest)
+        except OSError as e:
+            print(f"{self.sat_type_id}-{self.id}: Failed to stage {filename}: {e}")
+
+    async def _apply_update_and_reboot(self):
+        """Apply staged firmware files to their target paths and reboot.
+
+        Reads ``/update/manifest.json`` (the first file always transferred)
+        to determine the final destination for each staged file, then renames
+        them into place and triggers a reboot so the new firmware takes effect.
+        """
+        import json
+        import os
+        from transport.file_transfer import _makedirs
+
+        try:
+            with open('/update/manifest.json', 'r') as f:
+                manifest = json.load(f)
+
+            for file_entry in manifest.get('files', []):
+                src = f"/update/{file_entry['path']}"
+                dst = f"/{file_entry['path']}"
+                dst_dir = "/".join(dst.split("/")[:-1])
+                if dst_dir and dst_dir != "/":
+                    _makedirs(dst_dir)
+                try:
+                    os.rename(src, dst)
+                except OSError as e:
+                    print(f"{self.sat_type_id}-{self.id}: Update apply failed for {src}: {e}")
+
+            if not self.transport_up.send(Message(self.id, "CORE", "LOG", "UPDATE_APPLIED")):
+                print(f"{self.sat_type_id}-{self.id}: Failed to send UPDATE_APPLIED log")
+        except (OSError, ValueError, KeyError) as e:
+            print(f"{self.sat_type_id}-{self.id}: Update apply error: {e}")
+            if not self.transport_up.send(Message(self.id, "CORE", "ERROR", f"UPDATE_FAILED:{e}")):
+                print(f"{self.sat_type_id}-{self.id}: Failed to send UPDATE_FAILED error")
+
+        self.watchdog.force_reboot()
 
     async def monitor_connection(self):
         """Background task to manage the downstream RJ45 power pass-through."""
@@ -354,7 +493,30 @@ class SatelliteFirmware:
         if handler:
             await handler(val)
             return True
-        return False # Command was not handled
+
+        # Route FILE_* commands to the update receiver when in update mode
+        if self._update_mode and self._update_receiver is not None and cmd in FILE_COMMANDS:
+            if cmd == CMD_FILE_START:
+                # Capture the filename before the receiver processes it
+                try:
+                    payload_str = val if isinstance(val, str) else val.decode('utf-8')
+                    self._update_current_filename = payload_str.split(',', 1)[0]
+                except (ValueError, AttributeError):
+                    self._update_current_filename = "unknown.tmp"
+
+            msg = Message("CORE", self.id, cmd, val)
+            handled = await self._update_receiver.handle_message(msg)
+
+            if cmd == CMD_FILE_END and handled:
+                if self._update_receiver.last_transfer_ok and self._update_current_filename:
+                    await self._stage_received_file(self._update_current_filename)
+                    self._update_files_received += 1
+                    if self._update_files_received >= self._update_file_count:
+                        await self._apply_update_and_reboot()
+
+            return handled
+
+        return False  # Command was not handled
 
     async def _task_tx_upstream(self):
         """
@@ -372,6 +534,20 @@ class SatelliteFirmware:
                     else:
                         # Back off slightly on send failure
                         await asyncio.sleep(1)
+
+            # Version Check Phase: ID assigned, waiting for core to confirm version
+            elif not self._version_confirmed:
+                now = time.monotonic()
+                if not self._version_check_sent and now >= self._version_check_retry_after:
+                    version = self._read_local_version()
+                    msg_out = Message(self.id, "CORE", CMD_VERSION_CHECK, version)
+                    if self.transport_up.send(msg_out):
+                        self._version_check_sent = True
+                        self.last_tx = now
+
+            # Update Mode: Receiving firmware update — suppress outgoing STATUS/PING
+            elif self._update_mode:
+                pass
 
             # Normal Operation: Send STATUS message when triggered or every 3 seconds
             else:
