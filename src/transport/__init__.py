@@ -11,8 +11,11 @@ also exported from this module so existing code can import them easily.
 
 from .message import Message
 from .uart_transport import UARTTransport
+from .file_transfer import FileTransferSender, FileTransferReceiver
 
 __all__ = [
     'Message',
-    'UARTTransport'
+    'UARTTransport',
+    'FileTransferSender',
+    'FileTransferReceiver',
 ]

@@ -22,7 +22,8 @@ def test_command_map_completeness():
         "STATUS", "ID_ASSIGN", "NEW_SAT", "ERROR", "LOG", "POWER",
         "LED", "LEDFLASH", "LEDBREATH", "LEDCYLON", "LEDCENTRI", "LEDRAINBOW", "LEDGLITCH",
         "DSP", "DSPCORRUPT", "DSPMATRIX",
-        "SETENC"
+        "SETENC",
+        "FILE_START", "FILE_CHUNK", "FILE_END",
     ]
 
     for cmd in expected_commands:
@@ -121,7 +122,8 @@ def test_encoding_constants():
         'ENCODING_RAW_TEXT',
         'ENCODING_NUMERIC_BYTES',
         'ENCODING_NUMERIC_WORDS',
-        'ENCODING_FLOATS'
+        'ENCODING_FLOATS',
+        'ENCODING_RAW_BYTES',
     ]
 
     for enc in expected_encodings:
@@ -149,7 +151,8 @@ def test_payload_schemas():
     expected_schema_commands = [
         "ID_ASSIGN", "NEW_SAT", "ERROR", "LOG",
         "LED", "LEDFLASH", "LEDBREATH",
-        "DSP", "POWER", "STATUS", "SETENC"
+        "DSP", "POWER", "STATUS", "SETENC",
+        "FILE_START", "FILE_CHUNK", "FILE_END",
     ]
 
     for cmd in expected_schema_commands:
@@ -169,7 +172,8 @@ def test_payload_schema_encoding_types():
         protocol.ENCODING_RAW_TEXT,
         protocol.ENCODING_NUMERIC_BYTES,
         protocol.ENCODING_NUMERIC_WORDS,
-        protocol.ENCODING_FLOATS
+        protocol.ENCODING_FLOATS,
+        protocol.ENCODING_RAW_BYTES,
     }
 
     for cmd, schema in protocol.PAYLOAD_SCHEMAS.items():
@@ -255,6 +259,12 @@ def test_command_categories():
     for cmd in encoder_commands:
         value = protocol.COMMAND_MAP[cmd]
         assert 0x30 <= value <= 0x3F, f"Encoder command '{cmd}' should be in range 0x30-0x3F"
+
+    # File transfer commands (0x40-0x4F)
+    file_commands = ["FILE_START", "FILE_CHUNK", "FILE_END"]
+    for cmd in file_commands:
+        value = protocol.COMMAND_MAP[cmd]
+        assert 0x40 <= value <= 0x4F, f"File command '{cmd}' should be in range 0x40-0x4F"
 
     print("✓ All commands correctly organized by category")
 
