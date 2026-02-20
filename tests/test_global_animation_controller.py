@@ -468,6 +468,99 @@ def test_global_rain_custom_color():
 
 
 # ---------------------------------------------------------------------------
+# register_discrete_leds() tests
+# ---------------------------------------------------------------------------
+
+def test_register_discrete_leds_basic():
+    """Discrete LEDs are mapped to their specified global coordinates."""
+    ctrl = GlobalAnimationController()
+    led = LEDManager(MockJEBPixel(4))
+    coords = [(0, 0), (5, 3), (2, 9), (7, 1)]
+    ctrl.register_discrete_leds(led, coords)
+
+    assert ctrl.pixel_count == 4
+    for i, (gx, gy) in enumerate(coords):
+        assert (gx, gy) in ctrl._pixel_map
+        mgr, idx = ctrl._pixel_map[(gx, gy)]
+        assert mgr is led
+        assert idx == i
+
+
+def test_register_discrete_leds_canvas_dimensions():
+    """Canvas dimensions span the bounding box of all discrete LED coordinates."""
+    ctrl = GlobalAnimationController()
+    led = LEDManager(MockJEBPixel(3))
+    # Scattered: max_x=6, max_y=10
+    ctrl.register_discrete_leds(led, [(1, 2), (6, 0), (3, 10)])
+
+    assert ctrl.canvas_width == 7   # max_x = 6  → width = 7
+    assert ctrl.canvas_height == 11  # max_y = 10 → height = 11
+
+
+def test_register_discrete_leds_wrong_count_raises():
+    """register_discrete_leds raises ValueError when coordinate count mismatches."""
+    ctrl = GlobalAnimationController()
+    led = LEDManager(MockJEBPixel(4))
+    with pytest.raises(ValueError, match="pixel_coordinates length"):
+        ctrl.register_discrete_leds(led, [(0, 0), (1, 1)])  # only 2 coords for 4 pixels
+
+
+def test_register_discrete_leds_set_pixel():
+    """set_pixel correctly routes writes through discrete LED coordinates."""
+    ctrl = GlobalAnimationController()
+    led = LEDManager(MockJEBPixel(3))
+    ctrl.register_discrete_leds(led, [(10, 20), (0, 0), (5, 5)])
+
+    ctrl.set_pixel(10, 20, (255, 0, 0))
+    ctrl.set_pixel(5, 5, (0, 0, 255))
+
+    assert led.pixels[0] == (255, 0, 0)   # hardware index 0 → (10, 20)
+    assert led.pixels[2] == (0, 0, 255)   # hardware index 2 → (5, 5)
+    assert led.pixels[1] == (0, 0, 0)     # untouched
+
+
+def test_register_discrete_leds_with_matrix_combined():
+    """Discrete LEDs combine correctly with a matrix in the pixel map."""
+    ctrl = GlobalAnimationController()
+    matrix = MatrixManager(MockJEBPixel(64), width=8, height=8)
+    led = LEDManager(MockJEBPixel(3))
+    # Three scattered LEDs below/around the 8×8 matrix
+    ctrl.register_matrix(matrix, offset_x=0, offset_y=0)
+    ctrl.register_discrete_leds(led, [(0, 9), (4, 8), (7, 10)])
+
+    assert ctrl.pixel_count == 64 + 3
+    assert ctrl.canvas_height == 11  # max_y = 10 → height 11
+
+
+def test_register_discrete_leds_rainbow_wave():
+    """global_rainbow_wave activates scattered discrete LEDs."""
+    ctrl = GlobalAnimationController()
+    led = LEDManager(MockJEBPixel(5))
+    ctrl.register_discrete_leds(led, [(0, 0), (3, 1), (7, 4), (1, 9), (5, 2)])
+
+    async def run():
+        await ctrl.global_rainbow_wave(speed=90.0, duration=0.12)
+
+    asyncio.run(run())
+
+    active = sum(1 for slot in led.active_animations if slot.active)
+    assert active > 0, "Rainbow wave should set SOLID animations on discrete LEDs"
+
+
+def test_register_discrete_leds_rain():
+    """global_rain runs without error with scattered discrete LEDs."""
+    ctrl = GlobalAnimationController()
+    led = LEDManager(MockJEBPixel(4))
+    # Two columns: x=0 has rows 0,2; x=1 has rows 1,3
+    ctrl.register_discrete_leds(led, [(0, 0), (0, 2), (1, 1), (1, 3)])
+
+    async def run():
+        await ctrl.global_rain(color=(0, 180, 255), speed=0.05, duration=0.3, density=1.0)
+
+    asyncio.run(run())  # Must not raise
+
+
+# ---------------------------------------------------------------------------
 # canvas properties
 # ---------------------------------------------------------------------------
 
@@ -521,6 +614,13 @@ if __name__ == "__main__":
         test_global_rain_spans_matrix_and_led,
         test_global_rain_custom_color,
         test_canvas_dimensions_matrix_and_offset_led,
+        test_register_discrete_leds_basic,
+        test_register_discrete_leds_canvas_dimensions,
+        test_register_discrete_leds_wrong_count_raises,
+        test_register_discrete_leds_set_pixel,
+        test_register_discrete_leds_with_matrix_combined,
+        test_register_discrete_leds_rainbow_wave,
+        test_register_discrete_leds_rain,
     ]
 
     passed = 0

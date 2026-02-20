@@ -98,6 +98,39 @@ class GlobalAnimationController:
         })
         self._rebuild_pixel_map()
 
+    def register_discrete_leds(self, led_manager, pixel_coordinates):
+        """
+        Register a LEDManager with arbitrarily placed pixels in the global canvas.
+
+        Each entry in *pixel_coordinates* maps a hardware pixel (by list index)
+        to a specific global ``(x, y)`` position.  Pixels do not need to be
+        contiguous or aligned — they can be scattered anywhere on the canvas,
+        which is useful for hardware layouts where a single data line routes to
+        LEDs in different physical locations around a component.
+
+        Args:
+            led_manager: LEDManager instance to register.
+            pixel_coordinates: List of ``(global_x, global_y)`` tuples.
+                               ``pixel_coordinates[i]`` is the global coordinate
+                               of hardware pixel index ``i``.
+
+        Raises:
+            ValueError: If the number of coordinates does not match
+                        ``led_manager.num_pixels``.
+        """
+        if len(pixel_coordinates) != led_manager.num_pixels:
+            raise ValueError(
+                f"pixel_coordinates length ({len(pixel_coordinates)}) must match "
+                f"led_manager.num_pixels ({led_manager.num_pixels})"
+            )
+
+        self._components.append({
+            'type': 'custom_leds',
+            'manager': led_manager,
+            'coordinates': list(pixel_coordinates),
+        })
+        self._rebuild_pixel_map()
+
     def _rebuild_pixel_map(self):
         """
         Rebuilds the global pixel coordinate map from all registered components.
@@ -111,8 +144,8 @@ class GlobalAnimationController:
 
         for component in self._components:
             manager = component['manager']
-            ox = component['offset_x']
-            oy = component['offset_y']
+            ox = component.get('offset_x', 0)
+            oy = component.get('offset_y', 0)
 
             if component['type'] == 'matrix':
                 width = manager.width
@@ -137,6 +170,14 @@ class GlobalAnimationController:
                     else:  # vertical
                         gx = ox
                         gy = oy + i
+                    self._pixel_map[(gx, gy)] = (manager, i)
+                    if gx > max_x:
+                        max_x = gx
+                    if gy > max_y:
+                        max_y = gy
+
+            elif component['type'] == 'custom_leds':
+                for i, (gx, gy) in enumerate(component['coordinates']):
                     self._pixel_map[(gx, gy)] = (manager, i)
                     if gx > max_x:
                         max_x = gx
