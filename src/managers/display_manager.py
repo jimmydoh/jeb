@@ -263,6 +263,75 @@ class DisplayManager:
             # ~30 FPS scroll speed
             await asyncio.sleep(0.03)
 
+    # ===== AUDIO VISUALIZER METHODS =====
+
+    def show_waveform(self, samples):
+        """Render an audio waveform on the OLED display.
+
+        Switches to custom layout and draws each sample as a pixel on its
+        column, mapping amplitude 0.0 → bottom row and 1.0 → top row.
+
+        Args:
+            samples: Iterable of amplitude floats in [0.0, 1.0] where 0.5 = silence.
+                     Up to 128 values are used (one per pixel column).
+        """
+        self.use_custom_layout()
+
+        palette = displayio.Palette(2)
+        palette[0] = 0x000000  # background
+        palette[1] = 0xFFFFFF  # waveform pixel
+
+        bitmap = displayio.Bitmap(128, 64, 2)
+
+        width = min(len(samples), 128)
+        for x in range(width):
+            y = int((1.0 - float(samples[x])) * 63)
+            y = max(0, min(63, y))
+            bitmap[x, y] = 1
+
+        tile_grid = displayio.TileGrid(bitmap, pixel_shader=palette)
+        content = displayio.Group()
+        content.append(tile_grid)
+        self.set_custom_content(content)
+
+    def show_eq_bands(self, band_heights, num_bands=16):
+        """Render EQ frequency-band bars on the OLED display.
+
+        Switches to custom layout and draws vertical bars rising from the
+        bottom of the screen, scaled to the OLED dimensions (128×64 px).
+
+        Args:
+            band_heights: Iterable of bar heights (0 to num_bands) per band.
+            num_bands:    Total number of bands expected (default: 16).
+        """
+        self.use_custom_layout()
+
+        palette = displayio.Palette(2)
+        palette[0] = 0x000000  # background
+        palette[1] = 0xFFFFFF  # bar pixel
+
+        bitmap = displayio.Bitmap(128, 64, 2)
+
+        band_count = min(len(band_heights), num_bands)
+        bar_width = max(1, 128 // num_bands)
+
+        for i in range(band_count):
+            # Scale band height to OLED height; leave a 1 px gap between bars
+            pixel_height = int(band_heights[i] * 64 / num_bands)
+            pixel_height = max(0, min(64, pixel_height))
+
+            bar_start_x = i * bar_width
+            bar_end_x = min(bar_start_x + bar_width - 1, 127)
+
+            for x in range(bar_start_x, bar_end_x + 1):
+                for y in range(64 - pixel_height, 64):
+                    bitmap[x, y] = 1
+
+        tile_grid = displayio.TileGrid(bitmap, pixel_shader=palette)
+        content = displayio.Group()
+        content.append(tile_grid)
+        self.set_custom_content(content)
+
     def show_settings_menu(self, show=None):
         """Choose visibility of the settings menu, which replaces the main zone."""
         if show:
