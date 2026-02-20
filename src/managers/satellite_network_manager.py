@@ -7,6 +7,7 @@ from transport import Message
 
 from transport.protocol import (
     CMD_ACK,
+    CMD_MODE,
     CMD_VERSION_CHECK,
     CMD_UPDATE_START,
     CMD_UPDATE_WAIT,
@@ -32,6 +33,7 @@ class SatelliteNetworkManager:
             transport: UARTTransport instance for communication
             display: DisplayManager instance for status updates
             audio: AudioManager instance for audio feedback
+            abort_event: Event to signal abort conditions
         """
         self.transport = transport
         self.display = display
@@ -53,6 +55,9 @@ class SatelliteNetworkManager:
         self._current_status_task = None
         self._current_audio_task = None
 
+        # Callback invoked when a satellite sends CMD_MODE ACTIVE (remote wake)
+        self._wake_callback = None
+
         # System command handlers (can be extended for common commands across satellites)
         self._system_handlers = {
             "STATUS": self._handle_status_command,
@@ -62,12 +67,21 @@ class SatelliteNetworkManager:
             "NEW_SAT": self._handle_new_sat_command,
             "LOG": self._handle_log_command,
             "PING": self._handle_ping_command,
+            CMD_MODE: self._handle_mode_command,
             CMD_VERSION_CHECK: self._handle_version_check_command,
         }
 
     def set_debug_mode(self, debug_mode):
         """Enable or disable debug mode for message logging."""
         self._debug_mode = debug_mode
+
+    def set_wake_callback(self, callback):
+        """Register a coroutine callback to invoke when a satellite triggers a remote wake.
+
+        Args:
+            callback: An async callable (coroutine function) to call on remote wake.
+        """
+        self._wake_callback = callback
 
     def _spawn_status_task(self, coro_func, *args, **kwargs):
         """Spawn a status update task with throttling to prevent unbounded task creation.
@@ -242,6 +256,19 @@ class SatelliteNetworkManager:
             JEBLogger.info("NETM", f"PING", src=sid)
         else:
             JEBLogger.warning("NETM", f"PING from unknown sat", src=sid)
+
+    async def _handle_mode_command(self, sid, val):
+        """Handle CMD_MODE from a satellite.
+
+        When a satellite sends ACTIVE (remote wake trigger), wake the Core
+        and echo the ACTIVE broadcast to all other satellites.
+        """
+        mode_str = val.strip() if isinstance(val, str) else str(val).strip()
+        JEBLogger.info("NETM", f"MODE '{mode_str}' from sat", src=sid)
+        if mode_str == "ACTIVE" and self._wake_callback:
+            await self._wake_callback()
+            # Echo ACTIVE to all satellites so they also wake up
+            self.send_all(CMD_MODE, "ACTIVE")
 
     async def _handle_version_check_command(self, sid, val):
         """Handle VERSION_CHECK from a satellite.

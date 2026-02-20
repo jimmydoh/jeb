@@ -26,6 +26,7 @@ from modes.manifest import MODE_REGISTRY
 
 from transport import UARTTransport
 from transport.protocol import (
+    CMD_MODE,
     COMMAND_MAP,
     DEST_MAP,
     MAX_INDEX_VALUE,
@@ -40,6 +41,9 @@ POW_INPUT = "input_20v"
 POW_BUS = "satbus_20v"
 POW_MAIN = "main_5v"
 POW_LED = "led_5v"
+
+# Dim blue used as low-power breathing colour during sleep
+SLEEP_LED_COLOR = (0, 0, 32)
 
 class SafeMode:
     """Minimal fail-safe mode with zero external hardware dependencies.
@@ -221,6 +225,8 @@ class CoreManager:
         )
         if self.debug_mode:
             self.sat_network.set_debug_mode(True)
+        # Register remote wake callback so satellites can wake the Core
+        self.sat_network.set_wake_callback(self._wake_system)
 
         # Init LEDs
         self.root_pixels = neopixel.NeoPixel(
@@ -252,6 +258,10 @@ class CoreManager:
         # Fail-safe mode tracking to prevent infinite error loops
         self.dashboard_failure_count = 0
         self.max_dashboard_failures = 3  # Enter safe mode after 3 consecutive failures
+
+        # Sleep state
+        self._sleeping = False
+        self._sleep_timeout_ms = 5 * 60 * 1000  # 5 minutes in milliseconds
 
     def _get_mode(self, mode_name):
         """Get a mode class from the registry with helpful error message.
@@ -536,18 +546,50 @@ class CoreManager:
 
             await asyncio.sleep(0.5)  # Poll twice per second to save CPU
 
+    async def _enter_sleep(self):
+        """Put the Core into sleep state and broadcast SLEEP to all satellites."""
+        if self._sleeping:
+            return
+        self._sleeping = True
+        # Blank the display and set LEDs to a low-power breathing animation
+        self.display.update_status("", "")
+        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim="BREATH", speed=0.5)
+        # Throttle render loop to 10Hz to reduce power draw
+        self.renderer.target_frame_rate = 10
+        # Broadcast SLEEP to all satellites
+        self.sat_network.send_all(CMD_MODE, "SLEEP")
+
+    async def _wake_system(self):
+        """Wake the Core from sleep and broadcast ACTIVE to all satellites."""
+        if not self._sleeping:
+            return
+        self._sleeping = False
+        # Restore LEDs and render rate
+        self.leds.off_led(-1)
+        self.renderer.target_frame_rate = self.renderer.DEFAULT_FRAME_RATE
+        # Broadcast ACTIVE to all satellites
+        self.sat_network.send_all(CMD_MODE, "ACTIVE")
+
     async def monitor_hw_hid(self):
         """Background task to poll hardware inputs."""
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("hw_hid")
-            self.hid.hw_update()
+            changed = self.hid.hw_update()
 
             if self.hid.is_button_pressed(3, long=True, duration=5000):
                 # Long-press Button D to trigger manual abort
                 self.abort_event.set()
 
-            await asyncio.sleep(0.02) # Poll at 50Hz
+            if self._sleeping:
+                if changed:
+                    # Local interaction wakes the system
+                    await self._wake_system()
+                await asyncio.sleep(0.1)  # Throttled polling while sleeping
+            else:
+                if self.hid.get_idle_time_ms() >= self._sleep_timeout_ms:
+                    await self._enter_sleep()
+                await asyncio.sleep(0.02)  # Poll at 50Hz when awake
 
     async def monitor_satellite(self, sat):
         """
