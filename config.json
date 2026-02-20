@@ -1,6 +1,1 @@
-{
-    "wifi_ssid": "TestNetwork",
-    "wifi_password": "TestPassword123",
-    "web_server_enabled": true,
-    "debug_mode": true
-}
+{"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": true, "satellite_order": ["SAT02", "SAT01", "SAT03"]}

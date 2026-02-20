@@ -4,7 +4,7 @@ This directory contains custom GitHub Copilot agents for the JEB project.
 
 ## Available Agents
 
-### Test Maintenance Agent
+### Test Specialist
 
 **Purpose**: Automated repair of failing unit tests and expansion of test coverage.
 
@@ -21,7 +21,7 @@ This directory contains custom GitHub Copilot agents for the JEB project.
 
 **Quick Start**:
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 Fix the failing tests in test_audio_manager.py
 ```

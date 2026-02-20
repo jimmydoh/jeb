@@ -213,7 +213,7 @@ class IndustrialStartup(GameMode):
                                             level=0.8,
                                             Interrupt=True)
                         self.sat.send("LED", f"{target_idx},0,255,0,0.0,0.5,2")
-                        # TODO Add progress animation for matrix
+                        self.core.matrix.show_progress_grid(iteration, total_iterations, color=Palette.GREEN)
                         await asyncio.sleep(0.5)
                         self.sat.send("LED", f"{target_idx},100,100,255,0.0,0.5,2")
 
@@ -234,7 +234,7 @@ class IndustrialStartup(GameMode):
                                     self.core.audio.CH_VOICE,
                                     level=narration_vol,
                                     wait=True)
-                # TODO Play Victory Animation
+                self.core.matrix.show_icon("SUCCESS", anim_mode="PULSE", speed=2.0)
                 self.step += 1
                 await asyncio.sleep(1)
 
@@ -319,10 +319,17 @@ class IndustrialStartup(GameMode):
                                     level=narration_vol,
                                     Wait=True)
 
-                self.sat.reset_encoder(0)       # Left bracket starts at LED 0
-                self.core.hid.reset_encoder(7)   # Right bracket starts at LED 7
+                w = self.core.matrix.width
+                h = self.core.matrix.height
+                target_y_start = h // 4
+                target_y_end = h * 3 // 4
+                bracket_y_start = h // 8
+                bracket_y_end = h - h // 8
 
-                target_pos = random.randint(2, 5)  # Target position between 2 and 5
+                self.sat.reset_encoder(0)           # Left bracket starts at column 0
+                self.core.hid.reset_encoder(w - 1)  # Right bracket starts at last column
+
+                target_pos = random.randint(2, w - 3)  # Target position with bracket clearance
                 last_target_move = ticks_ms()
                 lock_start_time = None
 
@@ -332,7 +339,7 @@ class IndustrialStartup(GameMode):
                     # Dynamic target movement every 3-5 seconds
                     if ticks_diff(current_time, last_target_move) > random.randint(3000, 5000):
                         move = random.choice([-1, 1])
-                        new_target = max(1, min(6, target_pos + move))
+                        new_target = max(1, min(w - 2, target_pos + move))
                         if new_target != target_pos:
                             target_pos = new_target
                             self.core.audio.play("audio/ind/sfx/target_shift.wav",
@@ -340,9 +347,9 @@ class IndustrialStartup(GameMode):
                                                 level=0.5)
                         last_target_move = current_time
 
-                    # Get Input Positions (0-7)
-                    left_pos = self.sat.get_scaled_encoder_pos(multiplier=1.0, wrap=8)
-                    right_pos = self.core.hid.get_scaled_encoder_pos(multiplier=1.0, wrap=8)
+                    # Get Input Positions (0 to w-1)
+                    left_pos = self.sat.get_scaled_encoder_pos(multiplier=1.0, wrap=w)
+                    right_pos = self.core.hid.get_scaled_encoder_pos(multiplier=1.0, wrap=w)
 
                     # Logic Checks
                     # Collision (Critical Failure)
@@ -363,7 +370,7 @@ class IndustrialStartup(GameMode):
 
                     # Draw Target
                     if is_aligned:
-                        for y in range(2, 6):
+                        for y in range(target_y_start, target_y_end):
                             self.core.matrix.draw_pixel(
                                 target_pos,
                                 y,
@@ -373,7 +380,7 @@ class IndustrialStartup(GameMode):
                                 speed=3.0
                             )
                     else:
-                        for y in range(2, 6):
+                        for y in range(target_y_start, target_y_end):
                             self.core.matrix.draw_pixel(
                                 target_pos,
                                 y,
@@ -383,7 +390,7 @@ class IndustrialStartup(GameMode):
 
                     # Draw Left Bracket
                     if is_aligned:
-                        for y in range(1, 7):
+                        for y in range(bracket_y_start, bracket_y_end):
                             self.core.matrix.draw_pixel(
                                 left_pos,
                                 y,
@@ -393,7 +400,7 @@ class IndustrialStartup(GameMode):
                                 speed=3.0
                             )
                     else:
-                        for y in range(1, 7):
+                        for y in range(bracket_y_start, bracket_y_end):
                             self.core.matrix.draw_pixel(
                                 left_pos,
                                 y,
@@ -403,7 +410,7 @@ class IndustrialStartup(GameMode):
 
                     # Draw Right Bracket
                     if is_aligned:
-                        for y in range(1, 7):
+                        for y in range(bracket_y_start, bracket_y_end):
                             self.core.matrix.draw_pixel(
                                 right_pos,
                                 y,
@@ -413,7 +420,7 @@ class IndustrialStartup(GameMode):
                                 speed=3.0
                             )
                     else:
-                        for y in range(1, 7):
+                        for y in range(bracket_y_start, bracket_y_end):
                             self.core.matrix.draw_pixel(
                                 right_pos,
                                 y,

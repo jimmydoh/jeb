@@ -17,7 +17,7 @@ from managers.data_manager import DataManager
 from managers.display_manager import DisplayManager
 from managers.hid_manager import HIDManager
 from managers.led_manager import LEDManager
-from managers.matrix_manager import MatrixManager
+from managers.matrix_manager import MatrixManager, PanelLayout
 from managers.render_manager import RenderManager
 from managers.satellite_network_manager import SatelliteNetworkManager
 from managers.synth_manager import SynthManager
@@ -43,21 +43,21 @@ POW_LED = "led_5v"
 
 class SafeMode:
     """Minimal fail-safe mode with zero external hardware dependencies.
-    
+
     This mode is used as a last resort when the DASHBOARD mode fails to load.
     It has no dependencies on audio, LEDs, or other hardware beyond the display.
     """
-    
+
     def __init__(self, core):
         """Initialize safe mode with minimal dependencies.
-        
+
         Args:
             core: Reference to CoreManager instance
         """
         self.core = core
         self.name = "SAFE MODE"
         self.description = "System halt - awaiting intervention"
-    
+
     async def enter(self):
         """Enter safe mode - display error message."""
         try:
@@ -71,22 +71,22 @@ class SafeMode:
             # If display fails, print to console
             print(f"SAFE MODE: Display error: {e}")
             print("SYSTEM HALT: DASHBOARD CORRUPT - Developer intervention required")
-    
+
     async def run(self):
         """Run safe mode - just wait indefinitely."""
         print("SAFE MODE ACTIVE: System halted. Awaiting developer intervention.")
         # Wait indefinitely - system is halted
         while True:
             await asyncio.sleep(1)
-    
+
     async def exit(self):
         """Exit safe mode.
-        
+
         No cleanup needed - safe mode has no resources to release.
         Display is used conditionally and mode runs indefinitely.
         """
         pass
-    
+
     async def execute(self):
         """Standard mode execution pattern."""
         await self.enter()
@@ -154,7 +154,7 @@ class CoreManager:
             chip_type=adc_config["chip_type"],
             address=adc_config.get("address", 0x48)
         )
-        
+
         # Configure ADC channels from Pins configuration
         for channel in adc_config["channels"]:
             self.adc.add_channel(
@@ -224,16 +224,16 @@ class CoreManager:
 
         # Init LEDs
         self.root_pixels = neopixel.NeoPixel(
-            Pins.LED_CONTROL, 68, brightness=0.3, auto_write=False
+            Pins.LED_CONTROL, 260, brightness=0.3, auto_write=False
         )
 
-        # LED Matrix Manager (first 64 pixels)
-        self.matrix_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=64)
-        self.matrix = MatrixManager(self.matrix_jeb_pixel)
-
-        # Button LED Manager (last 4 pixels)
-        self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=64, num_pixels=4)
+        # Button LED Manager (first 4 pixels)
+        self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=4)
         self.leds = LEDManager(self.led_jeb_pixel)
+
+        # LED Matrix Manager (4 x 8x8 matrices = 256 pixels starting at index 4)
+        self.matrix_jeb_pixel = JEBPixel(self.root_pixels, start_idx=4, num_pixels=256)
+        self.matrix = MatrixManager(self.matrix_jeb_pixel, width=16, height=16, panel_width=8, panel_height=8, chain_layout=PanelLayout.SERPENTINE)  # 4 matrices in a 16x16 configuration
 
         # Setup Render Manager to coordinate LED animations
         self.renderer = RenderManager(
@@ -248,7 +248,7 @@ class CoreManager:
         self.mode_registry = MODE_REGISTRY
         self.loaded_modes = {} # Cache for instantiated mode classes
         self.mode = "DASHBOARD" # Start in main menu mode
-        
+
         # Fail-safe mode tracking to prevent infinite error loops
         self.dashboard_failure_count = 0
         self.max_dashboard_failures = 3  # Enter safe mode after 3 consecutive failures
@@ -685,18 +685,18 @@ class CoreManager:
                         mode_class = self._load_mode_class(self.mode)
                     except (ImportError, KeyError) as e:
                         print(f"Error loading mode '{self.mode}': {e}")
-                        
+
                         # Check if DASHBOARD itself is failing
                         if self.mode == "DASHBOARD":
                             self.dashboard_failure_count += 1
                             print(f"DASHBOARD failure #{self.dashboard_failure_count}/{self.max_dashboard_failures}")
-                            
+
                             if self.dashboard_failure_count >= self.max_dashboard_failures:
                                 # DASHBOARD is corrupted - enter SAFE_MODE
                                 print("!!! CRITICAL: DASHBOARD failed repeatedly. Entering SAFE_MODE !!!")
                                 self.mode = "SAFE_MODE"
                                 continue
-                        
+
                         # Try to display error (may fail if display is broken)
                         try:
                             self.display.update_status("MODE LOAD ERROR", self.mode)
@@ -704,11 +704,11 @@ class CoreManager:
                         except Exception as e:
                             # Display/audio failure - log and continue anyway
                             print(f"Error displaying mode load error: {e}")
-                        
+
                         await asyncio.sleep(2)
                         self.mode = "DASHBOARD"  # Return to dashboard if mode fails to load
                         continue
-                    
+
                     # Successfully loaded mode - reset DASHBOARD failure counter
                     self.dashboard_failure_count = 0
 
@@ -758,7 +758,7 @@ class CoreManager:
                         await self.run_mode_with_safety(mode_instance)
                 else:
                     print(f"Cannot start {self.mode}: Missing Dependency")
-                    
+
                     # Try to display error (may fail if display is broken)
                     try:
                         self.display.update_status(
@@ -768,13 +768,13 @@ class CoreManager:
                     except Exception as e:
                         # Display/audio failure - log and continue anyway
                         print(f"Error displaying requirements missing error: {e}")
-                    
+
                     await asyncio.sleep(2)
                     self.mode = "DASHBOARD"  # Return to dashboard if requirements not met
 
             else:
                 print(f"Mode {self.mode} not found in registry.")
-                
+
                 # Try to display error (may fail if display is broken)
                 try:
                     self.display.update_status("MODE NOT FOUND", self.mode)
@@ -782,7 +782,7 @@ class CoreManager:
                 except Exception as e:
                     # Display/audio failure - log and continue anyway
                     print(f"Error displaying mode not found error: {e}")
-                
+
                 await asyncio.sleep(2)
                 self.mode = "DASHBOARD"  # Return to dashboard if mode not found
 

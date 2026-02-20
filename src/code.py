@@ -1,33 +1,14 @@
 # File: src/code.py
 """
 PROJECT: JEB - JADNET Electronics Box
-
---- TODO LIST ---
-CORE:
-Implement advanced error logging for satellite communications.
-Add Matrix animations, non blocking for individual pixels and fill modes.
-Replace neobar progress with matrix-based version.
-Victory animation on matrix.
-Boot animation on matrix.
-Check power integrity during various load conditions.
-boot.py for file handling.
-calibration.json for voltage calibration values.
-
-SAT 01:
-Implement power monitoring via ADC.
-Implement power protection for downstream satellites.
-Optimize async tasks for responsiveness.
-Implement configuration commands from Master.
-UART Buffering and flow control.
-Test with multiple chained satellites.
 """
 
 import asyncio
 import json
 import os
-import storage
 import time
 
+import storage
 import supervisor
 
 from utilities.logger import JEBLogger, LogLevel
@@ -37,21 +18,26 @@ JEBLogger.set_level(LogLevel.DEBUG)
 JEBLogger.enable_file_logging(False)
 
 # Check if SD card was mounted in boot.py
-# Note: We cannot import boot.py as it will re-execute the script
-# Instead, check if /sd directory exists in the filesystem
-# TODO: Fix this - I believe the /sd dir will exist regardless
 def is_sd_mounted():
     """Check if SD card is mounted by verifying the mount point."""
     try:
-        # storage.getmount returns the filesystem object mounted at path
-        # or None if nothing is mounted.
         mount = storage.getmount('/sd')
         return mount is not None
     except OSError:
         return False
 
+def is_wifi_available():
+    """Check if Wi-Fi module is available by attempting to import wifi."""
+    try:
+        import wifi
+        import socketpool
+        return True
+    except ImportError:
+        return False
+
 SD_MOUNTED = is_sd_mounted()
 ROOT_DATA_DIR = "/sd" if SD_MOUNTED else "/"
+WEB_SERVER = None
 
 def file_exists(filename):
     """Check if a file exists on the filesystem."""
@@ -76,7 +62,8 @@ def load_config():
         "debug_mode": False,  # Debug mode off by default
         "test_mode": True,  # Test mode on by default (real hardware should set to False)
         "web_server_enabled": False,  # Web server disabled by default
-        "web_server_port": 80  # Default HTTP port
+        "web_server_port": 80,  # Default HTTP port
+        "hardware_features": {}  # Empty dict means all hardware enabled
     }
     try:
         if file_exists("config.json"):
@@ -95,78 +82,140 @@ def load_config():
         JEBLogger.warning("CODE", "Using default configuration.")
         return default_config
 
-# --- ENTRY POINT ---
+# --- HARDWARE DUMMY INJECTION ---
 
+def _inject_hardware_dummies(features):
+    """Replace disabled hardware manager modules with lightweight dummy classes.
+
+    Called immediately after config loading and strictly before CoreManager is
+    imported, so that all subsequent ``from managers.x import Y`` statements
+    transparently receive the dummy implementation.
+
+    Args:
+        features: dict mapping feature name -> bool (True = real hardware,
+                  False = inject dummy).  Unknown keys are silently ignored.
+    """
+    import sys
+
+    # Maps each feature flag to the real manager module(s) it controls
+    feature_map = {
+        "audio":   ["managers.audio_manager", "managers.synth_manager"],
+        "display": ["managers.display_manager"],
+        "matrix":  ["managers.matrix_manager"],
+        "leds":    ["managers.led_manager"],
+        "buzzer":  ["managers.buzzer_manager"],
+        "power":   ["managers.power_manager", "managers.adc_manager"],
+        "segment": ["managers.segment_manager"],
+    }
+
+    # Maps each real manager module to its dummy counterpart
+    dummy_map = {
+        "managers.audio_manager":   "dummies.audio_manager",
+        "managers.synth_manager":   "dummies.synth_manager",
+        "managers.display_manager": "dummies.display_manager",
+        "managers.matrix_manager":  "dummies.matrix_manager",
+        "managers.led_manager":     "dummies.led_manager",
+        "managers.buzzer_manager":  "dummies.buzzer_manager",
+        "managers.power_manager":   "dummies.power_manager",
+        "managers.adc_manager":     "dummies.adc_manager",
+        "managers.segment_manager": "dummies.segment_manager",
+    }
+
+    for feature, enabled in features.items():
+        if enabled or feature not in feature_map:
+            continue
+        for manager_module in feature_map[feature]:
+            dummy_module_name = dummy_map.get(manager_module)
+            if dummy_module_name is None:
+                continue
+            try:
+                __import__(dummy_module_name)
+                sys.modules[manager_module] = sys.modules[dummy_module_name]
+                JEBLogger.info("CODE", f"Dummy injected: {manager_module}")
+            except ImportError as e:
+                JEBLogger.warning("CODE", f"Could not load dummy for {manager_module}: {e}")
+
+
+# --- ENTRY POINT ---
 JEBLogger.info("CODE", "*** BOOTING JEB SYSTEM ***")
 JEBLogger.info("CODE", f"SD Card mounted: {SD_MOUNTED}")
 config = load_config()
 
-# --- OTA UPDATE CHECK ---
-# Check if we need to run the updater before starting the main application
-try:
-    # Check if SD Mounted - Updater requires SD for temporary storage
-    if SD_MOUNTED:
-
-        from updater import should_check_for_updates, Updater, clear_update_flag
-
-        if should_check_for_updates():
-            JEBLogger.info("CODE", "Update flag detected - starting OTA update process")
-
-            # Check if Wi-Fi is configured
-            if config.get("wifi_ssid") and config.get("update_url"):
-                try:
-                    updater = Updater(config, sd_mounted=SD_MOUNTED)
-                    update_success = updater.run_update()
-
-                    if update_success:
-                        # Only clear flag on successful update
-                        clear_update_flag()
-                        JEBLogger.info("CODE", "\n✓ Update complete and installed - rebooting...")
-                        updater.reboot()
-                    else:
-                        # Do NOT clear flag - preserve for retry on next boot
-                        JEBLogger.warning("CODE", "\n⚠️ Update failed - flag preserved for retry")
-                        JEBLogger.warning("CODE", "Device will attempt update again on next boot")
-
-                except Exception as e:
-                    # Do NOT clear flag on fatal error - preserve for retry
-                    JEBLogger.error("CODE", f"\n❌ Updater fatal error: {e}")
-                    JEBLogger.warning("CODE", "Flag preserved - device will retry update on next boot")
-                    JEBLogger.warning("CODE", "Continuing with existing firmware")
-            else:
-                JEBLogger.warning("CODE", "⚠️ Wi-Fi not configured - skipping update")
-                JEBLogger.warning("CODE", "Configure wifi_ssid and update_url in config.json")
-                clear_update_flag()  # Clear flag since config is missing
-
-    else:
-        from updater import clear_update_flag
-
-        JEBLogger.warning("CODE", "⚠️ SD card not mounted - OTA updates require SD card")
-        JEBLogger.warning("CODE", "Skipping update")
-        clear_update_flag()
-
-except ImportError:
-    JEBLogger.warning("CODE", "⚠️ Updater module not available")
-
-
-# --- WEB SERVER STARTUP (if enabled) ---
-web_server = None
-if config.get("web_server_enabled", False):
+# Visual indicator: rapidly flash the onboard LED when test_mode is active
+if config.get("test_mode", False):
     try:
-        from managers.web_server_manager import WebServerManager
+        import digitalio
+        import board as _board
+        _led = digitalio.DigitalInOut(_board.LED)
+        _led.direction = digitalio.Direction.OUTPUT
+        for _ in range(10):
+            _led.value = True
+            time.sleep(0.05)
+            _led.value = False
+            time.sleep(0.05)
+        _led.deinit()
+    except Exception:
+        pass  # Silently skip if onboard LED is unavailable
 
-        # Check if WiFi is configured
-        if config.get("wifi_ssid") and config.get("wifi_password"):
-            JEBLogger.info("CODE", " --- WEB SERVER INITIALIZATION --- ")
-            web_server = WebServerManager(config)
-            JEBLogger.info("CODE", "Web server manager initialized - will start with app")
-        else:
-            JEBLogger.warning("CODE", "⚠️ WiFi credentials not configured - web server disabled")
-            JEBLogger.warning("CODE", "Configure wifi_ssid and wifi_password in config.json")
+# Inject dummy modules for any disabled hardware features before any
+# manager imports occur (including the CoreManager module-level imports).
+_inject_hardware_dummies(config.get("hardware_features", {}))
+
+# Do we have an SSID and Password
+if config.get("wifi_ssid") and config.get("wifi_password"):
+    JEBLogger.info("CODE", "Wi-Fi credentials provided in config")
+
+    try:
+        from managers.wifi_manager import WiFiManager
+        wifi_manager = WiFiManager(config)
+        JEBLogger.info("CODE", "WiFi Manager initialized")
+
+        # OTA UPDATE CHECK
+        if SD_MOUNTED and config.get("update_url", "") != "":
+            try:
+                from updater import should_check_for_updates, Updater, clear_update_flag
+
+                if should_check_for_updates():
+                    JEBLogger.info("CODE", "Update flag detected - starting OTA update process")
+
+                    try:
+                        updater = Updater(config, sd_mounted=SD_MOUNTED, wifi_manager=wifi_manager)
+                        update_success = updater.run_update()
+
+                        if update_success:
+                            # Only clear flag on successful update
+                            clear_update_flag()
+                            JEBLogger.info("CODE", "✓ Update complete and installed - rebooting...")
+                            updater.reboot()
+                        else:
+                            # Do NOT clear flag - preserve for retry on next boot
+                            JEBLogger.warning("CODE", "⚠️ Update failed - flag preserved for retry")
+                            JEBLogger.warning("CODE", "Device will attempt update again on next boot")
+
+                    except Exception as e:
+                        # Do NOT clear flag on fatal error - preserve for retry
+                        JEBLogger.error("CODE", f"❌ Updater fatal error: {e}")
+                        JEBLogger.warning("CODE", "Flag preserved - device will retry update on next boot")
+                        JEBLogger.warning("CODE", "Continuing with existing firmware")
+            except ImportError:
+                JEBLogger.warning("CODE", "⚠️ Updater module not available")
+
+        # WEB SERVER CHECK
+        elif config.get("web_server_enabled", False):
+            try:
+                from managers.web_server_manager import WebServerManager
+                JEBLogger.info("CODE", " --- WEB SERVER INITIALIZATION --- ")
+                WEB_SERVER = WebServerManager(config, wifi_manager=wifi_manager)
+                JEBLogger.info("CODE", "Web server manager initialized - will start with app")
+            except ImportError:
+                JEBLogger.warning("CODE", "⚠️ WebServerManager not available - check dependencies")
+            except Exception as e:
+                JEBLogger.error("CODE", f"⚠️ Web server initialization error: {e}")
+
     except ImportError:
-        JEBLogger.warning("CODE", "⚠️ WebServerManager not available - check dependencies")
-    except Exception as e:
-        JEBLogger.error("CODE", f"⚠️ Web server initialization error: {e}")
+        JEBLogger.warning("CODE", "⚠️ WiFiManager not available - skipping OTA update and web server")
+else:
+    JEBLogger.info("CODE", "No Wi-Fi credentials provided - skipping OTA update and web server initialization")
 
 
 # --- APPLICATION RUN ---
@@ -201,37 +250,37 @@ else:
         while True:
             time.sleep(1)
 
-# 3. Main Execution
-if __name__ == "__main__":
+async def main():
+    """Main asynchronous entry point for running the application and web server."""
     try:
         if app is None:
             JEBLogger.error("CODE", "‼️No application loaded.‼️")
             while True:
                 time.sleep(1)
         else:
-            JEBLogger.info("CODE", f"Starting main app loop for {type_name} ")
+            JEBLogger.info("CODE", f"Starting main app loop for {type_name}")
 
-            # If web server is enabled, run both app and web server concurrently
-            if web_server is not None:
-                async def run_both():
-                    """Run both the main app and web server concurrently."""
-                    app_task = asyncio.create_task(app.start())
-                    web_task = asyncio.create_task(web_server.start())
+            app_task = asyncio.create_task(app.start())
 
-                    # Use return_exceptions=True to capture errors without stopping other tasks
-                    results = await asyncio.gather(app_task, web_task, return_exceptions=True)
+            coros = [app_task]
 
-                    # Check for exceptions in either task
-                    for i, result in enumerate(results):
-                        if isinstance(result, Exception):
-                            task_name = "app" if i == 0 else "web_server"
-                            JEBLogger.error("CODE", f"Task {task_name} failed with error: {result}")
-                            import traceback
-                            traceback.print_exception(type(result), result, result.__traceback__)
+            if WEB_SERVER is not None:
+                web_task = asyncio.create_task(WEB_SERVER.start())
+                coros.append(web_task)
 
-                asyncio.run(run_both())
-            else:
-                asyncio.run(app.start())
+            done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_EXCEPTION)
+
+            # Cancel any surviving background tasks before the supervisor reload
+            for task in pending:
+                task.cancel()
+
+            # Log exceptions from completed tasks
+            import traceback
+            for task in done:
+                exc = task.exception()
+                if exc is not None:
+                    JEBLogger.error("CODE", f"Task failed with error: {exc}")
+                    traceback.print_exception(type(exc), exc, exc.__traceback__)
     except Exception as e:
         JEBLogger.error("CODE", f"🚨⛔ CRITICAL CRASH: {e}")
         import traceback
@@ -239,3 +288,7 @@ if __name__ == "__main__":
         # Reduced sleep to maintain watchdog margin before reload
         time.sleep(2)
         supervisor.reload()
+
+# 3. Main Execution
+if __name__ == "__main__":
+    asyncio.run(main())

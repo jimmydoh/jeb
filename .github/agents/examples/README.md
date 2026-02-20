@@ -1,27 +1,27 @@
-# Test Maintenance Agent Examples
+# Test Specialist Examples
 
-This directory contains practical examples demonstrating how to use the Test Maintenance Agent for common testing scenarios.
+This directory contains practical examples demonstrating how to use the Test Specialist for common testing scenarios.
 
 ## Available Examples
 
 ### [Example 1: Fixing a Mock Interface Mismatch](01-mock-interface-fix.md)
-**Scenario**: Source code interface changed but test mock wasn't updated  
-**Solution**: Update mock to match new interface  
+**Scenario**: Source code interface changed but test mock wasn't updated
+**Solution**: Update mock to match new interface
 **Key Skills**: Mock updating, interface matching, test repair
 
 ### [Example 2: Creating Tests for an Untested Module](02-create-new-tests.md)
-**Scenario**: Module has 0% test coverage  
-**Solution**: Create comprehensive test file with mocks  
+**Scenario**: Module has 0% test coverage
+**Solution**: Create comprehensive test file with mocks
 **Key Skills**: Test scaffolding, hardware mocking, coverage expansion
 
 ### [Example 3: Handling Source Code Bugs](03-source-bug-handling.md)
-**Scenario**: Test reveals a bug in source code  
-**Solution**: Open issue instead of modifying source code  
+**Scenario**: Test reveals a bug in source code
+**Solution**: Open issue instead of modifying source code
 **Key Skills**: Bug detection, issue creation, test skipping
 
 ### [Example 4: Fixing Flaky Async Tests](04-flaky-async-tests.md)
-**Scenario**: Async test passes/fails intermittently  
-**Solution**: Fix async synchronization and race conditions  
+**Scenario**: Async test passes/fails intermittently
+**Solution**: Fix async synchronization and race conditions
 **Key Skills**: Async patterns, race condition detection, test stability
 
 ---
@@ -32,7 +32,7 @@ This directory contains practical examples demonstrating how to use the Test Mai
 - Example 1: Mock Interface Mismatch
 - Example 4: Flaky Async Tests
 
-### Coverage Expansion  
+### Coverage Expansion
 - Example 2: Creating New Tests
 
 ### Bug Reporting
@@ -67,7 +67,7 @@ This directory contains practical examples demonstrating how to use the Test Mai
 
 ## Contributing New Examples
 
-Have a great example of using the Test Maintenance Agent? Add it here!
+Have a great example of using the Test Specialist? Add it here!
 
 1. Create a new file: `05-your-example.md`
 2. Follow the format of existing examples:
@@ -127,7 +127,7 @@ After the agent makes changes:
 
 Questions about these examples?
 - Check the main [USAGE.md](../USAGE.md) guide
-- Review the [agent configuration](../test-maintenance-agent.md)
+- Review the [agent configuration](../test-specialist.md)
 - Open an issue in the repository
 
 ---

@@ -13,14 +13,28 @@ This document provides a comprehensive analysis of unit test coverage for the JE
 
 ### After This PR
 - **Total Source Modules**: 46 Python files
-- **Modules with Tests**: 38 (82.6%)
-- **Test Files**: 38
-- **New Tests Added**: 2 test files
-- **Total Test Cases**: 158+
+- **Modules with Tests**: 39 (84.8%)
+- **Test Files**: 39
+- **New Tests Added**: 3 test files
+- **Total Test Cases**: 168+
 
 ## Newly Tested Modules (Current PR)
 
-### 1. Utilities (2 modules)
+### 1. Behavior Tests (1 module)
+- ✅ **Satellite Hotplug Behavior** → `test_satellite_hotplug.py` (10 test cases)
+  - Source code inspection tests for satellite topology change handling
+  - SatelliteNetworkManager: No abort on HELLO command (new satellite connection)
+  - SatelliteNetworkManager: No abort on link restored (satellite reconnection)
+  - SatelliteNetworkManager: No abort on link lost (satellite disconnection)
+  - SatelliteNetworkManager: abort_event stored for backward compatibility
+  - SatelliteNetworkManager: Display updates for all topology changes (NEW SAT, LINK RESTORED, LINK LOST)
+  - MainMenu: last_sat_keys initialization before main loop
+  - MainMenu: curr_sat_keys computation inside main loop
+  - MainMenu: Topology change detection and menu rebuild
+  - MainMenu: selected_game_idx clamping on topology change
+  - MainMenu: needs_render flag set on topology change
+
+### 2. Utilities (2 modules)
 - ✅ **payload_parser.py** → `test_payload_parser.py` (18 test cases)
   - Parse values from string integers and floats
   - Parse values from comma-separated mixed values

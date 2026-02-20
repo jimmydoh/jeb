@@ -1,5 +1,5 @@
 # File: src/modes/jebris.py
-"""JEBris Game Mode - A Tetris-inspired Falling Block Game for an 8x8 LED Matrix."""
+"""JEBris Game Mode - A Tetris-inspired Falling Block Game for a 16x16 LED Matrix."""
 
 import random
 import asyncio
@@ -41,8 +41,16 @@ class JEBris(GameMode):
         else:
             self.base_tick_ms = 800
 
-        self.width = 8
-        self.height = 8
+        # Get matrix dimensions from hardware
+        self.matrix_width = self.core.matrix.width
+        self.matrix_height = self.core.matrix.height
+        
+        # Playfield is 10 columns wide (left side), rest is for next piece preview
+        self.playfield_width = 10
+        self.playfield_height = self.matrix_height  # Use full height
+        
+        # Preview area on the right side
+        self.preview_x_offset = self.playfield_width + 1  # Leave 1 column gap
 
         # --- SHAPES (Standard Tetrominoes) ---
         # Defined as (x, y) offsets relative to a center point
@@ -66,7 +74,7 @@ class JEBris(GameMode):
         ]
 
         # --- STATE ---
-        self.grid = [[Palette.OFF for _ in range(self.width)] for _ in range(self.height)]
+        self.grid = [[Palette.OFF for _ in range(self.playfield_width)] for _ in range(self.playfield_height)]
         self.score = 0
         self.is_game_over = False
 
@@ -75,6 +83,10 @@ class JEBris(GameMode):
         self.piece_x = 0
         self.piece_y = 0
         self.piece_color = Palette.OFF
+        
+        # Next Piece Preview
+        self.next_piece = None
+        self.next_piece_color = Palette.OFF
 
         # --- TIMING STATE (for non-blocking input debouncing) ---
         # Track last input time for each button (0: Left, 1: Rotate, 2: Drop, 3: Right)
@@ -150,19 +162,29 @@ class JEBris(GameMode):
 
     def reset_game(self):
         """Resets the game state."""
-        self.grid = [[Palette.OFF for _ in range(self.width)] for _ in range(self.height)]
+        self.grid = [[Palette.OFF for _ in range(self.playfield_width)] for _ in range(self.playfield_height)]
         self.score = 0
         self.is_game_over = False
         self.spawn_piece()
 
     def spawn_piece(self):
         """Selects and positions a new piece at the top of the board."""
-        shape_idx = int(random.randrange(len(self.shapes)))
-        self.current_piece = self.shapes[shape_idx]
-        self.piece_color = self.colors[shape_idx]
+        # If we have a next piece, use it; otherwise generate new
+        if self.next_piece is not None:
+            self.current_piece = self.next_piece
+            self.piece_color = self.next_piece_color
+        else:
+            shape_idx = int(random.randrange(len(self.shapes)))
+            self.current_piece = self.shapes[shape_idx]
+            self.piece_color = self.colors[shape_idx]
+        
+        # Generate next piece for preview
+        next_shape_idx = int(random.randrange(len(self.shapes)))
+        self.next_piece = self.shapes[next_shape_idx]
+        self.next_piece_color = self.colors[next_shape_idx]
 
-        # Center at top
-        self.piece_x = self.width // 2
+        # Center at top of playfield
+        self.piece_x = self.playfield_width // 2
         self.piece_y = 0 # Might spawn slightly inside logic, check collision immediately
 
     def handle_input(self, now):
@@ -223,8 +245,8 @@ class JEBris(GameMode):
             nx = off_x + x
             ny = off_y + y
 
-            # Wall Collision
-            if nx < 0 or nx >= self.width or ny >= self.height:
+            # Wall Collision (check against playfield bounds, not matrix bounds)
+            if nx < 0 or nx >= self.playfield_width or ny >= self.playfield_height:
                 return True
 
             # Stack Collision (ignore if above board, e.g. spawning)
@@ -238,7 +260,7 @@ class JEBris(GameMode):
         for x, y in self.current_piece:
             nx = self.piece_x + x
             ny = self.piece_y + y
-            if 0 <= nx < self.width and 0 <= ny < self.height:
+            if 0 <= nx < self.playfield_width and 0 <= ny < self.playfield_height:
                 self.grid[ny][nx] = self.piece_color
 
     def start_clear_lines(self):
@@ -246,7 +268,7 @@ class JEBris(GameMode):
         self.lines_to_clear = set()
 
         # Find all full rows
-        for y in range(self.height):
+        for y in range(self.playfield_height):
             if Palette.OFF not in self.grid[y]:
                 self.lines_to_clear.add(y)
 
@@ -257,7 +279,7 @@ class JEBris(GameMode):
 
             # Flash lines white immediately (visual feedback)
             for y in self.lines_to_clear:
-                for x in range(self.width):
+                for x in range(self.playfield_width):
                     self.core.matrix.draw_pixel(x, y, Palette.WHITE)
             # Note: Hardware write is now centralized in CoreManager.render_loop()
 
@@ -272,22 +294,39 @@ class JEBris(GameMode):
         for y in sorted(self.lines_to_clear, reverse=True):
             del self.grid[y]
             # Add new empty row at top
-            self.grid.insert(0, [Palette.OFF for _ in range(self.width)])
+            self.grid.insert(0, [Palette.OFF for _ in range(self.playfield_width)])
 
         # Update score
         self.score += lines_cleared
 
         # Clear the lines set
         self.lines_to_clear = set()
+    
+    def draw_next_piece_preview(self):
+        """Draws the next piece preview in the right side of the matrix."""
+        if not self.next_piece:
+            return
+        
+        # Calculate center position for preview (in the right area)
+        # Preview starts at column 11 (playfield_width=10, gap=1)
+        preview_center_x = self.preview_x_offset + 2
+        preview_center_y = 3  # Near top of screen
+        
+        # Draw the next piece centered in preview area
+        for x, y in self.next_piece:
+            px = preview_center_x + x
+            py = preview_center_y + y
+            if 0 <= px < self.matrix_width and 0 <= py < self.matrix_height:
+                self.core.matrix.draw_pixel(px, py, self.next_piece_color)
 
     def draw(self):
         """Renders the grid and active piece to the matrix."""
         # 1. Clear buffer (not display)
         self.core.matrix.clear()
 
-        # 2. Draw Static Grid
-        for y in range(self.height):
-            for x in range(self.width):
+        # 2. Draw Static Grid (playfield only)
+        for y in range(self.playfield_height):
+            for x in range(self.playfield_width):
                 # If we're in clearing state, show white for lines being cleared
                 if self.game_state == self.STATE_CLEARING_LINES and y in self.lines_to_clear:
                     self.core.matrix.draw_pixel(x, y, Palette.WHITE)
@@ -299,8 +338,11 @@ class JEBris(GameMode):
             for x, y in self.current_piece:
                 nx = self.piece_x + x
                 ny = self.piece_y + y
-                if 0 <= nx < self.width and 0 <= ny < self.height:
+                if 0 <= nx < self.playfield_width and 0 <= ny < self.playfield_height:
                     self.core.matrix.draw_pixel(nx, ny, self.piece_color)
+        
+        # 4. Draw Next Piece Preview (on right side)
+        self.draw_next_piece_preview()
 
         # Note: Hardware write is now centralized in CoreManager.render_loop()
 

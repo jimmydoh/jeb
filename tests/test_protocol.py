@@ -22,7 +22,9 @@ def test_command_map_completeness():
         "STATUS", "ID_ASSIGN", "NEW_SAT", "ERROR", "LOG", "POWER",
         "LED", "LEDFLASH", "LEDBREATH", "LEDCYLON", "LEDCENTRI", "LEDRAINBOW", "LEDGLITCH",
         "DSP", "DSPCORRUPT", "DSPMATRIX",
-        "SETENC"
+        "SETENC",
+        "FILE_START", "FILE_CHUNK", "FILE_END",
+        "VERSION_CHECK", "UPDATE_START", "UPDATE_WAIT",
     ]
 
     for cmd in expected_commands:
@@ -121,7 +123,8 @@ def test_encoding_constants():
         'ENCODING_RAW_TEXT',
         'ENCODING_NUMERIC_BYTES',
         'ENCODING_NUMERIC_WORDS',
-        'ENCODING_FLOATS'
+        'ENCODING_FLOATS',
+        'ENCODING_RAW_BYTES',
     ]
 
     for enc in expected_encodings:
@@ -149,7 +152,9 @@ def test_payload_schemas():
     expected_schema_commands = [
         "ID_ASSIGN", "NEW_SAT", "ERROR", "LOG",
         "LED", "LEDFLASH", "LEDBREATH",
-        "DSP", "POWER", "STATUS", "SETENC"
+        "DSP", "POWER", "STATUS", "SETENC",
+        "FILE_START", "FILE_CHUNK", "FILE_END",
+        "VERSION_CHECK", "UPDATE_START", "UPDATE_WAIT",
     ]
 
     for cmd in expected_schema_commands:
@@ -169,7 +174,8 @@ def test_payload_schema_encoding_types():
         protocol.ENCODING_RAW_TEXT,
         protocol.ENCODING_NUMERIC_BYTES,
         protocol.ENCODING_NUMERIC_WORDS,
-        protocol.ENCODING_FLOATS
+        protocol.ENCODING_FLOATS,
+        protocol.ENCODING_RAW_BYTES,
     }
 
     for cmd, schema in protocol.PAYLOAD_SCHEMAS.items():
@@ -256,7 +262,31 @@ def test_command_categories():
         value = protocol.COMMAND_MAP[cmd]
         assert 0x30 <= value <= 0x3F, f"Encoder command '{cmd}' should be in range 0x30-0x3F"
 
+    # File transfer commands (0x40-0x4F)
+    file_commands = ["FILE_START", "FILE_CHUNK", "FILE_END"]
+    for cmd in file_commands:
+        value = protocol.COMMAND_MAP[cmd]
+        assert 0x40 <= value <= 0x4F, f"File command '{cmd}' should be in range 0x40-0x4F"
+
+    # Firmware update handshake commands (0x50-0x5F)
+    update_commands = ["VERSION_CHECK", "UPDATE_START", "UPDATE_WAIT"]
+    for cmd in update_commands:
+        value = protocol.COMMAND_MAP[cmd]
+        assert 0x50 <= value <= 0x5F, f"Update command '{cmd}' should be in range 0x50-0x5F"
+
     print("✓ All commands correctly organized by category")
+
+
+def test_update_commands_group():
+    """Test that UPDATE_COMMANDS group contains the firmware update handshake commands."""
+    print("\nTesting UPDATE_COMMANDS group...")
+
+    assert hasattr(protocol, 'UPDATE_COMMANDS'), "UPDATE_COMMANDS group should be defined"
+    expected = {"VERSION_CHECK", "UPDATE_START", "UPDATE_WAIT"}
+    assert protocol.UPDATE_COMMANDS == expected, \
+        f"UPDATE_COMMANDS should be {expected}, got {protocol.UPDATE_COMMANDS}"
+
+    print(f"✓ UPDATE_COMMANDS contains correct commands: {protocol.UPDATE_COMMANDS}")
 
 
 def run_all_tests():
@@ -280,6 +310,7 @@ def run_all_tests():
         test_numeric_payload_commands,
         test_float_payload_commands,
         test_command_categories,
+        test_update_commands_group,
     ]
 
     passed = 0

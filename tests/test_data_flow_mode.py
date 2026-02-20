@@ -73,7 +73,7 @@ def test_data_flow_icon_exists():
     assert "DATA_FLOW" in Icons.ICON_LIBRARY, "DATA_FLOW icon not found in ICON_LIBRARY"
     
     data_flow_icon = Icons.ICON_LIBRARY["DATA_FLOW"]
-    assert len(data_flow_icon) == 64, "DATA_FLOW icon should have 64 pixels (8x8 matrix)"
+    assert len(data_flow_icon) == 256, "DATA_FLOW icon should have 256 pixels (16x16 matrix)"
     
     print("✓ DATA_FLOW icon exists and has correct dimensions")
 

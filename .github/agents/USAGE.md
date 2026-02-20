@@ -1,10 +1,10 @@
-# Using the Test Maintenance Agent
+# Using the Test Specialist
 
-This guide explains how to use the custom GitHub Copilot Test Maintenance Agent to repair failing tests and expand test coverage for the JEB project.
+This guide explains how to use the custom GitHub Copilot Test Specialist to repair failing tests and expand test coverage for the JEB project.
 
 ## Overview
 
-The Test Maintenance Agent is a specialized GitHub Copilot agent configured to:
+The Test Specialist is a specialized GitHub Copilot agent configured to:
 - Fix broken or flaky unit tests
 - Expand test coverage by creating new tests
 - Report source code bugs (without modifying source code)
@@ -23,7 +23,7 @@ The Test Maintenance Agent is a specialized GitHub Copilot agent configured to:
 In GitHub Copilot Chat, reference the agent with:
 
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 ```
 
 Or simply start your message with context about tests:
@@ -37,7 +37,7 @@ The test_audio_manager.py tests are failing. Can you help fix them?
 #### Repair a Failing Test
 
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 The test_audio_manager.py::test_preload test is failing with:
 AttributeError: 'MockAudioManager' object has no attribute 'pause'
@@ -54,7 +54,7 @@ The agent will:
 #### Expand Test Coverage
 
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 According to TEST_COVERAGE_REPORT.md, the led_manager.py module has no tests.
 Can you create tests for it?
@@ -69,7 +69,7 @@ The agent will:
 #### Analyze Test Failures from CI
 
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 The CI workflow is failing. The unit-tests.yml workflow shows:
 - test_matrix_manager.py failed
@@ -112,7 +112,7 @@ The agent will:
 
 **Prompt**:
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 Fix the failing test in test_audio_manager.py. The error is:
 AttributeError: 'MockAudioManager' object has no attribute 'pause'
@@ -140,7 +140,7 @@ AttributeError: 'MockAudioManager' object has no attribute 'pause'
 
 **Prompt**:
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 Create comprehensive tests for display_manager.py. It's a manager class
 that controls a 7-segment display. Focus on:
@@ -174,7 +174,7 @@ that controls a 7-segment display. Focus on:
 
 **Prompt**:
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 test_updater.py::test_download_large_file is failing because the
 updater crashes with MemoryError for files > 100KB. What should we do?
@@ -233,7 +233,7 @@ updater crashes with MemoryError for files > 100KB. What should we do?
 
 **Prompt**:
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 test_satellite_network_manager.py::test_concurrent_messages is flaky.
 It fails about 30% of the time with timeout errors. Can you make it more stable?
@@ -297,7 +297,7 @@ Tests automatically run on:
 Fix multiple failing tests at once:
 
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 CI shows 5 tests failing:
 1. test_audio_manager.py::test_preload
@@ -314,7 +314,7 @@ All seem related to a recent refactor. Can you fix them all?
 Get a coverage report and recommendations:
 
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 Analyze current test coverage and recommend:
 1. Top 3 modules that need tests most urgently
@@ -327,7 +327,7 @@ Analyze current test coverage and recommend:
 Optimize slow tests:
 
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 The test_integration_performance.py file takes 45 seconds to run.
 Can you identify slow tests and suggest optimizations (without changing behavior)?
@@ -416,7 +416,7 @@ These tests are a good start, but please add:
 
 **Solution**: Start with:
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 I need help with testing in the JEB project. Can you:
 1. Explain what you can help with
@@ -492,10 +492,10 @@ Before committing:
 
 ## Support
 
-If you encounter issues with the Test Maintenance Agent:
+If you encounter issues with the Test Specialist:
 
 1. **Check this guide** for common solutions
-2. **Review agent configuration** in `.github/copilot/test-maintenance-agent.md`
+2. **Review agent configuration** in `.github/copilot/test-specialist.md`
 3. **Ask the agent directly** about its capabilities
 4. **Open an issue** in the repository for agent behavior problems
 
@@ -503,7 +503,7 @@ If you encounter issues with the Test Maintenance Agent:
 
 ## Summary
 
-The Test Maintenance Agent is your automated assistant for:
+The Test Specialist is your automated assistant for:
 - 🔧 Keeping tests healthy
 - 📈 Expanding coverage
 - 🐛 Reporting bugs

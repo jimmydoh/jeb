@@ -2,8 +2,7 @@ name: Pytest Tests
 
 on:
   push:
-    branches:
-      - main
+    branches: ["main"]
   pull_request:
   workflow_dispatch:
 
@@ -21,14 +20,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
           # Install pytest and pytest-asyncio for running async tests
-          pip install pytest pytest-asyncio
+          pip install pytest pytest-asyncio pytest-cov
 
       - name: Run unit tests with pytest
         run: |
           # pytest will automatically discover tests in the tests/ directory
           # Use -v for verbose output to see individual test results
-          pytest tests/ -v
+          pytest tests/ -v --cov=src --cov-report=term-missing

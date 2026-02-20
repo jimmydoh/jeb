@@ -126,6 +126,8 @@ def _encode_payload(payload_str, cmd_schema=None, encoding_constants=None):
                 return b''.join([struct.pack('<h', int(x)) for x in payload_str])
             elif etype == encoding_constants.get('ENCODING_FLOATS'):
                 return b''.join([struct.pack('<f', float(x)) for x in payload_str])
+            elif etype == encoding_constants.get('ENCODING_RAW_BYTES'):
+                return bytes(payload_str)
 
         # Heuristic fallback
         out = bytearray()
@@ -220,6 +222,8 @@ def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
         if etype == encoding_constants.get('ENCODING_FLOATS'):
             count = len(payload_bytes) // 4
             return struct.unpack(f'<{count}f', payload_bytes)
+        if etype == encoding_constants.get('ENCODING_RAW_BYTES'):
+            return bytes(payload_bytes)
 
     try:
         decoded = payload_bytes.decode('utf-8')
@@ -299,7 +303,8 @@ class UARTTransport(BaseTransport):
             'ENCODING_RAW_TEXT': 'text',
             'ENCODING_NUMERIC_BYTES': 'bytes',
             'ENCODING_NUMERIC_WORDS': 'words',
-            'ENCODING_FLOATS': 'floats'
+            'ENCODING_FLOATS': 'floats',
+            'ENCODING_RAW_BYTES': 'raw_bytes',
         }
 
         # RX Queue implemented as zero-allocation ring buffer

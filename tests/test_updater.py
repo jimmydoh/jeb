@@ -57,6 +57,38 @@ def mock_reset():
 microcontroller_module.reset = mock_reset
 sys.modules['microcontroller'] = microcontroller_module
 
+class MockWiFiManager:
+    """Mock WiFiManager for testing."""
+    def __init__(self, connected=True, ip="192.168.1.100", ssid="TestSSID"):
+        self._connected = connected
+        self._ip = ip
+        self.ssid = ssid
+        self.password = "TestPassword"
+        self._pool = object()  # Simple truthy object to represent socket pool
+
+    @property
+    def is_connected(self):
+        return self._connected
+
+    @property
+    def ip_address(self):
+        return self._ip if self._connected else None
+
+    @property
+    def pool(self):
+        return self._pool if self._connected else None
+
+    def connect(self, timeout=30):
+        self._connected = True
+        return True
+
+    def disconnect(self):
+        self._connected = False
+
+    def create_http_session(self):
+        # Import the mock session from the top-level mock
+        return adafruit_requests_module.Session(None, None)
+
 # Now import updater
 import updater
 
@@ -131,9 +163,7 @@ def test_updater_initialization():
     }
     
     try:
-        updater_instance = updater.Updater(valid_config, sd_mounted=True)
-        assert updater_instance.wifi_ssid == "TestSSID"
-        assert updater_instance.wifi_password == "TestPassword"
+        updater_instance = updater.Updater(valid_config, MockWiFiManager(), sd_mounted=True)
         assert updater_instance.update_url == "http://example.com"
         assert updater_instance.sd_mounted == True
         assert updater_instance.download_dir == "/sd/update"
@@ -142,22 +172,32 @@ def test_updater_initialization():
         print(f"  ✗ Failed with valid config: {e}")
         raise
     
-    # Test with missing config
+    # Test with None wifi_manager
+    try:
+        updater.Updater(valid_config, None, sd_mounted=True)
+        print("  ✗ Should have raised error for None wifi_manager")
+        assert False, "Should have raised UpdaterError"
+    except updater.UpdaterError as e:
+        assert "Wi-FiManager instance is required for OTA updates" in str(e)
+        print(f"  ✓ Correctly rejected None wifi_manager: {e}")
+    
+    # Test with missing update_url
     invalid_config = {
         "wifi_ssid": "TestSSID"
-        # Missing password and url
+        # Missing update_url
     }
     
     try:
-        updater.Updater(invalid_config, sd_mounted=True)
+        updater.Updater(invalid_config, MockWiFiManager(), sd_mounted=True)
         print("  ✗ Should have raised error for missing config")
         assert False, "Should have raised UpdaterError"
     except updater.UpdaterError as e:
+        assert "Missing required config: update_url" in str(e)
         print(f"  ✓ Correctly rejected invalid config: {e}")
     
     # Test without SD card
     try:
-        updater.Updater(valid_config, sd_mounted=False)
+        updater.Updater(valid_config, MockWiFiManager(), sd_mounted=False)
         print("  ✗ Should have raised error for missing SD card")
         assert False, "Should have raised UpdaterError"
     except updater.UpdaterError as e:
@@ -273,7 +313,7 @@ def test_check_current_version():
             "wifi_password": "test",
             "update_url": "http://test.com"
         }
-        updater_instance = updater.Updater(config, sd_mounted=True)
+        updater_instance = updater.Updater(config, MockWiFiManager(), sd_mounted=True)
         
         # Test 1: No version.json
         version = updater_instance.check_current_version()
@@ -354,7 +394,7 @@ def test_verify_files():
             "wifi_password": "test",
             "update_url": "http://test.com"
         }
-        updater_instance = updater.Updater(config, sd_mounted=True)
+        updater_instance = updater.Updater(config, MockWiFiManager(), sd_mounted=True)
         updater_instance.manifest = manifest
         
         # Verify files
@@ -395,7 +435,7 @@ def test_write_version_info():
             "wifi_password": "test",
             "update_url": "http://test.com"
         }
-        updater_instance = updater.Updater(config, sd_mounted=True)
+        updater_instance = updater.Updater(config, MockWiFiManager(), sd_mounted=True)
         updater_instance.manifest = {
             "version": "1.0.0",
             "build_timestamp": "2024-01-01T00:00:00Z",
@@ -458,7 +498,7 @@ def test_install_file():
             "wifi_password": "test",
             "update_url": "http://test.com"
         }
-        updater_instance = updater.Updater(config, sd_mounted=True)
+        updater_instance = updater.Updater(config, MockWiFiManager(), sd_mounted=True)
         # Use relative paths within temp directory
         updater_instance.download_dir = "sd/update"
         
@@ -565,7 +605,7 @@ def test_fetch_version_socket_cleanup_on_error():
             "update_url": "http://test.com"
         }
         
-        updater_instance = updater.Updater(config, sd_mounted=True)
+        updater_instance = updater.Updater(config, MockWiFiManager(), sd_mounted=True)
         updater_instance.http_session = MockSessionWithErrors(None, None)
         
         # Test HTTP error path
@@ -666,7 +706,7 @@ def test_fetch_manifest_socket_cleanup_on_error():
             "update_url": "http://test.com"
         }
         
-        updater_instance = updater.Updater(config, sd_mounted=True)
+        updater_instance = updater.Updater(config, MockWiFiManager(), sd_mounted=True)
         updater_instance.http_session = MockSessionWithErrors(None, None)
         updater_instance.remote_version = {"version": "1.0.0"}
         
@@ -771,7 +811,7 @@ def test_download_file_socket_cleanup_on_error():
             "update_url": "http://test.com"
         }
         
-        updater_instance = updater.Updater(config, sd_mounted=True)
+        updater_instance = updater.Updater(config, MockWiFiManager(), sd_mounted=True)
         updater_instance.http_session = MockSessionWithErrors(None, None)
         updater_instance.remote_version = {"version": "1.0.0"}
         updater_instance.download_dir = "sd/update"

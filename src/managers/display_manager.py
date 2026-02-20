@@ -98,6 +98,16 @@ class DisplayManager:
         # Custom viewport for modes that need full control
         self.custom_group = displayio.Group()
 
+        # ===== AUDIO VISUALIZER COMPONENTS =====
+        # Pre-allocated once to avoid heap fragmentation during fast render loops
+        self._audio_bitmap = displayio.Bitmap(128, 64, 2)
+        self._audio_palette = displayio.Palette(2)
+        self._audio_palette[0] = 0x000000  # background
+        self._audio_palette[1] = 0xFFFFFF  # foreground
+        self._audio_grid = displayio.TileGrid(self._audio_bitmap, pixel_shader=self._audio_palette)
+        self._audio_group = displayio.Group()
+        self._audio_group.append(self._audio_grid)
+
         self.use_standard_layout()  # Start in standard layout by default
 
     # ===== LAYOUT MODE METHODS =====
@@ -262,6 +272,61 @@ class DisplayManager:
 
             # ~30 FPS scroll speed
             await asyncio.sleep(0.03)
+
+    # ===== AUDIO VISUALIZER METHODS =====
+
+    def show_waveform(self, samples):
+        """Render an audio waveform on the OLED display.
+
+        Switches to custom layout and draws each sample as a pixel on its
+        column, mapping amplitude 0.0 → bottom row and 1.0 → top row.
+
+        Args:
+            samples: Iterable of amplitude floats in [0.0, 1.0] where 0.5 = silence.
+                     Up to 128 values are used (one per pixel column).
+        """
+        self.use_custom_layout()
+
+        self._audio_bitmap.fill(0)  # Fast native clear
+
+        width = min(len(samples), 128)
+        for x in range(width):
+            y = int((1.0 - float(samples[x])) * 63)
+            y = max(0, min(63, y))
+            self._audio_bitmap[x, y] = 1
+
+        self.set_custom_content(self._audio_group)
+
+    def show_eq_bands(self, band_heights, num_bands=16):
+        """Render EQ frequency-band bars on the OLED display.
+
+        Switches to custom layout and draws vertical bars rising from the
+        bottom of the screen, scaled to the OLED dimensions (128×64 px).
+
+        Args:
+            band_heights: Iterable of bar heights (0 to num_bands) per band.
+            num_bands:    Total number of bands expected (default: 16).
+        """
+        self.use_custom_layout()
+
+        self._audio_bitmap.fill(0)  # Fast native clear
+
+        band_count = min(len(band_heights), num_bands)
+        bar_width = max(1, 128 // num_bands)
+
+        for i in range(band_count):
+            # Scale band height to OLED height; leave a 1 px gap between bars
+            pixel_height = int(band_heights[i] * 64 / num_bands)
+            pixel_height = max(0, min(64, pixel_height))
+
+            bar_start_x = i * bar_width
+            bar_end_x = min(bar_start_x + bar_width - 1, 127)
+
+            for x in range(bar_start_x, bar_end_x + 1):
+                for y in range(64 - pixel_height, 64):
+                    self._audio_bitmap[x, y] = 1
+
+        self.set_custom_content(self._audio_group)
 
     def show_settings_menu(self, show=None):
         """Choose visibility of the settings menu, which replaces the main zone."""

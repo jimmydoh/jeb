@@ -28,7 +28,7 @@ $ python3 tests/test_satellite_network_manager.py
 
 **Prompt to Copilot**:
 ```
-@workspace /test-maintenance-agent
+@workspace /test-specialist
 
 test_satellite_network_manager.py::test_concurrent_messages is flaky.
 It fails about 30% of the time with timeout errors.
@@ -49,17 +49,17 @@ The agent will:
 async def test_concurrent_messages():
     """Test handling concurrent satellite messages."""
     print("\nTesting concurrent message handling...")
-    
+
     manager = SatelliteNetworkManager()
-    
+
     # Create multiple concurrent tasks
     task1 = asyncio.create_task(manager.send_message(sat_id=1, msg="Hello"))
     task2 = asyncio.create_task(manager.send_message(sat_id=2, msg="World"))
     task3 = asyncio.create_task(manager.process_incoming())
-    
+
     # Wait for first task only (BUG: other tasks might not complete)
     result1 = await task1
-    
+
     assert result1 == "OK", "Message 1 should send successfully"
     print("✓ Concurrent message test passed")
 ```
@@ -74,22 +74,22 @@ async def test_concurrent_messages():
 async def test_concurrent_messages():
     """Test handling concurrent satellite messages."""
     print("\nTesting concurrent message handling...")
-    
+
     manager = SatelliteNetworkManager()
-    
+
     # Create multiple concurrent tasks
     task1 = asyncio.create_task(manager.send_message(sat_id=1, msg="Hello"))
     task2 = asyncio.create_task(manager.send_message(sat_id=2, msg="World"))
     task3 = asyncio.create_task(manager.process_incoming())
-    
+
     # Wait for ALL tasks to complete
     results = await asyncio.gather(task1, task2, task3)
-    
+
     # Now safe to assert - all tasks completed
     assert results[0] == "OK", "Message 1 should send successfully"
     assert results[1] == "OK", "Message 2 should send successfully"
     assert results[2] is not None, "Process task should complete"
-    
+
     print("✓ Concurrent message test passed")
 ```
 
@@ -100,14 +100,14 @@ async def test_concurrent_messages():
 async def test_concurrent_messages():
     """Test handling concurrent satellite messages."""
     print("\nTesting concurrent message handling...")
-    
+
     manager = SatelliteNetworkManager()
-    
+
     # Create multiple concurrent tasks
     task1 = asyncio.create_task(manager.send_message(sat_id=1, msg="Hello"))
     task2 = asyncio.create_task(manager.send_message(sat_id=2, msg="World"))
     task3 = asyncio.create_task(manager.process_incoming())
-    
+
     # Wait for ALL tasks with timeout protection
     try:
         results = await asyncio.wait_for(
@@ -116,12 +116,12 @@ async def test_concurrent_messages():
         )
     except asyncio.TimeoutError:
         assert False, "Tasks did not complete within 2 seconds"
-    
+
     # Now safe to assert - all tasks completed
     assert results[0] == "OK", "Message 1 should send successfully"
     assert results[1] == "OK", "Message 2 should send successfully"
     assert results[2] is not None, "Process task should complete"
-    
+
     print("✓ Concurrent message test passed")
 ```
 
@@ -184,7 +184,7 @@ assert manager.is_ready
 async def test_concurrent_messages():
     """Test handling concurrent satellite messages."""
     manager = SatelliteNetworkManager()
-    
+
     try:
         # Test code here
         tasks = [...]
@@ -193,7 +193,7 @@ async def test_concurrent_messages():
     finally:
         # Cleanup: Cancel any remaining tasks
         await manager.shutdown()
-        
+
         # Wait for background tasks to clean up
         await asyncio.sleep(0.1)
 ```
