@@ -262,6 +262,38 @@ async def test_sender_file_start_payload_format():
 
 
 @pytest.mark.asyncio
+async def test_sender_remote_filename_overrides_local_basename():
+    """remote_filename parameter must override the local basename in FILE_START."""
+    sender_t, receiver_t = make_pipe()
+
+    content = b"x" * 50
+    path = make_temp_file(content)
+    try:
+        sender = FileTransferSender(sender_t, source_id="CORE", timeout=0.5)
+        remote = "managers/led_manager.mpy"
+
+        async def ack_loop():
+            while True:
+                msg = await receiver_t.receive()
+                receiver_t.send(Message("0101", "CORE", CMD_ACK, ""))
+                if msg.command == CMD_FILE_END:
+                    break
+
+        task = asyncio.create_task(ack_loop())
+        await sender.send_file("0101", path, remote_filename=remote)
+        await task
+
+        start_msg = sender_t.sent_messages[0]
+        assert start_msg.command == CMD_FILE_START
+        parts = start_msg.payload.split(",", 1)
+        assert parts[0] == remote, f"Expected remote_filename '{remote}', got '{parts[0]}'"
+    finally:
+        os.unlink(path)
+
+    print("✓ remote_filename correctly overrides local basename in FILE_START payload")
+
+
+@pytest.mark.asyncio
 async def test_sender_sends_chunks():
     """Sender must emit FILE_CHUNK messages for each portion of the file."""
     sender_t, receiver_t = make_pipe()
@@ -963,6 +995,7 @@ def run_sync_tests():
 async def run_async_tests():
     await test_sender_sends_file_start()
     await test_sender_file_start_payload_format()
+    await test_sender_remote_filename_overrides_local_basename()
     await test_sender_sends_chunks()
     await test_sender_sends_file_end_with_sha256()
     await test_sender_retransmits_on_nack()

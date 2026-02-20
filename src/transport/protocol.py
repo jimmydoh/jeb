@@ -46,6 +46,11 @@ CMD_FILE_START = "FILE_START"
 CMD_FILE_CHUNK = "FILE_CHUNK"
 CMD_FILE_END = "FILE_END"
 
+# Firmware Update Handshake Commands
+CMD_VERSION_CHECK = "VERSION_CHECK"
+CMD_UPDATE_START = "UPDATE_START"
+CMD_UPDATE_WAIT = "UPDATE_WAIT"
+
 # --- Command Mapping ---
 COMMAND_MAP = {
     # System & Discovery
@@ -85,6 +90,10 @@ COMMAND_MAP = {
     CMD_FILE_CHUNK: 0x41,
     CMD_FILE_END: 0x42,
 
+    # Firmware update handshake commands
+    CMD_VERSION_CHECK: 0x50,
+    CMD_UPDATE_START: 0x51,
+    CMD_UPDATE_WAIT: 0x52,
 
 }
 
@@ -105,6 +114,7 @@ DEST_MAP = {
 LED_COMMANDS = {k for k in COMMAND_MAP if k.startswith("LED")}
 DSP_COMMANDS = {k for k in COMMAND_MAP if k.startswith("DSP")}
 FILE_COMMANDS = {CMD_FILE_START, CMD_FILE_CHUNK, CMD_FILE_END}
+UPDATE_COMMANDS = {CMD_VERSION_CHECK, CMD_UPDATE_START, CMD_UPDATE_WAIT}
 
 # Commands that are handled directly by the Firmware class
 SYSTEM_COMMANDS = {
@@ -173,4 +183,9 @@ PAYLOAD_SCHEMAS = {
     CMD_FILE_START: {'type': ENCODING_RAW_TEXT, 'desc': 'filename,total_size e.g. "firmware.bin,4096"'},
     CMD_FILE_CHUNK: {'type': ENCODING_RAW_BYTES, 'desc': 'raw binary chunk data'},
     CMD_FILE_END: {'type': ENCODING_RAW_TEXT, 'desc': 'SHA256 hex digest of the complete file'},
+
+    # Firmware Update Handshake
+    CMD_VERSION_CHECK: {'type': ENCODING_RAW_TEXT, 'desc': 'Firmware version string e.g. "0.4.0"'},
+    CMD_UPDATE_START: {'type': ENCODING_RAW_TEXT, 'desc': 'file_count,total_bytes e.g. "5,12800"'},
+    CMD_UPDATE_WAIT: {'type': ENCODING_RAW_TEXT, 'desc': 'Update in progress; retry version check later'},
 }

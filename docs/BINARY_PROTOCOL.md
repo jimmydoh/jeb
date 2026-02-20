@@ -63,6 +63,12 @@ Commands are mapped to single bytes for efficiency:
 | DSPCORRUPT | 0x21 | Display corruption effect |
 | DSPMATRIX | 0x22 | Display matrix effect |
 | SETENC | 0x30 | Set encoder position |
+| FILE_START | 0x40 | Begin file transfer (filename, size) |
+| FILE_CHUNK | 0x41 | File data chunk (offset + data) |
+| FILE_END | 0x42 | End file transfer (SHA-256 digest) |
+| VERSION_CHECK | 0x50 | Satellite reports its firmware version |
+| UPDATE_START | 0x51 | Core initiates a firmware update (file_count, total_bytes) |
+| UPDATE_WAIT | 0x52 | Core tells satellite to wait (another update is in progress) |
 
 #### 3. PAYLOAD - N bytes
 

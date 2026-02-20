@@ -5,6 +5,13 @@ from adafruit_ticks import ticks_ms, ticks_diff
 
 from transport import Message
 
+from transport.protocol import (
+    CMD_ACK,
+    CMD_VERSION_CHECK,
+    CMD_UPDATE_START,
+    CMD_UPDATE_WAIT,
+)
+
 from utilities.logger import JEBLogger
 from utilities.payload_parser import parse_values
 
@@ -35,6 +42,9 @@ class SatelliteNetworkManager:
         self.satellites = {}
         self.sat_telemetry = {}
 
+        # Firmware update state: only one satellite is updated at a time
+        self._update_in_progress = None
+
         # Debug state
         self.last_message_debug = ""
         self._debug_mode = False
@@ -52,6 +62,7 @@ class SatelliteNetworkManager:
             "NEW_SAT": self._handle_new_sat_command,
             "LOG": self._handle_log_command,
             "PING": self._handle_ping_command,
+            CMD_VERSION_CHECK: self._handle_version_check_command,
         }
 
     def set_debug_mode(self, debug_mode):
@@ -231,6 +242,138 @@ class SatelliteNetworkManager:
             JEBLogger.info("NETM", f"PING", src=sid)
         else:
             JEBLogger.warning("NETM", f"PING from unknown sat", src=sid)
+
+    async def _handle_version_check_command(self, sid, val):
+        """Handle VERSION_CHECK from a satellite.
+
+        Compares the satellite's reported firmware version against the version
+        in the satellite manifest stored on the Core's SD card.  Sends an
+        ACK if the versions match (or no manifest is available), or sends
+        UPDATE_START followed by all firmware files when an update is needed.
+
+        Only one satellite is updated at a time.  If an update is already in
+        progress for a different satellite, UPDATE_WAIT is sent so the
+        requesting satellite can retry later.
+
+        Parameters:
+            sid (str): Satellite ID (e.g. ``"0101"``).
+            val: VERSION_CHECK payload — the satellite's firmware version string.
+        """
+        if isinstance(val, bytes):
+            sat_version = val.decode('utf-8').strip()
+        elif isinstance(val, str):
+            sat_version = val.strip()
+        else:
+            sat_version = "0.0.0"
+
+        sat_type_id = sid[:2]
+        JEBLogger.info("NETM", f"VERSION_CHECK: sat={sat_version}", src=sid)
+
+        # Only one satellite update at a time
+        if self._update_in_progress and self._update_in_progress != sid:
+            JEBLogger.info(
+                "NETM",
+                f"Update in progress for {self._update_in_progress}, sending UPDATE_WAIT to {sid}"
+            )
+            self.transport.send(Message("CORE", sid, CMD_UPDATE_WAIT, ""))
+            return
+
+        expected_version = self._get_satellite_expected_version(sat_type_id)
+
+        if expected_version is None or sat_version == expected_version:
+            # No manifest available or versions already match — proceed normally
+            JEBLogger.info("NETM", f"Version OK ({sat_version}), allowing {sid} to proceed")
+            self.transport.send(Message("CORE", sid, CMD_ACK, ""))
+        else:
+            # Version mismatch — initiate update
+            JEBLogger.info(
+                "NETM",
+                f"Version mismatch: sat={sat_version}, expected={expected_version}. "
+                f"Starting update for {sid}"
+            )
+            self._update_in_progress = sid
+            asyncio.create_task(self._initiate_satellite_update(sid, sat_type_id))
+
+    def _get_satellite_expected_version(self, sat_type_id):
+        """Return the expected firmware version for a satellite type.
+
+        Reads ``/sd/satellites/<type_id>/manifest.json`` from the Core's SD
+        card.  Returns ``None`` when the manifest is absent or unreadable,
+        which causes the Core to accept the satellite's current version.
+
+        Parameters:
+            sat_type_id (str): Two-character type identifier (e.g. ``"01"``).
+
+        Returns:
+            str | None: Version string from the manifest, or ``None``.
+        """
+        manifest_path = f"/sd/satellites/{sat_type_id}/manifest.json"
+        try:
+            import json
+            with open(manifest_path, 'r') as f:
+                manifest = json.load(f)
+            return manifest.get('version')
+        except (OSError, ValueError):
+            return None
+
+    async def _initiate_satellite_update(self, sid, sat_type_id):
+        """Stream firmware files to a satellite that needs an update.
+
+        Sends UPDATE_START with the file count and total byte size, then
+        transfers the satellite manifest (``manifest.json``) followed by every
+        file listed in that manifest using the existing chunked file-transfer
+        protocol.
+
+        Files are sourced from ``/sd/satellites/<type_id>/``.  The target path
+        on the satellite (taken from the manifest ``"path"`` field) is used as
+        the ``remote_filename`` in each FILE_START message so the satellite can
+        stage files under the correct sub-directory inside ``/update/``.
+
+        Parameters:
+            sid (str): Satellite ID to update.
+            sat_type_id (str): Two-character type identifier (e.g. ``"01"``).
+        """
+        base_path = f"/sd/satellites/{sat_type_id}"
+        manifest_path = f"{base_path}/manifest.json"
+
+        try:
+            try:
+                import json
+                with open(manifest_path, 'r') as f:
+                    manifest = json.load(f)
+            except (OSError, ValueError):
+                JEBLogger.warning("NETM", f"No satellite manifest at {manifest_path}, skipping update for {sid}")
+                self.transport.send(Message("CORE", sid, CMD_ACK, ""))
+                return
+
+            files = manifest.get("files", [])
+            # +1 for manifest.json itself
+            file_count = len(files) + 1
+            total_bytes = sum(f.get("size", 0) for f in files)
+
+            self.transport.send(Message("CORE", sid, CMD_UPDATE_START, f"{file_count},{total_bytes}"))
+
+            from transport.file_transfer import FileTransferSender
+            sender = FileTransferSender(self.transport, "CORE")
+
+            # Send manifest.json first so the satellite can parse it when applying
+            success = await sender.send_file(sid, manifest_path, remote_filename="manifest.json")
+            if not success:
+                JEBLogger.error("NETM", f"Failed to send manifest to {sid}")
+                return
+
+            # Send each firmware file with its full target path as the remote filename
+            for file_entry in files:
+                filepath = f"{base_path}/{file_entry['path']}"
+                remote_filename = file_entry['path']
+                success = await sender.send_file(sid, filepath, remote_filename=remote_filename)
+                if not success:
+                    JEBLogger.error("NETM", f"Failed to send {filepath} to {sid}")
+                    return
+
+            JEBLogger.info("NETM", f"Firmware update files sent to {sid}")
+        finally:
+            self._update_in_progress = None
 
     async def monitor_messages(self, heartbeat_callback=None):
         """
