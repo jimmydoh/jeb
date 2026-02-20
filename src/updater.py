@@ -44,7 +44,7 @@ class Updater:
     - Writing version information
     """
     
-    def __init__(self, config, sd_mounted=False):
+    def __init__(self, config, sd_mounted=False, wifi_manager=None):
         """
         Initialize the updater with configuration.
         
@@ -54,6 +54,9 @@ class Updater:
                 - wifi_password: Wi-Fi password
                 - update_url: Base URL to update server (e.g., https://server.com/)
             sd_mounted (bool): Whether SD card is mounted at /sd
+            wifi_manager (WiFiManager): Optional shared WiFiManager instance.
+                If provided, all WiFi connectivity is delegated to it.
+                If None, the updater manages WiFi directly.
         """
         self.config = config
         self.wifi_ssid = config.get("wifi_ssid")
@@ -64,9 +67,10 @@ class Updater:
         self.http_session = None
         self.sd_mounted = sd_mounted
         self.download_dir = "/sd/update" if sd_mounted else "/update"
+        self.wifi_manager = wifi_manager
         
         # Validate configuration
-        if not WIFI_AVAILABLE:
+        if wifi_manager is None and not WIFI_AVAILABLE:
             raise UpdaterError("Wi-Fi libraries not available")
         
         if not all([self.wifi_ssid, self.wifi_password, self.update_url]):
@@ -81,6 +85,9 @@ class Updater:
         """
         Connect to Wi-Fi network.
         
+        Delegates to wifi_manager if one was provided, otherwise manages
+        the connection directly.
+        
         Args:
             timeout (int): Connection timeout in seconds
             
@@ -90,6 +97,16 @@ class Updater:
         Raises:
             UpdaterError: If connection fails
         """
+        if self.wifi_manager is not None:
+            connected = self.wifi_manager.connect(timeout)
+            if connected:
+                self.http_session = self.wifi_manager.create_http_session()
+                if self.http_session is None:
+                    raise UpdaterError("Failed to create HTTP session via WiFiManager")
+            else:
+                raise UpdaterError("WiFiManager failed to connect")
+            return connected
+
         print(f"Connecting to Wi-Fi: {self.wifi_ssid}")
         
         try:
@@ -123,6 +140,9 @@ class Updater:
     
     def disconnect_wifi(self):
         """Disconnect from Wi-Fi to save power."""
+        if self.wifi_manager is not None:
+            self.wifi_manager.disconnect()
+            return
         if WIFI_AVAILABLE and wifi.radio.connected:
             wifi.radio.enabled = False
             print("Wi-Fi disconnected")

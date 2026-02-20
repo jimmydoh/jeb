@@ -47,7 +47,7 @@ class WebServerManager:
     MAX_UPLOAD_SIZE_BYTES = 50 * 1024  # Maximum upload size (50KB)
     DEFAULT_MAX_LOGS = 1000  # Default maximum log entries to keep
     
-    def __init__(self, config, console_buffer=None, power_manager=None, satellite_manager=None):
+    def __init__(self, config, console_buffer=None, power_manager=None, satellite_manager=None, wifi_manager=None):
         """
         Initialize the web server manager.
         
@@ -56,8 +56,11 @@ class WebServerManager:
             console_buffer (object): Optional console buffer for output capture
             power_manager (PowerManager): Optional PowerManager for live telemetry
             satellite_manager (SatelliteNetworkManager): Optional SatelliteNetworkManager for link telemetry
+            wifi_manager (WiFiManager): Optional shared WiFiManager instance.
+                If provided, all WiFi connectivity is delegated to it.
+                If None, the manager handles WiFi directly.
         """
-        if not WIFI_AVAILABLE:
+        if wifi_manager is None and not WIFI_AVAILABLE:
             raise RuntimeError("WiFi or adafruit_httpserver not available")
         
         self.config = config
@@ -68,6 +71,7 @@ class WebServerManager:
         self.console_buffer = console_buffer
         self.power_manager = power_manager
         self.satellite_manager = satellite_manager
+        self.wifi_manager = wifi_manager
         
         self.server = None
         self.pool = None
@@ -82,6 +86,9 @@ class WebServerManager:
     async def connect_wifi(self, timeout=30):
         """
         Connect to WiFi network (async, non-blocking).
+
+        Delegates to wifi_manager if one was provided, otherwise manages
+        the connection directly.
         
         Args:
             timeout (int): Connection timeout in seconds
@@ -89,6 +96,15 @@ class WebServerManager:
         Returns:
             bool: True if connected successfully
         """
+        if self.wifi_manager is not None:
+            connected = self.wifi_manager.connect(timeout)
+            if connected:
+                self.connected = True
+                self.pool = self.wifi_manager.pool
+            else:
+                self.connected = False
+            return connected
+
         print(f"Connecting to WiFi: {self.wifi_ssid}")
         
         try:
@@ -123,6 +139,10 @@ class WebServerManager:
     
     def disconnect_wifi(self):
         """Disconnect from WiFi to save power."""
+        if self.wifi_manager is not None:
+            self.wifi_manager.disconnect()
+            self.connected = False
+            return
         if self.connected:
             try:
                 wifi.radio.enabled = False
@@ -131,6 +151,18 @@ class WebServerManager:
             except Exception as e:
                 print(f"Error disconnecting WiFi: {e}")
     
+    def _is_wifi_connected(self):
+        """Check current WiFi connection status via wifi_manager or direct radio."""
+        if self.wifi_manager is not None:
+            return self.wifi_manager.is_connected
+        return wifi.radio.connected
+
+    def _get_ip_address(self):
+        """Get current IP address string via wifi_manager or direct radio."""
+        if self.wifi_manager is not None:
+            return str(self.wifi_manager.ip_address)
+        return str(wifi.radio.ipv4_address)
+
     def log(self, message):
         """Add a message to the log buffer."""
         timestamp = time.monotonic()
@@ -586,7 +618,7 @@ class WebServerManager:
             try:
                 status = {
                     "wifi_ssid": self.wifi_ssid,
-                    "ip_address": str(wifi.radio.ipv4_address),
+                    "ip_address": self._get_ip_address(),
                     "debug_mode": self.config.get("debug_mode", False),
                     "uptime": time.monotonic(),
                     "free_memory": gc.mem_free(),
@@ -764,10 +796,10 @@ class WebServerManager:
             self.setup_routes()
             
             # Start server
-            self.server.start(str(wifi.radio.ipv4_address), self.port)
+            self.server.start(self._get_ip_address(), self.port)
             
             print(f"\n✓ Web server started!")
-            print(f"  URL: http://{wifi.radio.ipv4_address}")
+            print(f"  URL: http://{self._get_ip_address()}")
             print(f"  Port: {self.port}")
             print("\nWeb server running... Press Ctrl+C to stop")
             
@@ -777,7 +809,7 @@ class WebServerManager:
             while True:
                 try:
                     # Check WiFi connection status
-                    if not wifi.radio.connected:
+                    if not self._is_wifi_connected():
                         print("WiFi disconnected! Attempting to reconnect...")
                         self.connected = False
                         self.log("WiFi connection lost")
@@ -790,7 +822,7 @@ class WebServerManager:
                             self.server.stop()
                             self.server = Server(self.pool, "/static", debug=True)
                             self.setup_routes()
-                            self.server.start(str(wifi.radio.ipv4_address), self.port)
+                            self.server.start(self._get_ip_address(), self.port)
                         else:
                             print("WiFi reconnection failed, retrying in 5 seconds...")
                             await asyncio.sleep(5)

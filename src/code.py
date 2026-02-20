@@ -89,9 +89,11 @@ config = load_config()
 # Do we have an SSID and Password
 if config.get("wifi_ssid") and config.get("wifi_password"):
     JEBLogger.info("CODE", "Wi-Fi credentials provided in config")
-    # Check if wifi module is available
-    if is_wifi_available():
-        JEBLogger.info("CODE", "Wi-Fi module available")
+
+    try:
+        from managers.wifi_manager import WiFiManager
+        wifi_manager = WiFiManager(config)
+        JEBLogger.info("CODE", "WiFi Manager initialized")
 
         # OTA UPDATE CHECK
         if SD_MOUNTED and config.get("update_url", "") != "":
@@ -102,7 +104,7 @@ if config.get("wifi_ssid") and config.get("wifi_password"):
                     JEBLogger.info("CODE", "Update flag detected - starting OTA update process")
 
                     try:
-                        updater = Updater(config, sd_mounted=SD_MOUNTED)
+                        updater = Updater(config, sd_mounted=SD_MOUNTED, wifi_manager=wifi_manager)
                         update_success = updater.run_update()
 
                         if update_success:
@@ -128,14 +130,15 @@ if config.get("wifi_ssid") and config.get("wifi_password"):
             try:
                 from managers.web_server_manager import WebServerManager
                 JEBLogger.info("CODE", " --- WEB SERVER INITIALIZATION --- ")
-                WEB_SERVER = WebServerManager(config)
+                WEB_SERVER = WebServerManager(config, wifi_manager=wifi_manager)
                 JEBLogger.info("CODE", "Web server manager initialized - will start with app")
             except ImportError:
                 JEBLogger.warning("CODE", "⚠️ WebServerManager not available - check dependencies")
             except Exception as e:
                 JEBLogger.error("CODE", f"⚠️ Web server initialization error: {e}")
-    else:
-        JEBLogger.warning("CODE", "⚠️ Wi-Fi module not available - skipping OTA update and web server")
+
+    except ImportError:
+        JEBLogger.warning("CODE", "⚠️ WiFiManager not available - skipping OTA update and web server")
 else:
     JEBLogger.info("CODE", "No Wi-Fi credentials provided - skipping OTA update and web server initialization")
 
