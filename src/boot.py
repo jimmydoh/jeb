@@ -2,6 +2,13 @@
 boot.py - Hardware Safety Initialization and Update Mode Detection
 Runs before code.py to ensure safe hardware state during startup
 and to configure filesystem permissions for OTA updates.
+
+Filesystem access policy:
+  - USB connected (VBUS HIGH):  Readonly for code; USB mass storage enabled.
+                                OTA update flag can override to writable.
+  - Sat Bus only  (VBUS LOW):   Writable for code; USB mass storage disabled.
+                                Holding GP12 (encoder push) during boot forces
+                                readonly for 'data-only USB' debugging.
 """
 
 import board
@@ -17,6 +24,32 @@ mosfet_control.direction = digitalio.Direction.OUTPUT
 mosfet_control.value = False  # LOW = MOSFETs OFF (Safe State)
 
 print("boot.py: MOSFET_CONTROL (GP14) initialized to LOW (Safe State)")
+
+# --- VBUS SENSE DETECTION ---
+# GP24 is the internal Pico VBUS sense pin.
+# HIGH = USB cable connected (USB power present)
+# LOW  = powered via VSYS/20V Sat Bus only (no USB)
+#
+# When LOW the device is in satellite deployment mode; we grant the running
+# code write access so it can persist state, logs, etc. over UART.
+vbus_sense = digitalio.DigitalInOut(getattr(board, "GP24"))
+vbus_sense.direction = digitalio.Direction.INPUT
+# No explicit pull: the Pico's internal VBUS sense circuit handles this.
+vbus_high = vbus_sense.value  # True = USB present, False = Sat Bus only
+
+print(f"boot.py: VBUS sense (GP24) = {'HIGH (USB)' if vbus_high else 'LOW (Sat Bus)'}")
+
+# --- BOOT OVERRIDE BUTTON (GP12 = Encoder Push) ---
+# Holding the encoder push button during power-on forces readonly=True even
+# when VBUS is LOW. This supports 'data-only USB' debugging where a powered
+# USB hub provides data connectivity while the satellite is on the 20V bus.
+override_pin = digitalio.DigitalInOut(getattr(board, "GP12"))
+override_pin.direction = digitalio.Direction.INPUT
+override_pin.pull = digitalio.Pull.UP
+force_readonly = not override_pin.value  # Active-LOW: pressed → force readonly
+
+if force_readonly:
+    print("boot.py: Override button (GP12) held - forcing readonly mode")
 
 # --- SD CARD INITIALIZATION ---
 # Initialize SD card early for OTA updates (files downloaded to SD card)
@@ -88,7 +121,18 @@ def needs_update():
 # Determine boot mode
 update_mode = needs_update()
 
-if update_mode:
+if not vbus_high and not force_readonly:
+    # --- SATELLITE DEPLOYMENT MODE ---
+    # No USB power detected and no override: device is running on the 20V Sat Bus.
+    # Grant the running code write access so it can persist state over UART.
+    # USB mass storage is disabled (USB is not connected).
+    print("boot.py: 🛰️  SATELLITE MODE - Filesystem writeable by code")
+    print("boot.py: USB mass storage DISABLED (no USB connection)")
+    storage.remount("/", readonly=False)
+    storage.disable_usb_drive()
+elif update_mode:
+    # --- OTA UPDATE MODE ---
+    # Update flag present (and either USB is connected or override is active).
     print("boot.py: ⚡ UPDATE MODE - Filesystem writeable by code")
     print("boot.py: USB mass storage DISABLED during update")
     # Make filesystem writeable by CircuitPython code
@@ -96,7 +140,13 @@ if update_mode:
     storage.remount("/", readonly=False)
     storage.disable_usb_drive()
 else:
-    print("boot.py: 🔒 NORMAL MODE - Filesystem read-only")
+    # --- NORMAL / DEBUG MODE ---
+    # USB is connected (or readonly override active).  Keep filesystem read-only
+    # for the running code so the host PC can safely access via USB mass storage.
+    if force_readonly:
+        print("boot.py: 🔒 FORCED READONLY MODE - Override button held")
+    else:
+        print("boot.py: 🔒 NORMAL MODE - Filesystem read-only")
     print("boot.py: USB mass storage ENABLED")
     # Normal boot: filesystem read-only for code, writable via USB mass storage
     # In CircuitPython, readonly=True means:
