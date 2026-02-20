@@ -35,6 +35,9 @@ from .base_firmware import SatelliteFirmware
 TYPE_ID = "01"
 TYPE_NAME = "INDUSTRIAL"
 
+# Dim blue used as low-power breathing colour during sleep
+SLEEP_LED_COLOR = (0, 0, 32)
+
 class IndustrialSatelliteFirmware(SatelliteFirmware):
     """Satellite-side firmware for Industrial Satellite.
 
@@ -135,7 +138,7 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             return
         self._sleeping = True
         await self.segment.clear()
-        self.leds.set_led(-1, (0, 0, 32), brightness=0.1, anim="BREATH", speed=0.5)
+        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim="BREATH", speed=0.5)
         self.renderer.target_frame_rate = 10
 
     async def _wake_local(self):

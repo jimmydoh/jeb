@@ -346,6 +346,14 @@ def test_sat01_remote_wake_sends_active_to_core(sat01_content):
     assert "ACTIVE" in body, "satellite monitor_hw_hid should send ACTIVE"
     assert "transport_up" in body, "satellite monitor_hw_hid should use transport_up to send"
 
+    # Verify that ACTIVE is only sent when _sleeping is True (inside the sleep guard)
+    sleep_block_start = body.find("if self._sleeping:")
+    assert sleep_block_start != -1, "monitor_hw_hid should have `if self._sleeping:` guard"
+    active_idx = body.find("ACTIVE")
+    assert active_idx > sleep_block_start, (
+        "ACTIVE should only be sent within the `if self._sleeping:` guard"
+    )
+
 
 # ---------------------------------------------------------------------------
 # Runtime logic tests using pure-Python mocks

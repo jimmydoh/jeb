@@ -42,6 +42,9 @@ POW_BUS = "satbus_20v"
 POW_MAIN = "main_5v"
 POW_LED = "led_5v"
 
+# Dim blue used as low-power breathing colour during sleep
+SLEEP_LED_COLOR = (0, 0, 32)
+
 class SafeMode:
     """Minimal fail-safe mode with zero external hardware dependencies.
 
@@ -550,7 +553,7 @@ class CoreManager:
         self._sleeping = True
         # Blank the display and set LEDs to a low-power breathing animation
         self.display.update_status("", "")
-        self.leds.set_led(-1, (0, 0, 32), brightness=0.1, anim="BREATH", speed=0.5)
+        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim="BREATH", speed=0.5)
         # Throttle render loop to 10Hz to reduce power draw
         self.renderer.target_frame_rate = 10
         # Broadcast SLEEP to all satellites
