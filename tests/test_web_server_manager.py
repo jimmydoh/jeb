@@ -74,6 +74,34 @@ sys.modules['adafruit_httpserver'] = type('obj', (object,), {
     'POST': type('POST', (), {'__name__': 'POST'})
 })()
 
+class MockWiFiManager:
+    """Mock WiFiManager for testing."""
+    def __init__(self, connected=True, ip="192.168.1.100", ssid="TestNetwork"):
+        self._connected = connected
+        self._ip = ip
+        self.ssid = ssid
+        self.password = "TestPassword"
+        self.pool = MockSocketPool(MockWiFi.radio)
+
+    @property
+    def is_connected(self):
+        return self._connected
+
+    @property
+    def ip_address(self):
+        return self._ip if self._connected else None
+
+    def connect(self, timeout=30):
+        self._connected = True
+        return True
+
+    def disconnect(self):
+        self._connected = False
+        self.pool = None
+
+    def create_http_session(self):
+        return None
+
 # Mock gc module for CircuitPython compatibility
 import gc as _gc
 if not hasattr(_gc, 'mem_free'):
@@ -106,10 +134,9 @@ def test_initialization():
         "type_id": "00"
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
 
-    assert manager.wifi_ssid == "TestNetwork"
-    assert manager.wifi_password == "TestPassword123"
+    assert manager.wifi_manager is not None
     assert manager.port == 8080
     assert manager.enabled == True
     assert len(manager.logs) == 0
@@ -128,7 +155,7 @@ if pytest:
             "web_server_enabled": True
         }
 
-        manager = WebServerManager(config)
+        manager = WebServerManager(config, MockWiFiManager())
         connected = await manager.connect_wifi()
 
         assert connected == True
@@ -150,7 +177,7 @@ def test_logging():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
 
     # Add logs
     manager.log("Test message 1")
@@ -183,7 +210,7 @@ def test_directory_listing():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
 
     try:
         # Test listing current directory
@@ -216,7 +243,7 @@ def test_config_save():
         "debug_mode": False
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
 
     # Save original config if it exists
     original_config = None
@@ -262,7 +289,7 @@ def test_html_generation_with_mock_file():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
 
     # Patch the _generate_html_page to avoid file system issues
     def mock_html_generator():
@@ -309,7 +336,7 @@ def test_download_file_chunked_reading():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -348,7 +375,7 @@ def test_config_update_with_invalid_types():
         "uart_baudrate": 115200
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -404,7 +431,7 @@ def test_mode_settings_update():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -466,7 +493,7 @@ def test_ota_update_trigger():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
     manager.server = MockServer(None, "/static")
 
     # Mock the updater and file system to prevent errors
@@ -572,7 +599,7 @@ def test_debug_mode_toggle():
         "debug_mode": False
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -614,7 +641,7 @@ def test_system_status():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -654,7 +681,7 @@ def test_reorder_satellites():
         "satellite_order": ["SAT01", "SAT02", "SAT03"]
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -700,7 +727,7 @@ def test_route_registration():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -733,17 +760,17 @@ def test_invalid_config():
     """Test initialization with invalid configuration."""
     print("\nTesting invalid configuration handling...")
 
-    # Test missing WiFi credentials
+    # Test missing WiFiManager
     try:
         config = {
             "wifi_ssid": "",
             "wifi_password": "",
             "web_server_enabled": True
         }
-        manager = WebServerManager(config)
-        assert False, "Should have raised ValueError"
-    except ValueError as e:
-        assert "WiFi credentials required" in str(e)
+        manager = WebServerManager(config, None)
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError as e:
+        assert "No WiFiManager provided" in str(e)
         print("  ✓ Invalid config detection passed")
 
 
@@ -757,7 +784,7 @@ def test_sanitize_path():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
 
     # Test basic path
     result = manager._sanitize_path("/sd", "/sd/test.txt")
@@ -814,7 +841,7 @@ def test_filename_validation():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -888,7 +915,7 @@ def test_path_security_integration():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
 
     # Test the sanitization directly to verify security behavior
     # Test 1: Absolute path outside base is sanitized to base
@@ -935,7 +962,7 @@ def test_chunked_upload_with_headers():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -991,12 +1018,12 @@ def test_telemetry_manager_params():
     pm = MockPowerManager()
     sm = MockSatelliteManager()
 
-    manager = WebServerManager(config, power_manager=pm, satellite_manager=sm)
+    manager = WebServerManager(config, MockWiFiManager(), power_manager=pm, satellite_manager=sm)
     assert manager.power_manager is pm
     assert manager.satellite_manager is sm
 
     # Default (None) should also work
-    manager_default = WebServerManager(config)
+    manager_default = WebServerManager(config, MockWiFiManager())
     assert manager_default.power_manager is None
     assert manager_default.satellite_manager is None
 
@@ -1013,7 +1040,7 @@ def test_telemetry_route_registered():
         "web_server_enabled": True,
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -1046,6 +1073,7 @@ def test_telemetry_sse_generator_with_managers():
 
     manager = WebServerManager(
         config,
+        MockWiFiManager(),
         power_manager=MockPowerManager(),
         satellite_manager=MockSatelliteManager(),
     )
@@ -1100,7 +1128,7 @@ def test_telemetry_sse_generator_no_managers():
         "web_server_enabled": True,
     }
 
-    manager = WebServerManager(config)  # No power_manager / satellite_manager
+    manager = WebServerManager(config, MockWiFiManager())  # No power_manager / satellite_manager
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -1141,7 +1169,7 @@ def test_telemetry_keepalive_chunks():
         "web_server_enabled": True,
     }
 
-    manager = WebServerManager(config)
+    manager = WebServerManager(config, MockWiFiManager())
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -1181,7 +1209,14 @@ def run_all_tests():
         test_logging,
         test_directory_listing,
         test_config_save,
-        test_html_generation,
+        test_html_generation_with_mock_file,
+        test_download_file_chunked_reading,
+        test_config_update_with_invalid_types,
+        test_mode_settings_update,
+        test_ota_update_trigger,
+        test_debug_mode_toggle,
+        test_system_status,
+        test_reorder_satellites,
         test_route_registration,
         test_invalid_config,
         test_sanitize_path,

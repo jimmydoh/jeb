@@ -562,7 +562,7 @@ class WebServerManager:
             """Return system status information."""
             try:
                 status = {
-                    "wifi_ssid": self.wifi_ssid,
+                    "wifi_ssid": self.wifi_manager.ssid,
                     "ip_address": self._get_ip_address(),
                     "debug_mode": self.config.get("debug_mode", False),
                     "uptime": time.monotonic(),
