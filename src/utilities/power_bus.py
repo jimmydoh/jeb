@@ -47,7 +47,7 @@ class INASensorWrapper:
 
     def read_voltage(self):
         """Return bus voltage in volts."""
-        return self._ina.bus_voltage
+        return self._ina.voltage
 
     def read_current(self):
         """Return current in milliamps."""
