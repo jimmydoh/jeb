@@ -139,6 +139,7 @@ class SatelliteFirmware:
 
         # Global animation state: instantiated when SETOFF is received
         self._global_anim_ctrl = None
+        self._global_anim_task = None  # Tracked task for active global animation
 
         # Version check and firmware update state
         self._version_check_sent = False      # True after VERSION_CHECK sent to core
@@ -316,15 +317,15 @@ class SatelliteFirmware:
             offset_x: Global X offset received from the Core.
             offset_y: Global Y offset received from the Core.
         """
+        pass  # Intentionally empty; subclasses override to attach hardware managers
 
     async def _handle_global_rainbow(self, val):
         """Handle GLOBALRBOW from core — start a synchronized rainbow wave.
 
         Parses the speed parameter and starts :meth:`global_rainbow_wave` on the
         local :class:`GlobalAnimationController` (if one has been initialised via
-        SETOFF).  The animation uses the satellite's synchronized
-        ``_frame_counter`` so it renders the same pixels as the Core at the same
-        instant.
+        SETOFF).  Any previously running global animation task is cancelled first
+        to avoid resource leaks and conflicting animations.
 
         Parameters:
             val: Payload — a float or tuple containing ``[speed]``.
@@ -339,14 +340,19 @@ class SatelliteFirmware:
         except (ValueError, TypeError):
             speed = 30.0
         import asyncio
-        asyncio.create_task(self._global_anim_ctrl.global_rainbow_wave(speed=speed))
+        if self._global_anim_task and not self._global_anim_task.done():
+            self._global_anim_task.cancel()
+        self._global_anim_task = asyncio.create_task(
+            self._global_anim_ctrl.global_rainbow_wave(speed=speed)
+        )
 
     async def _handle_global_rain(self, val):
         """Handle GLOBALRAIN from core — start a synchronized rain animation.
 
         Parses the speed and density parameters and starts :meth:`global_rain`
         on the local :class:`GlobalAnimationController` (if one has been
-        initialised via SETOFF).
+        initialised via SETOFF).  Any previously running global animation task is
+        cancelled first to avoid resource leaks and conflicting animations.
 
         Parameters:
             val: Payload — a tuple/list of ``[speed, density]`` floats.
@@ -364,7 +370,11 @@ class SatelliteFirmware:
             speed = 0.15
             density = 0.3
         import asyncio
-        asyncio.create_task(self._global_anim_ctrl.global_rain(speed=speed, density=density))
+        if self._global_anim_task and not self._global_anim_task.done():
+            self._global_anim_task.cancel()
+        self._global_anim_task = asyncio.create_task(
+            self._global_anim_ctrl.global_rain(speed=speed, density=density)
+        )
 
     async def _handle_update_start(self, val):
         """Handle UPDATE_START from core — enter firmware update mode.

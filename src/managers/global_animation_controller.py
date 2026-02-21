@@ -325,6 +325,7 @@ class GlobalAnimationController:
         last_step_frame = start_frame - step_frames  # ensure first step runs immediately
         start_t = time.monotonic()
         last_step_t = start_t - speed  # fallback: ensure first step runs immediately
+        last_known_frame = self._frame_counter  # tracks per-iteration changes
 
         while True:
             now = time.monotonic()
@@ -333,9 +334,13 @@ class GlobalAnimationController:
             if duration is not None and elapsed >= duration:
                 break
 
-            # Use frame counter for step timing if it is advancing; otherwise
-            # fall back to wall-clock timing for standalone operation.
-            frame_advancing = self._frame_counter != start_frame
+            # Detect if the frame counter is advancing this iteration.
+            # Comparing to last_known_frame (updated each loop) is more robust
+            # than comparing to start_frame, which could coincidentally equal the
+            # current value after a long-running wrap-around.
+            frame_advancing = self._frame_counter != last_known_frame
+            last_known_frame = self._frame_counter
+
             if frame_advancing:
                 time_to_step = (self._frame_counter - last_step_frame) >= step_frames
             else:
