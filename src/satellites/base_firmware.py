@@ -94,10 +94,16 @@ class SatelliteFirmware:
                 channel["multiplier"]
             )
 
-        # Init power manager with ADCManager
+        # Build PowerBus objects backed by ADCSensorWrappers (one per rail)
+        from utilities.power_bus import ADCSensorWrapper, PowerBus
+        buses = {
+            name: PowerBus(name, ADCSensorWrapper(self.adc, name))
+            for name in [POW_INPUT, POW_BUS, POW_MAIN]
+        }
+
+        # Init power manager with PowerBus dependencies
         self.power = PowerManager(
-            self.adc,
-            [POW_INPUT, POW_BUS, POW_MAIN],
+            buses,
             Pins.MOSFET_CONTROL,
             Pins.SATBUS_DETECT
         )

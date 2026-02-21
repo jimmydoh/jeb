@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for PowerManager using ADCManager for voltage sensing."""
+"""Unit tests for PowerManager using PowerBus/ADCSensorWrapper for voltage sensing."""
 
 import sys
 import os
@@ -46,7 +46,7 @@ sys.modules['watchdog'] = MockModule()
 
 # Mock ADCManager for testing
 class MockADCManager:
-    """Mock ADCManager for testing PowerManager."""
+    """Mock ADCManager for testing PowerBus via ADCSensorWrapper."""
     def __init__(self):
         self.channels = {}
         self.readings = {
@@ -66,45 +66,49 @@ class MockADCManager:
 
 
 from managers.power_manager import PowerManager
+from utilities.power_bus import ADCSensorWrapper, INASensorWrapper, PowerBus
+
+
+class MockPin:
+    """Minimal mock for a hardware pin."""
+    pass
+
+
+def _make_buses(mock_adc, names):
+    """Helper: build a buses dict from an ADCManager and a list of rail names."""
+    return {
+        name: PowerBus(name, ADCSensorWrapper(mock_adc, name))
+        for name in names
+    }
 
 
 def test_power_manager_initialization():
-    """Test PowerManager initializes with ADCManager."""
-    print("Testing PowerManager initialization with ADCManager...")
+    """Test PowerManager initializes with PowerBus dependencies."""
+    print("Testing PowerManager initialization with PowerBus...")
     
     mock_adc = MockADCManager()
     sense_names = ["input_20v", "satbus_20v", "main_5v", "led_5v"]
+    buses = _make_buses(mock_adc, sense_names)
     
-    # Mock pins
-    class MockPin:
-        pass
+    power = PowerManager(buses, MockPin(), MockPin())
     
-    mosfet_pin = MockPin()
-    detect_pin = MockPin()
-    
-    power = PowerManager(mock_adc, sense_names, mosfet_pin, detect_pin)
-    
-    assert power.adc == mock_adc
-    assert power.sense_names == sense_names
-    assert hasattr(power, "v_input_20v")
-    assert hasattr(power, "v_satbus_20v")
-    assert hasattr(power, "v_main_5v")
-    assert hasattr(power, "v_led_5v")
+    assert power.buses is buses
+    assert set(power.buses.keys()) == set(sense_names)
+    for name in sense_names:
+        assert isinstance(power.buses[name], PowerBus)
     
     print("✓ PowerManager initialization test passed")
 
 
 def test_power_manager_status():
-    """Test PowerManager reads voltages from ADCManager."""
+    """Test PowerManager reads voltages from PowerBus/ADCSensorWrapper."""
     print("\nTesting PowerManager voltage status reading...")
     
     mock_adc = MockADCManager()
     sense_names = ["input_20v", "satbus_20v", "main_5v", "led_5v"]
+    buses = _make_buses(mock_adc, sense_names)
     
-    class MockPin:
-        pass
-    
-    power = PowerManager(mock_adc, sense_names, MockPin(), MockPin())
+    power = PowerManager(buses, MockPin(), MockPin())
     
     # Get status
     status = power.status
@@ -120,16 +124,14 @@ def test_power_manager_status():
 
 
 def test_power_manager_max_min_tracking():
-    """Test PowerManager tracks max and min voltages."""
+    """Test PowerManager tracks max and min voltages via PowerBus."""
     print("\nTesting PowerManager max/min voltage tracking...")
     
     mock_adc = MockADCManager()
     sense_names = ["input_20v", "satbus_20v"]
+    buses = _make_buses(mock_adc, sense_names)
     
-    class MockPin:
-        pass
-    
-    power = PowerManager(mock_adc, sense_names, MockPin(), MockPin())
+    power = PowerManager(buses, MockPin(), MockPin())
     
     # Read initial values
     _ = power.status
@@ -164,12 +166,9 @@ def test_power_manager_mosfet_control():
     print("\nTesting PowerManager MOSFET control...")
     
     mock_adc = MockADCManager()
-    sense_names = ["input_20v"]
+    buses = _make_buses(mock_adc, ["input_20v"])
     
-    class MockPin:
-        pass
-    
-    power = PowerManager(mock_adc, sense_names, MockPin(), MockPin())
+    power = PowerManager(buses, MockPin(), MockPin())
     
     # MOSFET should be off initially
     assert power.sat_pwr.value == False
@@ -189,18 +188,14 @@ def test_power_manager_mosfet_control():
 
 
 def test_power_manager_backward_compatibility():
-    """Test that PowerManager maintains backward compatibility."""
+    """Test that PowerManager exposes the same public APIs as before."""
     print("\nTesting PowerManager backward compatibility...")
     
     mock_adc = MockADCManager()
-    
-    # Test with standard sense names
     sense_names = ["input_20v", "satbus_20v", "main_5v", "led_5v"]
+    buses = _make_buses(mock_adc, sense_names)
     
-    class MockPin:
-        pass
-    
-    power = PowerManager(mock_adc, sense_names, MockPin(), MockPin())
+    power = PowerManager(buses, MockPin(), MockPin())
     
     # All original properties should work
     status = power.status
@@ -232,11 +227,9 @@ def test_power_manager_sat_profile():
     
     # Satellite has only 3 channels
     sense_names = ["input_20v", "satbus_20v", "main_5v"]
+    buses = _make_buses(mock_adc, sense_names)
     
-    class MockPin:
-        pass
-    
-    power = PowerManager(mock_adc, sense_names, MockPin(), MockPin())
+    power = PowerManager(buses, MockPin(), MockPin())
     
     status = power.status
     
@@ -251,9 +244,145 @@ def test_power_manager_sat_profile():
     print("✓ PowerManager satellite profile test passed")
 
 
+def test_power_bus_adc_sensor_wrapper():
+    """Test ADCSensorWrapper capability flags and reads."""
+    print("\nTesting ADCSensorWrapper...")
+    
+    mock_adc = MockADCManager()
+    wrapper = ADCSensorWrapper(mock_adc, "input_20v")
+    
+    assert wrapper.HAS_CURRENT == False
+    assert wrapper.HAS_POWER == False
+    assert abs(wrapper.read_voltage() - 19.5) < 0.01
+    assert wrapper.read_current() is None
+    assert wrapper.read_power() is None
+    
+    print("✓ ADCSensorWrapper test passed")
+
+
+def test_power_bus_ina_sensor_wrapper():
+    """Test INASensorWrapper capability flags and reads."""
+    print("\nTesting INASensorWrapper...")
+    
+    class MockINA:
+        bus_voltage = 19.8
+        current = 1250.0
+        power = 24750.0
+    
+    wrapper = INASensorWrapper(MockINA())
+    
+    assert wrapper.HAS_CURRENT == True
+    assert wrapper.HAS_POWER == True
+    assert abs(wrapper.read_voltage() - 19.8) < 0.01
+    assert abs(wrapper.read_current() - 1250.0) < 0.01
+    assert abs(wrapper.read_power() - 24750.0) < 0.01
+    
+    print("✓ INASensorWrapper test passed")
+
+
+def test_power_bus_update_and_tracking():
+    """Test PowerBus.update() tracks v_now, v_min, v_max correctly."""
+    print("\nTesting PowerBus state tracking...")
+    
+    mock_adc = MockADCManager()
+    mock_adc.set_reading("input_20v", 19.5)
+    bus = PowerBus("input_20v", ADCSensorWrapper(mock_adc, "input_20v"))
+    
+    bus.update()
+    assert bus.v_now == 19.5
+    
+    mock_adc.set_reading("input_20v", 20.5)
+    bus.update()
+    assert bus.v_max == 20.5
+    
+    mock_adc.set_reading("input_20v", 18.0)
+    bus.update()
+    assert bus.v_min == 18.0
+    
+    # ADC bus has no current capability
+    assert bus.has_current == False
+    assert bus.i_now is None
+    
+    print("✓ PowerBus state tracking test passed")
+
+
+def test_power_bus_ina_current_tracking():
+    """Test PowerBus tracks i_now / i_max for INA-backed buses."""
+    print("\nTesting PowerBus INA current tracking...")
+    
+    class MockINA:
+        def __init__(self):
+            self.bus_voltage = 19.8
+            self.current = 500.0
+            self.power = 9900.0
+    
+    ina = MockINA()
+    bus = PowerBus("input_20v", INASensorWrapper(ina))
+    
+    assert bus.has_current == True
+    assert bus.has_power == True
+    
+    bus.update()
+    assert bus.i_now == 500.0
+    assert bus.i_max == 500.0
+    
+    ina.current = 800.0
+    bus.update()
+    assert bus.i_now == 800.0
+    assert bus.i_max == 800.0
+    
+    ina.current = 300.0
+    bus.update()
+    assert bus.i_now == 300.0
+    assert bus.i_max == 800.0  # i_max unchanged
+    
+    print("✓ PowerBus INA current tracking test passed")
+
+
+def test_get_telemetry_payload():
+    """Test PowerManager.get_telemetry_payload() respects capability flags."""
+    print("\nTesting get_telemetry_payload()...")
+    
+    mock_adc = MockADCManager()
+    
+    # ADC-only bus
+    adc_bus = PowerBus("input_20v", ADCSensorWrapper(mock_adc, "input_20v"))
+    adc_bus.update()
+    
+    # INA-backed bus
+    class MockINA:
+        bus_voltage = 4.95
+        current = 200.0
+        power = 990.0
+    ina_bus = PowerBus("main_5v", INASensorWrapper(MockINA()))
+    ina_bus.update()
+    
+    power = PowerManager(
+        {"input_20v": adc_bus, "main_5v": ina_bus},
+        MockPin(), MockPin()
+    )
+    
+    payload = power.get_telemetry_payload()
+    
+    # ADC rail: only voltage
+    assert "v" in payload["input_20v"]
+    assert "i" not in payload["input_20v"]
+    assert "p" not in payload["input_20v"]
+    
+    # INA rail: voltage + current + power
+    assert "v" in payload["main_5v"]
+    assert "i" in payload["main_5v"]
+    assert "p" in payload["main_5v"]
+    assert abs(payload["main_5v"]["i"] - 200.0) < 0.01
+    assert abs(payload["main_5v"]["p"] - 990.0) < 0.01
+    
+    print(f"  ✓ Payload: {payload}")
+    print("✓ get_telemetry_payload() test passed")
+
+
 if __name__ == "__main__":
     print("=" * 60)
-    print("PowerManager with ADCManager Test Suite")
+    print("PowerManager with PowerBus/ADCSensorWrapper Test Suite")
     print("=" * 60)
     
     test_power_manager_initialization()
@@ -262,14 +391,21 @@ if __name__ == "__main__":
     test_power_manager_mosfet_control()
     test_power_manager_backward_compatibility()
     test_power_manager_sat_profile()
+    test_power_bus_adc_sensor_wrapper()
+    test_power_bus_ina_sensor_wrapper()
+    test_power_bus_update_and_tracking()
+    test_power_bus_ina_current_tracking()
+    test_get_telemetry_payload()
     
     print("\n" + "=" * 60)
     print("ALL TESTS PASSED ✓")
     print("=" * 60)
     print()
-    print("PowerManager successfully integrates with ADCManager:")
-    print("  • Reads voltages through ADCManager instead of direct analogio")
+    print("PowerManager successfully uses the PowerBus abstraction:")
+    print("  • Reads voltages through ADCSensorWrapper/INASensorWrapper")
     print("  • Maintains all original APIs for backward compatibility")
     print("  • Tracks max/min voltages correctly")
     print("  • MOSFET control works as expected")
     print("  • Supports both Core and Satellite profiles")
+    print("  • Telemetry payload respects sensor capabilities")
+
