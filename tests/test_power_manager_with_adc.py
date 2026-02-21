@@ -265,7 +265,7 @@ def test_power_bus_ina_sensor_wrapper():
     print("\nTesting INASensorWrapper...")
     
     class MockINA:
-        bus_voltage = 19.8
+        voltage = 19.8
         current = 1250.0
         power = 24750.0
     
