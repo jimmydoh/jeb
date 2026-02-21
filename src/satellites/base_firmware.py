@@ -21,6 +21,9 @@ from transport.protocol import (
     CMD_REBOOT,
     CMD_MODE,
     CMD_ACK,
+    CMD_SET_OFFSET,
+    CMD_GLOBAL_RAINBOW,
+    CMD_GLOBAL_RAIN,
     CMD_VERSION_CHECK,
     CMD_UPDATE_START,
     CMD_UPDATE_WAIT,
@@ -127,9 +130,16 @@ class SatelliteFirmware:
             CMD_REBOOT: self._handle_reboot_command,
             CMD_MODE: self._handle_mode_command,
             CMD_ACK: self._handle_ack_command,
+            CMD_SET_OFFSET: self._handle_set_offset,
+            CMD_GLOBAL_RAINBOW: self._handle_global_rainbow,
+            CMD_GLOBAL_RAIN: self._handle_global_rain,
             CMD_UPDATE_START: self._handle_update_start,
             CMD_UPDATE_WAIT: self._handle_update_wait,
         }
+
+        # Global animation state: instantiated when SETOFF is received
+        self._global_anim_ctrl = None
+        self._global_anim_task = None  # Tracked task for active global animation
 
         # Version check and firmware update state
         self._version_check_sent = False      # True after VERSION_CHECK sent to core
@@ -262,6 +272,109 @@ class SatelliteFirmware:
         """
         if self._version_check_sent and not self._version_confirmed and not self._update_mode:
             self._version_confirmed = True
+
+    async def _handle_set_offset(self, val):
+        """Handle SETOFF from core.
+
+        Stores the satellite's spatial position on the global animation canvas
+        and instantiates a :class:`GlobalAnimationController`, registering this
+        satellite's LEDs at the provided offset so that global animations can be
+        rendered locally with correct coordinates.
+
+        Subclasses may override :meth:`_register_global_anim_leds` to attach
+        their specific hardware managers to the controller.
+
+        Parameters:
+            val: Payload — a tuple/list of two integers ``[offset_x, offset_y]``.
+        """
+        try:
+            if isinstance(val, (list, tuple)) and len(val) >= 2:
+                offset_x = int(val[0])
+                offset_y = int(val[1])
+            else:
+                parts = str(val).split(',')
+                offset_x = int(parts[0])
+                offset_y = int(parts[1]) if len(parts) > 1 else 0
+        except (ValueError, IndexError, TypeError):
+            print(f"{self.sat_type_id}-{self.id}: Invalid SETOFF payload: {val}")
+            return
+
+        from managers.global_animation_controller import GlobalAnimationController
+        self._global_anim_ctrl = GlobalAnimationController()
+        self._register_global_anim_leds(offset_x, offset_y)
+        print(f"{self.sat_type_id}-{self.id}: Global canvas offset set to ({offset_x}, {offset_y})")
+
+    def _register_global_anim_leds(self, offset_x, offset_y):
+        """Hook for subclasses to register their LEDs with the global animation controller.
+
+        Called automatically by :meth:`_handle_set_offset` after the controller
+        is created.  The default implementation does nothing; concrete satellite
+        subclasses should override this method to call
+        ``self._global_anim_ctrl.register_led_strip(...)`` (or similar) with
+        their hardware managers.
+
+        Parameters:
+            offset_x: Global X offset received from the Core.
+            offset_y: Global Y offset received from the Core.
+        """
+        pass  # Intentionally empty; subclasses override to attach hardware managers
+
+    async def _handle_global_rainbow(self, val):
+        """Handle GLOBALRBOW from core — start a synchronized rainbow wave.
+
+        Parses the speed parameter and starts :meth:`global_rainbow_wave` on the
+        local :class:`GlobalAnimationController` (if one has been initialised via
+        SETOFF).  Any previously running global animation task is cancelled first
+        to avoid resource leaks and conflicting animations.
+
+        Parameters:
+            val: Payload — a float or tuple containing ``[speed]``.
+        """
+        if self._global_anim_ctrl is None:
+            return
+        try:
+            if isinstance(val, (list, tuple)):
+                speed = float(val[0])
+            else:
+                speed = float(val)
+        except (ValueError, TypeError):
+            speed = 30.0
+        import asyncio
+        if self._global_anim_task and not self._global_anim_task.done():
+            self._global_anim_task.cancel()
+        self._global_anim_task = asyncio.create_task(
+            self._global_anim_ctrl.global_rainbow_wave(speed=speed)
+        )
+
+    async def _handle_global_rain(self, val):
+        """Handle GLOBALRAIN from core — start a synchronized rain animation.
+
+        Parses the speed and density parameters and starts :meth:`global_rain`
+        on the local :class:`GlobalAnimationController` (if one has been
+        initialised via SETOFF).  Any previously running global animation task is
+        cancelled first to avoid resource leaks and conflicting animations.
+
+        Parameters:
+            val: Payload — a tuple/list of ``[speed, density]`` floats.
+        """
+        if self._global_anim_ctrl is None:
+            return
+        try:
+            if isinstance(val, (list, tuple)):
+                speed = float(val[0]) if len(val) > 0 else 0.15
+                density = float(val[1]) if len(val) > 1 else 0.3
+            else:
+                speed = float(val)
+                density = 0.3
+        except (ValueError, TypeError):
+            speed = 0.15
+            density = 0.3
+        import asyncio
+        if self._global_anim_task and not self._global_anim_task.done():
+            self._global_anim_task.cancel()
+        self._global_anim_task = asyncio.create_task(
+            self._global_anim_ctrl.global_rain(speed=speed, density=density)
+        )
 
     async def _handle_update_start(self, val):
         """Handle UPDATE_START from core — enter firmware update mode.

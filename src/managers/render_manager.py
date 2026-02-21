@@ -33,6 +33,9 @@ class RenderManager:
         # List of managers to step() every frame (e.g., LEDManager, MatrixManager)
         self._animators = []
 
+        # List of GlobalAnimationControllers to receive frame counter updates
+        self._global_anim_controllers = []
+
         # Sync State
         self.frame_counter = 0
         self.last_sync_broadcast = 0.0
@@ -45,6 +48,18 @@ class RenderManager:
     def add_animator(self, manager):
         """Register a manager that needs its .animate_loop(step=True) called."""
         self._animators.append(manager)
+
+    def add_global_animation_controller(self, controller):
+        """Register a GlobalAnimationController to receive frame counter updates.
+
+        The controller's :meth:`sync_frame` method is called every render frame
+        with the current ``frame_counter`` value, enabling deterministic,
+        frame-synchronized global animations.
+
+        Args:
+            controller: GlobalAnimationController instance to register.
+        """
+        self._global_anim_controllers.append(controller)
 
     async def run(self, heartbeat_callback=None):
         """The main render loop (default 60Hz, configurable via target_frame_rate).
@@ -67,6 +82,10 @@ class RenderManager:
 
             # 4. Sync Logic
             self.frame_counter += 1
+
+            # Update all registered GlobalAnimationControllers with the new frame
+            for ctrl in self._global_anim_controllers:
+                ctrl.sync_frame(self.frame_counter)
 
             if self.sync_role == "MASTER" and self.network:
                 # Broadcast every 1 second

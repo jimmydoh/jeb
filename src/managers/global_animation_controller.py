@@ -36,6 +36,7 @@ class GlobalAnimationController:
         self._pixel_map = {}    # (global_x, global_y) -> (manager, pixel_idx)
         self._canvas_width = 0
         self._canvas_height = 0
+        self._frame_counter = 0  # Synchronized frame counter (updated via sync_frame())
 
     @property
     def canvas_width(self):
@@ -51,6 +52,17 @@ class GlobalAnimationController:
     def pixel_count(self):
         """Total number of mapped pixels across all registered components."""
         return len(self._pixel_map)
+
+    def sync_frame(self, frame):
+        """Update the synchronized frame counter used by deterministic animations.
+
+        Called by RenderManager (Core) each frame, or by satellite firmware after
+        receiving a SYNC_FRAME packet, to keep animations temporally aligned.
+
+        Args:
+            frame: Integer frame counter from the Master (Core) RenderManager.
+        """
+        self._frame_counter = frame
 
     def register_matrix(self, matrix_manager, offset_x=0, offset_y=0):
         """
@@ -221,6 +233,15 @@ class GlobalAnimationController:
         All pixels at the same global X coordinate share a hue, creating vertical
         color bands that travel continuously across the full layout.
 
+        When ``_frame_counter`` has been set via :meth:`sync_frame` to a non-zero
+        value, the hue is computed from the integer frame counter at an assumed
+        60 Hz rate, making it deterministic and reproducible across the Core and
+        any satellite that shares the same synchronized frame counter.  If the
+        counter is 0 (never updated), the animation falls back to
+        ``time.monotonic()`` for standalone / non-networked use.
+
+        Duration is always measured in wall-clock time via ``time.monotonic()``.
+
         Args:
             speed: Hue rotation speed in degrees per second (default: 30.0).
                    Higher values produce a faster-moving wave.
@@ -231,6 +252,7 @@ class GlobalAnimationController:
             return
 
         canvas_w = max(self._canvas_width, 1)
+        _FRAME_RATE = 60.0  # Assumed frame rate for frame-counter-to-seconds conversion
         start_t = time.monotonic()
 
         while True:
@@ -240,10 +262,17 @@ class GlobalAnimationController:
             if duration is not None and elapsed >= duration:
                 break
 
+            # Use synchronized frame counter when available (non-zero), otherwise
+            # fall back to wall-clock elapsed time for standalone operation.
+            if self._frame_counter != 0:
+                t = self._frame_counter / _FRAME_RATE
+            else:
+                t = elapsed
+
             for (gx, gy), (manager, idx) in self._pixel_map.items():
                 # Hue = time-driven offset + spatial offset based on global X.
                 # Produces a rainbow band that sweeps left → right across the canvas.
-                hue = (elapsed * speed + gx * (360.0 / canvas_w)) % 360.0
+                hue = (t * speed + gx * (360.0 / canvas_w)) % 360.0
                 color = Palette.hsv_to_rgb(hue, 1.0, 1.0)
                 manager.set_animation(idx, "SOLID", color, priority=priority)
 
@@ -256,6 +285,14 @@ class GlobalAnimationController:
 
         Each tick, active drops advance one row. New drops are randomly spawned at
         the top row of each column based on the density parameter.
+
+        When ``_frame_counter`` has been set via :meth:`sync_frame` and is
+        advancing each render frame, the step interval is computed from ``speed``
+        and an assumed 60 Hz rate so that drops advance at frame boundaries.
+        If the frame counter is not advancing (e.g., standalone mode), the
+        animation falls back to wall-clock timing via ``time.monotonic()``.
+
+        Duration is always measured in wall-clock time.
 
         Args:
             color: RGB tuple for rain drops. Defaults to cyan-blue (0, 180, 255).
@@ -282,7 +319,13 @@ class GlobalAnimationController:
         # Track active drop positions: {gx: current_gy}
         active_drops = {}
 
+        _FRAME_RATE = 60.0
+        step_frames = max(1, round(speed * _FRAME_RATE))  # frames per drop-advance step
+        start_frame = self._frame_counter
+        last_step_frame = start_frame - step_frames  # ensure first step runs immediately
         start_t = time.monotonic()
+        last_step_t = start_t - speed  # fallback: ensure first step runs immediately
+        last_known_frame = self._frame_counter  # tracks per-iteration changes
 
         while True:
             now = time.monotonic()
@@ -291,29 +334,47 @@ class GlobalAnimationController:
             if duration is not None and elapsed >= duration:
                 break
 
-            # Clear all pixels for this frame
-            for (gx, gy), (manager, idx) in self._pixel_map.items():
-                manager.pixels[idx] = (0, 0, 0)
+            # Detect if the frame counter is advancing this iteration.
+            # Comparing to last_known_frame (updated each loop) is more robust
+            # than comparing to start_frame, which could coincidentally equal the
+            # current value after a long-running wrap-around.
+            frame_advancing = self._frame_counter != last_known_frame
+            last_known_frame = self._frame_counter
 
-            # Advance existing drops one row down
-            new_drops = {}
-            for gx, drop_gy in active_drops.items():
-                col = columns.get(gx, [])
-                next_rows = [gy for gy in col if gy > drop_gy]
-                if next_rows:
-                    new_drops[gx] = min(next_rows)
-            active_drops = new_drops
+            if frame_advancing:
+                time_to_step = (self._frame_counter - last_step_frame) >= step_frames
+            else:
+                time_to_step = (now - last_step_t) >= speed
 
-            # Spawn new drops at the top of each column
-            for gx, col_rows in columns.items():
-                if gx not in active_drops and col_rows and random.random() < density:
-                    active_drops[gx] = col_rows[0]
+            if time_to_step:
+                if frame_advancing:
+                    last_step_frame = self._frame_counter
+                else:
+                    last_step_t = now
 
-            # Render active drops
-            for gx, drop_gy in active_drops.items():
-                entry = self._pixel_map.get((gx, drop_gy))
-                if entry is not None:
-                    manager, idx = entry
-                    manager.pixels[idx] = color
+                # Clear all pixels for this frame
+                for (gx, gy), (manager, idx) in self._pixel_map.items():
+                    manager.pixels[idx] = (0, 0, 0)
 
-            await asyncio.sleep(speed)
+                # Advance existing drops one row down
+                new_drops = {}
+                for gx, drop_gy in active_drops.items():
+                    col = columns.get(gx, [])
+                    next_rows = [gy for gy in col if gy > drop_gy]
+                    if next_rows:
+                        new_drops[gx] = min(next_rows)
+                active_drops = new_drops
+
+                # Spawn new drops at the top of each column
+                for gx, col_rows in columns.items():
+                    if gx not in active_drops and col_rows and random.random() < density:
+                        active_drops[gx] = col_rows[0]
+
+                # Render active drops
+                for gx, drop_gy in active_drops.items():
+                    entry = self._pixel_map.get((gx, drop_gy))
+                    if entry is not None:
+                        manager, idx = entry
+                        manager.pixels[idx] = color
+
+            await asyncio.sleep(0.016)  # ~60 Hz yield to keep event loop responsive
