@@ -39,5 +39,11 @@ class MatrixManager:
     def draw_wedge(self, quad_idx, color, anim_mode=None, speed=1.0, duration=None):
         pass
 
+    def display_text(self, text, color=(255, 255, 255), scroll_speed=0.05):
+        pass
+
+    def stop_text(self):
+        pass
+
     async def animate_loop(self, step=True):
         pass
