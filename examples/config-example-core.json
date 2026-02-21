@@ -8,7 +8,7 @@
     "wifi_ssid": "YOUR_WIFI_SSID",
     "wifi_password": "YOUR_WIFI_PASSWORD",
     "update_url": "https://your-server.com",
-    "satellite_offsets": {
+    "satellites": {
         "0101": {"offset_x": 0, "offset_y": 16},
         "0102": {"offset_x": 8, "offset_y": 16}
     }
