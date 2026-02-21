@@ -4,6 +4,8 @@
 import asyncio
 from enum import Enum
 import math
+import sys
+import time
 
 from utilities.palette import Palette
 from utilities.icons import Icons
@@ -64,6 +66,22 @@ class MatrixManager(BasePixelManager):
             raise ValueError("custom_chain_map must be provided when using CUSTOM layout")
 
         self._build_index_lut()
+
+        # --- Text Mode State ---
+        self._text_mode_active = False
+        self._text_last_scroll = 0.0
+        self._text_scroll_delay = 0.05  # Default scroll interval in seconds
+        self._framebuf = None
+        try:
+            import adafruit_pixel_framebuf
+            self._framebuf = adafruit_pixel_framebuf.PixelFramebuffer(
+                self.pixels,
+                self.width,
+                self.height,
+                alternating=(chain_layout == PanelLayout.SERPENTINE)
+            )
+        except ImportError:
+            print("WARNING: adafruit_pixel_framebuf not available. Text scrolling features will not be available.", file=sys.stderr)
 
     def _get_panel_chain_index(self, panel_x, panel_y, panels_per_row):
         """Determines the hardware wiring index for a physical panel position."""
@@ -170,8 +188,73 @@ class MatrixManager(BasePixelManager):
             self.pixels.fill(color)
         # Note: 'show' parameter is ignored - render loop handles hardware writes
 
-    # TODO draw_line, draw_rect, draw_circle, draw_text, etc.
+    # TODO draw_line, draw_rect, draw_circle, etc.
 
+    def display_text(self, text, color=(255, 255, 255), scroll_speed=0.05):
+        """Display scrolling text on the matrix using adafruit_pixel_framebuf.
+
+        Enables Text Mode, which bypasses standard animation slots until
+        stop_text() is called. Supports multiline text via newlines or a list.
+
+        Args:
+            text: String (use '\\n' for two lines) or list of up to 2 strings.
+            color: RGB tuple (r, g, b), default white.
+            scroll_speed: Seconds between each 1-pixel left scroll step.
+        """
+        if not self._framebuf:
+            return
+
+        self.clear()
+        self._text_scroll_delay = scroll_speed
+        self._text_mode_active = True
+
+        # Support either a string with newlines, or a list of strings
+        lines = text.split('\n') if isinstance(text, str) else text
+
+        # Draw each line, offsetting Y by 8 pixels per row
+        for i, line in enumerate(lines[:2]):  # Limit to 2 rows to fit 16x16
+            y_offset = i * 8
+            # The .text() signature takes string, x, y, and color
+            self._framebuf.text(line, self.width, y_offset, color, font_name="font5x8.bin")
+
+        self._framebuf.display()
+        self._text_last_scroll = time.monotonic()
+
+    def stop_text(self):
+        """Stop text mode and return control to the standard animation slots."""
+        self._text_mode_active = False
+        if self._framebuf:
+            self._framebuf.fill(0)
+            self._framebuf.display()
+
+    async def animate_loop(self, step=True):
+        """Unified background task with text mode bypass.
+
+        When text mode is active, autonomously scrolls the frame buffer at a
+        deterministic speed and bypasses the standard animation slot evaluation.
+        """
+        while True:
+            # Text Mode Bypass — skip standard slot evaluation
+            if self._text_mode_active and self._framebuf:
+                now = time.monotonic()
+                if now - self._text_last_scroll >= self._text_scroll_delay:
+                    self._framebuf.scroll(-1, 0)  # Shift left 1 pixel
+                    self._framebuf.display()       # Push to self.pixels
+                    self._text_last_scroll = now
+                if step:
+                    return
+                await asyncio.sleep(0.05)
+                continue
+
+            # Standard animation handling (delegate to base class for one step)
+            await super().animate_loop(step=True)
+
+            if step:
+                return
+
+            await asyncio.sleep(0.05)
+
+    # TODO Refactor progress grid to use animations
     def show_icon(
             self,
             icon_name,
