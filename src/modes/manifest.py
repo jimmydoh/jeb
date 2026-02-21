@@ -170,6 +170,15 @@ MODE_REGISTRY = {
             }
         ]
     },
+    "LAYOUT_CONFIGURATOR": {
+        "id": "LAYOUT_CONFIGURATOR",
+        "name": "LAYOUT CONFIG",
+        "module_path": "modes.layout_configurator",
+        "class_name": "LayoutConfigurator",
+        "icon": "ADMIN",
+        "requires": ["CORE"],
+        "settings": []
+    },
     "SNAKE": {
         "id": "SNAKE",
         "name": "CYBER SNAKE",

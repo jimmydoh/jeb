@@ -156,8 +156,8 @@ class MainMenu(UtilityMode):
 
             # --- ADMIN STATE ---
             elif self.state == "ADMIN":
-                admin_items = ["Settings", "Debug Dash", "Calibration", "UART Logs", "Reset"]
-                admin_keys = ["SETTINGS", "DEBUG", "CALIB", "UARTLOG", "RESET"]
+                admin_items = ["Settings", "Debug Dash", "Calibration", "Layout Config", "UART Logs", "Reset"]
+                admin_keys = ["SETTINGS", "DEBUG", "CALIB", "LAYOUT_CONFIGURATOR", "UARTLOG", "RESET"]
 
                 if encoder_diff != 0:
                     self.touch()
@@ -169,7 +169,11 @@ class MainMenu(UtilityMode):
                 if encoder_pressed:
                     self.touch()
                     await self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
-                    return admin_keys[admin_idx]
+                    selected_key = admin_keys[admin_idx]
+                    if selected_key == "LAYOUT_CONFIGURATOR":
+                        self.core.mode = "LAYOUT_CONFIGURATOR"
+                        return "SUCCESS"
+                    return selected_key
 
                 if btn_b_long:
                     self.touch()
@@ -270,7 +274,7 @@ class MainMenu(UtilityMode):
                     self.core.matrix.clear()
 
                 elif self.state == "ADMIN":
-                    admin_items = ["Settings", "Debug Dash", "Calibration", "UART Logs", "Reset"]
+                    admin_items = ["Settings", "Debug Dash", "Calibration", "Layout Config", "UART Logs", "Reset"]
                     admin_idx = curr_pos % len(admin_items)
 
                     self.core.display.use_standard_layout()
