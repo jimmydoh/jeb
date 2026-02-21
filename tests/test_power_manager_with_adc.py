@@ -312,7 +312,7 @@ def test_power_bus_ina_current_tracking():
     
     class MockINA:
         def __init__(self):
-            self.bus_voltage = 19.8
+            self.voltage = 19.8
             self.current = 500.0
             self.power = 9900.0
     
@@ -351,7 +351,7 @@ def test_get_telemetry_payload():
     
     # INA-backed bus
     class MockINA:
-        bus_voltage = 4.95
+        voltage = 4.95
         current = 200.0
         power = 990.0
     ina_bus = PowerBus("main_5v", INASensorWrapper(MockINA()))
