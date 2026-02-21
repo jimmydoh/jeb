@@ -82,7 +82,8 @@ class TestSaveHelper:
         # The function itself only uses json/os so it is safe to import.
         import importlib, importlib.util, types
 
-        # Stub out the only hardware-dependent import chains needed at module level
+        # UtilityMode (base class of LayoutConfigurator) imports adafruit_ticks at
+        # module level, so stub it before executing the layout_configurator module.
         for mod_name in ['adafruit_ticks', 'utilities.palette', 'modes.utility_mode']:
             if mod_name not in sys.modules:
                 sys.modules[mod_name] = types.ModuleType(mod_name)

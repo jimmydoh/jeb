@@ -150,7 +150,7 @@ class LayoutConfigurator(UtilityMode):
             self.core.display.use_standard_layout()
             self.core.display.update_header("LAYOUT CONFIG")
             self.core.display.update_status(f"SAT {sid}", axis_indicator)
-            self.core.display.update_footer("Tap=axis  Hold=save")
+            self.core.display.update_footer("Tap=axis  Hold=save  W=cancel")
 
         # Highlight the first satellite and render initial UI
         _highlight_satellite(_current_sat())
@@ -166,7 +166,7 @@ class LayoutConfigurator(UtilityMode):
             encoder_tap = self.core.hid.is_encoder_button_pressed(action="tap")
             encoder_long = self.core.hid.is_encoder_button_pressed(action="hold", duration=2000)
             btn_d_tap = self.core.hid.is_button_pressed(3, action="tap")
-            btn_b_long = self.core.hid.is_button_pressed(1, long=True, duration=2000)
+            btn_b_long = self.core.hid.is_button_pressed(1, action="hold", duration=2000)
 
             needs_render = False
 
