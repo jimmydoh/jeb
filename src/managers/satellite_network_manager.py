@@ -47,7 +47,10 @@ class SatelliteNetworkManager:
 
         # Satellite spatial offsets for the global animation canvas.
         # Keys are satellite IDs (e.g. "0101"), values are {"offset_x", "offset_y"}.
-        self._satellite_offsets = (config or {}).get("satellite_offsets", {})
+        # Config key "satellites" is canonical; "satellite_offsets" is accepted for
+        # backwards compatibility with existing config files.
+        _cfg = config or {}
+        self._satellite_offsets = _cfg.get("satellites", _cfg.get("satellite_offsets", {}))
 
         # Satellite Registry
         self.satellites = {}
@@ -83,6 +86,39 @@ class SatelliteNetworkManager:
     def set_debug_mode(self, debug_mode):
         """Enable or disable debug mode for message logging."""
         self._debug_mode = debug_mode
+
+    @property
+    def satellite_offsets(self):
+        """Return the current satellite offset mapping.
+
+        Returns:
+            dict: Mapping of satellite ID -> {"offset_x": int, "offset_y": int}.
+        """
+        return self._satellite_offsets
+
+    def set_satellite_offset(self, sid, offset_x, offset_y):
+        """Update the in-memory spatial offset for a satellite.
+
+        This does **not** persist the change to ``config.json``; call
+        :func:`~modes.layout_configurator.save_satellite_offsets` from the
+        Layout Configurator mode to persist.  Immediately sends a ``SETOFF``
+        command to the satellite so it can reposition itself on the global
+        canvas in real-time.
+
+        Args:
+            sid (str): Satellite ID (e.g. ``"0101"``).
+            offset_x (int): New X offset on the global animation canvas.
+            offset_y (int): New Y offset on the global animation canvas.
+        """
+        self._satellite_offsets[sid] = {"offset_x": offset_x, "offset_y": offset_y}
+        if sid in self.satellites:
+            self.transport.send(
+                Message("CORE", sid, CMD_SET_OFFSET, [offset_x, offset_y])
+            )
+            JEBLogger.info(
+                "NETM",
+                f"Live SETOFF ({offset_x},{offset_y}) to {sid}."
+            )
 
     def set_wake_callback(self, callback):
         """Register a coroutine callback to invoke when a satellite triggers a remote wake.
