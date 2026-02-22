@@ -334,6 +334,44 @@ class Icons:
         0, 0, 0, 0, 1, 0, 0, 0   # Apple (red)
     ]
 
+    # 16x16 icon for NEON BEATS rhythm game.
+    # Four falling-note lanes (cols 2, 6, 10, 14) with staggered cyan notes
+    # and a white hit-zone line at the bottom row.
+    RHYTHM = [
+        # Row 0
+        0,  0,  0,  0,  0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 1
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0,
+        # Row 2
+        0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 3
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0,  0,  0,
+        # Row 4
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0,
+        # Row 5 – chord: lanes 0 + 1
+        0,  0, 51,  0,  0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 6
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 7
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0,  0,  0,
+        # Row 8
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 9 – chord: lanes 0 + 3
+        0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0,
+        # Row 10
+        0,  0,  0,  0,  0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 11
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 12 – chord: lanes 2 + 3
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0, 51,  0,
+        # Row 13
+        0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 14 – lane guide markers (dim charcoal at each lane column)
+        0,  0,  1,  0,  0,  0,  1,  0,  0,  0,  1,  0,  0,  0,  1,  0,
+        # Row 15 – white hit zone
+        4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,
+    ]
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -348,6 +386,7 @@ class Icons:
         "DATA_FLOW": DATA_FLOW,
         "TRENCH_RUN": TRENCH_RUN,
         "SNAKE": SNAKE,
+        "RHYTHM": RHYTHM,
         "0": ZERO,
         "1": ONE,
         "2": TWO,
