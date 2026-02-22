@@ -334,6 +334,18 @@ class Icons:
         0, 0, 0, 0, 1, 0, 0, 0   # Apple (red)
     ]
 
+    # 8x8 icon for NEON BEATS rhythm game – four falling note columns (0, 2, 5, 7)
+    RHYTHM = [
+        51, 0, 51, 0, 0, 51, 0, 51,  # Cyan notes on cols 0, 2, 5, 7
+        0,  0,  0, 0, 0,  0, 0,  0,
+        51, 0, 51, 0, 0, 51, 0, 51,
+        0,  0,  0, 0, 0,  0, 0,  0,
+        51, 0, 51, 0, 0, 51, 0, 51,
+        0,  0,  0, 0, 0,  0, 0,  0,
+        51, 0, 51, 0, 0, 51, 0, 51,
+        4,  4,  4, 4, 4,  4, 4,  4,  # White hit zone at bottom
+    ]
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -348,6 +360,7 @@ class Icons:
         "DATA_FLOW": DATA_FLOW,
         "TRENCH_RUN": TRENCH_RUN,
         "SNAKE": SNAKE,
+        "RHYTHM": RHYTHM,
         "0": ZERO,
         "1": ONE,
         "2": TWO,

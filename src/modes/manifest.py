@@ -200,6 +200,28 @@ MODE_REGISTRY = {
                 "default": "WRAP"
             }
         ]
+    },
+    "RHYTHM": {
+        "id": "RHYTHM",
+        "name": "NEON BEATS",
+        "module_path": "modes.rhythm_mode",
+        "class_name": "RhythmMode",
+        "icon": "RHYTHM",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY", "NORMAL", "HARD"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "latency",
+                "label": "LATENCY",
+                "options": ["0", "20", "45", "70", "100"],
+                "default": "45"
+            }
+        ]
     }
 }
 
