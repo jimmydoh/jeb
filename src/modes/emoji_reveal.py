@@ -27,27 +27,6 @@ class EmojiRevealMode(GameMode):
     answer.  An incorrect guess ends the game immediately.
     """
 
-    METADATA = {
-        "id": "EMOJI_REVEAL",
-        "name": "EMOJI REVEAL",
-        "icon": "EMOJI_REVEAL",
-        "requires": ["CORE"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["EASY", "NORMAL", "HARD"],
-                "default": "NORMAL"
-            },
-            {
-                "key": "rounds",
-                "label": "ROUNDS",
-                "options": ["3", "5", "10"],
-                "default": "5"
-            }
-        ]
-    }
-
     # ------------------------------------------------------------------
     # Question bank: each entry defines an icon key and its display name.
     # The four multiple-choice labels are picked automatically – the
@@ -172,7 +151,7 @@ class EmojiRevealMode(GameMode):
         # No input at all (reveal finished without a press) → treat as wrong
         if answer_idx == -1:
             self.core.display.update_status("TIME UP!", "NO ANSWER GIVEN")
-            self.core.matrix.show_icon("FAILURE", anim_mode="PULSE", speed=2.0)
+            self.core.matrix.show_icon(icon_key, anim_mode="PULSE", speed=2.0, border_color=Palette.RED)
             await asyncio.sleep(1.5)
             return "WRONG"
 
@@ -184,7 +163,7 @@ class EmojiRevealMode(GameMode):
                 f"CORRECT! +{round_score}",
                 f"TOTAL: {self.score}"
             )
-            self.core.matrix.show_icon("SUCCESS", anim_mode="PULSE", speed=2.0)
+            self.core.matrix.show_icon(icon_key, anim_mode="PULSE", speed=2.0, border_color=Palette.GREEN)
             await self.core.audio.play(
                 "audio/general/correct.wav",
                 self.core.audio.CH_SFX,
@@ -199,7 +178,7 @@ class EmojiRevealMode(GameMode):
             f"WRONG! It was {correct_label}",
             f"SCORE: {self.score}"
         )
-        self.core.matrix.show_icon("FAILURE", anim_mode="PULSE", speed=2.0)
+        self.core.matrix.show_icon(icon_key, anim_mode="PULSE", speed=2.0, border_color=Palette.RED)
         await self.core.audio.play(
             "audio/general/fail.wav",
             self.core.audio.CH_SFX,

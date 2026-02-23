@@ -3,12 +3,14 @@
 Tests verify:
 - emoji_reveal.py file exists and has valid Python syntax
 - EmojiRevealMode is correctly registered in the manifest
-- SKULL, GHOST, SWORD, SHIELD icons are registered in ICON_LIBRARY as 16x16 icons
-- EMOJI_REVEAL icon is registered in ICON_LIBRARY as a 16x16 icon
+- EmojiRevealMode does NOT contain a METADATA class attribute (centralised in manifest)
+- SKULL, GHOST, SWORD, SHIELD icons are registered in ICON_LIBRARY as 14x14 icons
+- EMOJI_REVEAL menu icon is registered in ICON_LIBRARY as a 16x16 icon
 - animate_random_pixel_reveal illuminates active pixels and respects the matrix bounds
 - animate_random_pixel_reveal can be cancelled mid-way
 - EmojiRevealMode._calculate_score returns MAX at t=0 and MIN at t=full duration
 - EmojiRevealMode._show_choices embeds all four choice labels in the display call
+- MatrixManager.show_icon border_color draws a 1px border around a 14x14 icon
 """
 
 import sys
@@ -92,39 +94,51 @@ def test_emoji_reveal_manifest_settings():
     assert rounds["default"] == "5"
 
 
+def test_emoji_reveal_no_metadata_in_class():
+    """EmojiRevealMode must NOT define a METADATA class attribute (centralised in manifest)."""
+    from modes.emoji_reveal import EmojiRevealMode
+    assert not hasattr(EmojiRevealMode, 'METADATA'), (
+        "EmojiRevealMode should not define METADATA; it is centralised in manifest.py"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Icon checks
 # ---------------------------------------------------------------------------
 
 def test_emoji_reveal_icon_exists_and_is_16x16():
-    """EMOJI_REVEAL icon must be a 16x16 (256-pixel) icon."""
+    """EMOJI_REVEAL menu icon must be a 16x16 (256-pixel) icon."""
     from utilities.icons import Icons
     assert "EMOJI_REVEAL" in Icons.ICON_LIBRARY
     assert len(Icons.ICON_LIBRARY["EMOJI_REVEAL"]) == 256
 
 
-def test_skull_icon_exists_and_is_16x16():
+def test_skull_icon_exists_and_is_14x14():
+    """SKULL gameplay icon must be 14x14 (196 pixels) to accommodate a 1px border."""
     from utilities.icons import Icons
     assert "SKULL" in Icons.ICON_LIBRARY
-    assert len(Icons.ICON_LIBRARY["SKULL"]) == 256
+    assert len(Icons.ICON_LIBRARY["SKULL"]) == 196
 
 
-def test_ghost_icon_exists_and_is_16x16():
+def test_ghost_icon_exists_and_is_14x14():
+    """GHOST gameplay icon must be 14x14 (196 pixels) to accommodate a 1px border."""
     from utilities.icons import Icons
     assert "GHOST" in Icons.ICON_LIBRARY
-    assert len(Icons.ICON_LIBRARY["GHOST"]) == 256
+    assert len(Icons.ICON_LIBRARY["GHOST"]) == 196
 
 
-def test_sword_icon_exists_and_is_16x16():
+def test_sword_icon_exists_and_is_14x14():
+    """SWORD gameplay icon must be 14x14 (196 pixels) to accommodate a 1px border."""
     from utilities.icons import Icons
     assert "SWORD" in Icons.ICON_LIBRARY
-    assert len(Icons.ICON_LIBRARY["SWORD"]) == 256
+    assert len(Icons.ICON_LIBRARY["SWORD"]) == 196
 
 
-def test_shield_icon_exists_and_is_16x16():
+def test_shield_icon_exists_and_is_14x14():
+    """SHIELD gameplay icon must be 14x14 (196 pixels) to accommodate a 1px border."""
     from utilities.icons import Icons
     assert "SHIELD" in Icons.ICON_LIBRARY
-    assert len(Icons.ICON_LIBRARY["SHIELD"]) == 256
+    assert len(Icons.ICON_LIBRARY["SHIELD"]) == 196
 
 
 def test_question_pool_uses_registered_icons():
@@ -135,6 +149,76 @@ def test_question_pool_uses_registered_icons():
         assert entry["icon"] in Icons.ICON_LIBRARY, (
             f"Icon '{entry['icon']}' not found in ICON_LIBRARY"
         )
+
+
+# ---------------------------------------------------------------------------
+# MatrixManager.show_icon border_color test
+# ---------------------------------------------------------------------------
+
+class _FakeMatrixShowIcon:
+    """Minimal matrix stub for show_icon border tests."""
+
+    def __init__(self, width=16, height=16):
+        self.width = width
+        self.height = height
+        self.palette = {v: (v * 3, v * 2, v) for v in range(1, 75)}
+        self.drawn = []
+        self.cleared = False
+
+    def clear(self):
+        self.cleared = True
+        self.drawn = []
+
+    def draw_pixel(self, x, y, color, brightness=1.0, anim_mode=None, speed=1.0):
+        self.drawn.append((x, y, color))
+
+    def fill(self, color, show=True):
+        pass
+
+
+def test_show_icon_border_color_draws_perimeter():
+    """show_icon with border_color must draw pixels on the matrix perimeter for a 14x14 icon."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+    from managers.matrix_manager import MatrixManager
+
+    class _MockJEBPixel:
+        def __init__(self, n):
+            self.n = n
+            self._data = [(0, 0, 0)] * n
+            self.brightness = 0.3
+        def __setitem__(self, idx, c): self._data[idx] = c
+        def __getitem__(self, idx): return self._data[idx]
+        def fill(self, c): self._data = [c] * self.n
+        def show(self): pass
+
+    n = 16 * 16
+    mm = MatrixManager(_MockJEBPixel(n), width=16, height=16)
+
+    GREEN = (0, 200, 0)
+    mm.show_icon("SKULL", border_color=GREEN)
+
+    # Collect all lit pixels
+    lit = set()
+    for y in range(16):
+        for x in range(16):
+            idx = mm._get_idx(x, y)
+            slot = mm.active_animations[idx]
+            if slot.active or mm.pixels[idx] != (0, 0, 0):
+                lit.add((x, y))
+
+    # The perimeter of the 16x16 matrix should have border pixels
+    # (14x14 icon centered → offset 1, so border is at row/col 0 and 15)
+    perimeter = set()
+    for i in range(16):
+        perimeter.add((i, 0))   # top row
+        perimeter.add((i, 15))  # bottom row
+        perimeter.add((0, i))   # left col
+        perimeter.add((15, i))  # right col
+
+    border_pixels_lit = lit & perimeter
+    assert len(border_pixels_lit) > 0, (
+        "show_icon with border_color should draw border pixels on the matrix perimeter"
+    )
 
 
 # ---------------------------------------------------------------------------

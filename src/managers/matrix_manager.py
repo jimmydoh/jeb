@@ -262,12 +262,18 @@ class MatrixManager(BasePixelManager):
             anim_mode=None,
             speed=1.0,
             color=None,
-            brightness=1.0
+            brightness=1.0,
+            border_color=None
         ):
         """
         Displays a predefined icon on the matrix with optional animation.
         anim_mode: None, "PULSE", "BLINK" are non-blocking via the animate_loop.
         anim_mode: "SLIDE_LEFT", "SLIDE_RIGHT" are non-blocking (spawned as background tasks).
+
+        border_color: Optional RGB tuple. When provided, a 1-pixel border is drawn
+        around the icon footprint using the specified colour. Intended for 14x14
+        icons displayed on a 16x16 matrix where the 1px padding on each side
+        becomes the border frame.
 
         Note: Icons are designed for 8x8 matrices. On larger matrices, the icon
         is displayed in the top-left corner. On smaller matrices, the icon is clipped.
@@ -315,6 +321,41 @@ class MatrixManager(BasePixelManager):
                             self.draw_pixel(target_x, target_y, base, anim_mode=anim_mode, speed=speed, brightness=brightness)
                         else:
                             self.draw_pixel(target_x, target_y, base, brightness=brightness)
+
+        # Draw 1-pixel border around the icon bounding box when border_color is set
+        if border_color is not None:
+            bx0 = offset_x - 1
+            by0 = offset_y - 1
+            bx1 = offset_x + icon_width
+            by1 = offset_y + icon_height
+
+            # Top and bottom rows
+            for bx in range(bx0, bx1 + 1):
+                if 0 <= bx < self.width:
+                    if 0 <= by0 < self.height:
+                        if anim_mode:
+                            self.draw_pixel(bx, by0, border_color, anim_mode=anim_mode, speed=speed, brightness=brightness)
+                        else:
+                            self.draw_pixel(bx, by0, border_color, brightness=brightness)
+                    if 0 <= by1 < self.height:
+                        if anim_mode:
+                            self.draw_pixel(bx, by1, border_color, anim_mode=anim_mode, speed=speed, brightness=brightness)
+                        else:
+                            self.draw_pixel(bx, by1, border_color, brightness=brightness)
+
+            # Left and right columns (corners already covered above)
+            for by in range(by0 + 1, by1):
+                if 0 <= by < self.height:
+                    if 0 <= bx0 < self.width:
+                        if anim_mode:
+                            self.draw_pixel(bx0, by, border_color, anim_mode=anim_mode, speed=speed, brightness=brightness)
+                        else:
+                            self.draw_pixel(bx0, by, border_color, brightness=brightness)
+                    if 0 <= bx1 < self.width:
+                        if anim_mode:
+                            self.draw_pixel(bx1, by, border_color, anim_mode=anim_mode, speed=speed, brightness=brightness)
+                        else:
+                            self.draw_pixel(bx1, by, border_color, brightness=brightness)
 
     # TODO Refactor progress grid to use animations
     def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):
