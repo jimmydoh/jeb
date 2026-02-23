@@ -267,7 +267,7 @@ class MatrixManager(BasePixelManager):
         """
         Displays a predefined icon on the matrix with optional animation.
         anim_mode: None, "PULSE", "BLINK" are non-blocking via the animate_loop.
-        anim_mode: "SLIDE_LEFT" is non-blocking (spawned as background task).
+        anim_mode: "SLIDE_LEFT", "SLIDE_RIGHT" are non-blocking (spawned as background tasks).
 
         Note: Icons are designed for 8x8 matrices. On larger matrices, the icon
         is displayed in the top-left corner. On smaller matrices, the icon is clipped.
@@ -280,6 +280,11 @@ class MatrixManager(BasePixelManager):
         # Handle SLIDE_LEFT Animation - Spawn as background task
         if anim_mode == "SLIDE_LEFT":
             asyncio.create_task(matrix_animations.animate_slide_left(self, icon_data, color, brightness))
+            return
+
+        # Handle SLIDE_RIGHT Animation - Spawn as background task
+        if anim_mode == "SLIDE_RIGHT":
+            asyncio.create_task(matrix_animations.animate_slide_right(self, icon_data, color, brightness))
             return
 
         data_len = len(icon_data)
