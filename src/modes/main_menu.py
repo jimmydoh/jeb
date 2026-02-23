@@ -102,6 +102,7 @@ class MainMenu(UtilityMode):
         last_rendered_admin = -1
         last_rendered_state = None
         last_rendered_focus = None
+        slide_direction = "SLIDE_LEFT"
 
         # Turn off all button LEDs
         self.core.leds.off_led(-1)
@@ -163,6 +164,7 @@ class MainMenu(UtilityMode):
 
                 if encoder_diff != 0:
                     self.touch()
+                    slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
                     await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
                     needs_render = True
 
@@ -218,6 +220,7 @@ class MainMenu(UtilityMode):
                 if focus_mode == "GAME":
                     if encoder_diff != 0:
                         self.touch()
+                        slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
                         selected_game_idx = curr_pos % len(menu_items)
                         await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
                         needs_render = True
@@ -284,7 +287,7 @@ class MainMenu(UtilityMode):
 
                         # Only re-trigger the slide animation if the admin mode actually changed
                         if admin_idx != last_rendered_admin:
-                            self.core.matrix.show_icon(mode_meta["icon"], anim_mode="SLIDE_LEFT", speed=2.0)
+                            self.core.matrix.show_icon(mode_meta["icon"], anim_mode=slide_direction, speed=2.0)
                         last_rendered_admin = admin_idx
                     else:
                         self.core.display.update_status("NO ADMIN MODES", "Hold 'W' to Exit")
@@ -305,7 +308,7 @@ class MainMenu(UtilityMode):
 
                         # Only re-trigger the slide animation if the game actually changed
                         if selected_game_idx != last_rendered_game:
-                            self.core.matrix.show_icon(mode_meta["icon"], anim_mode="SLIDE_LEFT", speed=2.0)
+                            self.core.matrix.show_icon(mode_meta["icon"], anim_mode=slide_direction, speed=2.0)
 
                         last_rendered_game = selected_game_idx
 
