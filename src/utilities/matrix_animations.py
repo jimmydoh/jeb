@@ -105,3 +105,69 @@ async def animate_slide_right(matrix_manager, icon_data, color=None, brightness=
     Designed to run as a background asyncio task without blocking the caller.
     """
     await animate_slide(matrix_manager, icon_data, "right", color=color, brightness=brightness)
+
+
+async def animate_random_pixel_reveal(matrix_manager, icon_data, duration, color=None, brightness=1.0):
+    """
+    Gradually reveals an icon by randomly illuminating its active pixels over a set duration.
+
+    Active pixels (non-zero values in icon_data) are shuffled and lit one by one at
+    equal time intervals so that the full image is visible by the end of the duration.
+
+    Args:
+        matrix_manager: Instance of MatrixManager (or compatible class) with:
+            - draw_pixel(x, y, color, brightness=float) method
+            - palette: Dictionary mapping pixel values to colors
+            - width, height: Matrix dimensions
+        icon_data: List/array of pixel values (must be a perfect square, e.g. 64 or 256)
+        duration: Total reveal time in seconds (float)
+        color: Optional RGB tuple to override palette colors. If None, uses palette.
+        brightness: Float from 0.0 to 1.0 for brightness adjustment
+
+    Raises:
+        asyncio.CancelledError: If the task is cancelled during execution
+        ValueError: If icon_data length is not a perfect square
+
+    Note:
+        Hardware writes are centralised in CoreManager.render_loop().
+        This function only updates the pixel buffer.
+    """
+    import random
+
+    try:
+        data_len = len(icon_data)
+        icon_dim = int(math.sqrt(data_len))
+        if icon_dim * icon_dim != data_len:
+            raise ValueError("icon_data length must be a perfect square")
+
+        x_offset = (matrix_manager.width - icon_dim) // 2
+        y_offset = (matrix_manager.height - icon_dim) // 2
+
+        # Collect indices of active (non-zero) pixels
+        active = [i for i in range(data_len) if icon_data[i] != 0]
+
+        if not active:
+            return
+
+        # Shuffle for random reveal order
+        random.shuffle(active)
+
+        delay_per_pixel = duration / len(active)
+
+        for idx in active:
+            px = idx % icon_dim
+            py = idx // icon_dim
+            target_x = px + x_offset
+            target_y = py + y_offset
+
+            if 0 <= target_x < matrix_manager.width and 0 <= target_y < matrix_manager.height:
+                pixel_value = icon_data[idx]
+                base = color if color else matrix_manager.palette.get(pixel_value, (255, 255, 255))
+                matrix_manager.draw_pixel(target_x, target_y, base, brightness=brightness)
+
+            await asyncio.sleep(delay_per_pixel)
+
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        print(f"Error in RANDOM_PIXEL_REVEAL animation: {e}")
