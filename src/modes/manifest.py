@@ -276,6 +276,29 @@ MODE_REGISTRY = {
                 "default": "5"
             }
         ]
+    },
+    "FREQ_HUNTER": {
+        "id": "FREQ_HUNTER",
+        "name": "FREQ HUNTER",
+        "module_path": "modes.frequency_hunter",
+        "class_name": "FrequencyHunterMode",
+        "icon": "FREQ_HUNTER",
+        "menu": "MAIN",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "time_limit",
+                "label": "TIME",
+                "options": ["30", "60", "90"],
+                "default": "60"
+            }
+        ]
     }
 }
 
