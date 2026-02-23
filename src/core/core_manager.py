@@ -215,11 +215,7 @@ class CoreManager:
         self.display = DisplayManager(self.i2c, device_address=Pins.I2C_ADDRESSES["OLED"])
         self.hid = HIDManager(
             encoders=Pins.ENCODERS,
-            mcp_chip="MCP23008",
-            mcp_i2c=self.i2c,
-            mcp_i2c_address=Pins.I2C_ADDRESSES.get("EXPANDER"),
-            mcp_int_pin=Pins.EXPANDER_INT,
-            expanded_buttons=Pins.EXPANDER_BUTTONS,
+            expander_configs=Pins.EXPANDER_CONFIGS,
         )
 
         # Initialize Satellite Network Manager

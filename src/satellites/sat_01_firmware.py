@@ -71,12 +71,7 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         self.hid = HIDManager(
             encoders=Pins.ENCODERS,
             matrix_keypads=Pins.MATRIX_KEYPADS,
-            mcp_chip="MCP23008",
-            mcp_i2c=self.i2c,
-            mcp_i2c_address=Pins.I2C_ADDRESSES.get("EXPANDER"),
-            mcp_int_pin=Pins.EXPANDER_INT,
-            expanded_latching_toggles=Pins.EXPANDER_LATCHING,
-            expanded_momentary_toggles=Pins.EXPANDER_MOMENTARY,
+            expander_configs=Pins.EXPANDER_CONFIGS,
             monitor_only=False
         )
 
@@ -188,14 +183,14 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         self.attract_running = False
         self.last_interaction_time = time.monotonic()
         self._idle_display_buffer = ""
-        
+
         # Clear LEDs (using priority 99 to override local animations)
         for i in range(5):
             self.leds.off_led(i, priority=99)
-            
+
         # Clear Segment display
         await self.segment.clear()
-        
+
         # Flush the HID queues so old button presses don't trigger game events
         self.hid.flush()
 
@@ -205,7 +200,7 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         while True:
             self.watchdog.check_in("hw_hid")
             changed = self.hid.hw_update(self.id)
-            
+
             if self._sleeping:
                 if changed:
                     # Local interaction while sleeping: wake locally and notify Core
@@ -260,25 +255,25 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
                 # ACTIVE MODE: Only trigger upstream updates
                 if changed:
                     self.trigger_status_update()
-                    
+
             await asyncio.sleep(0.01)
 
     async def attract_loop(self):
         """Passive background animation when nobody touches the satellite in IDLE mode."""
         # 30 seconds of inactivity triggers attract
-        ATTRACT_TIMEOUT = 30.0 
-        
+        ATTRACT_TIMEOUT = 30.0
+
         while True:
             self.watchdog.check_in("attract")
-            
+
             if self.operating_mode == "IDLE" and not self.attract_running:
                 if time.monotonic() - self.last_interaction_time > ATTRACT_TIMEOUT:
                     JEBLogger.info("FIRM", "Entering Idle Attract Mode", src=self.id)
                     self.attract_running = True
-                    
+
                     # Fire off a passive sweeping LED animation
                     self.leds.start_cylon(Palette.CYAN, speed=0.08)
-                    
+
                     # Put a fun message on the segment displays
                     await self.segment.apply_command("DSP", "** JEB ROCKS **")
 

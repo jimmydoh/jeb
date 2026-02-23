@@ -57,7 +57,6 @@ class MatrixManager(BasePixelManager):
         self.panel_height = panel_height if panel_height is not None else height
 
         self.palette = Palette.LIBRARY
-        self.icons = Icons.ICON_LIBRARY
 
         self.chain_layout = chain_layout
         self.custom_chain_map = custom_chain_map
@@ -274,14 +273,11 @@ class MatrixManager(BasePixelManager):
         around the icon footprint using the specified colour. Intended for 14x14
         icons displayed on a 16x16 matrix where the 1px padding on each side
         becomes the border frame.
-
-        Note: Icons are designed for 8x8 matrices. On larger matrices, the icon
-        is displayed in the top-left corner. On smaller matrices, the icon is clipped.
         """
         if clear:
             self.clear()
 
-        icon_data = self.icons.get(icon_name, self.icons["DEFAULT"])
+        icon_data = Icons.get(icon_name)
 
         # Handle SLIDE_LEFT Animation - Spawn as background task
         if anim_mode == "SLIDE_LEFT":
