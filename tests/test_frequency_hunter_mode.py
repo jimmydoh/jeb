@@ -117,8 +117,10 @@ def test_signal_pool_uses_registered_icons():
     from utilities.icons import Icons
     from modes.frequency_hunter import FrequencyHunterMode
     for icon_key in FrequencyHunterMode.SIGNAL_POOL:
-        assert icon_key in Icons.ICON_LIBRARY, (
-            f"Icon '{icon_key}' listed in SIGNAL_POOL but not found in ICON_LIBRARY"
+        # If Icons.get() doesn't return the DEFAULT icon, we successfully found the asset
+        icon_data = Icons.get(icon_key)
+        assert icon_data is not Icons.DEFAULT or icon_key == "DEFAULT", (
+            f"Icon '{icon_key}' could not be loaded from RAM or SD card."
         )
 
 
