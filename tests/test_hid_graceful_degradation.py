@@ -48,7 +48,6 @@ def test_has_expander_false_when_mcp_import_fails():
     sys.modules.pop('adafruit_mcp230xx.mcp23008', None)
 
     mock_i2c = mock.MagicMock()
-    mock_int_pin = mock.MagicMock()
 
     with mock.patch.dict(sys.modules, {
         'adafruit_mcp230xx': mock.MagicMock(),
@@ -59,9 +58,7 @@ def test_has_expander_false_when_mcp_import_fails():
         # Patch the from...import to raise ImportError
         with mock.patch('builtins.__import__', side_effect=_import_raiser('adafruit_mcp230xx')):
             hid = _make_hid(
-                mcp_chip="MCP23008",
-                mcp_i2c=mock_i2c,
-                mcp_i2c_address=0x20,
+                expander_configs=[{"chip": "MCP23008", "address": 0x20, "i2c": mock_i2c}],
             )
     assert hid.has_expander is False
 
@@ -92,9 +89,7 @@ def test_has_expander_false_when_oserror_raised():
         'adafruit_mcp230xx.mcp23008': mock_mcp_module,
     }):
         hid = _make_hid(
-            mcp_chip="MCP23008",
-            mcp_i2c=mock_i2c,
-            mcp_i2c_address=0x20,
+            expander_configs=[{"chip": "MCP23008", "address": 0x20, "i2c": mock_i2c}],
         )
 
     assert hid.has_expander is False
@@ -113,9 +108,7 @@ def test_has_expander_false_when_valueerror_raised():
         'adafruit_mcp230xx.mcp23008': mock_mcp_module,
     }):
         hid = _make_hid(
-            mcp_chip="MCP23008",
-            mcp_i2c=mock_i2c,
-            mcp_i2c_address=0x20,
+            expander_configs=[{"chip": "MCP23008", "address": 0x20, "i2c": mock_i2c}],
         )
 
     assert hid.has_expander is False
@@ -136,9 +129,7 @@ def test_has_expander_true_when_mcp_initializes():
         'utilities.mcp_keys': mock.MagicMock(),
     }):
         hid = _make_hid(
-            mcp_chip="MCP23008",
-            mcp_i2c=mock_i2c,
-            mcp_i2c_address=0x20,
+            expander_configs=[{"chip": "MCP23008", "address": 0x20, "i2c": mock_i2c}],
         )
 
     assert hid.has_expander is True

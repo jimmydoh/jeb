@@ -191,10 +191,10 @@ class HIDManager:
                     try:
                         if chip_type == "MCP23008":
                             from adafruit_mcp230xx.mcp23008 import MCP23008
-                            mcp = MCP23008(mcp_i2c, cfg["address"])
+                            mcp = MCP23008(cfg.get("i2c"), cfg["address"])
                         elif chip_type == "MCP23017":
                             from adafruit_mcp230xx.mcp23017 import MCP23017
-                            mcp = MCP23017(mcp_i2c, cfg["address"])
+                            mcp = MCP23017(cfg.get("i2c"), cfg["address"])
                         else:
                             continue
 
@@ -775,7 +775,7 @@ class HIDManager:
                     if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
                         self.buttons_tapped[key_idx] = True
                     self.buttons_values[key_idx] = False
-            return changed
+        return changed
 
     def _hw_expander_latching_toggles(self):
         """Polls MCP23017 and processes events into the global state arrays."""
@@ -800,7 +800,7 @@ class HIDManager:
                     if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
                         self.latching_tapped[key_idx] = True
                     self.latching_timestamps[key_idx] = 0
-            return changed
+        return changed
 
     def _hw_expander_momentary_toggles(self):
         """Polls MCP23017 and processes events into the global state arrays."""
@@ -826,7 +826,7 @@ class HIDManager:
                     if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
                         self.momentary_tapped[key_idx][direction] = True
                     self.momentary_values[key_idx][direction] = False
-            return changed
+        return changed
     #endregion
 
     #region --- Global Functions ---
