@@ -113,7 +113,7 @@ class FrequencyHunterMode(GameMode):
         """Play one round.  Returns 'LOCKED' or 'TIMEOUT'."""
         # Pick a random icon and assign it a hidden frequency
         icon_key = random.choice(self.SIGNAL_POOL)
-        icon_data = Icons.ICON_LIBRARY.get(icon_key, Icons.DEFAULT)
+        icon_data = Icons.get(icon_key)
 
         self._target_freq = round(
             random.uniform(self.FREQ_MIN + 20.0, self.FREQ_MAX - 20.0), 2
