@@ -775,7 +775,7 @@ class HIDManager:
                     if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
                         self.buttons_tapped[key_idx] = True
                     self.buttons_values[key_idx] = False
-            return changed
+        return changed
 
     def _hw_expander_latching_toggles(self):
         """Polls MCP23017 and processes events into the global state arrays."""
@@ -800,7 +800,7 @@ class HIDManager:
                     if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
                         self.latching_tapped[key_idx] = True
                     self.latching_timestamps[key_idx] = 0
-            return changed
+        return changed
 
     def _hw_expander_momentary_toggles(self):
         """Polls MCP23017 and processes events into the global state arrays."""
@@ -826,7 +826,7 @@ class HIDManager:
                     if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
                         self.momentary_tapped[key_idx][direction] = True
                     self.momentary_values[key_idx][direction] = False
-            return changed
+        return changed
     #endregion
 
     #region --- Global Functions ---
