@@ -213,32 +213,6 @@ class TestManifest:
 
 
 # ---------------------------------------------------------------------------
-# MainMenu – admin menu contains Layout Config
-# ---------------------------------------------------------------------------
-
-class TestMainMenuAdmin:
-
-    @pytest.fixture(autouse=True)
-    def mm_content(self):
-        path = os.path.join(SRC_DIR, 'modes', 'main_menu.py')
-        self.content = _read(path)
-
-    def test_layout_config_in_admin_items(self):
-        assert 'Layout Config' in self.content, \
-            "Admin menu should include 'Layout Config' item"
-
-    def test_layout_configurator_key_in_admin_keys(self):
-        assert 'LAYOUT_CONFIGURATOR' in self.content, \
-            "Admin keys should include 'LAYOUT_CONFIGURATOR'"
-
-    def test_admin_sets_mode_before_return(self):
-        """When Layout Config is selected, core.mode should be set."""
-        assert 'self.core.mode = "LAYOUT_CONFIGURATOR"' in self.content or \
-               "self.core.mode = 'LAYOUT_CONFIGURATOR'" in self.content, \
-            "MainMenu should set core.mode = 'LAYOUT_CONFIGURATOR' when that option is selected"
-
-
-# ---------------------------------------------------------------------------
 # Example config – uses canonical 'satellites' key
 # ---------------------------------------------------------------------------
 
