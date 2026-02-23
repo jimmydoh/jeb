@@ -87,6 +87,7 @@ class MainMenu(UtilityMode):
 
         # Data Variables
         menu_items = self._build_menu_items()
+        admin_items = self._build_menu_items("ADMIN")
         selected_game_idx = 0
         selected_setting_idx = 0
 
@@ -98,6 +99,7 @@ class MainMenu(UtilityMode):
         needs_render = True
         last_rendered_game = -1
         last_rendered_setting = -1
+        last_rendered_admin = -1
         last_rendered_state = None
         last_rendered_focus = None
 
@@ -132,6 +134,7 @@ class MainMenu(UtilityMode):
             if curr_sat_keys != last_sat_keys:
                 last_sat_keys = curr_sat_keys
                 menu_items = self._build_menu_items()
+                admin_items = self._build_menu_items("ADMIN")
                 if menu_items and selected_game_idx >= len(menu_items):
                     selected_game_idx = len(menu_items) - 1
                 needs_render = True
@@ -156,24 +159,18 @@ class MainMenu(UtilityMode):
 
             # --- ADMIN STATE ---
             elif self.state == "ADMIN":
-                admin_items = ["Settings", "Debug Dash", "Calibration", "Layout Config", "UART Logs", "Reset"]
-                admin_keys = ["SETTINGS", "DEBUG", "CALIB", "LAYOUT_CONFIGURATOR", "UARTLOG", "RESET"]
+                admin_idx = curr_pos % len(admin_items) if admin_items else 0
 
                 if encoder_diff != 0:
                     self.touch()
                     await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
                     needs_render = True
 
-                admin_idx = curr_pos % len(admin_items)
-
-                if encoder_pressed:
+                if encoder_pressed and admin_items:
                     self.touch()
                     await self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
-                    selected_key = admin_keys[admin_idx]
-                    if selected_key == "LAYOUT_CONFIGURATOR":
-                        self.core.mode = "LAYOUT_CONFIGURATOR"
-                        return "SUCCESS"
-                    return selected_key
+                    self.core.mode = admin_items[admin_idx]
+                    return "SUCCESS"
 
                 if btn_b_long:
                     self.touch()
@@ -274,15 +271,25 @@ class MainMenu(UtilityMode):
                     self.core.matrix.clear()
 
                 elif self.state == "ADMIN":
-                    admin_items = ["Settings", "Debug Dash", "Calibration", "Layout Config", "UART Logs", "Reset"]
-                    admin_idx = curr_pos % len(admin_items)
+                    admin_idx = curr_pos % len(admin_items) if admin_items else 0
 
                     self.core.display.use_standard_layout()
                     self.core.display.update_header("- ADMIN MODE -")
-                    # Emulate an inverted selection bar for standard labels using brackets
-                    self.core.display.update_status(f"> {admin_items[admin_idx]} <", "Hold 'W' to Exit")
-                    self.core.display.update_footer("WARNING: System Override")
-                    self.core.matrix.show_icon("WARNING")
+
+                    if admin_items:
+                        mode_id = admin_items[admin_idx]
+                        mode_meta = self.core.mode_registry[mode_id]
+                        self.core.display.update_status(f"> {mode_meta['name']} <", "Push to Select")
+                        self.core.display.update_footer("Hold 'W' to Exit")
+
+                        # Only re-trigger the slide animation if the admin mode actually changed
+                        if admin_idx != last_rendered_admin:
+                            self.core.matrix.show_icon(mode_meta["icon"], anim_mode="SLIDE_LEFT", speed=2.0)
+                        last_rendered_admin = admin_idx
+                    else:
+                        self.core.display.update_status("NO ADMIN MODES", "Hold 'W' to Exit")
+                        self.core.display.update_footer("WARNING: System Override")
+                        self.core.matrix.show_icon("WARNING")
 
                 elif self.state == "MENU":
                     mode_id = menu_items[selected_game_idx]

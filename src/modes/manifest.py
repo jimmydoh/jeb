@@ -188,6 +188,26 @@ MODE_REGISTRY = {
         "requires": ["CORE"],
         "settings": []
     },
+    "GLOBAL_SETTINGS": {
+        "id": "GLOBAL_SETTINGS",
+        "name": "GLOBAL SETTINGS",
+        "module_path": "modes.global_settings",
+        "class_name": "GlobalSettings",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "DEBUG": {
+        "id": "DEBUG",
+        "name": "DEBUG DASH",
+        "module_path": "modes.debug",
+        "class_name": "DebugMode",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "requires": ["CORE"],
+        "settings": []
+    },
     "SNAKE": {
         "id": "SNAKE",
         "name": "CYBER SNAKE",
