@@ -114,8 +114,9 @@ class IndustrialStartup(GameMode):
             # Starts at 0.4s, ends at 0.1s
             blink_speed = 0.4 - (iteration * 0.03)
 
-            # Randomly select the 'Target' toggle (0-5)
-            target_idx = random.randint(0, 5)
+            # Randomly select the 'Target' toggle (0-4)
+            # Max is 4: latching toggles 0-3, one momentary at index 4 (m_idx=0)
+            target_idx = random.randint(0, 4)
 
             # Determine the required action for this toggle
             required_state = None
@@ -228,7 +229,6 @@ class IndustrialStartup(GameMode):
 
         target_sequence = "".join([str(random.randint(0, 9)) for _ in range(8)])
         user_entry = ""
-        self.sat.clear_key()
         await asyncio.sleep(1)
         while user_entry != target_sequence:
 
@@ -244,6 +244,9 @@ class IndustrialStartup(GameMode):
                                 self.core.audio.CH_VOICE,
                                 level=narration_vol,
                                 wait=True)
+
+            # Clear the buffer NOW to drop any keys pressed during dictation
+            self.sat.clear_key()
 
             # Wait for user to enter code via keypad
             start_time = ticks_ms()
@@ -343,7 +346,7 @@ class IndustrialStartup(GameMode):
             is_aligned = (left_pos == (target_pos - 1)) and (right_pos == (target_pos + 1))
 
             # Render Matrix Visuals
-            self.core.matrix.fill(Palette.OFF, show=True)
+            self.core.matrix.fill(Palette.OFF, show=False)
 
             # Draw Target
             if is_aligned:
@@ -485,10 +488,16 @@ class IndustrialStartup(GameMode):
             for i in range(self._REACTOR_COL_COUNT):
                 if levels[i] <= 0.0 or levels[i] >= float(h):
                     self.core.display.update_status("REACTOR CRITICAL", "MELTDOWN / STALL")
+                    self.core.matrix.fill(Palette.RED, show=True, anim_mode="BLINK", speed=2.0)
+                    self.core.audio.play("audio/ind/sfx/crash.wav",
+                                        self.core.audio.CH_SFX,
+                                        level=1.0,
+                                        interrupt=True)
+                    await asyncio.sleep(2)
                     return "GAME_OVER"
 
             # Render coolant columns on the matrix
-            self.core.matrix.fill(Palette.OFF, show=True)
+            self.core.matrix.fill(Palette.OFF, show=False)
             for col in range(self._REACTOR_COL_COUNT):
                 level = levels[col]
                 # Fluid fills from the bottom: surface row = h - level

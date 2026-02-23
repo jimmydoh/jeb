@@ -1,11 +1,15 @@
 """Tests for the refactored IndustrialStartup mode.
 
 Validates:
-- Correct audio API keyword capitalisation (all lowercase interrupt/wait)
-- Phase pool randomisation (3 of 4 middle phases selected)
+- Correct audio API keyword capitalization (all lowercase interrupt/wait)
+- Phase pool randomization (3 of 4 middle phases selected)
 - Reactor Balance constants and render logic
 - Boot splash method presence
 - Bug fix: Auth Code phase no longer uses self.core.current_mode_step
+- Bug fix: Toggle sequence randint upper bound is 4 (not 5) to avoid IndexError
+- Bug fix: Auth Code clears keypad buffer after "Go!" cue, not before dictation
+- Bug fix: matrix.fill uses show=False inside animation loops to prevent flickering
+- Polish: Reactor Balance meltdown triggers red flash + SFX before returning GAME_OVER
 - Valid Python syntax
 """
 
@@ -240,6 +244,107 @@ def test_reactor_balance_safe_zone_colors():
     print("✓ Reactor Balance uses safe-zone colour coding")
 
 
+def test_toggle_randint_max_is_4():
+    """Toggle selection must roll 0-4 (not 0-5) to avoid IndexError with one momentary toggle."""
+    src = _source()
+    method_start = src.find("async def _phase_toggles")
+    next_method = src.find("\n    async def ", method_start + 1)
+    method_body = src[method_start:next_method] if next_method != -1 else src[method_start:]
+
+    assert "random.randint(0, 4)" in method_body, (
+        "_phase_toggles must use randint(0, 4) to avoid IndexError on the single momentary toggle"
+    )
+    assert "random.randint(0, 5)" not in method_body, (
+        "_phase_toggles must NOT use randint(0, 5) — index 5 would cause IndexError"
+    )
+    print("✓ Toggle randint upper bound is 4")
+
+
+def test_auth_code_clears_buffer_after_go_cue():
+    """clear_key() must appear AFTER keypad_go.wav wait, not before dictation starts."""
+    src = _source()
+    method_start = src.find("async def _phase_auth_code")
+    next_method = src.find("\n    async def ", method_start + 1)
+    method_body = src[method_start:next_method] if next_method != -1 else src[method_start:]
+
+    go_pos = method_body.find("keypad_go.wav")
+    assert go_pos != -1, "keypad_go.wav not found in _phase_auth_code"
+
+    # clear_key() must come AFTER keypad_go.wav
+    clear_after_go = method_body.find("sat.clear_key()", go_pos)
+    assert clear_after_go != -1, (
+        "sat.clear_key() must be called AFTER the 'keypad_go.wav' cue to drop premature presses"
+    )
+
+    # clear_key() must NOT appear before keypad_go.wav (except inside the entry loop for individual keys)
+    # The only clear_key() before the entry loop should not exist as a standalone flush
+    clear_before_go = method_body.find("sat.clear_key()", 0)
+    # If there's a clear_key before go_pos, it must be inside the entry loop (after start_time)
+    entry_loop_pos = method_body.find("start_time = ticks_ms()")
+    assert entry_loop_pos != -1, "start_time = ticks_ms() entry loop marker not found in _phase_auth_code"
+    if clear_before_go < go_pos:
+        # Allow if it's inside the entry loop
+        assert clear_before_go > entry_loop_pos, (
+            "sat.clear_key() must not appear before the 'keypad_go.wav' cue as a pre-flush"
+        )
+    print("✓ Auth Code clears keypad buffer after 'Go!' cue")
+
+
+def test_no_show_true_in_animation_loops():
+    """matrix.fill(Palette.OFF) inside animation loops must use show=False to prevent flickering."""
+    src = _source()
+
+    # Check _phase_brackets
+    brackets_start = src.find("async def _phase_brackets")
+    brackets_end_candidate = src.find("\n    async def ", brackets_start + 1)
+    brackets_body = src[brackets_start:brackets_end_candidate] if brackets_end_candidate != -1 else src[brackets_start:]
+
+    assert "fill(Palette.OFF, show=True)" not in brackets_body, (
+        "_phase_brackets must use show=False for matrix.fill(Palette.OFF) to prevent flickering"
+    )
+
+    # Check _phase_reactor_balance
+    reactor_start = src.find("async def _phase_reactor_balance")
+    reactor_end = src.find("\n    async def ", reactor_start + 1)
+    reactor_body = src[reactor_start:reactor_end] if reactor_end != -1 else src[reactor_start:]
+
+    # The render clear inside the loop must be show=False
+    # (the meltdown red flash uses show=True intentionally — that's OK)
+    fill_off_idx = reactor_body.find("fill(Palette.OFF, show=True)")
+    assert fill_off_idx == -1, (
+        "_phase_reactor_balance must use show=False for the per-tick matrix clear to prevent flickering"
+    )
+    print("✓ matrix.fill(Palette.OFF) uses show=False in animation loops")
+
+
+def test_reactor_balance_meltdown_drama():
+    """Reactor Balance meltdown must flash matrix red and play crash SFX before returning."""
+    src = _source()
+    method_start = src.find("async def _phase_reactor_balance")
+    next_method = src.find("\n    async def ", method_start + 1)
+    method_body = src[method_start:next_method] if next_method != -1 else src[method_start:]
+
+    # Red flash must precede the GAME_OVER return
+    red_fill_pos = method_body.find("Palette.RED")
+    game_over_pos = method_body.find('return "GAME_OVER"')
+    assert red_fill_pos != -1, (
+        "_phase_reactor_balance meltdown must flash the matrix red"
+    )
+    assert red_fill_pos < game_over_pos, (
+        "Red matrix flash must appear before the 'return GAME_OVER' statement"
+    )
+
+    # Crash SFX must be present before the GAME_OVER return
+    crash_sfx_pos = method_body.find("crash.wav")
+    assert crash_sfx_pos != -1, (
+        "_phase_reactor_balance meltdown must play crash.wav SFX"
+    )
+    assert crash_sfx_pos < game_over_pos, (
+        "crash.wav must be played before the 'return GAME_OVER' statement"
+    )
+    print("✓ Reactor Balance meltdown triggers red flash and crash SFX")
+
+
 # ---------------------------------------------------------------------------
 # Standalone runner
 # ---------------------------------------------------------------------------
@@ -263,6 +368,10 @@ if __name__ == "__main__":
         test_core_oled_shows_critical_temp,
         test_boot_splash_uses_matrix_dimensions,
         test_reactor_balance_safe_zone_colors,
+        test_toggle_randint_max_is_4,
+        test_auth_code_clears_buffer_after_go_cue,
+        test_no_show_true_in_animation_loops,
+        test_reactor_balance_meltdown_drama,
     ]
     failed = 0
     for t in tests:
