@@ -168,7 +168,7 @@ class EmojiRevealMode(GameMode):
                 "audio/general/correct.wav",
                 self.core.audio.CH_SFX,
                 level=0.8,
-                Interrupt=True
+                interrupt=True
             )
             await asyncio.sleep(1.5)
             return "CORRECT"
@@ -183,7 +183,7 @@ class EmojiRevealMode(GameMode):
             "audio/general/fail.wav",
             self.core.audio.CH_SFX,
             level=0.8,
-            Interrupt=True
+            interrupt=True
         )
         await asyncio.sleep(1.5)
         return "WRONG"
