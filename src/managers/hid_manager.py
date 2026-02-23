@@ -191,10 +191,10 @@ class HIDManager:
                     try:
                         if chip_type == "MCP23008":
                             from adafruit_mcp230xx.mcp23008 import MCP23008
-                            mcp = MCP23008(mcp_i2c, cfg["address"])
+                            mcp = MCP23008(cfg.get("i2c"), cfg["address"])
                         elif chip_type == "MCP23017":
                             from adafruit_mcp230xx.mcp23017 import MCP23017
-                            mcp = MCP23017(mcp_i2c, cfg["address"])
+                            mcp = MCP23017(cfg.get("i2c"), cfg["address"])
                         else:
                             continue
 
