@@ -14,7 +14,7 @@ class MainMenu(UtilityMode):
         super().__init__(core, name="MAIN MENU", description="Select a mode to begin", timeout=10)
         self.state = "DASHBOARD"
 
-    def _build_menu_items(self):
+    def _build_menu_items(self, menu="MAIN"):
         """Dynamically build menu based on mode registry and connected hardware.
 
         This method accesses self.core.mode_registry which is a Dict[str, dict]
@@ -31,8 +31,8 @@ class MainMenu(UtilityMode):
         # self.core.mode_registry is Dict[mode_id: str, metadata: dict]
         for mode_id, meta in self.core.mode_registry.items():
 
-            # Skip system modes (like Main Menu itself, or Debug if not needed)
-            if mode_id in ["MAINMENU", "DASHBOARD"]:
+            # Skip modes that don't belong to the current menu context (if using menu categories)
+            if "menu" not in meta or meta["menu"] != menu:
                 continue
 
             # Check requirements

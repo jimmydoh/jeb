@@ -116,7 +116,9 @@ async def run_hardware_spy_loop(core, satellite, screen):
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
-                    sys.exit()
+                    for task in asyncio.all_tasks():
+                        task.cancel()
+                    return
 
                 # --- MOUSE CLICKS (Interactive UI) ---
                 if (event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.MOUSEBUTTONUP):
@@ -635,10 +637,17 @@ async def main():
             satellite.start(),
             run_hardware_spy_loop(core, satellite, screen)
         )
+    except asyncio.CancelledError:
+        JEBLogger.note("EMUL", "🛑 Emulator closed cleanly.", src="EMUL")
     except Exception as e:
         JEBLogger.error("EMUL", f"System crashed: {e}", src="EMUL")
         import traceback
         traceback.print_exc()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n🛑 [EMULATOR] Shutting down from console (Ctrl+C)...")
+    finally:
+        pygame.quit()

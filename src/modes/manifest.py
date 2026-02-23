@@ -37,6 +37,7 @@ MODE_REGISTRY = {
         "module_path": "modes.simon",
         "class_name": "Simon",
         "icon": "SIMON",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
@@ -59,6 +60,7 @@ MODE_REGISTRY = {
         "module_path": "modes.jebris",
         "class_name": "JEBris",
         "icon": "JEBRIS",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
@@ -81,6 +83,7 @@ MODE_REGISTRY = {
         "module_path": "modes.safe_cracker",
         "class_name": "SafeCracker",
         "icon": "SAFE",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": []
     },
@@ -90,6 +93,7 @@ MODE_REGISTRY = {
         "module_path": "modes.industrial_startup",
         "class_name": "IndustrialStartup",
         "icon": "IND",
+        "menu": "MAIN",
         "requires": ["INDUSTRIAL"],
         "settings": []
     },
@@ -99,6 +103,7 @@ MODE_REGISTRY = {
         "module_path": "modes.pong",
         "class_name": "Pong",
         "icon": "PONG",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "optional": ["INDUSTRIAL"],
         "settings": [
@@ -122,6 +127,7 @@ MODE_REGISTRY = {
         "module_path": "modes.astro_breaker",
         "class_name": "AstroBreaker",
         "icon": "ASTRO_BREAKER",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
@@ -138,6 +144,7 @@ MODE_REGISTRY = {
         "module_path": "modes.trench_run",
         "class_name": "TrenchRun",
         "icon": "TRENCH_RUN",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
@@ -160,6 +167,7 @@ MODE_REGISTRY = {
         "module_path": "modes.data_flow",
         "class_name": "DataFlowMode",
         "icon": "DATA_FLOW",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
@@ -176,6 +184,7 @@ MODE_REGISTRY = {
         "module_path": "modes.layout_configurator",
         "class_name": "LayoutConfigurator",
         "icon": "ADMIN",
+        "menu": "ADMIN",
         "requires": ["CORE"],
         "settings": []
     },
@@ -185,6 +194,7 @@ MODE_REGISTRY = {
         "module_path": "modes.cyber_snake",
         "class_name": "CyberSnakeMode",
         "icon": "SNAKE",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
@@ -207,6 +217,7 @@ MODE_REGISTRY = {
         "module_path": "modes.rhythm_mode",
         "class_name": "RhythmMode",
         "icon": "RHYTHM",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
