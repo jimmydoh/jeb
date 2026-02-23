@@ -253,6 +253,29 @@ MODE_REGISTRY = {
                 "default": "45"
             }
         ]
+    },
+    "EMOJI_REVEAL": {
+        "id": "EMOJI_REVEAL",
+        "name": "EMOJI REVEAL",
+        "module_path": "modes.emoji_reveal",
+        "class_name": "EmojiRevealMode",
+        "icon": "EMOJI_REVEAL",
+        "menu": "MAIN",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY", "NORMAL", "HARD"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "rounds",
+                "label": "ROUNDS",
+                "options": ["3", "5", "10"],
+                "default": "5"
+            }
+        ]
     }
 }
 
