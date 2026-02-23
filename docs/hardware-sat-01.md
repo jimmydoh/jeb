@@ -1,7 +1,7 @@
 # PROJECT: JEB - JADNET Electronics Box - INDUSTRIAL SATELLITE (SLAVE)
-**VERSION:** 0.1 - 2024-06-05
+**VERSION:** 0.2 - 2026-02-23
 **MCU:** Raspberry Pi Pico 2 (RP2350)
-**OS:** CircuitPython 9.x+
+**OS:** CircuitPython 10.x+
 **Type:** "01" (Industrial Expansion)
 
 ---
@@ -29,7 +29,7 @@
 ### UART DAISY-CHAIN
 The Satellite acts as a repeater. It processes messages addressed to its ID and blindly relays others.
 * **UART_UP (GP0/GP1):** Communicates with the Master (or previous Satellite).
-* **UART_DOWN (GP4/GP5):** Communicates with the next Satellite in the chain.
+* **UART_DOWN (GP8/GP9):** Communicates with the next Satellite in the chain.
 
 ### RJ45 PINOUT (T568-B)
 1.  **White Orange:** SENSE (GP15 on Downstream side, Bridged to GND on Upstream side).
@@ -45,15 +45,22 @@ The Satellite acts as a repeater. It processes messages addressed to its ID and 
 
 ## *** UI/UX COMPONENTS ***
 
-* **DISPLAYS:** Dual 14-Segment LED Displays (HT16K33).
-    * **Address:** 0x70 (Right), 0x71 (Left).
-    * **Protocol:** I2C (GP2/GP3).
+* **DISPLAYS:** 1x 8-Character 14-Segment LED Display driven via **Dual HT16K33 Backpacks**.
+    * **Address Left:** 0x70. **Address Right:** 0x71.
+    * **Protocol:** I2C (GP4/GP5).
 * **INPUTS:**
-    * **Keypad:** 4x3 Matrix (Rows: GP7-10, Cols: GP11-13).
-    * **Toggles:** 4x Latching Toggles (GP20-23) with internal Pull-Ups.
-    * **Momentary:** 1x (On-Off-On) Toggle (GP24 Up / GP25 Down).
-    * **Rotary:** Incremental Encoder (GP17/18) + Push Button (GP19).
-* **FEEDBACK:** 6x NeoPixels (GP6). Asynchronous animation engine.
+    * **Small Latching Toggles:** 8x Latching Toggles arranged in **2 rows of 4** (via Expander 1, pins 0–7).
+    * **Guarded Latching Toggle:** 1x Heavy-action toggle with safety guard / **Master Arm** (Expander 2, pin 2).
+    * **Key Switch:** 1x 2-Position Key Switch / **Secure State Toggle** (Expander 2, pin 3).
+    * **Rotary Switch:** 1x 3-Position Rotary Switch / **Mode Selection / Power Routing** (Expander 2, pins 4–5).
+    * **Momentary Toggle:** 1x On-Off-On Momentary Toggle / **Dual-direction momentary action** (Expander 2, pins 0–1).
+    * **Execute Button:** 1x Large-format Single Momentary Button / **Panic or Execute** (Expander 2, pin 6).
+    * **Keypad:** 9-digit 3x3 Matrix Keypad (Rows: GP16–18, Cols: GP19–21).
+    * **Rotary Encoder:** Incremental Encoder (GP2/GP3) + Integrated Push Button (GP12).
+    * **Dual MCP23008 Expanders:** Address 0x20 (INT: GP11) and 0x21 (INT: GP13) to accommodate all additional inputs.
+* **FEEDBACK:**
+    * **Status LEDs:** Individual NeoPixels (GP6) adjacent to each of the 8 small latching toggles and the guarded toggle (indices 0–8).
+    * **LED Strips (TBD):** Provisions for up to **three 1×8 NeoPixel strips** for directional feedback / animations (e.g. left/right indicator, power gauges, progress bar).
 
 ---
 
@@ -65,44 +72,59 @@ The Satellite acts as a repeater. It processes messages addressed to its ID and 
 | **GP1** | UART_UP TX | Transmit to Upstream |
 | **GP2** | Encoder A | Rotary Encoder Phase A |
 | **GP3** | Encoder B | Rotary Encoder Phase B |
-| **GP4** | I2C SDA | Main Bus (Displays, Expander) |
-| **GP5** | I2C SCL | Main Bus (Displays, Expander) |
+| **GP4** | I2C SDA | Main Bus (Displays, Expanders) |
+| **GP5** | I2C SCL | Main Bus (Displays, Expanders) |
 | **GP6** | LED Data | NeoPixel Control Line |
 | **GP7** | SPARE | |
 | **GP8** | UART_DOWN TX | Transmit to Downstream |
 | **GP9** | UART_DOWN RX | Receive from Downstream |
 | **GP10**| Buzzer | PWM Audio (Piezo) |
-| **GP11**| Expander INT | MCP23008 Interrupt (Active Low) |
-| **GP12**| SPARE | |
-| **GP13**| SPARE | |
+| **GP11**| Expander 1 INT | MCP23008 #1 Interrupt (Active Low) |
+| **GP12**| Encoder Push | Rotary Encoder Integrated Push Button |
+| **GP13**| Expander 2 INT | MCP23008 #2 Interrupt (Active Low) |
 | **GP14**| MOSFET Control | High = Downstream Power ON |
 | **GP15**| Sat Detect | Active Low (Downstream Sense) |
-| **GP16**| Keypad Row 1 | Matrix Row |
-| **GP17**| Keypad Row 2 | Matrix Row |
-| **GP18**| Keypad Row 3 | Matrix Row |
-| **GP19**| Keypad Col 1 | Matrix Col |
-| **GP20**| Keypad Col 2 | Matrix Col |
-| **GP21**| Keypad Col 3 | Matrix Col |
+| **GP16**| Keypad Row 1 | 3×3 Matrix Row |
+| **GP17**| Keypad Row 2 | 3×3 Matrix Row |
+| **GP18**| Keypad Row 3 | 3×3 Matrix Row |
+| **GP19**| Keypad Col 1 | 3×3 Matrix Col |
+| **GP20**| Keypad Col 2 | 3×3 Matrix Col |
+| **GP21**| Keypad Col 3 | 3×3 Matrix Col |
 | **GP22**| SPARE | |
 | **GP23**| Internal | Power Supply Mode (Pico Std) |
 | **GP24**| Internal | VBUS Sense (Pico Std) |
-| **GP25**| Encoder Push | Rotary Encoder Button |
+| **GP25**| SPARE | |
 | **GP26** | ADC0 | Sense - 20V Input (Pre-MOSFET) [47k/6.8k] |
 | **GP27** | ADC1 | Sense - 20V Bus (Post-MOSFET) [47k/6.8k] |
 | **GP28** | ADC2 | Sense - 5V Logic Rail [10k/10k] |
 | **GP29**| SPARE | |
 
-### **EXPANDER MAPPING (MCP23008 at 0x20)**
+### **EXPANDER 1 MAPPING (MCP23008 at 0x20, INT: GP11)**
+*8x Small Latching Toggles arranged in 2 rows of 4.*
 
 | Pin | Function | Description |
 | :--- | :--- | :--- |
-| **GP0** | Latching 1 | Toggle Switch (Active Low) |
-| **GP1** | Latching 2 | Toggle Switch (Active Low) |
-| **GP2** | Latching 3 | Toggle Switch (Active Low) |
-| **GP3** | Latching 4 | Toggle Switch (Active Low) |
-| **GP4** | Momentary Up | Toggle 5 Direction Up |
-| **GP5** | Momentary Dn | Toggle 5 Direction Down |
-| **GP6** | SPARE | |
+| **GP0** | Small Toggle 1 | Row 1, Position 1 (Active Low) |
+| **GP1** | Small Toggle 2 | Row 1, Position 2 (Active Low) |
+| **GP2** | Small Toggle 3 | Row 1, Position 3 (Active Low) |
+| **GP3** | Small Toggle 4 | Row 1, Position 4 (Active Low) |
+| **GP4** | Small Toggle 5 | Row 2, Position 1 (Active Low) |
+| **GP5** | Small Toggle 6 | Row 2, Position 2 (Active Low) |
+| **GP6** | Small Toggle 7 | Row 2, Position 3 (Active Low) |
+| **GP7** | Small Toggle 8 | Row 2, Position 4 (Active Low) |
+
+### **EXPANDER 2 MAPPING (MCP23008 at 0x21, INT: GP13)**
+*Guarded toggle, key switch, rotary switch, momentary toggle, and execute button.*
+
+| Pin | Function | Description |
+| :--- | :--- | :--- |
+| **GP0** | Momentary Toggle UP | On-Off-On Toggle — UP direction (Active Low) |
+| **GP1** | Momentary Toggle DOWN | On-Off-On Toggle — DOWN direction (Active Low) |
+| **GP2** | Guarded Latching Toggle | Heavy action / Master Arm (Active Low) |
+| **GP3** | Key Switch | 2-Position Key Switch — Secure State ON (Active Low) |
+| **GP4** | Rotary Switch A | 3-Position Rotary — Position A / Mode A (Active Low) |
+| **GP5** | Rotary Switch B | 3-Position Rotary — Position B / Mode B (Active Low) |
+| **GP6** | Execute Button | Large-format Momentary / Panic or Execute (Active Low) |
 | **GP7** | SPARE | |
 
 ---

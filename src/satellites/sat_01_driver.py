@@ -4,6 +4,22 @@ Industrial Satellite Driver (Core-side)
 Handles telemetry parsing and command serialization for the Industrial Satellite
 when running on the Core. This class represents the Core's view of a remote
 Industrial Satellite and does not include hardware-specific code.
+
+Expected HID Layout (mirrors IndustrialSatelliteFirmware hardware):
+    Latching Toggles  (12 total):
+        [0-7]  — 8x Small latching toggles (Expander 1, pins 0-7)
+        [8]    — Guarded latching toggle / Master Arm (Expander 2, pin 2)
+        [9]    — 2-Position key switch / Secure State (Expander 2, pin 3)
+        [10]   — 3-Position rotary switch, Position A (Expander 2, pin 4)
+        [11]   — 3-Position rotary switch, Position B (Expander 2, pin 5)
+    Momentary Toggles (1 pair):
+        [0]    — On-Off-On toggle, UP/DOWN directions (Expander 2, pins 0-1)
+    Encoders          (1):
+        [0]    — Rotary encoder with integrated push button (GP2/GP3/GP12)
+    Buttons           (1):
+        [0]    — Large momentary button / Panic or Execute (Expander 2, pin 6)
+    Matrix Keypads    (1):
+        [0]    — 9-digit 3x3 keypad (rows GP16-18, cols GP19-21)
 """
 
 from managers.hid_manager import HIDManager
@@ -37,19 +53,19 @@ class IndustrialSatelliteDriver(SatelliteDriver):
         # Initialize HIDManager in monitor-only mode (no hardware)
 
         # Define PLACEHOLDERS for State Sizing
-        # Toggle Pins
+        # Latching toggles: 8 small (Exp1) + 1 guarded arm + 1 key switch + 2 rotary positions (Exp2)
         latching_toggles = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-        # Momentary Toggle Pins
+        # Momentary Toggle: 1x On-Off-On toggle (UP / DOWN pair)
         momentary_toggles = [0]
 
-        # Encoders
+        # Encoders: 1x rotary encoder with integrated push button
         encoders = [0]
 
-        # Button
+        # Buttons: 1x large momentary button (Panic / Execute)
         buttons = [0]
 
-        # Matrix Keypads
+        # Matrix Keypads: 1x 9-digit 3x3 keypad
         matrix_keypads = [(
             Pins.KEYPAD_MAP_3x3,
             [],

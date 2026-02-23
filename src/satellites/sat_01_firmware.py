@@ -4,6 +4,22 @@ Industrial Satellite Firmware (Satellite-side)
 Handles hardware I/O and logic for the Industrial Satellite when running
 on the actual satellite hardware. This class manages physical hardware
 including neopixels, segment displays, encoders, and power management.
+
+Hardware HID Layout:
+    Latching Toggles  (12 total):
+        [0-7]  — 8x Small latching toggles arranged in 2 rows of 4 (Expander 1, pins 0-7)
+        [8]    — Guarded latching toggle / Master Arm (Expander 2, pin 2)
+        [9]    — 2-Position key switch / Secure State (Expander 2, pin 3)
+        [10]   — 3-Position rotary switch, Position A / Mode A (Expander 2, pin 4)
+        [11]   — 3-Position rotary switch, Position B / Mode B (Expander 2, pin 5)
+    Momentary Toggles (1 pair):
+        [0]    — On-Off-On toggle, UP/DOWN directions (Expander 2, pins 0-1)
+    Encoders          (1):
+        [0]    — Rotary encoder with integrated push button (GP2/GP3/GP12)
+    Buttons           (1):
+        [0]    — Large momentary button / Panic or Execute (Expander 2, pin 6)
+    Matrix Keypads    (1):
+        [0]    — 9-digit 3x3 keypad (rows GP16-18, cols GP19-21)
 """
 
 import asyncio
