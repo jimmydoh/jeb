@@ -38,13 +38,16 @@ class IndustrialSatelliteDriver(SatelliteDriver):
 
         # Define PLACEHOLDERS for State Sizing
         # Toggle Pins
-        latching_toggles = [0, 0, 0, 0]
+        latching_toggles = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
         # Momentary Toggle Pins
         momentary_toggles = [0]
 
         # Encoders
         encoders = [0]
+
+        # Button
+        buttons = [0]
 
         # Matrix Keypads
         matrix_keypads = [(

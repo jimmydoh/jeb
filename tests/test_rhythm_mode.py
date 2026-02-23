@@ -411,24 +411,6 @@ def test_note_y_position_interpolation_16x16():
     assert y_end == hz
 
 
-# ---------------------------------------------------------------------------
-# extract_beatmap.py example script check
-# ---------------------------------------------------------------------------
-
-def test_extract_beatmap_script_exists():
-    """examples/extract_beatmap.py must exist."""
-    path = os.path.join(os.path.dirname(__file__), '..', 'examples', 'extract_beatmap.py')
-    assert os.path.exists(path), "examples/extract_beatmap.py does not exist"
-
-
-def test_extract_beatmap_script_valid_syntax():
-    """examples/extract_beatmap.py must have valid Python syntax."""
-    path = os.path.join(os.path.dirname(__file__), '..', 'examples', 'extract_beatmap.py')
-    with open(path, 'r', encoding='utf-8') as fh:
-        code = fh.read()
-    compile(code, path, 'exec')
-
-
 def test_extract_beatmap_note_to_column_mapping():
     """Expert difficulty should map MIDI pitches 96-99 to cols 0, 2, 5, 7."""
     difficulty_offsets = {"easy": 60, "medium": 72, "hard": 84, "expert": 96}

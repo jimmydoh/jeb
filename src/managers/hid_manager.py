@@ -47,13 +47,7 @@ class HIDManager:
                  encoders=None,
                  matrix_keypads=None,
                  estop_pin=None,
-                 mcp_chip=None,
-                 mcp_i2c=None,
-                 mcp_i2c_address=None,
-                 mcp_int_pin=None,
-                 expanded_buttons=None,
-                 expanded_latching_toggles=None,
-                 expanded_momentary_toggles=None,
+                 expander_configs=None,
                  monitor_only=False
                  ):
         """Initialize HID Manager with specified inputs."""
@@ -61,7 +55,7 @@ class HIDManager:
         #region --- Initialize State Storage ---
         # Buttons States
         num_local_btns = len(buttons or [])
-        num_exp_btns   = len(expanded_buttons or [])
+        num_exp_btns   = sum(len(cfg.get('buttons', [])) for cfg in (expander_configs or []))
         total_btns     = num_local_btns + num_exp_btns
         self.buttons_values = [False] * total_btns
         self.buttons_timestamps = [0] * total_btns
@@ -70,7 +64,7 @@ class HIDManager:
 
         # Latching Toggles States
         num_local_latch = len(latching_toggles or [])
-        num_exp_latch   = len(expanded_latching_toggles or [])
+        num_exp_latch   = sum(len(cfg.get('latching', [])) for cfg in (expander_configs or []))
         total_latch     = num_local_latch + num_exp_latch
         self.latching_values = [False] * total_latch
         self.latching_timestamps = [0] * total_latch
@@ -79,7 +73,7 @@ class HIDManager:
 
         # Momentary Toggles States
         num_local_mom = len(momentary_toggles or [])
-        num_exp_mom   = len(expanded_momentary_toggles or [])
+        num_exp_mom   = sum(len(cfg.get('momentary', [])) for cfg in (expander_configs or []))
         total_mom     = num_local_mom + num_exp_mom
         self.momentary_values = [[False, False] for _ in range(total_mom)]
         self.momentary_timestamps = [[0, 0] for _ in range(total_mom)]
@@ -185,70 +179,62 @@ class HIDManager:
 
             # MCP230xx Expanded Inputs
             # Check for all required parameters
-            self._mcp = None
-            self._mcp_int = None
-            self._expanded_buttons_keys = None
-            self._expanded_latching_keys = None
-            self._expanded_momentary_keys = None
+            self._active_expanders = []
 
-            if mcp_chip and mcp_i2c and mcp_i2c_address:
-                if mcp_chip == "MCP23017":
-                    try:
-                        from adafruit_mcp230xx.mcp23017 import MCP23017
-                        self._mcp = MCP23017(mcp_i2c, mcp_i2c_address)
-                        self.has_expander = True
-                        print(f"✅ MCP Chip '{mcp_chip}' initialized at address {hex(mcp_i2c_address)}. Expanded inputs will be available. ✅")
-                    except (ImportError, OSError, ValueError):
-                        print(f"WARNING: HID: I/O Expander ({mcp_chip}) not found. Expanded buttons disabled.")
-                if mcp_chip == "MCP23008":
-                    try:
-                        from adafruit_mcp230xx.mcp23008 import MCP23008
-                        self._mcp = MCP23008(mcp_i2c, mcp_i2c_address)
-                        self.has_expander = True
-                        print(f"✅ MCP Chip '{mcp_chip}' initialized at address {hex(mcp_i2c_address)}. Expanded inputs will be available. ✅")
-                    except (ImportError, OSError, ValueError):
-                        print(f"WARNING: HID: I/O Expander ({mcp_chip}) not found. Expanded buttons disabled.")
-                if mcp_int_pin:
-                    import digitalio
-                    # Wrap the raw pin in a DigitalInOut object
-                    self._mcp_int = digitalio.DigitalInOut(mcp_int_pin)
-                    # Set it to INPUT so we can read the interrupt signal
-                    self._mcp_int.direction = digitalio.Direction.INPUT
-                    # Usually MCP interrupts are Active-Low, so we use a Pull-Up
-                    self._mcp_int.pull = digitalio.Pull.UP
+            if not self.monitor_only and expander_configs:
+                btn_offset = 0
+                latch_offset = 0
+                mom_offset = 0
 
-                if self.has_expander:
+                for cfg in expander_configs:
+                    chip_type = cfg.get("chip")
                     try:
+                        if chip_type == "MCP23008":
+                            from adafruit_mcp230xx.mcp23008 import MCP23008
+                            mcp = MCP23008(mcp_i2c, cfg["address"])
+                        elif chip_type == "MCP23017":
+                            from adafruit_mcp230xx.mcp23017 import MCP23017
+                            mcp = MCP23017(mcp_i2c, cfg["address"])
+                        else:
+                            continue
+
+                        self.has_expander = True
+
+                        # Setup interrupt pin if provided
+                        int_io = None
+                        if cfg.get("int_pin"):
+                            import digitalio
+                            int_io = digitalio.DigitalInOut(cfg["int_pin"])
+                            int_io.direction = digitalio.Direction.INPUT
+                            int_io.pull = digitalio.Pull.UP
+
+                        # Initialize MCPKeys
                         from utilities.mcp_keys import MCPKeys
 
-                        if MCPKeys and self._mcp and expanded_buttons:
-                            self._expanded_buttons_keys = MCPKeys(
-                                self._mcp,
-                                expanded_buttons,
-                                value_when_pressed=False,
-                                pull=True
-                            )
+                        exp_data = {
+                            "mcp": mcp,
+                            "int_io": int_io,
+                            "btn_keys": MCPKeys(mcp, cfg["buttons"], value_when_pressed=False, pull=True) if cfg.get("buttons") else None,
+                            "btn_offset": btn_offset,
+                            "latch_keys": MCPKeys(mcp, cfg["latching"], value_when_pressed=False, pull=True) if cfg.get("latching") else None,
+                            "latch_offset": latch_offset,
+                            "mom_keys": None,
+                            "mom_offset": mom_offset
+                        }
 
-                        if MCPKeys and self._mcp and expanded_latching_toggles:
-                            self._expanded_latching_keys = MCPKeys(
-                                self._mcp,
-                                expanded_latching_toggles,
-                                value_when_pressed=False,
-                                pull=True
-                            )
+                        if cfg.get("momentary"):
+                            flat_mom = [pin for pair in cfg["momentary"] for pin in pair]
+                            exp_data["mom_keys"] = MCPKeys(mcp, flat_mom, value_when_pressed=False, pull=True)
 
-                        if MCPKeys and self._mcp and expanded_momentary_toggles:
-                            flat_expanded_momentary_pins = []
-                            for pair in expanded_momentary_toggles:
-                                flat_expanded_momentary_pins.extend(pair)
-                            self._expanded_momentary_keys = MCPKeys(
-                                self._mcp,
-                                flat_expanded_momentary_pins,
-                                value_when_pressed=False,
-                                pull=True
-                            )
-                    except ImportError:
-                        print("❗Error: 'MCPKeys' class not found. Expanded inputs will not be initialized.❗")
+                        self._active_expanders.append(exp_data)
+
+                        # Increment global offsets for the next chip
+                        btn_offset += len(cfg.get("buttons", []))
+                        latch_offset += len(cfg.get("latching", []))
+                        mom_offset += len(cfg.get("momentary", []))
+
+                    except (ImportError, OSError, ValueError) as e:
+                        print(f"WARNING: HID: Expander {chip_type} at {hex(cfg['address'])} failed: {e}")
         #endregion
 
     #region --- Button Handling ---
@@ -768,64 +754,79 @@ class HIDManager:
     #region --- Expander MCP23017 Handling ---
     def _hw_expander_buttons(self):
         """Polls MCP23017 and processes events into the global state arrays."""
-        if self.monitor_only or not self._expanded_buttons_keys:
+        if self.monitor_only or not self.has_expander:
             return False
         changed = False
         event = keypad.Event()
-        while self._expanded_buttons_keys.events.get_into(event):
-            key_idx = self._local_button_count + event.key_number
-            now = ticks_ms()
-            if event.pressed: # Button pressed
-                self.buttons_values[key_idx] = True
-                self.buttons_timestamps[key_idx] = now
-            elif event.released: # Button released
-                start_time = self.buttons_timestamps[key_idx]
-                if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
-                    self.buttons_tapped[key_idx] = True
-                self.buttons_values[key_idx] = False
-        return changed
+        for exp in self._active_expanders:
+            keys = exp.get("btn_keys")
+            if not keys:
+                continue
+
+            while keys.events.get_into(event):
+                changed = True # State changed
+                key_idx = self._local_button_count + exp.get("btn_offset", 0) + event.key_number
+                now = ticks_ms()
+                if event.pressed: # Button pressed
+                    self.buttons_values[key_idx] = True
+                    self.buttons_timestamps[key_idx] = now
+                elif event.released: # Button released
+                    start_time = self.buttons_timestamps[key_idx]
+                    if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
+                        self.buttons_tapped[key_idx] = True
+                    self.buttons_values[key_idx] = False
+            return changed
 
     def _hw_expander_latching_toggles(self):
         """Polls MCP23017 and processes events into the global state arrays."""
-        if self.monitor_only or not self._expanded_latching_keys:
+        if self.monitor_only or not self.has_expander:
             return False
         changed = False
         event = keypad.Event()
-        while self._expanded_latching_keys.events.get_into(event):
-            changed = True # State changed
-            key_idx = self._local_latching_count + event.key_number
-            now = ticks_ms()
-            if event.pressed: # Toggle turned on
-                self.latching_values[key_idx] = True
-                self.latching_timestamps[key_idx] = now
-            elif event.released: # Toggle turned off
-                self.latching_values[key_idx] = False
-                start_time = self.latching_timestamps[key_idx]
-                if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
-                    self.latching_tapped[key_idx] = True
-                self.latching_timestamps[key_idx] = 0
-        return changed
+        for exp in self._active_expanders:
+            keys = exp.get("latch_keys")
+            if not keys:
+                continue
+            while keys.events.get_into(event):
+                changed = True # State changed
+                key_idx = self._local_latching_count + exp.get("latch_offset", 0) + event.key_number
+                now = ticks_ms()
+                if event.pressed: # Toggle turned on
+                    self.latching_values[key_idx] = True
+                    self.latching_timestamps[key_idx] = now
+                elif event.released: # Toggle turned off
+                    self.latching_values[key_idx] = False
+                    start_time = self.latching_timestamps[key_idx]
+                    if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
+                        self.latching_tapped[key_idx] = True
+                    self.latching_timestamps[key_idx] = 0
+            return changed
 
     def _hw_expander_momentary_toggles(self):
         """Polls MCP23017 and processes events into the global state arrays."""
-        if self.monitor_only or not self._expanded_momentary_keys:
+        if self.monitor_only or not self.has_expander:
             return False
         changed = False
         event = keypad.Event()
-        while self._expanded_momentary_keys.events.get_into(event):
-            changed = True # State changed
-            key_idx = self._local_momentary_count + (event.key_number // 2)
-            direction = 0 if event.key_number % 2 == 0 else 1
-            now = ticks_ms()
-            if event.pressed: # Button pressed
-                self.momentary_values[key_idx][direction] = True
-                self.momentary_timestamps[key_idx][direction] = now
-            elif event.released: # Button released
-                start_time = self.momentary_timestamps[key_idx][direction]
-                if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
-                    self.momentary_tapped[key_idx][direction] = True
-                self.momentary_values[key_idx][direction] = False
-        return changed
+
+        for exp in self._active_expanders:
+            keys = exp.get("mom_keys")
+            if not keys:
+                continue
+            while keys.events.get_into(event):
+                changed = True # State changed
+                key_idx = self._local_momentary_count + exp.get("mom_offset", 0) + (event.key_number // 2)
+                direction = 0 if event.key_number % 2 == 0 else 1
+                now = ticks_ms()
+                if event.pressed: # Button pressed
+                    self.momentary_values[key_idx][direction] = True
+                    self.momentary_timestamps[key_idx][direction] = now
+                elif event.released: # Button released
+                    start_time = self.momentary_timestamps[key_idx][direction]
+                    if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
+                        self.momentary_tapped[key_idx][direction] = True
+                    self.momentary_values[key_idx][direction] = False
+            return changed
     #endregion
 
     #region --- Global Functions ---

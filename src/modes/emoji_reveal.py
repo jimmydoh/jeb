@@ -112,7 +112,7 @@ class EmojiRevealMode(GameMode):
 
         # Prepare matrix: clear then start pixel-reveal animation
         self.core.matrix.clear()
-        icon_data = Icons.ICON_LIBRARY.get(icon_key, Icons.DEFAULT)
+        icon_data = Icons.get(icon_key)
 
         reveal_task = asyncio.create_task(
             matrix_animations.animate_random_pixel_reveal(

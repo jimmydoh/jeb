@@ -1,5 +1,7 @@
 # File: src/core/utilities/icons.py
 
+from utilities.logger import JEBLogger
+
 class Icons:
     """
     Asset library for 16x16 Matrix Icons.
@@ -501,3 +503,27 @@ class Icons:
         "8": EIGHT,
         "9": NINE
     }
+
+    @classmethod
+    def get(cls, icon_name):
+        """
+        Intelligently fetches an icon.
+        Checks the in-memory ICON_LIBRARY first. If not found, attempts
+        to load a raw .bin file from the /SD/icons/ directory.
+        """
+        # 1. Check RAM (Fast path)
+        if icon_name in cls.ICON_LIBRARY:
+            return cls.ICON_LIBRARY[icon_name]
+
+        # 2. Check Flash Storage (On-Demand path)
+        filepath = f"/SD/icons/{icon_name.lower()}.bin"
+
+        try:
+            with open(filepath, "rb") as f:
+                # .read() returns a `bytes` object, which acts exactly like
+                # your lists for subscripting (e.g., pixel_value = data[idx])
+                return f.read()
+        except OSError:
+            # File doesn't exist or couldn't be read
+            JEBLogger.warning("ICON",f"⚠️ Icon Asset Missing: {icon_name}")
+            return cls.DEFAULT
