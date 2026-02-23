@@ -295,14 +295,14 @@ class MockAnalogIn:
     def __init__(self, pin):
         self.pin = pin
         self._value = 49650  # Default ~2.5V raw
-        
+
         # Register so the Pygame UI can dynamically manipulate rail voltages
         HardwareMocks.register('analog_pin', self, key=str(pin))
 
     @property
     def value(self):
         return self._value
-        
+
     @value.setter
     def value(self, val):
         self._value = max(0, min(65535, int(val))) # Clamp to 16-bit int
@@ -329,7 +329,7 @@ class MockADSAnalogIn:
     def voltage(self):
         # I2C ADCs return calculated float voltages, unlike analogio's raw 16-bit value
         return self._voltage
-        
+
     @voltage.setter
     def voltage(self, val):
         self._voltage = float(val)
@@ -466,25 +466,26 @@ sys.modules['pwmio'] = type('MockPWMIO', (), {'PWMOut': MockPWMOut})
 # --- AUDIOCORE MOCK (.wav File Decoder) ---
 class MockWaveFile:
     def __init__(self, file_obj, buffer=None):
-        # Extract the filename from the file object
         self.filepath = getattr(file_obj, 'name', 'unknown_audio')
-        
-        # Clean up absolute paths for PC compatibility
         if self.filepath.startswith("/"):
             self.filepath = self.filepath[1:]
-
-        # [NEW] Pre-load the Pygame Sound object if audio is available!
         self.sound = None
         if AUDIO_AVAILABLE:
             try:
                 self.sound = pygame.mixer.Sound(self.filepath)
             except Exception as e:
                 print(f"❌ [AUDIO ERROR] Could not load '{self.filepath}': {e}")
+    def deinit(self): pass
 
-    def deinit(self):
-        pass
+class MockRawSample(MockWaveFile):
+    """Mocks RawSample used by AudioManager for preloaded UI sounds."""
+    def __init__(self, file_obj, *args, **kwargs):
+        super().__init__(file_obj)
 
-sys.modules['audiocore'] = type('MockAudioCore', (), {'WaveFile': MockWaveFile})
+sys.modules['audiocore'] = type('MockAudioCore', (), {
+    'WaveFile': MockWaveFile,
+    'RawSample': MockRawSample
+})
 
 # --- AUDIOMIXER MOCK (Multi-channel Audio Router) ---
 class MockMixerVoice:
@@ -492,7 +493,7 @@ class MockMixerVoice:
         self.index = index
         self._level = 1.0
         self.playing = False
-        
+
         # [NEW] Map this voice to a physical Pygame Channel!
         self.channel = pygame.mixer.Channel(index) if AUDIO_AVAILABLE else None
 
@@ -569,6 +570,76 @@ class MockSynthioModule:
 
 sys.modules['synthio'] = MockSynthioModule()
 
+# --- ANALOGBUFIO MOCK (Audio DMA) ---
+class MockBufferedIn:
+    def __init__(self, pin, sample_rate=10000):
+        self.pin = pin
+        self.sample_rate = sample_rate
+
+    def readinto(self, buffer):
+        # Fill the buffer with a simulated sine wave + noise so the OLED waveform looks alive
+        import math, random, time
+        t = time.time()
+        for i in range(len(buffer)):
+            # Base 1.65V (32768) + sine wave + noise
+            val = 32768 + int(10000 * math.sin(t * 10 + i * 0.1)) + random.randint(-2000, 2000)
+            buffer[i] = max(0, min(65535, val))
+
+    def deinit(self): pass
+
+sys.modules['analogbufio'] = type('MockAnalogBufIO', (), {'BufferedIn': MockBufferedIn})
+
+# --- ULAB.NUMPY MOCK (FFT & Spectrum Analysis) ---
+class MockUlabArray:
+    """A very dumbed-down numpy array mock to support the math in AudioAnalyzer."""
+    def __init__(self, data):
+        self.data = list(data)
+    def __sub__(self, other):
+        if isinstance(other, (int, float)):
+            return MockUlabArray([x - other for x in self.data])
+        return MockUlabArray([x - y for x, y in zip(self.data, other.data)])
+    def __pow__(self, power):
+        return MockUlabArray([x ** power for x in self.data])
+    def __add__(self, other):
+        return MockUlabArray([x + y for x, y in zip(self.data, other.data)])
+    def __len__(self):
+        return len(self.data)
+    def __getitem__(self, key):
+        if isinstance(key, slice): return MockUlabArray(self.data[key])
+        return self.data[key]
+
+class MockUlabFFT:
+    @staticmethod
+    def fft(array_obj):
+        import random
+        length = len(array_obj.data)
+        # Generate fake bouncy magnitudes for the EQ display
+        real = [random.uniform(0, 50000) for _ in range(length)]
+        imag = [0] * length
+        return MockUlabArray(real), MockUlabArray(imag)
+
+class MockUlabNumpy:
+    float = float
+    fft = MockUlabFFT()
+
+    @staticmethod
+    def array(buf, dtype=None):
+        return MockUlabArray(buf)
+
+    @staticmethod
+    def mean(array_obj):
+        if not array_obj.data: return 0
+        return sum(array_obj.data) / len(array_obj.data)
+
+    @staticmethod
+    def sqrt(array_obj):
+        import math
+        return MockUlabArray([math.sqrt(abs(x)) for x in array_obj.data])
+
+mock_numpy = MockUlabNumpy()
+sys.modules['ulab'] = type('MockUlab', (), {'numpy': mock_numpy})
+sys.modules['ulab.numpy'] = mock_numpy
+
 # --- DISPLAYIO MOCKS ---
 class MockDisplayGroup:
     """Mocks displayio.Group to act as a list of UI elements."""
@@ -583,12 +654,62 @@ class MockDisplayGroup:
     def __len__(self): return len(self._items)
     def __iter__(self): return iter(self._items)
 
+class MockBitmap:
+    """Mocks displayio.Bitmap for drawing waveforms and EQ bars."""
+    def __init__(self, width, height, value_count):
+        self.width = width
+        self.height = height
+        self.value_count = value_count
+        self._data = [0] * (width * height)
+
+    def fill(self, value):
+        self._data = [value] * (self.width * self.height)
+
+    def __setitem__(self, index, value):
+        if isinstance(index, tuple):
+            x, y = index
+            if 0 <= x < self.width and 0 <= y < self.height:
+                self._data[y * self.width + x] = value
+        else:
+            self._data[index] = value
+
+    def __getitem__(self, index):
+        if isinstance(index, tuple):
+            x, y = index
+            if 0 <= x < self.width and 0 <= y < self.height:
+                return self._data[y * self.width + x]
+            return 0
+        return self._data[index]
+
+class MockPalette:
+    """Mocks displayio.Palette."""
+    def __init__(self, num_colors):
+        self.colors = [0] * num_colors
+
+    def __setitem__(self, index, color):
+        self.colors[index] = color
+
+    def __getitem__(self, index):
+        return self.colors[index]
+
+class MockTileGrid:
+    """Mocks displayio.TileGrid to wrap the Bitmap and Palette."""
+    def __init__(self, bitmap, pixel_shader=None, **kwargs):
+        self.bitmap = bitmap
+        self.pixel_shader = pixel_shader
+        self.x = kwargs.get('x', 0)
+        self.y = kwargs.get('y', 0)
+        self.hidden = False
+
 class MockI2CDisplay:
     def __init__(self, *args, **kwargs): pass
 
 sys.modules['displayio'] = type('MockDisplayIO', (), {
     'Group': MockDisplayGroup,
     'I2CDisplay': MockI2CDisplay,
+    'Bitmap': MockBitmap,
+    'Palette': MockPalette,
+    'TileGrid': MockTileGrid,
     'release_displays': lambda: None
 })
 
@@ -604,18 +725,19 @@ sys.modules['adafruit_displayio_ssd1306'] = type('MockSSD1306Mod', (), {'SSD1306
 
 # --- ADAFRUIT_DISPLAY_TEXT MOCK ---
 class MockLabel:
-    """Mocks adafruit_display_text.label.Label to hold text, coordinates, and visibility."""
+    """Mocks adafruit_display_text.label.Label to hold text, coordinates, visibility, and colors."""
     def __init__(self, font, text="", x=0, y=0, **kwargs):
         self.font = font
         self.text = text
         self.x = x
         self.y = y
         self.hidden = False
+        self.color = kwargs.get('color', 0xFFFFFF)
+        self.background_color = kwargs.get('background_color', None)
 
 class MockLabelModule:
     Label = MockLabel
 
-# Map both the package and the submodule to handle `from adafruit_display_text import label`
 sys.modules['adafruit_display_text'] = type('MockAdatruitDisplayText', (), {'label': MockLabelModule})
 sys.modules['adafruit_display_text.label'] = MockLabelModule
 

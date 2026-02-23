@@ -64,6 +64,10 @@ def _makedirs(path):
     """
     if not path:
         return
+
+    # Normalize Windows paths for PC testing
+    path = path.replace("\\", "/")
+
     # Build the list of ancestor paths to create, innermost last.
     parts = []
     current = path
@@ -165,7 +169,7 @@ class FileTransferSender:
         """
         file_stat = os.stat(filepath)
         file_size = file_stat[6]
-        filename = remote_filename if remote_filename is not None else filepath.split("/")[-1]
+        filename = remote_filename if remote_filename is not None else filepath.replace("\\", "/").split("/")[-1]
 
         # --- FILE_START ---
         start_payload = f"{filename},{file_size}"

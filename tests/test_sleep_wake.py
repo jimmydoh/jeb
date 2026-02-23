@@ -51,7 +51,7 @@ def test_protocol_cmd_mode_schema_desc(protocol_content):
 @pytest.fixture
 def hid_content():
     path = os.path.join(SRC, 'managers', 'hid_manager.py')
-    with open(path) as f:
+    with open(path, encoding='utf-8') as f:
         return f.read()
 
 

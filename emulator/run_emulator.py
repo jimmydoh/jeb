@@ -325,13 +325,58 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     if hasattr(element, '_items'):
                         for child in element._items:
                             render_display_tree(child, base_x + ex, base_y + ey)
-                    elif hasattr(element, 'text') and element.text:
+
+                    elif hasattr(element, 'text') and element.text != "":
                         screen_x = OLED_X + (base_x + ex) * 2
                         screen_y = OLED_Y + (base_y + ey - 4) * 2
 
-                        # REMOVED the [:21] truncation so the full text can slide!
-                        text_surface = oled_font.render(str(element.text), True, (150, 220, 255))
+                        # Handle Custom Colors and Backgrounds (for Settings Menu)
+                        t_color = getattr(element, 'color', 0xFFFFFF)
+                        bg_color = getattr(element, 'background_color', None)
+
+                        # Translate to emulator OLED colors
+                        def hex_to_rgb(hex_val, is_bg=False):
+                            if hex_val == 0xFFFFFF:
+                                return (150, 220, 255) # Classic JEB Emulator blue
+                            elif hex_val == 0x000000:
+                                return (10, 10, 12)    # OLED background color
+                            return ((hex_val >> 16) & 0xFF, (hex_val >> 8) & 0xFF, hex_val & 0xFF)
+
+                        text_rgb = hex_to_rgb(t_color)
+
+                        text_surface = oled_font.render(str(element.text), True, text_rgb)
+
+                        if bg_color is not None:
+                            bg_rgb = hex_to_rgb(bg_color, is_bg=True)
+                            text_w, text_h = text_surface.get_size()
+                            # Draw a background rectangle slightly padded
+                            pygame.draw.rect(screen, bg_rgb, (screen_x - 2, screen_y, text_w + 4, text_h))
+
                         screen.blit(text_surface, (screen_x, screen_y))
+
+                    elif hasattr(element, 'bitmap'):
+                        # Render TileGrid Bitmaps (for Audio Visualizer)
+                        bmp = element.bitmap
+                        palette = getattr(element, 'pixel_shader', None)
+
+                        # Optimization: Only draw pixels that are active (val > 0)
+                        for y in range(bmp.height):
+                            for x in range(bmp.width):
+                                val = bmp[x, y]
+                                if val > 0:
+                                    # Default to emulator blue if palette mapping fails
+                                    color_rgb = (150, 220, 255)
+                                    if palette:
+                                        raw_hex = palette[val]
+                                        if raw_hex == 0xFFFFFF:
+                                            color_rgb = (150, 220, 255)
+                                        else:
+                                            color_rgb = ((raw_hex >> 16) & 0xFF, (raw_hex >> 8) & 0xFF, raw_hex & 0xFF)
+
+                                    # Scale 1x1 pixels to 2x2 blocks for the emulator OLED view
+                                    rect_x = OLED_X + (base_x + ex + x) * 2
+                                    rect_y = OLED_Y + (base_y + ey + y) * 2
+                                    pygame.draw.rect(screen, color_rgb, (rect_x, rect_y, 2, 2))
 
                 render_display_tree(core.display.root, 0, 0)
 
