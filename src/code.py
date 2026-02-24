@@ -220,6 +220,7 @@ else:
 
 # --- APPLICATION RUN ---
 app = None
+CONSOLE = None
 
 role = config.get("role", "UNKNOWN")
 type_id = config.get("type_id", "--")
@@ -232,23 +233,23 @@ JEBLogger.info("CODE", f"ROLE: {role}, ID: {type_id}, NAME: {type_name}")
 # Add computed values to config for manager initialization
 config["root_data_dir"] = ROOT_DATA_DIR
 
-if test_mode:
-    JEBLogger.warning("CODE", "⚠️ Running in TEST MODE. No main application will be loaded. ⚠️")
-    from managers.console_manager import ConsoleManager
-    app = ConsoleManager(role, type_id)
+if role == "CORE" and type_id == "00":
+    from core.core_manager import CoreManager
+    app = CoreManager(config=config)
+
+elif role == "SAT" and type_id == "01":
+    from satellites.sat_01_firmware import IndustrialSatelliteFirmware
+    app = IndustrialSatelliteFirmware()
+
 else:
-    if role == "CORE" and type_id == "00":
-        from core.core_manager import CoreManager
-        app = CoreManager(config=config)
+    JEBLogger.error("CODE", "❗Unknown role/type_id combination. No application loaded.❗")
+    while True:
+        time.sleep(1)
 
-    elif role == "SAT" and type_id == "01":
-        from satellites.sat_01_firmware import IndustrialSatelliteFirmware
-        app = IndustrialSatelliteFirmware()
-
-    else:
-        JEBLogger.error("CODE", "❗Unknown role/type_id combination. No application loaded.❗")
-        while True:
-            time.sleep(1)
+if test_mode:
+    JEBLogger.warning("CODE", "⚠️ Running in TEST MODE. Console Manager will run alongside the application. ⚠️")
+    from managers.console_manager import ConsoleManager
+    CONSOLE = ConsoleManager(role, type_id, app=app)
 
 async def main():
     """Main asynchronous entry point for running the application and web server."""
@@ -267,6 +268,10 @@ async def main():
             if WEB_SERVER is not None:
                 web_task = asyncio.create_task(WEB_SERVER.start())
                 coros.append(web_task)
+
+            if CONSOLE is not None:
+                console_task = asyncio.create_task(CONSOLE.start())
+                coros.append(console_task)
 
             done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_EXCEPTION)
 
