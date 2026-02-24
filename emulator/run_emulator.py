@@ -77,7 +77,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
 
     # SATELLITE (Type 01 - Right Side)
     SAT_W = 260
-    SAT_H = 580
+    SAT_H = 600
     SAT_X = WINDOW_SIZE_W - SAT_W - 20
     SAT_Y = 20
 
@@ -161,11 +161,11 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         sat_keypad = HardwareMocks.get("SAT_01", "matrix_keypad")
                         sat_encoder_btn = HardwareMocks.get("SAT_01", "encoder_btn")
 
-                        # 1. Satellite Keypad (3x3)
+                        # 1. Satellite Keypad (3x4)
                         if sat_keypad:
-                            for r in range(3):
+                            for r in range(4):
                                 for c in range(3):
-                                    kx, ky = SAT_X + 40 + c*80, SAT_Y + 290 + r*45
+                                    kx, ky = SAT_X + 40 + c*80, SAT_Y + 270 + r*45
                                     if (mx - kx)**2 + (my - ky)**2 <= 20**2:
                                         key_idx = r * 3 + c
                                         sat_keypad.events.queue.append(
@@ -173,7 +173,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                                         )
 
                         # 2. Satellite Encoder Push
-                        SAT_ENC_X, SAT_ENC_Y = SAT_X + 55, SAT_Y + 530
+                        SAT_ENC_X, SAT_ENC_Y = SAT_X + 55, SAT_Y + 550
                         if (mx - SAT_ENC_X)**2 + (my - SAT_ENC_Y)**2 <= 30**2:
                             if sat_encoder_btn:
                                 sat_encoder_btn.events.queue.append(
@@ -201,7 +201,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                                         sat_mcp2_int.value = False # FIRE INTERRUPT!
 
                         # 5. Satellite Momentary Toggle (Expander 2: UP pin 0, DOWN pin 1)
-                        MOM_X, MOM_Y = SAT_X + 145, SAT_Y + 530
+                        MOM_X, MOM_Y = SAT_X + 145, SAT_Y + 550
                         if sat_mcp2:
                             if event.type == pygame.MOUSEBUTTONDOWN:
                                 if (mx - MOM_X)**2 + (my - (MOM_Y - 20))**2 <= 20**2:
@@ -219,7 +219,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                                         sat_mcp2_int.value = False # FIRE INTERRUPT ON RELEASE!
 
                         # 6. Big Red Button (Expander 2: pin 6)
-                        BIG_BTN_X, BIG_BTN_Y = SAT_X + 220, SAT_Y + 530
+                        BIG_BTN_X, BIG_BTN_Y = SAT_X + 220, SAT_Y + 550
                         if sat_mcp2:
                             if event.type == pygame.MOUSEBUTTONDOWN:
                                 if (mx - BIG_BTN_X)**2 + (my - BIG_BTN_Y)**2 <= 30**2:
@@ -577,12 +577,12 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     screen.blit(lbl_surf, (tx - 12, ty + 37))
 
                 # ==========================================
-                # 3. KEYPAD (3x3)
+                # 3. KEYPAD (3x4)
                 # ==========================================
-                KEYPAD_LABELS = ['1','2','3','4','5','6','7','8','9']
-                for r in range(3):
+                KEYPAD_LABELS = ['1','2','3','4','5','6','7','8','9','*','0','#']
+                for r in range(4):
                     for c in range(3):
-                        kx, ky = SAT_X + 40 + c*80, SAT_Y + 290 + r*45
+                        kx, ky = SAT_X + 40 + c*80, SAT_Y + 270 + r*45
                         pygame.draw.circle(screen, (30, 30, 30), (kx, ky), 22)
                         pygame.draw.circle(screen, (180, 180, 180), (kx, ky), 20)
                         idx = r * 3 + c
@@ -601,7 +601,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     full_text = "".join(left_display.chars) if left_display else "    "
                     full_text += "".join(right_display.chars) if right_display else "    "
 
-                    SEG_X, SEG_Y = SAT_X + 20, SAT_Y + 425
+                    SEG_X, SEG_Y = SAT_X + 20, SAT_Y + 440
                     SEG_W, SEG_H = 220, 50
                     pygame.draw.rect(screen, (15, 5, 5), (SEG_X, SEG_Y, SEG_W, SEG_H))
                     pygame.draw.rect(screen, (40, 10, 10), (SEG_X, SEG_Y, SEG_W, SEG_H), 2)
@@ -613,7 +613,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 # ==========================================
                 # 5. ROTARY ENCODER (Bottom Left)
                 # ==========================================
-                SAT_ENC_X, SAT_ENC_Y = SAT_X + 55, SAT_Y + 530
+                SAT_ENC_X, SAT_ENC_Y = SAT_X + 55, SAT_Y + 550
                 pygame.draw.circle(screen, (20, 20, 20), (SAT_ENC_X, SAT_ENC_Y), 35) # Base Bezel
                 pygame.draw.circle(screen, (70, 70, 75), (SAT_ENC_X, SAT_ENC_Y), 30) # Knob
 
@@ -628,7 +628,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 # ==========================================
                 # 6. MOMENTARY TOGGLE (Center Bottom, Expander 2 pins 0-1)
                 # ==========================================
-                MOM_X, MOM_Y = SAT_X + 145, SAT_Y + 530
+                MOM_X, MOM_Y = SAT_X + 145, SAT_Y + 550
                 pygame.draw.rect(screen, (80, 80, 80), (MOM_X-15, MOM_Y-25, 30, 50), border_radius=4)
                 pygame.draw.rect(screen, (40, 40, 40), (MOM_X-15, MOM_Y-25, 30, 50), 2, border_radius=4)
 
@@ -651,7 +651,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 # ==========================================
                 # 7. BIG RED BUTTON (Bottom Right, Expander 2 pin 6)
                 # ==========================================
-                BIG_BTN_X, BIG_BTN_Y = SAT_X + 220, SAT_Y + 530
+                BIG_BTN_X, BIG_BTN_Y = SAT_X + 220, SAT_Y + 550
                 btn_pressed = sat_mcp2 and not sat_mcp2.peek_pin(6).value
                 big_btn_color = (150, 10, 10) if btn_pressed else (220, 30, 30)
                 pygame.draw.circle(screen, (20, 20, 20), (BIG_BTN_X, BIG_BTN_Y), 34) # Outer bezel
