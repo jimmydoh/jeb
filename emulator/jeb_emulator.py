@@ -766,8 +766,9 @@ sys.modules['adafruit_display_text.label'] = MockLabelModule
 
 # --- MCP230XX EXPANDER MOCK ---
 class MockMCPPin:
-    def __init__(self, pin_num):
+    def __init__(self, pin_num, mcp_instance):
         self.pin = pin_num
+        self._mcp = mcp_instance
         self._direction = None
         self._pull = None
         self._value = True # Default UP
@@ -795,6 +796,12 @@ class MockMCPPin:
 
     @property
     def value(self):
+        # THE FIRMWARE DOOR: Reading the GPIO register clears the interrupt (Active LOW -> pulls back True)
+        int_key = 'mcp2_int' if self._mcp.address == 0x21 else 'mcp_int'
+        mcp_int = HardwareMocks.get(self._mcp._context, int_key)
+        if mcp_int:
+            mcp_int.value = True
+
         return self._value
 
     @value.setter
@@ -816,19 +823,13 @@ class MockMCP:
             HardwareMocks.register('mcp', self)
 
     def get_pin(self, pin_num):
-        int_key = 'mcp2_int' if self.address == 0x21 else 'mcp_int'
-        mcp_int = HardwareMocks.get(self._context, int_key)
-        if mcp_int:
-            mcp_int.value = True
         if pin_num not in self.pins:
-            self.pins[pin_num] = MockMCPPin(pin_num)
+            self.pins[pin_num] = MockMCPPin(pin_num, self)
         return self.pins[pin_num]
 
     def peek_pin(self, pin_num):
-        # [NEW] Pygame uses this: it leaves the interrupt alone!
-        if pin_num not in self.pins:
-            self.pins[pin_num] = MockMCPPin(pin_num)
-        return self.pins[pin_num]
+        # Backwards compatibility method used by the firmware to read pin state without clearing interrupts
+        return self.get_pin(pin_num)
 
 # Inject the parent package and the specific chip submodules
 sys.modules['adafruit_mcp230xx'] = type('MockMCPMod', (), {})
