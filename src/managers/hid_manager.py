@@ -48,9 +48,12 @@ class HIDManager:
                  matrix_keypads=None,
                  estop_pin=None,
                  expander_configs=None,
-                 monitor_only=False
+                 monitor_only=False,
+                 logger=None
                  ):
         """Initialize HID Manager with specified inputs."""
+        JEBLogger.set_source(logger.SOURCE if logger else None)
+        JEBLogger.info("HIDM", "Initializing HID Manager...")
 
         #region --- Initialize State Storage ---
         # Buttons States
@@ -187,7 +190,7 @@ class HIDManager:
                 mom_offset = 0
 
                 for cfg in expander_configs:
-                    JEBLogger.info("INIT", f"Configuring MCP Expander at {hex(cfg['address'])}", src="HIDM")
+                    JEBLogger.info("HIDM", f"Configuring MCP Expander at {hex(cfg['address'])}")
                     chip_type = cfg.get("chip")
                     try:
                         if chip_type == "MCP23008":
@@ -224,9 +227,9 @@ class HIDManager:
                         }
 
                         if cfg.get("momentary"):
-                            JEBLogger.info("INIT", f"Momentary: {cfg['momentary']}", src="HIDM")
+                            JEBLogger.info("INIT", f"Momentary: {cfg['momentary']}")
                             flat_mom = [pin for pair in cfg["momentary"] for pin in pair]
-                            JEBLogger.info("INIT", f"Momentary: {flat_mom}", src="HIDM")
+                            JEBLogger.info("INIT", f"Momentary: {flat_mom}")
                             exp_data["mom_keys"] = MCPKeys(mcp, flat_mom, value_when_pressed=False, pull=True)
 
                         self._active_expanders.append(exp_data)
@@ -757,7 +760,7 @@ class HIDManager:
     #region --- Expander MCP23017 Handling ---
     def _hw_expander_buttons(self):
         """Polls MCP23017 and processes events into the global state arrays."""
-        #JEBLogger.info("HIDM", "Polling MCP Expander Buttons...", src="HIDM")
+        #JEBLogger.info("HIDM", "Polling MCP Expander Buttons...")
         if self.monitor_only or not self.has_expander:
             return False
         changed = False
@@ -783,7 +786,7 @@ class HIDManager:
 
     def _hw_expander_latching_toggles(self):
         """Polls MCP23017 and processes events into the global state arrays."""
-        #JEBLogger.info("HIDM", "Polling MCP Expander Latching Toggles...", src="HIDM")
+        #JEBLogger.info("HIDM", "Polling MCP Expander Latching Toggles...")
         if self.monitor_only or not self.has_expander:
             return False
         changed = False
@@ -805,11 +808,12 @@ class HIDManager:
                     if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
                         self.latching_tapped[key_idx] = True
                     self.latching_timestamps[key_idx] = 0
+                JEBLogger.info("HIDM", f"Expander Latching Toggle Event: {event.key_number}, Pressed: {event.pressed}, Released: {event.released}")
         return changed
 
     def _hw_expander_momentary_toggles(self):
         """Polls MCP23017 and processes events into the global state arrays."""
-        #JEBLogger.info("HIDM", "Polling MCP Expander Momentary Toggles...", src="HIDM")
+        #JEBLogger.info("HIDM", "Polling MCP Expander Momentary Toggles...")
         if self.monitor_only or not self.has_expander:
             return False
         changed = False
@@ -820,7 +824,6 @@ class HIDManager:
             if not keys:
                 continue
             while keys.events.get_into(event):
-                JEBLogger.info("HIDM", f"Momentary Toggle Event: {event.key_number}, Pressed: {event.pressed}, Released: {event.released}", src="HIDM")
                 changed = True # State changed
                 key_idx = self._local_momentary_count + exp.get("mom_offset", 0) + (event.key_number // 2)
                 direction = 0 if event.key_number % 2 == 0 else 1
@@ -833,6 +836,7 @@ class HIDManager:
                     if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
                         self.momentary_tapped[key_idx][direction] = True
                     self.momentary_values[key_idx][direction] = False
+                JEBLogger.info("HIDM", f"Momentary Toggle Event: {event.key_number}, Pressed: {event.pressed}, Released: {event.released}")
         return changed
     #endregion
 
@@ -870,7 +874,7 @@ class HIDManager:
 
         if dirty:
             self.last_interaction_time = ticks_ms()
-            JEBLogger.debug("HIDM", "HID HW `I want to clean your dusty cups`", src=sid)
+            JEBLogger.debug("HIDM", "HID HW `I want to clean your dusty cups`")
 
         return dirty
 

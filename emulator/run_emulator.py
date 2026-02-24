@@ -138,7 +138,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                                 core_mcp_int = HardwareMocks.get("CORE", "mcp_int")
 
                                 if core_mcp:
-                                    core_mcp.get_pin(i).value = not is_pressed
+                                    core_mcp.peek_pin(i).value = not is_pressed
                                     if core_mcp_int:
                                         core_mcp_int.value = False # Trigger Interrupt!
 
@@ -167,7 +167,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                             for i in range(8):
                                 tx, ty = SAT_X + 60 + (i % 4)*80, SAT_Y + 110 + (i // 4)*120
                                 if (mx - tx)**2 + (my - ty)**2 <= 25**2:
-                                    pin = sat_mcp.get_pin(i)
+                                    pin = sat_mcp.peek_pin(i)
                                     pin.value = not pin.value
                                     JEBLogger.note("INPT", f"Toggle Pin {i} {'UP' if pin.value else 'DOWN'}", src="EMUL")
                                     if sat_mcp_int: sat_mcp_int.value = False # FIRE INTERRUPT!
@@ -189,7 +189,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                             for j, pin_num in enumerate([2, 3, 4, 5]):
                                 tx, ty = SAT_X + 60 + j*80, SAT_Y + 400
                                 if (mx - tx)**2 + (my - ty)**2 <= 25**2:
-                                    pin = sat_mcp2.get_pin(pin_num)
+                                    pin = sat_mcp2.peek_pin(pin_num)
                                     pin.value = not pin.value
                                     JEBLogger.note("INPT", f"Special Pin {pin_num} {'UP' if pin.value else 'DOWN'}", src="EMUL")
                                     if sat_mcp2_int: sat_mcp2_int.value = False
@@ -198,17 +198,17 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         if sat_mcp2:
                             if event.type == pygame.MOUSEBUTTONDOWN:
                                 if (mx - MOM_X)**2 + (my - (MOM_Y - 20))**2 <= 20**2:
-                                    sat_mcp2.get_pin(0).value = False # Pushed UP
+                                    sat_mcp2.peek_pin(0).value = False # Pushed UP
                                     JEBLogger.note("INPT", f"Momentary UP", src="EMUL")
                                     if sat_mcp2_int: sat_mcp2_int.value = False
                                 elif (mx - MOM_X)**2 + (my - (MOM_Y + 20))**2 <= 20**2:
-                                    sat_mcp2.get_pin(1).value = False # Pushed DOWN
+                                    sat_mcp2.peek_pin(1).value = False # Pushed DOWN
                                     JEBLogger.note("INPT", f"Momentary DOWN", src="EMUL")
                                     if sat_mcp2_int: sat_mcp2_int.value = False
                             elif event.type == pygame.MOUSEBUTTONUP:
-                                if not sat_mcp2.get_pin(0).value or not sat_mcp2.get_pin(1).value:
-                                    sat_mcp2.get_pin(0).value = True
-                                    sat_mcp2.get_pin(1).value = True
+                                if not sat_mcp2.peek_pin(0).value or not sat_mcp2.peek_pin(1).value:
+                                    sat_mcp2.peek_pin(0).value = True
+                                    sat_mcp2.peek_pin(1).value = True
                                     JEBLogger.note("INPT", f"Momentary CENTER", src="EMUL")
                                     if sat_mcp2_int: sat_mcp2_int.value = False
 
@@ -216,12 +216,12 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         if sat_mcp2:
                             if event.type == pygame.MOUSEBUTTONDOWN:
                                 if (mx - BIG_BTN_X)**2 + (my - BIG_BTN_Y)**2 <= 34**2:
-                                    sat_mcp2.get_pin(6).value = False
+                                    sat_mcp2.peek_pin(6).value = False
                                     JEBLogger.note("INPT", f"Big Button Pressed", src="EMUL")
                                     if sat_mcp2_int: sat_mcp2_int.value = False
                             elif event.type == pygame.MOUSEBUTTONUP:
-                                if not sat_mcp2.get_pin(6).value:
-                                    sat_mcp2.get_pin(6).value = True
+                                if not sat_mcp2.peek_pin(6).value:
+                                    sat_mcp2.peek_pin(6).value = True
                                     JEBLogger.note("INPT", f"Big Button Released", src="EMUL")
                                     if sat_mcp2_int: sat_mcp2_int.value = False
 
@@ -264,7 +264,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     key_map = {pygame.K_q: 0, pygame.K_w: 1, pygame.K_e: 2, pygame.K_r: 3}
                     if event.key in key_map and HardwareMocks.get("CORE", "mcp"):
                         idx = key_map[event.key]
-                        HardwareMocks.get("CORE", "mcp").get_pin(idx).value = not is_pressed
+                        HardwareMocks.get("CORE", "mcp").peek_pin(idx).value = not is_pressed
                         if HardwareMocks.get("CORE", "mcp_int"):
                             HardwareMocks.get("CORE", "mcp_int").value = False
 

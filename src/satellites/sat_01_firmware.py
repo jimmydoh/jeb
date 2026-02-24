@@ -88,7 +88,8 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             encoders=Pins.ENCODERS,
             matrix_keypads=Pins.MATRIX_KEYPADS,
             expander_configs=Pins.EXPANDER_CONFIGS,
-            monitor_only=False
+            monitor_only=False,
+            logger=JEBLogger
         )
 
         # Init LED Hardware
@@ -227,16 +228,13 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
                     # Small Toggles directly drive Local LEDs (8 toggles, 8 LEDs)
                     for i in range(8):
                         if self.hid.is_latching_toggled(i):
-                            JEBLogger.info("FIRM", f"Local Idle Toggle {i} ON", src=self.id)
                             self.leds.set_led(i, Palette.GREEN, priority=5)
                         else:
-                            JEBLogger.info("FIRM", f"Local Idle Toggle {i} OFF", src=self.id)
                             self.leds.set_led(i, Palette.ORANGE, priority=5)
 
                     # 2. Keypad typing directly to 14-Segment Displays
                     key = self.hid.get_keypad_next_key(0) # Assuming index 0 is your matrix keypad
                     while key:
-                        JEBLogger.info("FIRM", f"Keypad Idle input received: {key}", src=self.id)
                         # Keep a running 4-character buffer
                         if len(self._idle_display_buffer) >= 8: # 4 chars * 2 displays = 8 total
                             self._idle_display_buffer = self._idle_display_buffer[1:]
@@ -247,11 +245,9 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
                     # 3. Momentary Switch triggers an animation
                     # Direction "U" or "D" depends on your switch wiring
                     if self.hid.is_momentary_toggled(0, direction="U", action="tap"):
-                        JEBLogger.info("FIRM", "Momentary Idle UP Triggered", src=self.id)
                         self._idle_display_buffer = "UP"
                         await self.segment.apply_command("DSP", self._idle_display_buffer)
                     if self.hid.is_momentary_toggled(0, direction="D", action="tap"):
-                        JEBLogger.info("FIRM", "Momentary Idle DOWN Triggered", src=self.id)
                         self._idle_display_buffer = "DOWN"
                         await self.segment.apply_command("DSP", self._idle_display_buffer)
 

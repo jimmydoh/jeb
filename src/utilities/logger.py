@@ -48,6 +48,11 @@ class JEBLogger:
         cls.LEVEL = level
 
     @classmethod
+    def set_source(cls, source):
+        if source is not None and isinstance(source, str) and len(source) <= 4:
+            cls.SOURCE = source
+
+    @classmethod
     def enable_file_logging(cls, enable=True):
         """Note: Requires storage.remount() in boot.py to work on actual hardware!"""
         cls.WRITE_TO_FILE = enable

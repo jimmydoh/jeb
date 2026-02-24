@@ -36,6 +36,7 @@ from transport.protocol import (
     PAYLOAD_SCHEMAS
 )
 
+from utilities.logger import JEBLogger
 from utilities.pins import Pins
 
 POW_INPUT = "input_20v"
@@ -61,6 +62,9 @@ class SatelliteFirmware:
         self.id = sid
         self.sat_type_id = sat_type_id
         self.sat_type_name = sat_type_name
+
+        JEBLogger.set_source(self.id)
+        JEBLogger.info("FIRM", "Initializing Satellite Firmware...")
 
         Pins.initialize(profile="SAT", type_id=self.sat_type_id)
 
@@ -201,6 +205,8 @@ class SatelliteFirmware:
                 # I don't have an ID yet, use the current index
                 new_index = current_index + 1
                 self.id = f"{type_prefix}{new_index:02d}"
+                JEBLogger.set_source(self.id)
+                JEBLogger.info("FIRM", f"Assigned new ID based on NEW_SAT: {self.id}")
                 #print(f"{self.sat_type_id}-{self.id}: Assigned new ID based on NEW_SAT: {self.id}")
 
             # Send back a HELLO
