@@ -94,13 +94,13 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         # Init LED Hardware
         self.root_pixels = neopixel.NeoPixel(
             Pins.LED_CONTROL,
-            4,
+            8,
             brightness=0.3,
             auto_write=False
         )
 
-        # Init LEDManager with JEBPixel wrapper for the 4 onboard LEDs
-        self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=4)
+        # Init LEDManager with JEBPixel wrapper for the 8 onboard LEDs
+        self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=8, pixel_order="RGB")
         self.leds = LEDManager(self.led_jeb_pixel)
 
         self.renderer = RenderManager(
