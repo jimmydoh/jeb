@@ -134,12 +134,12 @@ class LayoutConfigurator(UtilityMode):
         def _highlight_satellite(sid):
             """Command the target satellite to show solid red."""
             if sid in self.core.satellites:
-                self.core.satellites[sid].send("LED", [255, 0, 0, 200])
+                self.core.satellites[sid].send("LED", f"ALL,{Palette.RED.index}")
 
         def _unhighlight_satellite(sid):
             """Return the satellite to a neutral idle state."""
             if sid in self.core.satellites:
-                self.core.satellites[sid].send("LED", [0, 0, 0, 0])
+                self.core.satellites[sid].send("LED", f"ALL,{Palette.OFF.index}")
 
         def _render():
             """Update the Core's OLED display."""

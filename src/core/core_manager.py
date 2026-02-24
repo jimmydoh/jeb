@@ -34,6 +34,7 @@ from transport.protocol import (
 )
 
 from utilities.jeb_pixel import JEBPixel
+from utilities.palette import Palette
 from utilities.pins import Pins
 from utilities import tones
 
@@ -479,7 +480,7 @@ class CoreManager:
                 # E-Stop has been engaged, trigger meltdown
                 self.meltdown = True
                 self.estop_event.set()  # Signal to any listening tasks that E-Stop is engaged
-                self.sat_network.send_all("LED", "ALL,0,0,0")  # Kill all LEDs
+                self.sat_network.send_all("LED", f"ALL,{Palette.OFF.index}")  # Kill all LEDs
                 # Audio Alarms
                 await self.audio.play(
                     "background_winddown.wav", channel=self.audio.CH_ATMO, loop=False

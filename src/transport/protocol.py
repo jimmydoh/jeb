@@ -32,6 +32,8 @@ CMD_LEDCYLON = "LEDCYLON"
 CMD_LEDCENTRI = "LEDCENTRI"
 CMD_LEDRAINBOW = "LEDRAINBOW"
 CMD_LEDGLITCH = "LEDGLITCH"
+CMD_LEDPROG = "LEDPROG"
+CMD_LEDVU = "LEDVU"
 
 # Display Commands
 CMD_DSP = "DSP"
@@ -81,6 +83,8 @@ COMMAND_MAP = {
     "LEDCENTRI": 0x14,
     "LEDRAINBOW": 0x15,
     "LEDGLITCH": 0x16,
+    "LEDPROG": 0x17,
+    "LEDVU": 0x18,
 
     # Display commands
     "DSP": 0x20,
@@ -171,13 +175,15 @@ PAYLOAD_SCHEMAS = {
     "REBOOT": {'type': ENCODING_RAW_TEXT, 'desc': 'Reboot command with optional reason text'},
 
     # LED commands - RGB values plus parameters (variable count OK)
-    "LED": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness bytes'},
-    "LEDFLASH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
-    "LEDBREATH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
-    "LEDCYLON": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
-    "LEDCENTRI": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
+    "LED": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index>,brightness bytes'},
+    "LEDFLASH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index>,brightness'},
+    "LEDBREATH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index>,brightness'},
+    "LEDCYLON": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index>,brightness'},
+    "LEDCENTRI": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index>,brightness'},
     "LEDRAINBOW": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'speed,brightness'},
-    "LEDGLITCH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'intensity,brightness'},
+    "LEDGLITCH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'color:color:color:color,intensity,brightness'},
+    "LEDPROG": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index>,brightness,progress'},
+    "LEDVU": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index> for low, mid, high levels,brightness'},
 
     # Display commands
     "DSP": {'type': ENCODING_RAW_TEXT, 'desc': 'Display message text'},

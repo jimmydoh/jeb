@@ -2,6 +2,15 @@
 A selection of colour palette classes for use in the JEB Project
 """
 
+class Color(tuple):
+    """A simple RGB color class for better readability."""
+    def __new__(cls, index, name, r, g, b):
+        return super(Color, cls).__new__(cls, (r, g, b))
+
+    def __init__(self, index, name, r, g, b):
+        self.index = index
+        self.name = name
+
 class Palette:
     """
     A 40-color logical palette.
@@ -9,60 +18,60 @@ class Palette:
     """
 
     # --- 00-09: GRAYSCALE & UTILITY ---
-    OFF       = (0, 0, 0)
-    CHARCOAL  = (30, 30, 30)    # Backgrounds
-    GRAY      = (100, 100, 100) # Metal/Stone
-    SILVER    = (180, 180, 180) # Bright Metal
-    WHITE     = (255, 255, 255)
+    OFF       = Color(0, "OFF", 0, 0, 0)
+    CHARCOAL  = Color(1, "CHARCOAL", 30, 30, 30)    # Backgrounds
+    GRAY      = Color(2, "GRAY", 100, 100, 100) # Metal/Stone
+    SILVER    = Color(3, "SILVER", 180, 180, 180) # Bright Metal
+    WHITE     = Color(4, "WHITE", 255, 255, 255)
 
     # --- 10-19: REDS ---
-    MAROON    = (100, 0, 0)     # Outline
-    RED       = (255, 0, 0)     # Main
-    TOMATO    = (255, 80, 80)   # Highlight
-    PINK      = (255, 180, 180) # Pastel
-    LASER     = (255, 50, 50)   # Neon Red / Laser
+    MAROON    = Color(10, "MAROON", 100, 0, 0)     # Outline
+    RED       = Color(11, "RED", 255, 0, 0)     # Main
+    TOMATO    = Color(12, "TOMATO", 255, 80, 80)   # Highlight
+    PINK      = Color(13, "PINK", 255, 180, 180) # Pastel
+    LASER     = Color(14, "LASER", 255, 50, 50)   # Neon Red / Laser
 
     # --- 20-29: ORANGES / BROWNS ---
-    BROWN     = (90, 45, 0)     # Wood/Tree trunk
-    ORANGE    = (255, 120, 0)   # Fire/Fruit
-    GOLD      = (255, 200, 0)   # Coin/Treasure
-    PEACH     = (255, 220, 180) # Skin tone
-    EXPLODE   = (255, 180, 50)  # Neon Orange / Explosion Core
+    BROWN     = Color(20, "BROWN", 90, 45, 0)     # Wood/Tree trunk
+    ORANGE    = Color(21, "ORANGE", 255, 120, 0)   # Fire/Fruit
+    GOLD      = Color(22, "GOLD", 255, 200, 0)   # Coin/Treasure
+    PEACH     = Color(23, "PEACH", 255, 220, 180) # Skin tone
+    EXPLODE   = Color(24, "EXPLODE", 255, 180, 50)  # Neon Orange / Explosion Core
 
     # --- 30-39: YELLOWS ---
-    MUD       = (100, 100, 0)   # Dark Yellow/Camo
-    YELLOW    = (255, 255, 0)   # Sun/Zap
-    CREAM     = (255, 255, 150) # Light Yellow
-    WHEAT     = (255, 240, 200) # Very Pale
-    SOLAR     = (255, 255, 200) # Neon Yellow / Solar Flare
+    MUD       = Color(30, "MUD", 100, 100, 0)   # Dark Yellow/Camo
+    YELLOW    = Color(31, "YELLOW", 255, 255, 0)   # Sun/Zap
+    CREAM     = Color(32, "CREAM", 255, 255, 150) # Light Yellow
+    WHEAT     = Color(33, "WHEAT", 255, 240, 200) # Very Pale
+    SOLAR     = Color(34, "SOLAR", 255, 255, 200) # Neon Yellow / Solar Flare
 
     # --- 40-49: GREENS ---
-    FOREST    = (0, 80, 0)      # Leaves shadow
-    GREEN     = (0, 200, 0)     # Grass/Main
-    LIME      = (100, 255, 50)  # Slime/Highlight
-    MINT      = (180, 255, 180) # Pastel
-    TOXIC     = (150, 255, 100) # Neon Green / Radioactive
+    FOREST    = Color(40, "FOREST", 0, 80, 0)      # Leaves shadow
+    GREEN     = Color(41, "GREEN", 0, 200, 0)     # Grass/Main
+    LIME      = Color(42, "LIME", 100, 255, 50)  # Slime/Highlight
+    MINT      = Color(43, "MINT", 180, 255, 180) # Pastel
+    TOXIC     = Color(44, "TOXIC", 150, 255, 100) # Neon Green / Radioactive
 
     # --- 50-59: CYANS / TEALS ---
-    TEAL      = (0, 100, 100)   # Deep Water
-    CYAN      = (0, 200, 200)   # Ice/Diamond
-    AQUA      = (100, 255, 255) # Bright Water
-    AZURE     = (200, 255, 255) # Clouds
-    FROST     = (180, 255, 255) # Electric Cyan / Frostbite
+    TEAL      = Color(50, "TEAL", 0, 100, 100)   # Deep Water
+    CYAN      = Color(51, "CYAN", 0, 200, 200)   # Ice/Diamond
+    AQUA      = Color(52, "AQUA", 100, 255, 255) # Bright Water
+    AZURE     = Color(53, "AZURE", 200, 255, 255) # Clouds
+    FROST     = Color(54, "FROST", 180, 255, 255) # Electric Cyan / Frostbite
 
     # --- 60-69: BLUES ---
-    NAVY      = (0, 0, 80)      # Night Sky
-    BLUE      = (0, 0, 255)     # Water/Uniform
-    SKY       = (60, 100, 255)  # Day Sky
-    PERIWINKLE= (180, 180, 255) # Pastel
-    PLASMA    = (100, 150, 255) # Neon Blue / Plasma
+    NAVY      = Color(60, "NAVY", 0, 0, 80)      # Night Sky
+    BLUE      = Color(61, "BLUE", 0, 0, 255)     # Water/Uniform
+    SKY       = Color(62, "SKY", 60, 100, 255)  # Day Sky
+    PERIWINKLE= Color(63, "PERIWINKLE", 180, 180, 255) # Pastel
+    PLASMA    = Color(64, "PLASMA", 100, 150, 255) # Neon Blue / Plasma
 
     # --- 70-79: PURPLES ---
-    INDIGO    = (60, 0, 100)    # Royal
-    MAGENTA   = (200, 0, 200)   # Magic/Poison
-    VIOLET    = (200, 100, 255) # Bright
-    LAVENDER  = (230, 180, 255) # Pastel
-    HYPER     = (255, 100, 255) # Neon Magenta / Warp Core
+    INDIGO    = Color(70, "INDIGO", 60, 0, 100)    # Royal
+    MAGENTA   = Color(71, "MAGENTA", 200, 0, 200)   # Magic/Poison
+    VIOLET    = Color(72, "VIOLET", 200, 100, 255) # Bright
+    LAVENDER  = Color(73, "LAVENDER", 230, 180, 255) # Pastel
+    HYPER     = Color(74, "HYPER", 255, 100, 255) # Neon Magenta / Warp Core
 
     # The Lookup Table for the Driver
     LIBRARY = {
@@ -77,6 +86,11 @@ class Palette:
     }
 
     PALETTE_LIBRARY = LIBRARY
+
+    @staticmethod
+    def get_color(index):
+        """Get the color from the palette library by index."""
+        return Palette.LIBRARY.get(index, Palette.OFF)
 
     @staticmethod
     def hsv_to_rgb(h, s, v):

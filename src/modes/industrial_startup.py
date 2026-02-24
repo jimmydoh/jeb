@@ -107,7 +107,7 @@ class IndustrialStartup(GameMode):
         while iteration < total_iterations:
             # Set all toggle LEDs to blue
             for i in range(6):
-                self.sat.send("LEDBREATH", f"{i},0,0,200,0.0,0.5,1,2.0")
+                self.sat.send("LEDBREATH", f"{i},{Palette.BLUE.index},0.0,0.5,1,2.0")
             await asyncio.sleep(0.5)
 
             # Calculate dynamic blink speed (gets faster every round)
@@ -147,7 +147,7 @@ class IndustrialStartup(GameMode):
                 # Pulse the target LED Amber
                 self.sat.send(
                     "LEDFLASH",
-                    f"{target_idx},255,165,0,0.0,0.5,3,{blink_speed},{blink_speed}"
+                    f"{target_idx},{Palette.ORANGE.index},0.0,0.5,3,{blink_speed},{blink_speed}"
                 )
                 # --- CHECK FOR SUCCESS ---
                 if mode == "LATCH":
@@ -185,10 +185,10 @@ class IndustrialStartup(GameMode):
                                     self.core.audio.CH_SFX,
                                     level=0.8,
                                     interrupt=True)
-                self.sat.send("LED", f"{target_idx},0,255,0,0.0,0.5,2")
+                self.sat.send("LED", f"{target_idx},{Palette.GREEN.index},0.0,0.5,2")
                 self.core.matrix.show_progress_grid(iteration, total_iterations, color=Palette.GREEN)
                 await asyncio.sleep(0.5)
-                self.sat.send("LED", f"{target_idx},100,100,255,0.0,0.5,2")
+                self.sat.send("LED", f"{target_idx},{Palette.SKY.index},0.0,0.5,2")
 
             elif wrong_input:
                 self.core.audio.play("audio/ind/sfx/toggle_error.wav",
@@ -197,7 +197,10 @@ class IndustrialStartup(GameMode):
                                     interrupt=True)
                 # Flash ALL toggle LEDs Red
                 for _ in range(6):
-                    self.sat.send("LEDFLASH", f"{_},255,0,0,1.5,0.5,1,0.25,0.25")
+                    self.sat.send(
+                        "LEDFLASH",
+                        f"{_},{Palette.RED.index},1.5,0.5,1,0.25,0.25"
+                    )
                 await asyncio.sleep(0.3)
                 # Loop continues, iterations do NOT increase
 
