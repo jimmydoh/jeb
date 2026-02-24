@@ -161,6 +161,8 @@ class MockDigitalInOut:
         # Note: 'board.GP15' is the standard MCP_INT pin in your Pins class
         if str(pin) == "board.GP11":
             HardwareMocks.register('mcp_int', self)
+        elif str(pin) == "board.GP13":  # Expander 2 INT
+            HardwareMocks.register('mcp2_int', self)
         elif str(pin) == "board.GP7": # Example E-Stop pin
             HardwareMocks.register('estop', self)
         elif str(pin) == "board.GP15": # Example SATBUS Detect pin
@@ -766,10 +768,14 @@ class MockMCP:
         self.interrupt_configuration = 0
         self.pins = {} # Dictionary to track pin objects
         self._context = HardwareMocks._current_context
-        HardwareMocks.register('mcp', self)
+        if address == 0x21:
+            HardwareMocks.register('mcp2', self)
+        else:
+            HardwareMocks.register('mcp', self)
 
     def get_pin(self, pin_num):
-        mcp_int = HardwareMocks.get(self._context, 'mcp_int')
+        int_key = 'mcp2_int' if self.address == 0x21 else 'mcp_int'
+        mcp_int = HardwareMocks.get(self._context, int_key)
         if mcp_int:
             mcp_int.value = True
         if pin_num not in self.pins:

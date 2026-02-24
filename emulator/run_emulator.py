@@ -77,7 +77,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
 
     # SATELLITE (Type 01 - Right Side)
     SAT_W = 260
-    SAT_H = 560
+    SAT_H = 580
     SAT_X = WINDOW_SIZE_W - SAT_W - 20
     SAT_Y = 20
 
@@ -156,58 +156,79 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         # Fetch the mocks from the SAT_01 context sandbox
                         sat_mcp = HardwareMocks.get("SAT_01", "mcp")
                         sat_mcp_int = HardwareMocks.get("SAT_01", "mcp_int")
+                        sat_mcp2 = HardwareMocks.get("SAT_01", "mcp2")
+                        sat_mcp2_int = HardwareMocks.get("SAT_01", "mcp2_int")
                         sat_keypad = HardwareMocks.get("SAT_01", "matrix_keypad")
                         sat_encoder_btn = HardwareMocks.get("SAT_01", "encoder_btn")
 
-                        # 1. Satellite Keypad (3x4)
+                        # 1. Satellite Keypad (3x3)
                         if sat_keypad:
-                            for r in range(4):
+                            for r in range(3):
                                 for c in range(3):
-                                    kx, ky = SAT_X + 55 + c*75, SAT_Y + 140 + r*45
+                                    kx, ky = SAT_X + 40 + c*80, SAT_Y + 290 + r*45
                                     if (mx - kx)**2 + (my - ky)**2 <= 20**2:
                                         key_idx = r * 3 + c
                                         sat_keypad.events.queue.append(
                                             MockKeypadEvent(key_number=key_idx, pressed=is_pressed, released=not is_pressed)
                                         )
-                                        # [NEW] Diagnostic Prints!
-                                        #JEBLogger.warning("KEYP", f"🖱️ Pygame queued Key {key_idx} (Pressed: {is_pressed})", src="EMUL")
-                                        #JEBLogger.warning("KEYP", f"📦 Keypad Queue Size: {len(sat_keypad.events.queue)}", src="EMUL")
 
                         # 2. Satellite Encoder Push
-                        SAT_ENC_X, SAT_ENC_Y = SAT_X + 110, SAT_Y + 480
+                        SAT_ENC_X, SAT_ENC_Y = SAT_X + 55, SAT_Y + 530
                         if (mx - SAT_ENC_X)**2 + (my - SAT_ENC_Y)**2 <= 30**2:
                             if sat_encoder_btn:
                                 sat_encoder_btn.events.queue.append(
                                     MockKeypadEvent(key_number=0, pressed=is_pressed, released=not is_pressed)
                                 )
 
-                        # 3. Satellite Latching Toggles (Click to flip)
+                        # 3. Satellite Latching Toggles (Expander 1: 8x toggles in 2 rows of 4)
                         if event.type == pygame.MOUSEBUTTONDOWN and sat_mcp:
-                            for i in range(4):
-                                tx, ty = SAT_X + 40 + i*60, SAT_Y + 70
+                            for i in range(8):
+                                tx, ty = SAT_X + 35 + (i % 4)*60, SAT_Y + 110 + (i // 4)*55
                                 if (mx - tx)**2 + (my - ty)**2 <= 25**2:
-                                    pin = sat_mcp.get_pin(i) # Assuming pins 0-3 are latching
+                                    pin = sat_mcp.get_pin(i)
                                     pin.value = not pin.value
                                     if sat_mcp_int:
                                         sat_mcp_int.value = False # FIRE INTERRUPT!
 
-                        # 4. Satellite Momentary Toggle (ON-OFF-ON)
-                        MOM_X, MOM_Y = SAT_X + 210, SAT_Y + 480
-                        if sat_mcp:
+                        # 4. Special Controls (Expander 2: ARM pin 2, Key pin 3, Rotary A pin 4, Rotary B pin 5)
+                        if event.type == pygame.MOUSEBUTTONDOWN and sat_mcp2:
+                            for j, pin_num in enumerate([2, 3, 4, 5]):
+                                tx, ty = SAT_X + 35 + j*60, SAT_Y + 235
+                                if (mx - tx)**2 + (my - ty)**2 <= 25**2:
+                                    pin = sat_mcp2.get_pin(pin_num)
+                                    pin.value = not pin.value
+                                    if sat_mcp2_int:
+                                        sat_mcp2_int.value = False # FIRE INTERRUPT!
+
+                        # 5. Satellite Momentary Toggle (Expander 2: UP pin 0, DOWN pin 1)
+                        MOM_X, MOM_Y = SAT_X + 145, SAT_Y + 530
+                        if sat_mcp2:
                             if event.type == pygame.MOUSEBUTTONDOWN:
                                 if (mx - MOM_X)**2 + (my - (MOM_Y - 20))**2 <= 20**2:
-                                    sat_mcp.get_pin(4).value = False # Pushed UP (Active Low)
-                                    if sat_mcp_int: sat_mcp_int.value = False
+                                    sat_mcp2.get_pin(0).value = False # Pushed UP (Active Low)
+                                    if sat_mcp2_int: sat_mcp2_int.value = False
                                 elif (mx - MOM_X)**2 + (my - (MOM_Y + 20))**2 <= 20**2:
-                                    sat_mcp.get_pin(5).value = False # Pushed DOWN (Active Low)
-                                    if sat_mcp_int: sat_mcp_int.value = False
+                                    sat_mcp2.get_pin(1).value = False # Pushed DOWN (Active Low)
+                                    if sat_mcp2_int: sat_mcp2_int.value = False
                             elif event.type == pygame.MOUSEBUTTONUP:
                                 # SPRING RETURN: If either pin is currently held down, snap them back to True!
-                                if not sat_mcp.get_pin(4).value or not sat_mcp.get_pin(5).value:
-                                    sat_mcp.get_pin(4).value = True
-                                    sat_mcp.get_pin(5).value = True
-                                    if sat_mcp_int:
-                                        sat_mcp_int.value = False # FIRE INTERRUPT ON RELEASE!
+                                if not sat_mcp2.get_pin(0).value or not sat_mcp2.get_pin(1).value:
+                                    sat_mcp2.get_pin(0).value = True
+                                    sat_mcp2.get_pin(1).value = True
+                                    if sat_mcp2_int:
+                                        sat_mcp2_int.value = False # FIRE INTERRUPT ON RELEASE!
+
+                        # 6. Big Red Button (Expander 2: pin 6)
+                        BIG_BTN_X, BIG_BTN_Y = SAT_X + 220, SAT_Y + 530
+                        if sat_mcp2:
+                            if event.type == pygame.MOUSEBUTTONDOWN:
+                                if (mx - BIG_BTN_X)**2 + (my - BIG_BTN_Y)**2 <= 30**2:
+                                    sat_mcp2.get_pin(6).value = False # Active Low
+                                    if sat_mcp2_int: sat_mcp2_int.value = False
+                            elif event.type == pygame.MOUSEBUTTONUP:
+                                if not sat_mcp2.get_pin(6).value:
+                                    sat_mcp2.get_pin(6).value = True
+                                    if sat_mcp2_int: sat_mcp2_int.value = False
 
                 # --- MOUSE WHEEL (Interactive Encoder) ---
                 elif event.type == pygame.MOUSEWHEEL:
@@ -485,20 +506,40 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 pygame.draw.rect(screen, (220, 180, 40), (SAT_X, SAT_Y, SAT_W, SAT_H), border_radius=10)
                 pygame.draw.rect(screen, (100, 80, 20), (SAT_X, SAT_Y, SAT_W, SAT_H), 4, border_radius=10)
 
-                # 1. TOP: LATCHING TOGGLES
-                for i in range(4):
-                    tx, ty = SAT_X + 40 + i*60, SAT_Y + 70
+                # ==========================================
+                # RENDER SAT 01 LEDs (8x NeoPixels in 2 rows of 4)
+                # ==========================================
+                sat_pixels = HardwareMocks.get("SAT_01", "pixels")
+                for i in range(8):
+                    tx = SAT_X + 35 + (i % 4) * 60
+                    ty = SAT_Y + 30 + (i // 4) * 32
+                    pygame.draw.circle(screen, (30, 30, 30), (tx, ty), 12)
+                    try:
+                        if sat_pixels:
+                            color = sat_pixels[i]
+                            if isinstance(color, int):
+                                color = ((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF)
+                            safe_color = tuple(max(0, min(255, int(c))) for c in color[:3])
+                            if any(c > 0 for c in safe_color):
+                                pygame.draw.circle(screen, safe_color, (tx, ty), 9)
+                            else:
+                                pygame.draw.circle(screen, (10, 10, 10), (tx, ty), 9)
+                    except Exception as e:
+                        print(f"⚠️ [EMULATOR] LED Render Error on SAT_01 LED {i}: {e}")
 
-                    # Read simulated electrical state
+                # ==========================================
+                # 1. LATCHING TOGGLES (8x in 2 rows of 4, Expander 1)
+                # ==========================================
+                sat_mcp = HardwareMocks.get("SAT_01", "mcp")
+                for i in range(8):
+                    tx, ty = SAT_X + 35 + (i % 4)*60, SAT_Y + 110 + (i // 4)*55
                     state = True
-                    if HardwareMocks.get("SAT_01", "mcp"):
-                        state = HardwareMocks.get("SAT_01", "mcp").peek_pin(i).value
-
+                    if sat_mcp:
+                        state = sat_mcp.peek_pin(i).value
                     # Switch Base
                     pygame.draw.rect(screen, (80, 80, 80), (tx-15, ty-25, 30, 50), border_radius=4)
                     pygame.draw.rect(screen, (40, 40, 40), (tx-15, ty-25, 30, 50), 2, border_radius=4)
-
-                    # Switch Bat Angle
+                    # Switch Bat
                     if state: # UP
                         pygame.draw.rect(screen, (180, 180, 180), (tx-6, ty-25, 12, 28), border_radius=3)
                         pygame.draw.circle(screen, (150, 150, 150), (tx, ty-25), 6)
@@ -507,55 +548,51 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         pygame.draw.circle(screen, (90, 90, 90), (tx, ty+28), 6)
 
                 # ==========================================
-                # RENDER SAT 01 LEDs
+                # 2. SPECIAL CONTROLS (Expander 2): ARM, Key Switch, Rotary A/B
                 # ==========================================
-                sat_pixels = HardwareMocks.get("SAT_01", "pixels")
+                sat_mcp2 = HardwareMocks.get("SAT_01", "mcp2")
+                spec_labels = ["ARM", "KEY", "ROT-A", "ROT-B"]
+                spec_pins2  = [2, 3, 4, 5]
+                spec_colors = [(200, 60, 60), (60, 120, 200), (100, 200, 100), (100, 200, 100)]
+                for j, (pin_num, label, act_color) in enumerate(zip(spec_pins2, spec_labels, spec_colors)):
+                    tx, ty = SAT_X + 35 + j*60, SAT_Y + 235
+                    state = True
+                    if sat_mcp2:
+                        state = sat_mcp2.peek_pin(pin_num).value
+                    # Switch Base
+                    pygame.draw.rect(screen, (80, 80, 80), (tx-15, ty-25, 30, 50), border_radius=4)
+                    pygame.draw.rect(screen, (40, 40, 40), (tx-15, ty-25, 30, 50), 2, border_radius=4)
+                    # Active indicator dot
+                    ind_color = act_color if not state else (60, 60, 60)
+                    pygame.draw.circle(screen, ind_color, (tx, ty+30), 5)
+                    # Switch Bat
+                    if state: # UP (Default / Off)
+                        pygame.draw.rect(screen, (180, 180, 180), (tx-6, ty-25, 12, 28), border_radius=3)
+                        pygame.draw.circle(screen, (150, 150, 150), (tx, ty-25), 6)
+                    else:     # DOWN (Active / On)
+                        pygame.draw.rect(screen, (120, 120, 120), (tx-6, ty, 12, 28), border_radius=3)
+                        pygame.draw.circle(screen, (90, 90, 90), (tx, ty+28), 6)
+                    # Label
+                    lbl_surf = oled_font.render(label, True, (50, 30, 10))
+                    screen.blit(lbl_surf, (tx - 12, ty + 37))
 
-                if sat_pixels:
-                    led_y = SAT_Y + 25
-                    for i in range(4):
-                        tx = SAT_X + 40 + i * 60
-
-                        # Draw outer Bezel
-                        pygame.draw.circle(screen, (30, 30, 30), (tx, led_y), 12)
-
-                        try:
-                            color = sat_pixels[i]
-
-                            # Handle hex integers just in case
-                            if isinstance(color, int):
-                                r = (color >> 16) & 0xFF
-                                g = (color >> 8) & 0xFF
-                                b = color & 0xFF
-                                color = (r, g, b)
-
-                            safe_color = tuple(max(0, min(255, int(c))) for c in color[:3])
-
-                            # If the color is lit (>0), draw the glowing dome
-                            if any(c > 0 for c in safe_color):
-                                pygame.draw.circle(screen, safe_color, (tx, led_y), 9)
-                            else:
-                                pygame.draw.circle(screen, (10, 10, 10), (tx, led_y), 9)
-
-                        except Exception as e:
-                            print(f"⚠️ [EMULATOR] LED Render Error on SAT_01 LED {i}: {e}")
-
-                # 2. MIDDLE: KEYPAD (3x4)
-                KEYPAD_LABELS = ['1','2','3','4','5','6','7','8','9','*','0','#']
-                for r in range(4):
+                # ==========================================
+                # 3. KEYPAD (3x3)
+                # ==========================================
+                KEYPAD_LABELS = ['1','2','3','4','5','6','7','8','9']
+                for r in range(3):
                     for c in range(3):
-                        kx, ky = SAT_X + 55 + c*75, SAT_Y + 140 + r*45
-                        # Button Bezel and Dome
+                        kx, ky = SAT_X + 40 + c*80, SAT_Y + 290 + r*45
                         pygame.draw.circle(screen, (30, 30, 30), (kx, ky), 22)
                         pygame.draw.circle(screen, (180, 180, 180), (kx, ky), 20)
-
-                        # Key Text
                         idx = r * 3 + c
                         lbl = oled_font.render(KEYPAD_LABELS[idx], True, (0, 0, 0))
                         lbl_rect = lbl.get_rect(center=(kx, ky))
                         screen.blit(lbl, lbl_rect)
 
-                # 3. LOWER-MIDDLE: SEGMENT DISPLAYS
+                # ==========================================
+                # 4. SEGMENT DISPLAYS
+                # ==========================================
                 if HardwareMocks.get("SAT_01", "segments", key=0x70) and HardwareMocks.get("SAT_01", "segments", key=0x71):
                     seg_font = pygame.font.SysFont("courier", 32, bold=True)
                     left_display = HardwareMocks.get("SAT_01", "segments", key=0x71)
@@ -564,8 +601,8 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     full_text = "".join(left_display.chars) if left_display else "    "
                     full_text += "".join(right_display.chars) if right_display else "    "
 
-                    SEG_X, SEG_Y = SAT_X + 20, SAT_Y + 340
-                    SEG_W, SEG_H = 220, 60
+                    SEG_X, SEG_Y = SAT_X + 20, SAT_Y + 425
+                    SEG_W, SEG_H = 220, 50
                     pygame.draw.rect(screen, (15, 5, 5), (SEG_X, SEG_Y, SEG_W, SEG_H))
                     pygame.draw.rect(screen, (40, 10, 10), (SEG_X, SEG_Y, SEG_W, SEG_H), 2)
 
@@ -573,8 +610,10 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     text_rect = text_surface.get_rect(center=(SEG_X + SEG_W//2, SEG_Y + SEG_H//2))
                     screen.blit(text_surface, text_rect)
 
-                # 4. BOTTOM LEFT: ROTARY ENCODER
-                SAT_ENC_X, SAT_ENC_Y = SAT_X + 110, SAT_Y + 480
+                # ==========================================
+                # 5. ROTARY ENCODER (Bottom Left)
+                # ==========================================
+                SAT_ENC_X, SAT_ENC_Y = SAT_X + 55, SAT_Y + 530
                 pygame.draw.circle(screen, (20, 20, 20), (SAT_ENC_X, SAT_ENC_Y), 35) # Base Bezel
                 pygame.draw.circle(screen, (70, 70, 75), (SAT_ENC_X, SAT_ENC_Y), 30) # Knob
 
@@ -586,17 +625,18 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     iy = SAT_ENC_Y + math.sin(rad) * 25
                     pygame.draw.line(screen, (255, 100, 100), (SAT_ENC_X, SAT_ENC_Y), (ix, iy), 4)
 
-                # 5. BOTTOM RIGHT: MOMENTARY TOGGLE (ON-OFF-ON)
-                MOM_X, MOM_Y = SAT_X + 210, SAT_Y + 480
+                # ==========================================
+                # 6. MOMENTARY TOGGLE (Center Bottom, Expander 2 pins 0-1)
+                # ==========================================
+                MOM_X, MOM_Y = SAT_X + 145, SAT_Y + 530
                 pygame.draw.rect(screen, (80, 80, 80), (MOM_X-15, MOM_Y-25, 30, 50), border_radius=4)
                 pygame.draw.rect(screen, (40, 40, 40), (MOM_X-15, MOM_Y-25, 30, 50), 2, border_radius=4)
 
                 state_up = True
                 state_down = True
-                if HardwareMocks.get("SAT_01", "mcp"):
-                    # Assumes Pins 4 and 5 are the momentary inputs
-                    state_up = HardwareMocks.get("SAT_01", "mcp").peek_pin(4).value
-                    state_down = HardwareMocks.get("SAT_01", "mcp").peek_pin(5).value
+                if sat_mcp2:
+                    state_up   = sat_mcp2.peek_pin(0).value
+                    state_down = sat_mcp2.peek_pin(1).value
 
                 if not state_up: # Pushed UP
                     pygame.draw.rect(screen, (180, 180, 180), (MOM_X-6, MOM_Y-25, 12, 28), border_radius=3)
@@ -607,6 +647,18 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 else: # Centered (Spring returned)
                     pygame.draw.rect(screen, (150, 150, 150), (MOM_X-6, MOM_Y-12, 12, 24), border_radius=3)
                     pygame.draw.circle(screen, (130, 130, 130), (MOM_X, MOM_Y), 6)
+
+                # ==========================================
+                # 7. BIG RED BUTTON (Bottom Right, Expander 2 pin 6)
+                # ==========================================
+                BIG_BTN_X, BIG_BTN_Y = SAT_X + 220, SAT_Y + 530
+                btn_pressed = sat_mcp2 and not sat_mcp2.peek_pin(6).value
+                big_btn_color = (150, 10, 10) if btn_pressed else (220, 30, 30)
+                pygame.draw.circle(screen, (20, 20, 20), (BIG_BTN_X, BIG_BTN_Y), 34) # Outer bezel
+                pygame.draw.circle(screen, big_btn_color, (BIG_BTN_X, BIG_BTN_Y), 30) # Dome
+                lbl_surf = oled_font.render("!", True, (255, 200, 200))
+                lbl_rect = lbl_surf.get_rect(center=(BIG_BTN_X, BIG_BTN_Y))
+                screen.blit(lbl_surf, lbl_rect)
 
             pygame.display.flip()
             await asyncio.sleep(0.016) # ~60 FPS
