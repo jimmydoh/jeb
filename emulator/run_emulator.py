@@ -237,13 +237,12 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 # --- MOUSE WHEEL (Interactive Encoder) ---
                 elif event.type == pygame.MOUSEWHEEL:
                     mx, my = pygame.mouse.get_pos()
-                    step_multiplier = 1
                     if mx < (WINDOW_SIZE_W - SAT_W): # Left side (Core Encoder)
                         if HardwareMocks.get("CORE", "encoder"):
-                            HardwareMocks.get("CORE", "encoder").position += (event.y * step_multiplier)
+                            HardwareMocks.get("CORE", "encoder").position += 1 if event.y > 0 else -1
                     else: # Right side (Satellite Encoder)
                         if HardwareMocks.get("SAT_01", "encoder") and HardwareMocks.get("SAT_01", "encoder"):
-                            HardwareMocks.get("SAT_01", "encoder").position += (event.y * step_multiplier)
+                            HardwareMocks.get("SAT_01", "encoder").position += 1 if event.y > 0 else -1
 
                 # --- KEYBOARD FALLBACK ---
                 elif event.type == pygame.KEYDOWN or event.type == pygame.KEYUP:

@@ -5,6 +5,7 @@ import asyncio
 
 from utilities.palette import Palette
 from utilities import tones
+from utilities.logger import JEBLogger
 
 from .utility_mode import UtilityMode
 
@@ -25,6 +26,7 @@ class MainMenu(UtilityMode):
         Returns:
             List[str]: List of mode_id strings for modes that have their requirements met.
         """
+        JEBLogger.info("MENU",f"Building menu items for menu '{menu}'...")
         items = []
 
         # Sort by name or predefined order if you wish
@@ -52,6 +54,7 @@ class MainMenu(UtilityMode):
             if requirements_met:
                 items.append(mode_id)
 
+        JEBLogger.info("MENU", f"Built menu items: {items}")
         return items
 
     def _set_state(self, new_state):
@@ -222,6 +225,7 @@ class MainMenu(UtilityMode):
                         self.touch()
                         slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
                         selected_game_idx = curr_pos % len(menu_items)
+                        JEBLogger.info("MENU", f"Encoder moved: diff={encoder_diff}, new_pos={curr_pos}, selected_game_idx={selected_game_idx}, menu_length={len(menu_items)}")
                         await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
                         needs_render = True
 
