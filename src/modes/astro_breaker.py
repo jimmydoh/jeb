@@ -343,9 +343,9 @@ class AstroBreakerMode(GameMode):
 
         for (bx, by), brick in self.bricks.items():
             if brick['type'] == 'CORE':
-                color = Palette.RED if cores_protected else Palette.AMBER
+                color = Palette.RED if cores_protected else Palette.ORANGE
             elif brick['type'] == 'TOUGH':
-                if brick['hp'] >= 3: color = Palette.PURPLE
+                if brick['hp'] >= 3: color = Palette.INDIGO
                 elif brick['hp'] == 2: color = Palette.MAGENTA
                 else: color = Palette.PINK
             else:

@@ -73,6 +73,7 @@ class IndustrialSatelliteDriver(SatelliteDriver):
         )]
 
         self.hid = HIDManager(
+            buttons=buttons,
             latching_toggles=latching_toggles,
             momentary_toggles=momentary_toggles,
             encoders=encoders,

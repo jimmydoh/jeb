@@ -48,6 +48,17 @@ class SegmentManager:
             duration = get_float(values, 0, 2.0)
             await self.start_matrix(duration if duration > 0 else 2.0)
 
+    async def clear(self):
+        """Clears both displays and cancels any active tasks."""
+        if self._display_task and not self._display_task.done():
+            self._display_task.cancel()
+            await asyncio.sleep(0.1)
+
+        self._display_left.fill(0)
+        self._display_right.fill(0)
+        self._display_left.show()
+        self._display_right.show()
+
     # --- BASIC LOGIC ---
     async def _message_logic(self, text, loop=False, speed=0.3, direction="L"):
         """Advanced Marquee for dual 14-segment displays."""

@@ -572,7 +572,7 @@ class CoreManager:
         self.leds.off_led(-1)
         self.renderer.target_frame_rate = self.renderer.DEFAULT_FRAME_RATE
         # Broadcast ACTIVE to all satellites
-        self.sat_network.send_all(CMD_MODE, "ACTIVE")
+        self.sat_network.send_all(CMD_MODE, "WAKE")
 
     async def monitor_hw_hid(self):
         """Background task to poll hardware inputs."""

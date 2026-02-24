@@ -312,7 +312,7 @@ class SatelliteNetworkManager:
         """
         if sid in self.satellites:
             self.satellites[sid].update_heartbeat()
-            JEBLogger.info("NETM", f"PING", src=sid)
+            #JEBLogger.info("NETM", f"PING", src=sid)
         else:
             JEBLogger.warning("NETM", f"PING from unknown sat", src=sid)
 

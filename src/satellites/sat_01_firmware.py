@@ -113,12 +113,10 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         self.last_interaction_time = 0
         self.attract_running = False
         self._idle_display_buffer = ""
-        self._sleeping = False
 
         self._system_handlers.update({
             CMD_SYNC_FRAME: self._handle_sync_frame,
             CMD_SETENC: self._handle_set_enc,
-            CMD_MODE: self._handle_mode_command,
         })
         JEBLogger.info("FIRM", "Industrial Satellite Firmware initialized.", src=self.id)
 
@@ -137,29 +135,14 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             values = parse_values(val)
             self.hid.reset_encoder(get_int(values, 0))
 
-    async def _handle_mode_command(self, val):
-        """Handle CMD_MODE from the Core (SLEEP or ACTIVE)."""
-        mode_str = val.strip() if isinstance(val, str) else str(val).strip()
-        JEBLogger.info("FIRM", f"MODE command: {mode_str}", src=self.id)
-        if mode_str == "SLEEP":
-            await self._enter_sleep()
-        elif mode_str == "ACTIVE":
-            await self._wake_local()
-
-    async def _enter_sleep(self):
-        """Enter satellite sleep state: blank display, breath LEDs, throttle loops."""
-        if self._sleeping:
-            return
-        self._sleeping = True
+    async def on_sleep(self):
+        """Hardware-specific sleep routine."""
         await self.segment.clear()
         self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim="BREATH", speed=0.5)
         self.renderer.target_frame_rate = 10
 
-    async def _wake_local(self):
-        """Exit satellite sleep state: restore display loops and LED rate."""
-        if not self._sleeping:
-            return
-        self._sleeping = False
+    async def on_wake(self):
+        """Hardware-specific wake routine."""
         self.renderer.target_frame_rate = self.renderer.DEFAULT_FRAME_RATE
 
     async def _process_local_cmd(self, cmd, val):
@@ -169,6 +152,9 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             cmd (str): Command type.
             val (str or bytes): Command value.
         """
+        if self._sleeping:
+            await self._wake_local()
+
         if await super()._process_local_cmd(cmd, val):
             return True # Command was handled!
 
@@ -222,8 +208,10 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
                     # Local interaction while sleeping: wake locally and notify Core
                     await self._wake_local()
                     self.transport_up.send(Message(self.id, "CORE", CMD_MODE, "ACTIVE"))
-                await asyncio.sleep(0.1)  # Throttled polling while sleeping
-                continue
+                else:
+                    # Still sleeping, skip processing
+                    await asyncio.sleep(0.1)
+                    continue
 
             if changed:
                 # Any hardware interaction resets the attract mode timer
@@ -236,14 +224,14 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
 
             if self.operating_mode == "IDLE":
                 if changed:
-                    # 1. Hardware Toggles directly drive Local LEDs (Assuming 5 toggles, 5 LEDs)
-                    for i in range(4):
+                    # Small Toggles directly drive Local LEDs (8 toggles, 8 LEDs)
+                    for i in range(8):
                         if self.hid.is_latching_toggled(i):
                             JEBLogger.info("FIRM", f"Local Idle Toggle {i} ON", src=self.id)
                             self.leds.set_led(i, Palette.GREEN, priority=5)
                         else:
                             JEBLogger.info("FIRM", f"Local Idle Toggle {i} OFF", src=self.id)
-                            self.leds.set_led(i, Palette.AMBER, priority=5)
+                            self.leds.set_led(i, Palette.ORANGE, priority=5)
 
                     # 2. Keypad typing directly to 14-Segment Displays
                     key = self.hid.get_keypad_next_key(0) # Assuming index 0 is your matrix keypad

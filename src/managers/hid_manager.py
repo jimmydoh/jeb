@@ -187,6 +187,7 @@ class HIDManager:
                 mom_offset = 0
 
                 for cfg in expander_configs:
+                    JEBLogger.info("INIT", f"Configuring MCP Expander at {hex(cfg['address'])}", src="HIDM")
                     chip_type = cfg.get("chip")
                     try:
                         if chip_type == "MCP23008":
@@ -223,7 +224,9 @@ class HIDManager:
                         }
 
                         if cfg.get("momentary"):
+                            JEBLogger.info("INIT", f"Momentary: {cfg['momentary']}", src="HIDM")
                             flat_mom = [pin for pair in cfg["momentary"] for pin in pair]
+                            JEBLogger.info("INIT", f"Momentary: {flat_mom}", src="HIDM")
                             exp_data["mom_keys"] = MCPKeys(mcp, flat_mom, value_when_pressed=False, pull=True)
 
                         self._active_expanders.append(exp_data)
@@ -754,6 +757,7 @@ class HIDManager:
     #region --- Expander MCP23017 Handling ---
     def _hw_expander_buttons(self):
         """Polls MCP23017 and processes events into the global state arrays."""
+        #JEBLogger.info("HIDM", "Polling MCP Expander Buttons...", src="HIDM")
         if self.monitor_only or not self.has_expander:
             return False
         changed = False
@@ -779,6 +783,7 @@ class HIDManager:
 
     def _hw_expander_latching_toggles(self):
         """Polls MCP23017 and processes events into the global state arrays."""
+        #JEBLogger.info("HIDM", "Polling MCP Expander Latching Toggles...", src="HIDM")
         if self.monitor_only or not self.has_expander:
             return False
         changed = False
@@ -804,6 +809,7 @@ class HIDManager:
 
     def _hw_expander_momentary_toggles(self):
         """Polls MCP23017 and processes events into the global state arrays."""
+        #JEBLogger.info("HIDM", "Polling MCP Expander Momentary Toggles...", src="HIDM")
         if self.monitor_only or not self.has_expander:
             return False
         changed = False
@@ -814,6 +820,7 @@ class HIDManager:
             if not keys:
                 continue
             while keys.events.get_into(event):
+                JEBLogger.info("HIDM", f"Momentary Toggle Event: {event.key_number}, Pressed: {event.pressed}, Released: {event.released}", src="HIDM")
                 changed = True # State changed
                 key_idx = self._local_momentary_count + exp.get("mom_offset", 0) + (event.key_number // 2)
                 direction = 0 if event.key_number % 2 == 0 else 1
@@ -844,14 +851,19 @@ class HIDManager:
         dirty |= self._hw_poll_matrix_keypads()
         dirty |= self._hw_poll_estop()
         if self.has_expander: # Poll expander if available
-            if (self._mcp_int and not self._mcp_int.value) or not self._mcp_int:
-                # Interrupt Active LOW or no INT pin
-                if self._expanded_buttons_keys:
-                    self._expanded_buttons_keys.update()
-                if self._expanded_latching_keys:
-                    self._expanded_latching_keys.update()
-                if self._expanded_momentary_keys:
-                    self._expanded_momentary_keys.update()
+            # 1. Update the underlying key states based on interrupt triggers
+            for exp in self._active_expanders:
+                int_io = exp.get("int_io")
+
+                # If interrupt triggered (Active LOW) or no INT pin assigned
+                if not int_io or not int_io.value:
+                    # Dynamically find and update any attached MCPKeys instances
+                    # regardless of what dictionary key they were stored under!
+                    for key, component in exp.items():
+                        if hasattr(component, "update") and key not in ["mcp", "int_io"]:
+                            component.update()
+
+                # Process the generated events into the state
                 dirty |= self._hw_expander_buttons()
                 dirty |= self._hw_expander_latching_toggles()
                 dirty |= self._hw_expander_momentary_toggles()

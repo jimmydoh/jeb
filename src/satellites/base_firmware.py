@@ -75,6 +75,7 @@ class SatelliteFirmware:
         self.time_offset = 0.0  # Estimated time difference from Core (in seconds)
 
         self.operating_mode = "IDLE"
+        self._sleeping = False
 
         # Common Hardware
         # Init I2C bus (if needed for future expansion)
@@ -88,7 +89,7 @@ class SatelliteFirmware:
             chip_type=adc_config["chip_type"],
             address=adc_config.get("address", 0x48)
         )
-        
+
         # Configure ADC channels from Pins configuration
         for channel in adc_config["channels"]:
             self.adc.add_channel(
@@ -240,8 +241,20 @@ class SatelliteFirmware:
         if isinstance(val, bytes):
             val = val.decode('utf-8')
         new_mode = val.strip().upper()
-        
+
+        # 1. Power State Management
+        if new_mode == "SLEEP":
+            await self._enter_sleep()
+            return
+        elif new_mode == "WAKE":
+            await self._wake_local()
+            return
+
+        # 2. Operating State Management (IDLE / ACTIVE)
         if new_mode in ("IDLE", "ACTIVE"):
+            # If we enter a game state, implicitly wake up hardware
+            await self._wake_local()
+
             if self.operating_mode != new_mode:
                 self.operating_mode = new_mode
                 # Notify upstream that the switch was successful
@@ -249,6 +262,28 @@ class SatelliteFirmware:
                     pass
                 # Trigger subclass specific cleanups
                 await self.on_mode_change(new_mode)
+
+    async def _enter_sleep(self):
+        """Enter global sleep state and trigger hardware-specific power downs."""
+        if self._sleeping:
+            return
+        self._sleeping = True
+        await self.on_sleep()
+
+    async def _wake_local(self):
+        """Exit sleep state and trigger hardware-specific wake routines."""
+        if not self._sleeping:
+            return
+        self._sleeping = False
+        await self.on_wake()
+
+    async def on_sleep(self):
+        """Virtual hook for subclasses to power down hardware."""
+        pass
+
+    async def on_wake(self):
+        """Virtual hook for subclasses to restore hardware state."""
+        pass
 
     async def on_mode_change(self, new_mode):
         """Virtual hook for subclasses to react to mode transitions."""

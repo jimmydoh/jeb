@@ -1,6 +1,8 @@
 import sys
 import time
 import pygame
+import os
+import builtins
 
 # ==========================================
 # SAFE AUDIO INITIALIZATION
@@ -14,6 +16,39 @@ try:
     print("🔊 [EMULATOR] Hardware Audio Device Found. Sound Enabled.")
 except Exception as e:
     print(f"⚠️ [EMULATOR] No audio device available ({e}). Falling back to silent logging.")
+
+# ==========================================
+# FILESYSTEM / SD CARD MOCK
+# ==========================================
+# Intercept file operations to map CircuitPython paths to the local Windows repo
+
+_orig_stat = os.stat
+_orig_open = builtins.open
+
+def _map_virtual_path(path):
+    """Translates CircuitPython paths to local relative paths."""
+    if not isinstance(path, str):
+        return path
+
+    # Strip leading slashes so '/SD/audio...' becomes 'SD/audio...'
+    mapped_path = path.lstrip("/")
+
+    # If the app asks for 'audio/...' but your local folder is actually 'SD/audio/...'
+    # we can silently redirect it to the correct local folder.
+    if mapped_path.startswith("audio/") and os.path.exists("SD/" + mapped_path):
+        mapped_path = "SD/" + mapped_path
+
+    return mapped_path
+
+def _mock_stat(path, *args, **kwargs):
+    return _orig_stat(_map_virtual_path(path), *args, **kwargs)
+
+def _mock_open(file, *args, **kwargs):
+    return _orig_open(_map_virtual_path(file), *args, **kwargs)
+
+# Apply the patches globally for the emulator session
+os.stat = _mock_stat
+builtins.open = _mock_open
 
 #region --- Hardware Mocks ---
 
@@ -68,20 +103,6 @@ class HardwareMocks:
         if key is not None:
             return device_dict.get(mock_type, {}).get(key)
         return device_dict.get(mock_type)
-
-#class HardwareMocks:
-#    """Globally accessible registry of hardware mock instances for Pygame to talk to."""
-#    buttons = None          # Will hold the keypad.Keys instance for main buttons
-#    encoder_btn = None      # Will hold the keypad.Keys instance for the dial push
-#    encoder = None          # Will hold the rotaryio.IncrementalEncoder instance
-#    estop = None            # Will hold the digitalio.DigitalInOut instance
-#    mcp = None              # Will hold the MCP expander instance if configured
-#    mcp_int = None          # Will hold the MCP interrupt pin object if configured
-
-    # [NEW] Hot-Plug State
-#    satellite_plugged_in = False
-#    satbus_detect_pin = None
-#    satbus_mosfet_pin = None
 
 # --- KEYPAD MOCK ---
 class MockKeypadEvent:
@@ -747,9 +768,30 @@ sys.modules['adafruit_display_text.label'] = MockLabelModule
 class MockMCPPin:
     def __init__(self, pin_num):
         self.pin = pin_num
-        self.direction = None
-        self.pull = None
-        self._value = True # Default UP (assuming pull-ups)
+        self._direction = None
+        self._pull = None
+        self._value = True # Default UP
+
+    @property
+    def direction(self):
+        return self._direction
+
+    @direction.setter
+    def direction(self, val):
+        self._direction = val
+
+    @property
+    def pull(self):
+        return self._pull
+
+    @pull.setter
+    def pull(self, val):
+        self._pull = val
+        # Simulate the physical electrical pull resistor
+        if val == MockPull.UP:
+            self._value = True
+        elif val == MockPull.DOWN:
+            self._value = False
 
     @property
     def value(self):
