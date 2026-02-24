@@ -54,8 +54,7 @@ PAYLOAD_SCHEMAS = {
     },
     "LED": {
         'type': ENCODING_NUMERIC_BYTES,
-        'desc': 'R,G,B,brightness bytes',
-        'count': 4  # Optional: validate exactly 4 values
+        'desc': 'led_index,palette_index,duration,brightness,priority bytes',
     },
     "POWER": {
         'type': ENCODING_FLOATS,
@@ -172,13 +171,15 @@ encoded = b'\x00\x00\x9C\x41\x9A\x99\x91\x41\x00\x00\xA0\x40'
 
 | Command | Type | Description |
 |---------|------|-------------|
-| `LED` | `ENCODING_NUMERIC_BYTES` | R,G,B,brightness (4 bytes) |
-| `LEDFLASH` | `ENCODING_NUMERIC_BYTES` | R,G,B,brightness |
-| `LEDBREATH` | `ENCODING_NUMERIC_BYTES` | R,G,B,brightness |
-| `LEDCYLON` | `ENCODING_NUMERIC_BYTES` | R,G,B,brightness |
-| `LEDCENTRI` | `ENCODING_NUMERIC_BYTES` | R,G,B,brightness |
-| `LEDRAINBOW` | `ENCODING_NUMERIC_BYTES` | speed,brightness |
-| `LEDGLITCH` | `ENCODING_NUMERIC_BYTES` | intensity,brightness |
+| `LED` | `ENCODING_NUMERIC_BYTES` | led_index,palette_index,duration,brightness,priority |
+| `LEDFLASH` | `ENCODING_NUMERIC_BYTES` | led_index,palette_index,duration,brightness,priority,speed |
+| `LEDBREATH` | `ENCODING_NUMERIC_BYTES` | led_index,palette_index,duration,brightness,priority,speed |
+| `LEDCYLON` | `ENCODING_NUMERIC_BYTES` | palette_index,duration,speed |
+| `LEDCENTRI` | `ENCODING_NUMERIC_BYTES` | palette_index,duration,speed |
+| `LEDRAINBOW` | `ENCODING_NUMERIC_BYTES` | duration,speed |
+| `LEDGLITCH` | `ENCODING_NUMERIC_BYTES` | palette_indices (colon-separated),duration,speed |
+| `LEDPROG` | `ENCODING_NUMERIC_BYTES` | percentage,palette_index,background_index,priority |
+| `LEDVU` | `ENCODING_NUMERIC_BYTES` | percentage,low_palette_index,mid_palette_index,high_palette_index,priority |
 
 ### Display Commands
 
@@ -298,7 +299,7 @@ def test_id_assign_preserves_leading_zeros():
 test_cases = [
     Message("ALL", "ID_ASSIGN", "0100"),
     Message("SAT", "NEW_SAT", "01"),
-    Message("0101", "LED", "255,0,128,100"),
+    Message("0101", "LED", (0, 11, 0, 100, 2)),   # led 0, Palette.RED (index 11), no duration, brightness 100, priority 2
     Message("0101", "POWER", "19.5,18.2,5.0"),
     Message("0101", "DSP", "HELLO WORLD"),
 ]
