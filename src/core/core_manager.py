@@ -39,11 +39,6 @@ from utilities.palette import Palette
 from utilities.pins import Pins
 from utilities import tones
 
-POW_INPUT = "input_20v"
-POW_BUS = "satbus_20v"
-POW_MAIN = "main_5v"
-POW_LED = "led_5v"
-
 # Dim blue used as low-power breathing colour during sleep
 SLEEP_LED_COLOR = (0, 0, 32)
 
@@ -152,36 +147,18 @@ class CoreManager:
         # Init I2C bus
         self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
 
-        # Init ADC Manager for voltage sensing
-        from managers.adc_manager import ADCManager
-        adc_config = Pins.ADC_CONFIG
-        self.adc = ADCManager(
-            i2c_bus=self.i2c if adc_config["chip_type"] != "NATIVE" else None,
-            chip_type=adc_config["chip_type"],
-            address=adc_config.get("address", 0x48)
-        )
-
-        # Configure ADC channels from Pins configuration
-        for channel in adc_config["channels"]:
-            self.adc.add_channel(
-                channel["name"],
-                channel["pin"],
-                channel["multiplier"]
-            )
-
-        # Build PowerBus objects backed by ADCSensorWrappers (one per rail)
-        from utilities.power_bus import ADCSensorWrapper, PowerBus
-        buses = {
-            name: PowerBus(name, ADCSensorWrapper(self.adc, name))
-            for name in [POW_INPUT, POW_BUS, POW_MAIN, POW_LED]
-        }
-
         # Init power manager with PowerBus dependencies
         self.power = PowerManager(
-            buses,
+            Pins.POWER_SENSORS,
             Pins.MOSFET_CONTROL,
             Pins.SATBUS_DETECT,
+            i2c_bus = self.i2c
         )
+
+        self._pow_input = self.power.get_input_bus()
+        self._pow_satbus = self.power.get_satbus_bus()
+        self._pow_main = self.power.get_main_bus()
+        self._pow_others = self.power.get_other_buses()
 
         # UART for satellite communication
         uart_hw = busio.UART(
@@ -206,8 +183,8 @@ class CoreManager:
         )
         self.audio.preload(
             [
-                "audio/common/menu_tick.wav",
-                "audio/common/menu_select.wav",
+                "audio/menu/tick.wav",
+                "audio/menu/select.wav",
             ]
         )
         self.synth = SynthManager()
@@ -503,22 +480,16 @@ class CoreManager:
             # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("power")
 
-            v = self.power.status
-
             if self.mode == "DASHBOARD":
                 # self.display.update_telemetry(v["bus"], v["log"])
                 # TODO Implement telemetry display
-                #print(f"Power Rail - BUS: {v[POW_BUS]:.2f}V | LOGIC: {v[POW_MAIN]:.2f}V")
                 pass
 
-            # Scenario: LED buck converter is failing or overloaded
-            if v[POW_LED] < 4.5 and v[POW_INPUT] > 18.0:
-                self.display.update_status("LED PWR FAILURE", "CHECK 5A FUSE")
-
-            # Scenario: Logic rail is sagging (Audio Amp drawing too much?)
-            if v[POW_MAIN] < 4.7:
-                self.display.update_status("LOGIC BROWNOUT", "REDUCING VOLUME")
-                await self.audio.set_level(self.audio.CH_SFX, 0.5)  # Lower SFX volume
+            # Use the PowerManager to check the health of the power buses
+            healthy, message = self.power.is_healthy()
+            if not healthy:
+                self.display.update_status("POWER ERROR", message)
+            #TODO: Action to take for problematic power
 
             await asyncio.sleep(0.5)
 

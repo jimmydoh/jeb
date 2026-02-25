@@ -51,3 +51,6 @@ class PowerManager:
 
     async def check_power_integrity(self):
         return True
+
+    def get_telemetry_payload(self, *args, **kwargs):
+        return _SafeVoltageDict()

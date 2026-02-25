@@ -10,6 +10,7 @@ class LEDManager(BasePixelManager):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.pixels = []
 
     def set_led(self, index, color, brightness=1.0, anim=None, duration=None, priority=2, speed=1.0):
         pass

@@ -303,10 +303,10 @@ class ConsoleManager():
             if choice == "0":
                 break
             elif choice == "1":
-                await audio.play("audio/common/menu_tick.wav", channel=audio.CH_SFX)
+                await audio.play("audio/menu/tick.wav", channel=audio.CH_SFX)
                 print("Playing menu tick.")
             elif choice == "2":
-                await audio.play("audio/common/menu_select.wav", channel=audio.CH_SFX)
+                await audio.play("audio/menu/select.wav", channel=audio.CH_SFX)
                 print("Playing menu select.")
             elif choice == "3":
                 audio.stop_all()
@@ -421,11 +421,16 @@ class ConsoleManager():
             if choice == "0":
                 break
             elif choice == "1":
-                print("\nVoltage Readings:")
+                print("\nPower Readings:")
                 try:
-                    voltages = power.status
-                    for name, voltage in voltages.items():
-                        print(f"  {name}: {voltage:.2f}V")
+                    for bus in power.buses.values():
+                        message = f"{bus.name}: {bus.v_now:.2f} V"
+                        if bus.has_current and bus.i_now is not None:
+                            message += f", {bus.i_now:.2f} mA"
+                        if bus.has_power and bus.p_now is not None:
+                            message += f", {bus.p_now:.2f} mW"
+                        message += f" [{bus.get_status_string()}]"
+                        print(f"- {message}")
                 except Exception as e:
                     print(f"  Error reading voltages: {e}")
             elif choice == "2":

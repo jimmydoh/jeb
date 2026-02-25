@@ -7,7 +7,7 @@ Supports lazy-loading to prevent crashes if libraries/hardware are missing.
 from utilities.logger import JEBLogger
 
 class ADCManager:
-    def __init__(self, i2c_bus=None, chip_type="ADS1115", address=0x48):
+    def __init__(self, i2c_bus=None, chip_type="ADS1115", address=0x48, channels=[]):
         """
         Initializes the generic ADC Manager.
 
@@ -37,6 +37,10 @@ class ADCManager:
 
         self._lazy_init()
 
+        # Add initial channels if provided
+        for channel in channels:
+            self.add_channel(**channel)
+
     def _lazy_init(self):
         """Attempts to load the specific hardware library based on chip_type."""
         if self.chip_type == "ADS1115":
@@ -62,7 +66,7 @@ class ADCManager:
         else:
             JEBLogger.warning("ADCM", f"⚠️ ADCManager: Unsupported chip type '{self.chip_type}'")
 
-    def add_channel(self, name, pin_or_index, divider_multiplier=1.0):
+    def add_channel(self, name, pin, multiplier=1.0, **kwargs):
         """
         Maps a physical ADC pin to a logical name and applies voltage divider math.
 
@@ -95,15 +99,15 @@ class ADCManager:
                     3: self.ads_module.P3
                 }
 
-                if pin_or_index not in pin_map:
-                    raise ValueError(f"Invalid pin_index {pin_or_index} for {self.chip_type}")
+                if pin not in pin_map:
+                    raise ValueError(f"Invalid pin_index {pin} for {self.chip_type}")
 
                 self.channels[name] = {
-                    "analog_in": AnalogIn(self.hardware, pin_map[pin_or_index]),
-                    "multiplier": float(divider_multiplier),
+                    "analog_in": AnalogIn(self.hardware, pin_map[pin]),
+                    "multiplier": float(multiplier),
                     "type": "I2C"
                 }
-                JEBLogger.info("ADCM", f"   - Mapped '{name}' to Pin {pin_or_index} (x{divider_multiplier})")
+                JEBLogger.info("ADCM", f"   - Mapped '{name}' to Pin {pin} (x{multiplier})")
 
             except Exception as e:
                 JEBLogger.warning("ADCM", f"⚠️ ADCManager: Failed to configure channel '{name}' - {e}")
@@ -113,14 +117,14 @@ class ADCManager:
                 import analogio
 
                 # For native pins, pin_or_index should be a board pin object
-                analog_in = analogio.AnalogIn(pin_or_index)
+                analog_in = analogio.AnalogIn(pin)
 
                 self.channels[name] = {
                     "analog_in": analog_in,
-                    "multiplier": float(divider_multiplier),
+                    "multiplier": float(multiplier),
                     "type": "NATIVE"
                 }
-                JEBLogger.info("ADCM", f"   - Mapped '{name}' to native ADC pin (x{divider_multiplier})")
+                JEBLogger.info("ADCM", f"   - Mapped '{name}' to native ADC pin (x{multiplier})")
 
             except Exception as e:
                 JEBLogger.warning("ADCM", f"⚠️ ADCManager: Failed to configure native channel '{name}' - {e}")

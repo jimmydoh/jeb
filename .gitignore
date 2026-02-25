@@ -15,3 +15,6 @@ dist/
 eggs/
 *.egg-info/
 scripts/source_emojis/*
+sd/audio/*/*.wav
+sd/data/*
+sd/icons/*

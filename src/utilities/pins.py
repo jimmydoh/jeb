@@ -48,16 +48,18 @@ class CoreProfile:
         p["ENCODERS"] = [p["ENCODER_1"]]
         p["SENSE_PINS"] = [p["ADC_SENSE_A"], p["ADC_SENSE_B"], p["ADC_SENSE_C"], p["ADC_SENSE_D"]]
 
-        p["ADC_CONFIG"] = {
-            "chip_type": "NATIVE",
-            "address": None,
-            "channels": [
-                {"name": "input_20v", "pin": p["ADC_SENSE_A"], "multiplier": DIVIDER_MULTIPLIER_20V},
-                {"name": "satbus_20v", "pin": p["ADC_SENSE_B"], "multiplier": DIVIDER_MULTIPLIER_20V},
-                {"name": "main_5v", "pin": p["ADC_SENSE_C"], "multiplier": DIVIDER_MULTIPLIER_5V},
-                {"name": "led_5v", "pin": p["ADC_SENSE_D"], "multiplier": DIVIDER_MULTIPLIER_5V},
-            ]
-        }
+        p["POWER_SENSORS"] = [
+            {
+                "chip_type": "NATIVE",
+                "address": 0x00,
+                "channels": [
+                    {"name": "input_20v", "pin": p["ADC_SENSE_A"], "multiplier": DIVIDER_MULTIPLIER_20V, "min": 17.0, "max": 21.0, "critical": True},
+                    {"name": "satbus_20v", "pin": p["ADC_SENSE_B"], "multiplier": DIVIDER_MULTIPLIER_20V, "min": 17.0, "max": 21.0, "critical": False},
+                    {"name": "main_5v", "pin": p["ADC_SENSE_C"], "multiplier": DIVIDER_MULTIPLIER_5V, "min": 4.5, "max": 5.5, "critical": True},
+                    {"name": "led_5v", "pin": p["ADC_SENSE_D"], "multiplier": DIVIDER_MULTIPLIER_5V, "min": 4.5, "max": 5.5, "critical": False},
+                ]
+            },
+        ]
 
         p["I2C_ADDRESSES"] = {"OLED": 0x3C, "EXPANDER": 0x20}
 
@@ -171,15 +173,17 @@ class Sat01Profile:
         p["MATRIX_KEYPADS"] = [(p["KEYPAD_MAP_3x3"], p["MATRIX_1_ROWS"], p["MATRIX_1_COLS"])]
         p["SENSE_PINS"] = [p["ADC_SENSE_A"], p["ADC_SENSE_B"], p["ADC_SENSE_C"]]
 
-        p["ADC_CONFIG"] = {
-            "chip_type": "NATIVE",
-            "address": None,
-            "channels": [
-                {"name": "input_20v", "pin": p["ADC_SENSE_A"], "multiplier": DIVIDER_MULTIPLIER_20V},
-                {"name": "satbus_20v", "pin": p["ADC_SENSE_B"], "multiplier": DIVIDER_MULTIPLIER_20V},
-                {"name": "main_5v", "pin": p["ADC_SENSE_C"], "multiplier": DIVIDER_MULTIPLIER_5V},
-            ]
-        }
+        p["POWER_SENSORS"] = [
+            {
+                "chip_type": "NATIVE",
+                "address": 0x00,
+                "channels": [
+                    {"name": "input_20v", "pin": p["ADC_SENSE_A"], "multiplier": DIVIDER_MULTIPLIER_20V, "min": 17.0, "max": 21.0, "critical": True},
+                    {"name": "satbus_20v", "pin": p["ADC_SENSE_B"], "multiplier": DIVIDER_MULTIPLIER_20V, "min": 17.0, "max": 21.0, "critical": False},
+                    {"name": "main_5v", "pin": p["ADC_SENSE_C"], "multiplier": DIVIDER_MULTIPLIER_5V, "min": 4.5, "max": 5.5, "critical": True},
+                ]
+            },
+        ]
 
         p["I2C_ADDRESSES"] = {
             "SEGMENT_LEFT": 0x70,

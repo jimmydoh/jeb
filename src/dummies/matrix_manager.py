@@ -20,6 +20,9 @@ class MatrixManager(BasePixelManager):
         self.width = kwargs.get('width', 8)
         self.height = kwargs.get('height', 8)
 
+    def _get_idx(self, x, y):
+        return 0
+
     def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None, brightness=1.0):
         pass
 

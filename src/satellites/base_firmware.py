@@ -39,11 +39,6 @@ from transport.protocol import (
 from utilities.logger import JEBLogger
 from utilities.pins import Pins
 
-POW_INPUT = "input_20v"
-POW_BUS = "satbus_20v"
-POW_MAIN = "main_5v"
-POW_LED = "led_5v"
-
 class SatelliteFirmware:
     """
     Base firmware class for all satellite boxes.
@@ -85,35 +80,12 @@ class SatelliteFirmware:
         # Init I2C bus (if needed for future expansion)
         self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
 
-        # Init ADC Manager for voltage sensing
-        from managers.adc_manager import ADCManager
-        adc_config = Pins.ADC_CONFIG
-        self.adc = ADCManager(
-            i2c_bus=self.i2c if adc_config["chip_type"] != "NATIVE" else None,
-            chip_type=adc_config["chip_type"],
-            address=adc_config.get("address", 0x48)
-        )
-
-        # Configure ADC channels from Pins configuration
-        for channel in adc_config["channels"]:
-            self.adc.add_channel(
-                channel["name"],
-                channel["pin"],
-                channel["multiplier"]
-            )
-
-        # Build PowerBus objects backed by ADCSensorWrappers (one per rail)
-        from utilities.power_bus import ADCSensorWrapper, PowerBus
-        buses = {
-            name: PowerBus(name, ADCSensorWrapper(self.adc, name))
-            for name in [POW_INPUT, POW_BUS, POW_MAIN]
-        }
-
         # Init power manager with PowerBus dependencies
         self.power = PowerManager(
-            buses,
+            Pins.POWER_SENSORS,
             Pins.MOSFET_CONTROL,
-            Pins.SATBUS_DETECT
+            Pins.SATBUS_DETECT,
+            i2c_bus = self.i2c
         )
 
         # UART for satellite communication
@@ -569,15 +541,61 @@ class SatelliteFirmware:
         """Background task to watch for local brownouts or downstream faults."""
         last_broadcast = 0
         while True:
+            # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("power")
 
-            # Update voltages and get current readings
-            v = self.power.status
             now = time.monotonic()
 
-            # Safety Check: Downstream Bus Failure cut-off
-            if self.power.sat_pwr.value and v[POW_BUS] < 17.0:
-                self.power.emergency_kill() # Instant cut-off
+            # Use the PowerManager to check the health of the power buses
+            healthy, message = self.power.is_healthy()
+            if not healthy:
+                pass
+                #TODO: Action to take for problematic power
+
+            # Get specific buses
+            input_bus = self.power.get_input_bus()
+            satbus_bus = self.power.get_satbus_bus()
+            main_bus = self.power.get_main_bus()
+
+            # Check input bus
+            if input_bus and not input_bus.is_healthy():
+                if not self.transport_up.send(
+                    Message(
+                        self.id,
+                        "CORE",
+                        "ERROR",
+                        f"INPUT BUS BROWNOUT: {input_bus.name} - {input_bus.get_status_string()} {input_bus.v_now:.2f}V"
+                    )
+                ):
+                    # TODO: Implement retry logic for critical error messages like brownouts
+                    pass
+
+            # Check satbus downstream bus
+            if satbus_bus and not satbus_bus.is_healthy():
+                self.power.emergency_kill() # Immediate hardware cut-off
+                if not self.transport_up.send(
+                    Message(
+                        self.id,
+                        "CORE",
+                        "ERROR",
+                        f"SATBUS BUS BROWNOUT: {satbus_bus.name} - {satbus_bus.get_status_string()} {satbus_bus.v_now:.2f}V"
+                    )
+                ):
+                    # TODO: Implement retry logic for critical error messages like brownouts
+                    pass
+
+            # Check main bus
+            if main_bus and not main_bus.is_healthy():
+                if not self.transport_up.send(
+                    Message(
+                        self.id,
+                        "CORE",
+                        "ERROR",
+                        f"MAIN BUS BROWNOUT: {main_bus.name} - {main_bus.get_status_string()} {main_bus.v_now:.2f}V"
+                    )
+                ):
+                    # TODO: Implement retry logic for critical error messages like brownouts
+                    pass
 
             # Suppress power monitoring messages during initial
             # discovery phase when ID is not yet assigned
@@ -592,39 +610,13 @@ class SatelliteFirmware:
                         self.id,
                         "CORE",
                         "POWER",
-                        [v[POW_INPUT], v[POW_BUS], v[POW_MAIN]]
+                        f"{input_bus.v_now:.2f},{satbus_bus.v_now:.2f},{main_bus.v_now:.2f}"
                     )
                 ):
                     # Ignore send failure, will retry on next status update or command
                     pass
                 else:
                     last_broadcast = now
-
-            # Send Error Message for Logic rail sagging
-            if v[POW_MAIN] < 4.7:
-                if not self.transport_up.send(
-                    Message(
-                        self.id,
-                        "CORE",
-                        "ERROR",
-                        f"LOGIC_BROWNOUT:{v[POW_MAIN]}V"
-                    )
-                ):
-                    # TODO: Implement retry logic for critical error messages like brownouts
-                    pass
-
-            # Send Error Message for Downstream Bus Failure
-            if self.power.sat_pwr.value and v[POW_BUS] < 17.0:
-                if not self.transport_up.send(
-                    Message(
-                        self.id,
-                        "CORE",
-                        "ERROR",
-                        "BUS_SHUTDOWN:LOW_V"
-                    )
-                ):
-                    # TODO: Implement retry logic for critical error messages like bus shutdown
-                    pass
 
             await asyncio.sleep(0.5)
 
