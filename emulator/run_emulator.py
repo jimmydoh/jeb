@@ -19,8 +19,6 @@ from jeb_emulator import HardwareMocks, MockKeypadEvent
 
 import asyncio
 import importlib.util
-from core.core_manager import CoreManager
-from satellites.sat_01_firmware import IndustrialSatelliteFirmware
 
 
 # Setup JEBLogger

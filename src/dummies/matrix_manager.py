@@ -3,6 +3,7 @@
 
 import asyncio
 
+from dummies.base_pixel_manager import BasePixelManager
 
 class PanelLayout:
     """Dummy PanelLayout constants mirroring the real enum values."""
@@ -11,10 +12,11 @@ class PanelLayout:
     CUSTOM = "custom"
 
 
-class MatrixManager:
+class MatrixManager(BasePixelManager):
     """Drop-in dummy for MatrixManager. All methods are no-ops."""
 
     def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.width = kwargs.get('width', 8)
         self.height = kwargs.get('height', 8)
 

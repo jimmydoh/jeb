@@ -106,6 +106,7 @@ def _inject_hardware_dummies(features):
         "buzzer":  ["managers.buzzer_manager"],
         "power":   ["managers.power_manager", "managers.adc_manager"],
         "segment": ["managers.segment_manager"],
+        "hid":     ["managers.hid_manager"],
     }
 
     # Maps each real manager module to its dummy counterpart
@@ -119,6 +120,7 @@ def _inject_hardware_dummies(features):
         "managers.power_manager":   "dummies.power_manager",
         "managers.adc_manager":     "dummies.adc_manager",
         "managers.segment_manager": "dummies.segment_manager",
+        "managers.hid_manager":     "dummies.hid_manager",
     }
 
     for feature, enabled in features.items():
