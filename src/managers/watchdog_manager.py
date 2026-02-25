@@ -1,5 +1,6 @@
 # File: src/managers/watchdog_manager.py
 import microcontroller
+from utilities.logger import JEBLogger
 
 class WatchdogManager:
     """
@@ -14,6 +15,8 @@ class WatchdogManager:
         self._flags = {name: False for name in task_names}
 
         self._rebooting = False  # Flag to indicate if a reboot is in progress
+
+        JEBLogger.info("WDOG", f"[INIT] WatchdogManager - timeout: {timeout}")
 
         # Enable the hardware watchdog if a timeout is provided
         if timeout:

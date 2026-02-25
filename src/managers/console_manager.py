@@ -8,6 +8,7 @@ import supervisor
 from utilities.pins import Pins
 from utilities import tones
 from utilities.palette import Palette
+from utilities.logger import JEBLogger
 
 
 class ConsoleManager():
@@ -29,14 +30,12 @@ class ConsoleManager():
         self.type_id = type_id
         self.app = app
 
-        # Only initialise pins when no app is present; the app already called
-        # Pins.initialize() during its own boot sequence.
+        JEBLogger.info("CONS",f"[INIT] ConsoleManager - role: {self.role} type_id: {self.type_id}")
+
         if app is None:
             Pins.initialize(profile=role, type_id=type_id)
-
-        print(f"ConsoleManager for role {self.role} and type_id {self.type_id} initialized.")
-        if app is not None:
-            print("Running alongside main application.")
+        else:
+            JEBLogger.info("CONS", f"Attaching to {app} hardware instances")
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -80,7 +79,6 @@ class ConsoleManager():
 
         buzzer = self._get_manager('buzzer')
         if buzzer is None:
-            print("Initializing BuzzerManager...")
             try:
                 from managers.buzzer_manager import BuzzerManager
                 buzzer = BuzzerManager(Pins.BUZZER)
@@ -499,7 +497,7 @@ class ConsoleManager():
             microcontroller.watchdog.feed()
             try:
                 status = hid.get_status_string()
-                if status:
+                if status and not status.startswith("0000,,,,0,0,0"):
                     print(f"\rHID: {status}", end="")
             except Exception:
                 pass
@@ -554,6 +552,9 @@ class ConsoleManager():
 
     async def start(self):
         """Main interactive loop for the Console Manager."""
+
+        await asyncio.sleep(2)  # Short delay to allow main app to start up when running alongside
+
         print("\n" + "="*30)
         print(" JEB HARDWARE DIAGNOSTICS ")
         print("="*30)

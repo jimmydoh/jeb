@@ -14,6 +14,7 @@ class LogLevel:
     NOTE = 2
     WARNING = 3
     ERROR = 4
+    EMULATOR = 99
 
 class JEBLogger:
     """Centralized, memory-efficient logger for CircuitPython."""
@@ -32,6 +33,7 @@ class JEBLogger:
         LogLevel.NOTE: "\033[96m",     # Cyan
         LogLevel.WARNING: "\033[93m",  # Yellow
         LogLevel.ERROR: "\033[91m",    # Red
+        LogLevel.EMULATOR: "\033[95m", # Magenta
         "RESET": "\033[0m"
     }
 
@@ -40,7 +42,8 @@ class JEBLogger:
         LogLevel.INFO: "INFO",
         LogLevel.NOTE: "NOTE",  # Optional level for important info that isn't a warning
         LogLevel.WARNING: "WARN",
-        LogLevel.ERROR: "!ERR"
+        LogLevel.ERROR: "!ERR",
+        LogLevel.EMULATOR: "EMUL"
     }
 
     @classmethod
@@ -115,3 +118,7 @@ class JEBLogger:
     @classmethod
     def error(cls, tag, msg, src=None, file=None):
         cls._log(LogLevel.ERROR, tag, msg, source_tag=src, file_override=file)
+
+    @classmethod
+    def emulator(cls, tag, msg, src=None, file=None):
+        cls._log(LogLevel.EMULATOR, tag, msg, source_tag=src, file_override=file)

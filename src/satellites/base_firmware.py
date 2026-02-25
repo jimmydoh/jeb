@@ -64,7 +64,7 @@ class SatelliteFirmware:
         self.sat_type_name = sat_type_name
 
         JEBLogger.set_source(self.id)
-        JEBLogger.info("FIRM", "Initializing Satellite Firmware...")
+        JEBLogger.info("FIRM", f"[INIT] SatelliteFirmware - type_id: {self.sat_type_id}, type_name: {self.sat_type_name}")
 
         Pins.initialize(profile="SAT", type_id=self.sat_type_id)
 

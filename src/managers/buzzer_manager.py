@@ -6,14 +6,15 @@ import asyncio
 import pwmio
 
 from utilities import tones
+from utilities.logger import JEBLogger
 
 class BuzzerManager:
     """Manages a passive piezo buzzer using PWM and asyncio."""
 
-    def __init__(self, pin, volume=0.5, testing=False):
+    def __init__(self, pin, volume=0.5):
+        JEBLogger.info("BUZZ", f"[INIT] BuzzerManager - pin: {pin} volume: {volume}")
         # Initialize PWM with 0 duty cycle (silence)
         # Variable frequency is required for changing tones
-        self.testing = testing
         self.buzzer = pwmio.PWMOut(pin, duty_cycle=0, frequency=440, variable_frequency=True)
         self._current_task = None
 
@@ -40,6 +41,7 @@ class BuzzerManager:
         """Internal logic to play a single tone."""
         try:
             self.buzzer.frequency = frequency
+            JEBLogger.debug("BUZZ", f"Playing freq: {frequency} Hz for {duration} sec")
             self.buzzer.duty_cycle = self.VOLUME_ON
             if duration is not None and duration > 0:
                 await asyncio.sleep(duration)
@@ -51,7 +53,7 @@ class BuzzerManager:
     async def _play_sequence_logic(self, sequence, tempo=1.0, loop=False):
         """
         Internal logic to play a list of (frequency, duration) tuples.
-        
+
         Args:
             sequence: List of (frequency, duration) tuples to play
             tempo: Duration multiplier applied to each note's length
@@ -64,8 +66,7 @@ class BuzzerManager:
             while True:
                 for freq, dur in sequence:
                     freq_rounded = int(round(freq))
-                    if self.testing:
-                        print(f"Playing freq: {freq_rounded} Hz for {dur} sec")
+                    JEBLogger.debug("BUZZ", f"Playing freq: {freq_rounded} Hz for {dur} sec")
                     if freq <= 0:
                         self.buzzer.duty_cycle = self.VOLUME_OFF
                     else:
@@ -87,7 +88,7 @@ class BuzzerManager:
             self.buzzer.duty_cycle = self.VOLUME_OFF
             raise
         except ValueError as e:
-            print(f"🔊 BuzzerManager ValueError: {e}")
+            JEBLogger.error("BUZZ", f"ValueError: {e}")
             self.buzzer.duty_cycle = self.VOLUME_OFF
 
     # --- PUBLIC TRIGGERS ---
@@ -122,11 +123,11 @@ class BuzzerManager:
             if hasattr(tones, song_name):
                 sequence_data = getattr(tones, song_name)
             else:
-                print(f"🔊 BuzzerManager Warning: Song '{song_name}' not found in tones.py")
+                JEBLogger.warning("BUZZ", f"Song '{song_name}' not found in tones.py")
                 return
 
         if not isinstance(sequence_data, dict):
-            print(f"🔊 BuzzerManager Warning: Invalid sequence_data format: expected dict, got {type(sequence_data).__name__}")
+            JEBLogger.warning("BUZZ", f"Invalid sequence_data format: expected dict, got {type(sequence_data).__name__}")
             return
 
         bpm = sequence_data.get('bpm', 120)
@@ -134,7 +135,7 @@ class BuzzerManager:
 
         should_loop = loop if loop is not None else sequence_data.get('loop', False)
 
-        print(f"Playing song at {bpm} BPM with {len(sequence)} notes.")
+        JEBLogger.info("BUZZ", f"Playing song at {bpm} BPM with {len(sequence)} notes.")
 
         # Calculate beat duration in seconds
         beat_duration = 60.0 / bpm

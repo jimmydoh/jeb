@@ -11,12 +11,12 @@
     "web_server_enabled": false,
     "web_server_port": 80,
     "hardware_features": {
-        "audio": true,
-        "display": true,
-        "matrix": true,
-        "leds": true,
-        "buzzer": true,
-        "power": true,
-        "segment": true
+        "audio": false,
+        "display": false,
+        "matrix": false,
+        "leds": false,
+        "buzzer": false,
+        "power": false,
+        "segment": false
     }
 }

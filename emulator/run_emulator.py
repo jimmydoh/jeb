@@ -1,65 +1,113 @@
 import sys
 import os
 
-# 1. PATH INJECTION: Force Python to treat the 'src' folder as the root directory
-# This allows all absolute imports inside the JEB codebase (e.g., 'from managers.matrix_manager')
-# to resolve perfectly on the PC.
+# ==========================================
+# PATH & SD CARD INJECTION
+# ==========================================
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
 SRC_DIR = os.path.join(PROJECT_ROOT, 'src')
+SD_DIR = os.path.join(PROJECT_ROOT, 'SD')
 
 if SRC_DIR not in sys.path:
-    sys.path.insert(0, SRC_DIR) # insert(0) ensures 'src' takes priority over system packages
+    sys.path.insert(0, SRC_DIR)
 
-# 1. IMPORT YOUR MOCKS FIRST!
-# This MUST happen before importing any real JEB code so sys.modules is patched
+# ==========================================
+# HARDWARE MOCKS & PATCHES
+# ==========================================
 import jeb_emulator
 from jeb_emulator import HardwareMocks, MockKeypadEvent
 
-# 2. IMPORT THE REAL CODE
 import asyncio
-import math
-import pygame
+import importlib.util
 from core.core_manager import CoreManager
 from satellites.sat_01_firmware import IndustrialSatelliteFirmware
-from utilities.logger import JEBLogger, LogLevel
 
+
+# Setup JEBLogger
+from utilities.logger import JEBLogger, LogLevel
 JEBLogger.set_level(LogLevel.DEBUG)
 JEBLogger.enable_file_logging(False)
 
-# ==========================================
-# UART WIRETAP (Monkey Patching)
-# ==========================================
-from transport.uart_transport import UARTTransport
+# Patch JEBLogger for emulation
 
-# 1. Save the original, un-modified transmit method
-# (If your method is called 'send', 'transmit', or 'send_message', update this!)
+# Save the original logging method
+original_log = JEBLogger._log
+
+def patched_log(cls, level, module_tag, message, source_tag=None, file_override=None):
+    if source_tag is None:
+        source_tag = 'MISC'
+        try:
+            # 1. Walk up the call stack to find the object that owns this execution thread
+            frame = sys._getframe(2)
+            caller_file = frame.f_code.co_filename.replace('\\', '/')
+
+            while frame:
+                # If the current frame is inside a class method, inspect 'self'
+                if 'self' in frame.f_locals:
+                    caller_self = frame.f_locals['self']
+
+                    # Check for our dynamically injected emulator tag
+                    if hasattr(caller_self, '_emul_source'):
+                        source_tag = getattr(caller_self, '_emul_source')
+                        break
+
+                    # Check class name as a fallback for the main apps
+                    cls_name = caller_self.__class__.__name__
+                    if cls_name == 'CoreManager':
+                        source_tag = 'CORE'
+                        break
+                    elif 'Satellite' in cls_name:
+                        source_tag = '0101'
+                        break
+
+                # Move one step up the call stack
+                frame = frame.f_back
+
+            # 2. If no object ownership was found (e.g., a module-level helper function)
+            # Fall back to checking the folder path of the original caller
+            if source_tag == 'MISC':
+                if 'satellites' in caller_file:
+                    source_tag = '0101'
+                elif 'core' in caller_file:
+                    source_tag = 'CORE'
+                elif 'emulator' in caller_file:
+                    source_tag = 'EMUL'
+        except Exception:
+            pass
+
+    # Pass it back to the original logger
+    original_log(level, module_tag, message, source_tag, file_override)
+
+# Apply the patch!
+JEBLogger._log = classmethod(patched_log)
+
+# Setup UART Wiretap
+from transport.uart_transport import UARTTransport
 original_transmit = UARTTransport.send
 
-# 2. Create our Wiretap function
-# NOTE: If your real send method uses 'async def', make this 'async def' and 'await' the original call!
 def spy_transmit(self, message):
-    # Adjust these attribute names to match your actual transport/message.py class properties
     src = getattr(message, 'source', 'Unknown')
     dest = getattr(message, 'destination', 'Unknown')
     cmd = getattr(message, 'command', 'Unknown')
     payload = getattr(message, 'payload', '')
-
     suppressed_commands = [
         "SYNC_FRAME",
         "STATUS",
         "POWER",
-        "PING"
+        "PING",
+        "NEW_SAT"
     ]
-
     if cmd not in suppressed_commands:
-        # Format a beautiful console log
-        JEBLogger.info("UART", f"{src:<4}➔ {dest:<4} | CMD:{cmd:<10} | DATA:{payload}", src="EMUL")
-
-    # 3. Pass it along to the real transport layer so it still gets sent!
+        JEBLogger.emulator("UART", f"{src:<4}➔ {dest:<4} | CMD:{cmd:<10} | DATA:{payload}")
     return original_transmit(self, message)
 
-# 4. Hijack the class! Every time ANY transport tries to send, it hits our spy first.
 UARTTransport.send = spy_transmit
+
+# ==========================================
+# GUI LOOP (Pygame)
+# ==========================================
+import math
+import pygame
 
 async def run_hardware_spy_loop(core, satellite, screen):
     """
@@ -145,11 +193,11 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         # Check Encoder Push
                         if (mx - ENC_X)**2 + (my - ENC_Y)**2 <= ENC_RADIUS**2:
                             if HardwareMocks.get("CORE", "encoder_btn"):
-                                JEBLogger.note("CORE", f"Encoder Button {'Pressed' if is_pressed else 'Released'}", src="EMUL")
+                                JEBLogger.emulator("INPT", f"Encoder Button {'Pressed' if is_pressed else 'Released'}")
                                 HardwareMocks.get("CORE", "encoder_btn").events.queue.append(
                                     MockKeypadEvent(key_number=0, pressed=is_pressed, released=not is_pressed)
                                 )
-                                JEBLogger.note("CORE", f"Encoder Button Queue: {HardwareMocks.get('CORE', 'encoder_btn').events.queue}", src="EMUL")
+                                JEBLogger.emulator("INPT", f"Encoder Button Queue: {HardwareMocks.get('CORE', 'encoder_btn').events.queue}")
 
                         # ==================================================
                         # SATELLITE TYPE 01 INPUTS (QUADRANT LAYOUT)
@@ -168,7 +216,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                                 tx, ty = SAT_X + 60 + (i % 4)*80, SAT_Y + 110 + (i // 4)*120
                                 if (mx - tx)**2 + (my - ty)**2 <= 25**2:
                                     sat_mcp.get_pin(i)._value = not sat_mcp.get_pin(i)._value
-                                    JEBLogger.note("INPT", f"Toggle Pin {i} {'UP' if sat_mcp.get_pin(i)._value else 'DOWN'}", src="EMUL")
+                                    JEBLogger.emulator("INPT", f"Toggle Pin {i} {'UP' if sat_mcp.get_pin(i)._value else 'DOWN'}")
                                     if sat_mcp_int:
                                         sat_mcp_int.value = False # FIRE INTERRUPT!
 
@@ -179,7 +227,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                                     kx, ky = SAT_X + 460 + c*70, SAT_Y + 160 + r*60
                                     if (mx - kx)**2 + (my - ky)**2 <= 22**2:
                                         key_idx = r * 3 + c
-                                        JEBLogger.note("INPT", f"Keypad Button {key_idx} {'Pressed' if is_pressed else 'Released'}", src="EMUL")
+                                        JEBLogger.emulator("INPT", f"Keypad Button {key_idx} {'Pressed' if is_pressed else 'Released'}")
                                         sat_keypad.events.queue.append(
                                             MockKeypadEvent(key_number=key_idx, pressed=is_pressed, released=not is_pressed)
                                         )
@@ -190,7 +238,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                                 tx, ty = SAT_X + 60 + j*80, SAT_Y + 400
                                 if (mx - tx)**2 + (my - ty)**2 <= 25**2:
                                     sat_mcp2.get_pin(pin_num)._value = not sat_mcp2.get_pin(pin_num)._value
-                                    JEBLogger.note("INPT", f"Special Pin {pin_num} {'UP' if sat_mcp2.get_pin(pin_num)._value else 'DOWN'}", src="EMUL")
+                                    JEBLogger.emulator("INPT", f"Special Pin {pin_num} {'UP' if sat_mcp2.get_pin(pin_num)._value else 'DOWN'}")
                                     if sat_mcp2_int:
                                         sat_mcp2_int.value = False
 
@@ -199,19 +247,19 @@ async def run_hardware_spy_loop(core, satellite, screen):
                             if event.type == pygame.MOUSEBUTTONDOWN:
                                 if (mx - MOM_X)**2 + (my - (MOM_Y - 20))**2 <= 20**2:
                                     sat_mcp2.get_pin(0)._value = False # Pushed UP
-                                    JEBLogger.note("INPT", f"Momentary UP", src="EMUL")
+                                    JEBLogger.emulator("INPT", f"Momentary UP")
                                     if sat_mcp2_int:
                                         sat_mcp2_int.value = False
                                 elif (mx - MOM_X)**2 + (my - (MOM_Y + 20))**2 <= 20**2:
                                     sat_mcp2.get_pin(1)._value = False # Pushed DOWN
-                                    JEBLogger.note("INPT", f"Momentary DOWN", src="EMUL")
+                                    JEBLogger.emulator("INPT", f"Momentary DOWN")
                                     if sat_mcp2_int:
                                         sat_mcp2_int.value = False
                             elif event.type == pygame.MOUSEBUTTONUP:
                                 if not sat_mcp2.get_pin(0)._value or not sat_mcp2.get_pin(1)._value:
                                     sat_mcp2.get_pin(0)._value = True
                                     sat_mcp2.get_pin(1)._value = True
-                                    JEBLogger.note("INPT", f"Momentary CENTER", src="EMUL")
+                                    JEBLogger.emulator("INPT", f"Momentary CENTER")
                                     if sat_mcp2_int:
                                         sat_mcp2_int.value = False
 
@@ -220,13 +268,13 @@ async def run_hardware_spy_loop(core, satellite, screen):
                             if event.type == pygame.MOUSEBUTTONDOWN:
                                 if (mx - BIG_BTN_X)**2 + (my - BIG_BTN_Y)**2 <= 34**2:
                                     sat_mcp2.get_pin(6)._value = False
-                                    JEBLogger.note("INPT", f"Big Button Pressed", src="EMUL")
+                                    JEBLogger.emulator("INPT", f"Big Button Pressed")
                                     if sat_mcp2_int:
                                         sat_mcp2_int.value = False
                             elif event.type == pygame.MOUSEBUTTONUP:
                                 if not sat_mcp2.get_pin(6)._value:
                                     sat_mcp2.get_pin(6)._value = True
-                                    JEBLogger.note("INPT", f"Big Button Released", src="EMUL")
+                                    JEBLogger.emulator("INPT", f"Big Button Released")
                                     if sat_mcp2_int:
                                         sat_mcp2_int.value = False
 
@@ -234,7 +282,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         SAT_ENC_X, SAT_ENC_Y = SAT_X + 560, SAT_Y + 500
                         if (mx - SAT_ENC_X)**2 + (my - SAT_ENC_Y)**2 <= 35**2:
                             if sat_encoder_btn:
-                                JEBLogger.note("INPT", f"Rotary Encoder Button {'Pressed' if is_pressed else 'Released'}", src="EMUL")
+                                JEBLogger.emulator("INPT", f"Rotary Encoder Button {'Pressed' if is_pressed else 'Released'}")
                                 sat_encoder_btn.events.queue.append(
                                     MockKeypadEvent(key_number=0, pressed=is_pressed, released=not is_pressed)
                                 )
@@ -282,9 +330,9 @@ async def run_hardware_spy_loop(core, satellite, screen):
                             satbus_detect.value = not HardwareMocks.satellite_plugged_in
 
                             if HardwareMocks.satellite_plugged_in:
-                                JEBLogger.note("EMUL", ">>> PHYSICAL ACTION: SATELLITE CABLE PLUGGED IN >>>", src="EMUL")
+                                JEBLogger.emulator("EMUL", ">>> PHYSICAL ACTION: SATELLITE CABLE PLUGGED IN >>>")
                             else:
-                                JEBLogger.note("EMUL", "<<< PHYSICAL ACTION: SATELLITE CABLE UNPLUGGED <<<", src="EMUL")
+                                JEBLogger.emulator("EMUL", "<<< PHYSICAL ACTION: SATELLITE CABLE UNPLUGGED <<<")
 
                     # [NEW] ADC Voltage Manipulation for Testing
                     # Simulate Native ADC voltage drop (for native analogio-based power monitoring)
@@ -293,16 +341,16 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         native_pin = HardwareMocks.get("CORE", "analog_pin", "board.GP26")
                         if native_pin:
                             native_pin.value = 10000  # Drop voltage significantly (~0.5V)
-                            JEBLogger.warning("EMUL", "⚡ SIMULATED VOLTAGE DROP (Native ADC GP26) -> 10000 (~0.5V)", src="EMUL")
+                            JEBLogger.emulator("EMUL", "⚡ SIMULATED VOLTAGE DROP (Native ADC GP26) -> 10000 (~0.5V)")
                         else:
-                            JEBLogger.note("EMUL", "No native analog pin found at GP26", src="EMUL")
+                            JEBLogger.emulator("EMUL", "No native analog pin found at GP26")
 
                     # Restore Native ADC voltage
                     if event.key == pygame.K_b and is_pressed:
                         native_pin = HardwareMocks.get("CORE", "analog_pin", "board.GP26")
                         if native_pin:
                             native_pin.value = 49650  # Restore to healthy ~2.5V
-                            JEBLogger.note("EMUL", "✅ RESTORED VOLTAGE (Native ADC GP26) -> 49650 (~2.5V)", src="EMUL")
+                            JEBLogger.emulator("EMUL", "✅ RESTORED VOLTAGE (Native ADC GP26) -> 49650 (~2.5V)")
 
                     # Simulate I2C ADC voltage drop (for ADS1115-based power monitoring)
                     if event.key == pygame.K_n and is_pressed:
@@ -310,16 +358,16 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         i2c_pin = HardwareMocks.get("CORE", "ads_channel", 0)  # 0 is P0
                         if i2c_pin:
                             i2c_pin.voltage = 0.5  # Drop directly to 0.5V
-                            JEBLogger.warning("EMUL", "⚡ SIMULATED VOLTAGE DROP (I2C ADC P0) -> 0.5V", src="EMUL")
+                            JEBLogger.emulator("EMUL", "⚡ SIMULATED VOLTAGE DROP (I2C ADC P0) -> 0.5V")
                         else:
-                            JEBLogger.note("EMUL", "No I2C ADC channel found at P0", src="EMUL")
+                            JEBLogger.emulator("EMUL", "No I2C ADC channel found at P0")
 
                     # Restore I2C ADC voltage
                     if event.key == pygame.K_m and is_pressed:
                         i2c_pin = HardwareMocks.get("CORE", "ads_channel", 0)
                         if i2c_pin:
                             i2c_pin.voltage = 2.5  # Restore to healthy 2.5V
-                            JEBLogger.note("EMUL", "✅ RESTORED VOLTAGE (I2C ADC P0) -> 2.5V", src="EMUL")
+                            JEBLogger.emulator("EMUL", "✅ RESTORED VOLTAGE (I2C ADC P0) -> 2.5V")
 
 
             # ==========================================
@@ -497,7 +545,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 # Simulate Power Loss (Overrides graphics if MOSFET is off)
                 is_powered = HardwareMocks.get("CORE", "satbus_mosfet_pin", None) and HardwareMocks.get("CORE", "satbus_mosfet_pin").value
                 if not is_powered:
-                    JEBLogger.warning("EMUL", "⚡ SAT_01 POWER LOST ⚡ - MOSFET is OFF, simulating blackout!", src="EMUL")
+                    JEBLogger.emulator("EMUL", "⚡ SAT_01 POWER LOST ⚡ - MOSFET is OFF, simulating blackout!")
                     if HardwareMocks.get("SAT_01", "pixels"):
                         HardwareMocks.get("SAT_01", "pixels").fill((0,0,0))
 
@@ -642,36 +690,85 @@ async def run_hardware_spy_loop(core, satellite, screen):
             pygame.display.flip()
             await asyncio.sleep(0.016) # ~60 FPS
         except Exception as e:
-            JEBLogger.error("EMUL", f"Error in render loop: {e}", src="EMUL")
+            JEBLogger.emulator("EMUL", f"Error in render loop: {e}")
             import traceback
             traceback.print_exc()
             await asyncio.sleep(1) # Pause to prevent spamming errors
 
 async def main():
-    pygame.init()
-    screen = pygame.display.set_mode((1600, 800))
-    pygame.display.set_caption("JEB Embedded Hardware Emulator")
+    HEADLESS = "--headless" in sys.argv
 
-    JEBLogger.note("CORE", " --- BOOTING CORE MANAGER --- ", src="EMUL")
+    # Setup Pygame if not in headless mode
+    screen = None
+    if not HEADLESS:
+        pygame.init()
+        screen = pygame.display.set_mode((1600, 800))
+        pygame.display.set_caption("JEB Unified Emulator")
+
+    def tag_managers(app_instance, tag_name):
+        if app_instance is None: return
+        setattr(app_instance, '_emul_source', tag_name)
+        for key, obj in vars(app_instance).items():
+            if hasattr(obj, '__dict__'): # If it's a class instance (like HIDManager)
+                setattr(obj, '_emul_source', tag_name)
+
+    # 2. Boot the Primary Application via code.py
+    JEBLogger.emulator("EMUL", " --- BOOTING via src/code.py --- ")
     HardwareMocks.set_context("CORE")
-    core = CoreManager()
-    core.matrix.fill((0,255,0))
 
-    JEBLogger.note("SAT1", " --- BOOTING SAT TYPE 01 FIRMWARE --- ", src="EMUL")
-    HardwareMocks.set_context("SAT_01")
-    satellite = IndustrialSatelliteFirmware()
+    os.chdir(SRC_DIR) # Force config.json to load from src/
+    code_path = os.path.join(SRC_DIR, "code.py")
+    spec = importlib.util.spec_from_file_location("jeb_code", code_path)
+    jeb_code = importlib.util.module_from_spec(spec)
+    sys.modules["jeb_code"] = jeb_code
+    spec.loader.exec_module(jeb_code)
 
-    JEBLogger.note("EMUL", " --- STARTING HARDWARE EMULATOR --- ", src="EMUL")
+    # Console Manager Asyncio Patch
+    from managers.console_manager import ConsoleManager
+    async def patched_get_input(self, prompt):
+        try:
+            return await asyncio.to_thread(input, prompt)
+        except (EOFError, KeyboardInterrupt):
+            await asyncio.sleep(3600)
+            return ""
+
+    ConsoleManager.get_input = patched_get_input
+
+    primary_app = jeb_code.app
+    role = jeb_code.role
+
+    core = None
+    satellite = None
+
+    tasks = [jeb_code.main()]
+
+    if role == "CORE":
+        core = primary_app
+        tag_managers(core, 'CORE')
+        JEBLogger.emulator("EMUL", " --- BOOTING SECONDARY SAT_01 FIRMWARE --- ")
+        HardwareMocks.set_context("SAT_01")
+        from satellites.sat_01_firmware import IndustrialSatelliteFirmware
+        satellite = IndustrialSatelliteFirmware()
+        tag_managers(satellite, '0101')
+        tasks.append(satellite.start())
+    elif role == "SAT":
+        satellite = primary_app
+        JEBLogger.emulator("EMUL", "Primary is Satellite. Core simulation not active.")
+
+    # Attach GUI Loop
+    if not HEADLESS:
+        tasks.append(run_hardware_spy_loop(core, satellite, screen))
+    else:
+        JEBLogger.emulator("EMUL", "Running in HEADLESS mode (No GUI).")
+
+    # Run Everything!
+    JEBLogger.emulator("EMUL", " --- EMULATOR ONLINE --- ")
     try:
-        await asyncio.gather(
-            core.start(),
-            satellite.start(),
-            run_hardware_spy_loop(core, satellite, screen)
-        )
+        await asyncio.gather(*tasks)
     except asyncio.CancelledError:
-        JEBLogger.note("EMUL", "🛑 Emulator closed cleanly.", src="EMUL")
+        JEBLogger.emulator("EMUL", "🛑 Emulator closed cleanly.")
     except Exception as e:
-        JEBLogger.error("EMUL", f"System crashed: {e}", src="EMUL")
+        JEBLogger.emulator("EMUL", f"System crashed: {e}")
         import traceback
         traceback.print_exc()
 
@@ -679,6 +776,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n🛑 [EMULATOR] Shutting down from console (Ctrl+C)...")
+        JEBLogger.emulator("EMUL", "🛑 Shutting down from console (Ctrl+C)...")
     finally:
         pygame.quit()

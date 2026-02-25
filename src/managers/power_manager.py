@@ -3,6 +3,7 @@
 import asyncio
 
 import digitalio
+from utilities.logger import JEBLogger
 
 class PowerManager:
     """
@@ -22,6 +23,8 @@ class PowerManager:
         :param detect_pin: Pin for satellite bus detection.
         """
         self.buses = buses if buses is not None else {}
+
+        JEBLogger.info("POWR", f"[INIT] PowerManager - buses: {list(self.buses.keys())}")
 
         # MOSFET Control
         self.sat_pwr = digitalio.DigitalInOut(mosfet_pin)
@@ -103,7 +106,7 @@ class PowerManager:
 
     async def check_power_integrity(self):
         """Diagnostic check performed at boot and during play."""
-        print("Performing power integrity check...")
+        JEBLogger.info("POWR", "Performing power integrity check")
         for bus in self.buses.values():
             bus.update()
 
@@ -112,10 +115,10 @@ class PowerManager:
         main_v = self.buses["main_5v"].v_now if "main_5v" in self.buses else 0.0
         led_v = self.buses["led_5v"].v_now if "led_5v" in self.buses else 0.0
 
-        print(f" | Input Voltage: {input_v} V"
-              f" | SatBus Voltage: {satbus_v} V"
-              f" | Logic Rail: {main_v} V"
-              f" | LED Rail: {led_v} V")
+        JEBLogger.debug("POWR", f"  |> Input Voltage: {input_v} V")
+        JEBLogger.debug("POWR", f"  |> SatBus Voltage: {satbus_v} V")
+        JEBLogger.debug("POWR", f"  |> Logic Rail: {main_v} V")
+        JEBLogger.debug("POWR", f"  |> LED Rail: {led_v} V")
 
         if input_v < 15.0:
             return False

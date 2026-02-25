@@ -48,12 +48,10 @@ class HIDManager:
                  matrix_keypads=None,
                  estop_pin=None,
                  expander_configs=None,
-                 monitor_only=False,
-                 logger=None
+                 monitor_only=False
                  ):
         """Initialize HID Manager with specified inputs."""
-        JEBLogger.set_source(logger.SOURCE if logger else None)
-        JEBLogger.info("HIDM", "Initializing HID Manager...")
+        JEBLogger.info("HIDM", "[INIT] HIDManager")
 
         #region --- Initialize State Storage ---
         # Buttons States
@@ -159,7 +157,7 @@ class HIDManager:
                         pull=True
                     ) if encoder_button_pins else None
                 except ImportError:
-                    print("❗Error: 'rotaryio' module not found. Encoders will not be initialized.❗")
+                    JEBLogger.error("HIDM", "rotaryio module not found, encoders will not be initialized")
 
             # Matrix Keypads
             self._matrix_keypads = []
@@ -178,7 +176,7 @@ class HIDManager:
                     self._estop = digitalio.DigitalInOut(estop_pin)
                     self._estop.pull = digitalio.Pull.UP
                 except ImportError:
-                    print("❗Error: 'digitalio' module not found. E-Stop input will not be initialized.❗")
+                    JEBLogger.error("HIDM", "digitalio module not found, E-Stop input will not be initialized")
 
             # MCP230xx Expanded Inputs
             # Check for all required parameters
@@ -227,9 +225,7 @@ class HIDManager:
                         }
 
                         if cfg.get("momentary"):
-                            JEBLogger.info("INIT", f"Momentary: {cfg['momentary']}")
                             flat_mom = [pin for pair in cfg["momentary"] for pin in pair]
-                            JEBLogger.info("INIT", f"Momentary: {flat_mom}")
                             exp_data["mom_keys"] = MCPKeys(mcp, flat_mom, value_when_pressed=False, pull=True)
 
                         self._active_expanders.append(exp_data)
@@ -240,7 +236,8 @@ class HIDManager:
                         mom_offset += len(cfg.get("momentary", []))
 
                     except (ImportError, OSError, ValueError) as e:
-                        print(f"WARNING: HID: Expander {chip_type} at {hex(cfg['address'])} failed: {e}")
+                        JEBLogger.warning("HIDM", f"Expander {chip_type} at {cfg['address']} failed")
+                        JEBLogger.error("HIDM", f"Expander Error: {e}")
         #endregion
 
     #region --- Button Handling ---

@@ -8,6 +8,7 @@ import random
 from enum import Enum
 
 from utilities.palette import Palette
+from utilities.logger import JEBLogger
 
 class PixelLayout(Enum):
     """Defines the physical layout type of pixel arrays."""
@@ -55,14 +56,14 @@ class BasePixelManager:
     """
     Base class for managing NeoPixel animations via a non-blocking loop.
     Supports: SOLID, BLINK, PULSE, RAINBOW, GLITCH, DECAY, SCANNER (Cylon), CHASER.
-    
+
     Provides shape/layout awareness for implementing subclasses to enable
     layout-specific animation behavior.
     """
     def __init__(self, pixel_object, layout_type=PixelLayout.LINEAR, dimensions=None):
         """
         Initialize pixel manager with shape/layout awareness.
-        
+
         Args:
             pixel_object: JEBPixel wrapper object
             layout_type: PixelLayout enum indicating physical arrangement
@@ -71,10 +72,12 @@ class BasePixelManager:
         """
         self.pixels = pixel_object # JEBPixel wrapper
         self.num_pixels = self.pixels.n
-        
+
         # Shape/layout properties
         self._layout_type = layout_type
         self._dimensions = dimensions or (self.num_pixels,)
+
+        JEBLogger.info("PXLM", f"[INIT] BasePixelManager - layout: {self._layout_type} dimensions: {self._dimensions}")
 
         # Fixed-size list for animations (one slot per pixel)
         # Each slot is a reusable AnimationSlot object
@@ -94,7 +97,7 @@ class BasePixelManager:
     def get_shape(self):
         """
         Returns shape information as a dict for convenience.
-        
+
         Returns:
             dict with 'type' (PixelLayout) and 'dimensions' (tuple)
         """
@@ -170,14 +173,14 @@ class BasePixelManager:
     def _apply_brightness(self, base_color, brightness):
         """
         Stateless, highly optimized brightness calculation.
-        
+
         Args:
             base_color: Tuple of (r, g, b) values
             brightness: Float from 0.0 to 1.0 (values outside range are clamped)
-        
+
         Returns:
             Tuple of brightness-adjusted (r, g, b) values
-        
+
         Note:
             - Clamps brightness to [0.0, 1.0] to prevent NeoPixel ValueErrors
             - Uses explicit tuple indexing for better performance on RP2350
@@ -185,13 +188,13 @@ class BasePixelManager:
         """
         # Clamp brightness to prevent NeoPixel ValueErrors
         brightness = max(0.0, min(1.0, brightness))
-        
+
         if brightness >= 1.0:
             return base_color
         if brightness <= 0.0:
             return (0, 0, 0)
 
-        # Explicit tuple indexing is significantly faster on RP2350 
+        # Explicit tuple indexing is significantly faster on RP2350
         # and avoids generator comprehensions in memory
         return (
             int(base_color[0] * brightness),
@@ -206,7 +209,7 @@ class BasePixelManager:
     def solid(self, index, color, brightness=1.0, duration=None, priority=2):
         """
         Sets a SOLID animation (static color) to a specific pixel or all pixels.
-        
+
         Args:
             index: Pixel index, or -1/out-of-range for all pixels
             color: RGB tuple (r, g, b)
@@ -222,7 +225,7 @@ class BasePixelManager:
     def flash(self, index, color, brightness=1.0, duration=None, priority=2, speed=1.0):
         """
         Flashes a specific pixel or all pixels (BLINK animation).
-        
+
         Args:
             index: Pixel index, or -1/out-of-range for all pixels
             color: RGB tuple (r, g, b)
@@ -239,7 +242,7 @@ class BasePixelManager:
     def breathe(self, index, color, brightness=1.0, duration=None, priority=2, speed=2.0):
         """
         Commences a breathing/pulse animation on a specific pixel or all pixels.
-        
+
         Args:
             index: Pixel index, or -1/out-of-range for all pixels
             color: RGB tuple (r, g, b)
@@ -257,7 +260,7 @@ class BasePixelManager:
         """
         Starts a Cylon/scanner animation across all pixels.
         Animation behavior adapts to layout type.
-        
+
         Args:
             color: RGB tuple (r, g, b)
             duration: Optional duration in seconds
@@ -269,7 +272,7 @@ class BasePixelManager:
     def centrifuge(self, color, duration=None, speed=0.1, priority=1):
         """
         A looping 'spinning' effect with motion blur (CHASER animation).
-        
+
         Args:
             color: RGB tuple (r, g, b)
             duration: Optional duration in seconds
@@ -281,7 +284,7 @@ class BasePixelManager:
     def rainbow(self, duration=None, speed=0.01, priority=1):
         """
         Smoothly cycles colors across all pixels (RAINBOW animation).
-        
+
         Args:
             duration: Optional duration in seconds
             speed: Color cycle speed
@@ -292,7 +295,7 @@ class BasePixelManager:
     def glitch(self, colors, duration=None, speed=0.05, priority=1):
         """
         Randomly 'pops' pixels from a list of colors to simulate instability.
-        
+
         Args:
             colors: List of RGB tuples to randomly display
             duration: Optional duration in seconds

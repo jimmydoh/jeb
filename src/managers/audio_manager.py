@@ -6,6 +6,7 @@ import audiobusio
 import audiocore
 import audiomixer
 from utilities.audio_channels import AudioChannels
+from utilities.logger import JEBLogger
 
 # Maximum file size (in bytes) for preloading into RAM
 # Files larger than this will be streamed from disk to prevent MemoryError
@@ -15,10 +16,12 @@ class AudioManager:
     """Manages audio playback and mixing."""
     def __init__(self, sck, ws, sd, voice_count=None, root_data_dir="/"):
         self.root_data_dir = root_data_dir
-        
+
+        JEBLogger.info("AUDI", f"[INIT] AudioManager - voice_count: {voice_count} root_data_dir: '{self.root_data_dir}'")
+
         # Determine required voice count from channel definitions
         required_voices = AudioChannels.get_required_voice_count()
-        
+
         # Use provided voice_count if specified, otherwise use required minimum
         # This maintains backward compatibility while ensuring sufficient voices
         if voice_count is None:
@@ -28,7 +31,7 @@ class AudioManager:
                 f"voice_count ({voice_count}) must be at least {required_voices} "
                 f"to support all defined audio channels"
             )
-        
+
         self.audio = audiobusio.I2SOut(sck, ws, sd)
         self.mixer = audiomixer.Mixer(
             voice_count=voice_count,
@@ -48,7 +51,7 @@ class AudioManager:
         # Cache for frequently used small sound files
         # Format: {"filename": RawSampleObject}
         self._cache = {}
-        
+
         # Track open file handles for streaming audio (by channel)
         # Format: {channel_number: file_handle}
         self._stream_files = {}
@@ -75,13 +78,14 @@ class AudioManager:
                 # Check file size before attempting to load
                 try:
                     file_size = os.stat(filepath).st_size
-                except OSError:
-                    print(f"Audio Error: Could not stat {filename}")
+                except OSError as e:
+                    JEBLogger.error("AUDI",f"Could not stat {filename}")
+                    JEBLogger.error("AUDI",f"Error details: {e}")
                     continue
 
                 # Only preload files smaller than 20KB
                 if file_size > MAX_PRELOAD_SIZE_BYTES:
-                    print(f"Audio Info: Skipping preload of {filename} ({file_size} bytes > {MAX_PRELOAD_SIZE_BYTES} bytes). Will stream from disk.")
+                    JEBLogger.warning("AUDI",f"Preload oversize {filename} ({file_size} bytes)")
                     continue
 
                 # Open the file and create a RawSample object
@@ -90,12 +94,13 @@ class AudioManager:
                     # WaveFile will read and decode the WAV file
                     raw_sample = audiocore.RawSample(f)
                     self._cache[filepath] = raw_sample
-                    print(f"Audio Info: Preloaded {filename} ({file_size} bytes)")
+                    JEBLogger.info("AUDI",f"Preloaded {filename} ({file_size} bytes)")
                 finally:
                     # Always close the file handle
                     f.close()
-            except OSError:
-                print(f"Audio Error: Could not preload {filename}")
+            except OSError as e:
+                JEBLogger.error("AUDI",f"Could not preload {filename}")
+                JEBLogger.error("AUDI",f"Error details: {e}")
 
     async def play(self, file, channel=1, loop=False, level=1.0, wait=False, interrupt=True):
         """
@@ -143,11 +148,12 @@ class AudioManager:
                 except Exception:
                     pass
                 del self._stream_files[channel]
-            
+
             try:
                 f = open(file, "rb")
-            except OSError:
-                print(f"Audio Error: File {file} not found")
+            except OSError as e:
+                JEBLogger.error("AUDI",f"File not found {file}")
+                JEBLogger.error("AUDI",f"Error details: {e}")
             else:
                 try:
                     wav = audiocore.WaveFile(f, bytearray(1024))

@@ -36,7 +36,7 @@ def is_wifi_available():
         return False
 
 SD_MOUNTED = is_sd_mounted()
-ROOT_DATA_DIR = "/sd" if SD_MOUNTED else "/"
+ROOT_DATA_DIR = "/sd/" if SD_MOUNTED else "/"
 WEB_SERVER = None
 
 def file_exists(filename):
@@ -129,6 +129,8 @@ def _inject_hardware_dummies(features):
             if dummy_module_name is None:
                 continue
             try:
+                if manager_module in sys.modules:
+                    del sys.modules[manager_module]
                 __import__(dummy_module_name)
                 sys.modules[manager_module] = sys.modules[dummy_module_name]
                 JEBLogger.info("CODE", f"Dummy injected: {manager_module}")
@@ -215,7 +217,7 @@ if config.get("wifi_ssid") and config.get("wifi_password"):
     except ImportError:
         JEBLogger.warning("CODE", "⚠️ WiFiManager not available - skipping OTA update and web server")
 else:
-    JEBLogger.info("CODE", "No Wi-Fi credentials provided - skipping OTA update and web server initialization")
+    JEBLogger.info("CODE", "No WiFi config - skipping OTA update and web server init")
 
 
 # --- APPLICATION RUN ---
@@ -247,7 +249,7 @@ else:
         time.sleep(1)
 
 if test_mode:
-    JEBLogger.warning("CODE", "⚠️ Running in TEST MODE. Console Manager will run alongside the application. ⚠️")
+    JEBLogger.warning("CODE", "⚠️ Test Mode: Console Manager loading")
     from managers.console_manager import ConsoleManager
     CONSOLE = ConsoleManager(role, type_id, app=app)
 

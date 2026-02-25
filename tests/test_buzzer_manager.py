@@ -11,7 +11,7 @@ class MockModule:
     """Generic mock module."""
     def __getattr__(self, name):
         return MockModule()
-    
+
     def __call__(self, *args, **kwargs):
         return MockModule()
 
@@ -45,7 +45,7 @@ class MockPWMOut:
         self.frequency = frequency
         self.variable_frequency = variable_frequency
         self.history = []  # Track state changes for testing
-    
+
     def __setattr__(self, name, value):
         if name != 'history' and hasattr(self, 'history'):
             self.history.append((name, value))
@@ -79,50 +79,50 @@ BuzzerManager = buzzer_manager_module.BuzzerManager
 def test_buzzer_initialization():
     """Test BuzzerManager initialization."""
     print("Testing buzzer initialization...")
-    
+
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
-    
+
     assert buzzer.buzzer is not None, "PWM buzzer should be initialized"
     assert buzzer.buzzer.duty_cycle == 0, "Initial duty cycle should be 0 (silent)"
     assert buzzer.buzzer.frequency == 440, "Initial frequency should be 440Hz"
     assert buzzer.buzzer.variable_frequency == True, "Variable frequency should be enabled"
     assert buzzer._current_task is None, "No task should be running initially"
-    
+
     # Test volume calculation (default 0.5)
     expected_volume = int(0.5 * (2**16 - 1))
     assert buzzer.VOLUME_ON == expected_volume, f"Volume should be {expected_volume}"
     assert buzzer.VOLUME_OFF == 0, "VOLUME_OFF should be 0"
-    
+
     print("✓ Buzzer initialization test passed")
 
 
 def test_buzzer_volume_validation():
     """Test volume validation."""
     print("\nTesting volume validation...")
-    
+
     mock_pin = "GP10"
-    
+
     # Valid volumes
     buzzer1 = BuzzerManager(mock_pin, volume=0.0)
     assert buzzer1.VOLUME_ON == 0
-    
+
     buzzer2 = BuzzerManager(mock_pin, volume=1.0)
     assert buzzer2.VOLUME_ON == 65535
-    
+
     # Invalid volumes
     try:
         BuzzerManager(mock_pin, volume=-0.1)
         assert False, "Should raise ValueError for volume < 0"
     except ValueError as e:
         assert "between 0.0 and 1.0" in str(e)
-    
+
     try:
         BuzzerManager(mock_pin, volume=1.1)
         assert False, "Should raise ValueError for volume > 1"
     except ValueError as e:
         assert "between 0.0 and 1.0" in str(e)
-    
+
     print("✓ Volume validation test passed")
 
 
@@ -130,20 +130,20 @@ def test_buzzer_volume_validation():
 async def test_buzzer_stop():
     """Test buzzer stop functionality."""
     print("\nTesting buzzer stop...")
-    
+
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
-    
+
     # Create a long-running task
     buzzer._current_task = asyncio.create_task(asyncio.sleep(10))
-    
+
     # Stop should cancel the task
     await buzzer.stop()
-    
+
     assert buzzer._current_task.done(), "Task should be cancelled"
     assert buzzer._current_task.cancelled(), "Task should be marked as cancelled"
     assert buzzer.buzzer.duty_cycle == 0, "Duty cycle should be 0 after stop"
-    
+
     print("✓ Buzzer stop test passed")
 
 
@@ -151,26 +151,26 @@ async def test_buzzer_stop():
 async def test_play_note_with_duration():
     """Test playing a note with duration."""
     print("\nTesting play_note with duration...")
-    
+
     mock_pin = "GP10"
-    buzzer = BuzzerManager(mock_pin, testing=True)
-    
+    buzzer = BuzzerManager(mock_pin)
+
     # Play a short note
     buzzer.play_note(440, duration=0.1)
-    
+
     # Give the task time to start and run
     await asyncio.sleep(0.05)
-    
+
     # Verify buzzer is playing
     assert buzzer.buzzer.frequency == 440, "Frequency should be set to 440Hz"
     assert buzzer.buzzer.duty_cycle == buzzer.VOLUME_ON, "Duty cycle should be on"
-    
+
     # Wait for note to complete
     await asyncio.sleep(0.1)
-    
+
     # Verify buzzer stopped
     assert buzzer.buzzer.duty_cycle == buzzer.VOLUME_OFF, "Duty cycle should be off after duration"
-    
+
     print("✓ Play note with duration test passed")
 
 
@@ -178,24 +178,24 @@ async def test_play_note_with_duration():
 async def test_play_note_without_duration():
     """Test playing a continuous note without duration."""
     print("\nTesting play_note without duration...")
-    
+
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
-    
+
     # Play a continuous note
     buzzer.play_note(880, duration=None)
-    
+
     # Give the task time to start
     await asyncio.sleep(0.05)
-    
+
     # Verify buzzer is playing
     assert buzzer.buzzer.frequency == 880, "Frequency should be set to 880Hz"
     assert buzzer.buzzer.duty_cycle == buzzer.VOLUME_ON, "Duty cycle should be on"
-    
+
     # Stop manually
     await buzzer.stop()
     assert buzzer.buzzer.duty_cycle == buzzer.VOLUME_OFF, "Duty cycle should be off after stop"
-    
+
     print("✓ Play note without duration test passed")
 
 
@@ -203,10 +203,10 @@ async def test_play_note_without_duration():
 async def test_play_sequence():
     """Test playing a sequence of notes."""
     print("\nTesting play_sequence...")
-    
+
     mock_pin = "GP10"
-    buzzer = BuzzerManager(mock_pin, testing=True)
-    
+    buzzer = BuzzerManager(mock_pin)
+
     # Create a simple sequence
     sequence_data = {
         'bpm': 240,  # Fast tempo for testing
@@ -216,18 +216,18 @@ async def test_play_sequence():
             ('E4', 0.1)
         ]
     }
-    
+
     buzzer.play_sequence(sequence_data)
-    
+
     # Give time for sequence to start and play
     await asyncio.sleep(0.4)
-    
+
     # The sequence should have played
     assert buzzer._current_task is not None, "Task should exist"
-    
+
     # Stop to clean up
     await buzzer.stop()
-    
+
     print("✓ Play sequence test passed")
 
 
@@ -235,10 +235,10 @@ async def test_play_sequence():
 async def test_play_sequence_with_rest():
     """Test sequence with rest notes (frequency = 0)."""
     print("\nTesting sequence with rest notes...")
-    
+
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
-    
+
     # Sequence with rest
     sequence_data = {
         'bpm': 240,  # Fast tempo
@@ -248,15 +248,15 @@ async def test_play_sequence_with_rest():
             ('E4', 0.1)
         ]
     }
-    
+
     buzzer.play_sequence(sequence_data)
-    
+
     # Give time for sequence to complete
     await asyncio.sleep(0.4)
-    
+
     # Stop to clean up
     await buzzer.stop()
-    
+
     print("✓ Sequence with rest test passed")
 
 
@@ -264,19 +264,19 @@ async def test_play_sequence_with_rest():
 async def test_play_sequence_by_name():
     """Test playing a named sequence from tones module."""
     print("\nTesting play_sequence by name...")
-    
+
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
-    
+
     # Play a named sequence (should exist in tones.py)
     buzzer.play_sequence('BEEP')
-    
+
     # Give time for sequence to start
     await asyncio.sleep(0.1)
-    
+
     # Stop to clean up
     await buzzer.stop()
-    
+
     print("✓ Play sequence by name test passed")
 
 
@@ -284,19 +284,19 @@ async def test_play_sequence_by_name():
 async def test_invalid_sequence_name():
     """Test handling of invalid sequence name."""
     print("\nTesting invalid sequence name...")
-    
+
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
-    
+
     # Play an invalid sequence name (should print warning and return)
     buzzer.play_sequence('NONEXISTENT_SEQUENCE')
-    
+
     # Give time for any potential task
     await asyncio.sleep(0.05)
-    
+
     # Task should not be created
     assert buzzer._current_task is None, "No task should be created for invalid sequence"
-    
+
     print("✓ Invalid sequence name test passed")
 
 
@@ -304,19 +304,19 @@ async def test_invalid_sequence_name():
 async def test_invalid_sequence_type():
     """Test handling of invalid sequence type."""
     print("\nTesting invalid sequence type...")
-    
+
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
-    
+
     # Try to play an invalid type
     buzzer.play_sequence(12345)  # Not a string or dict
-    
+
     # Give time for any potential task
     await asyncio.sleep(0.05)
-    
+
     # Task should not be created
     assert buzzer._current_task is None, "No task should be created for invalid type"
-    
+
     print("✓ Invalid sequence type test passed")
 
 
@@ -324,24 +324,24 @@ async def test_invalid_sequence_type():
 async def test_stop_clears_task():
     """Test that stop() properly cancels and clears the task."""
     print("\nTesting stop clears task...")
-    
+
     mock_pin = "GP10"
     buzzer = BuzzerManager(mock_pin)
-    
+
     # Play a note
     buzzer.play_note(440)
-    
+
     # Give time for task to start
     await asyncio.sleep(0.05)
-    
+
     assert buzzer._current_task is not None, "Task should exist"
-    
+
     # Stop should cancel and wait for the task
     await buzzer.stop()
-    
+
     assert buzzer._current_task.done(), "Task should be done after stop"
     assert buzzer.buzzer.duty_cycle == 0, "Buzzer should be silent"
-    
+
     print("✓ Stop clears task test passed")
 
 
@@ -350,12 +350,12 @@ def run_all_tests():
     print("="*60)
     print("Running BuzzerManager Tests (pwmio-based)")
     print("="*60)
-    
+
     sync_tests = [
         test_buzzer_initialization,
         test_buzzer_volume_validation,
     ]
-    
+
     async_tests = [
         test_buzzer_stop,
         test_play_note_with_duration,
@@ -367,10 +367,10 @@ def run_all_tests():
         test_invalid_sequence_type,
         test_stop_clears_task,
     ]
-    
+
     passed = 0
     failed = 0
-    
+
     # Run sync tests
     for test in sync_tests:
         try:
@@ -382,7 +382,7 @@ def run_all_tests():
         except Exception as e:
             print(f"\n✗ {test.__name__} ERROR: {e}")
             failed += 1
-    
+
     # Run async tests
     for test in async_tests:
         try:
@@ -394,11 +394,11 @@ def run_all_tests():
         except Exception as e:
             print(f"\n✗ {test.__name__} ERROR: {e}")
             failed += 1
-    
+
     print("\n" + "="*60)
     print(f"Test Results: {passed} passed, {failed} failed")
     print("="*60)
-    
+
     return failed == 0
 
 

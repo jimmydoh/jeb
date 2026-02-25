@@ -34,6 +34,7 @@ from transport.protocol import (
 )
 
 from utilities.jeb_pixel import JEBPixel
+from utilities.logger import JEBLogger
 from utilities.palette import Palette
 from utilities.pins import Pins
 from utilities import tones
@@ -73,13 +74,13 @@ class SafeMode:
                 self.core.display.update_status("DASHBOARD CORRUPT", "Developer intervention required")
                 self.core.display.update_footer("Safe mode active")
         except Exception as e:
-            # If display fails, print to console
-            print(f"SAFE MODE: Display error: {e}")
-            print("SYSTEM HALT: DASHBOARD CORRUPT - Developer intervention required")
+            # If display fails, log the error
+            JEBLogger.error("CORE", f"Display error: {e}")
+            JEBLogger.error("CORE", "SYSTEM HALT: DASHBOARD CORRUPT - Developer intervention required")
 
     async def run(self):
         """Run safe mode - just wait indefinitely."""
-        print("SAFE MODE ACTIVE: System halted. Awaiting developer intervention.")
+        JEBLogger.error("CORE", "SAFE MODE ACTIVE: System halted. Awaiting developer intervention.")
         # Wait indefinitely - system is halted
         while True:
             await asyncio.sleep(1)
@@ -405,7 +406,7 @@ class CoreManager:
                 return_when=asyncio.FIRST_COMPLETED,
             )
         except Exception as e:
-            print(f"Error while running mode with safety monitoring: {e}")
+            JEBLogger.error("CORE", f"Error while running mode with safety monitoring: {e}")
             import traceback
             traceback.print_exc()
             self.display.update_status("MODE ERROR", "CHECK LOGS")
@@ -438,7 +439,7 @@ class CoreManager:
                 result = sub_task.result()  # Get the result or exception
                 return result if result else "SUCCESS"
             except Exception as e:
-                print(f"Error in mode execution: {e}")
+                JEBLogger.error("CORE", f"Error in mode execution: {e}")
                 import traceback
                 traceback.print_exc()
                 self.display.update_status("MODE ERROR", "CHECK LOGS")
@@ -620,11 +621,10 @@ class CoreManager:
         # Check power integrity before starting main application loop
         if await self.power.check_power_integrity():
             self.buzzer.play_sequence(tones.POWER_UP)
-            print("Power integrity check passed. Starting system...")
+            JEBLogger.info("CORE", "Power integrity check passed")
             self.display.update_status("POWER OK", "STARTING SYSTEM...")
             await asyncio.sleep(1)
 
-            print("Initializing Watchdog Manager...")
             self.watchdog = WatchdogManager(
                 task_names=[
                     "power",
@@ -645,7 +645,7 @@ class CoreManager:
 
         else:
             self.buzzer.play_sequence(tones.POWER_FAIL)
-            print("Power integrity check failed! Check power supply and connections.")
+            JEBLogger.error("CORE", "Power integrity check failed, check power supply and connections")
             self.display.update_status("POWER ERROR", "CHECK CONNECTIONS")
             # Do not start main loop if power is not stable
             while True:
@@ -730,16 +730,16 @@ class CoreManager:
                     try:
                         mode_class = self._load_mode_class(self.mode)
                     except (ImportError, KeyError) as e:
-                        print(f"Error loading mode '{self.mode}': {e}")
+                        JEBLogger.error("CORE", f"Error loading mode '{self.mode}': {e}")
 
                         # Check if DASHBOARD itself is failing
                         if self.mode == "DASHBOARD":
                             self.dashboard_failure_count += 1
-                            print(f"DASHBOARD failure #{self.dashboard_failure_count}/{self.max_dashboard_failures}")
+                            JEBLogger.error("CORE", f"DASHBOARD failure #{self.dashboard_failure_count}/{self.max_dashboard_failures}")
 
                             if self.dashboard_failure_count >= self.max_dashboard_failures:
                                 # DASHBOARD is corrupted - enter SAFE_MODE
-                                print("!!! CRITICAL: DASHBOARD failed repeatedly. Entering SAFE_MODE !!!")
+                                JEBLogger.critical("CORE", "!!! CRITICAL: DASHBOARD failed repeatedly. Entering SAFE_MODE !!!")
                                 self.mode = "SAFE_MODE"
                                 continue
 
@@ -749,7 +749,7 @@ class CoreManager:
                             await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
                         except Exception as e:
                             # Display/audio failure - log and continue anyway
-                            print(f"Error displaying mode load error: {e}")
+                            JEBLogger.error("CORE", f"Error displaying mode load error: {e}")
 
                         await asyncio.sleep(2)
                         self.mode = "DASHBOARD"  # Return to dashboard if mode fails to load
@@ -803,7 +803,7 @@ class CoreManager:
                     else:
                         await self.run_mode_with_safety(mode_instance)
                 else:
-                    print(f"Cannot start {self.mode}: Missing Dependency")
+                    JEBLogger.warning("CORE", f"Cannot start {self.mode}: Missing Dependency")
 
                     # Try to display error (may fail if display is broken)
                     try:
@@ -813,13 +813,13 @@ class CoreManager:
                         await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
                     except Exception as e:
                         # Display/audio failure - log and continue anyway
-                        print(f"Error displaying requirements missing error: {e}")
+                        JEBLogger.error("CORE", f"Error displaying requirements missing error: {e}")
 
                     await asyncio.sleep(2)
                     self.mode = "DASHBOARD"  # Return to dashboard if requirements not met
 
             else:
-                print(f"Mode {self.mode} not found in registry.")
+                JEBLogger.warning("CORE", f"Mode {self.mode} not found in registry.")
 
                 # Try to display error (may fail if display is broken)
                 try:
@@ -827,7 +827,7 @@ class CoreManager:
                     await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
                 except Exception as e:
                     # Display/audio failure - log and continue anyway
-                    print(f"Error displaying mode not found error: {e}")
+                    JEBLogger.error("CORE", f"Error displaying mode not found error: {e}")
 
                 await asyncio.sleep(2)
                 self.mode = "DASHBOARD"  # Return to dashboard if mode not found

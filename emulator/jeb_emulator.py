@@ -4,6 +4,8 @@ import pygame
 import os
 import builtins
 
+from utilities.logger import JEBLogger
+
 # ==========================================
 # SAFE AUDIO INITIALIZATION
 # ==========================================
@@ -13,42 +15,78 @@ try:
     pygame.mixer.pre_init(44100, -16, 2, 512)
     pygame.mixer.init()
     AUDIO_AVAILABLE = True
-    print("🔊 [EMULATOR] Hardware Audio Device Found. Sound Enabled.")
+    JEBLogger.emulator("MOCK", "🔊 Hardware Audio Device found")
 except Exception as e:
-    print(f"⚠️ [EMULATOR] No audio device available ({e}). Falling back to silent logging.")
+    JEBLogger.emulator("MOCK", f"⚠️ No audio device available")
 
 # ==========================================
 # FILESYSTEM / SD CARD MOCK
 # ==========================================
 # Intercept file operations to map CircuitPython paths to the local Windows repo
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
+SRC_DIR = os.path.join(PROJECT_ROOT, 'src')
+SD_DIR = os.path.join(PROJECT_ROOT, 'sd') # <--- Get absolute path to the SD folder
+
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
 _orig_stat = os.stat
+_orig_mkdir = os.mkdir
 _orig_open = builtins.open
 
-def _map_virtual_path(path):
-    """Translates CircuitPython paths to local relative paths."""
+def smart_path_mapper(path):
     if not isinstance(path, str):
         return path
 
-    # Strip leading slashes so '/SD/audio...' becomes 'SD/audio...'
-    mapped_path = path.lstrip("/")
+    # If the code is looking for the SD card, route it absolutely to the repo's SD folder
+    if path.lower().startswith('/sd/') or path.lower().startswith('sd/'):
+        # Strip the '/sd/' prefix and append the rest to our absolute SD_DIR
+        clean_path = path[4:] if path.lower().startswith('/sd/') else path[3:]
+        JEBLogger.emulator("MOCK", f"Path {path} mapped -> {os.path.join(SD_DIR, clean_path)}")
+        return os.path.join(SD_DIR, clean_path)
 
-    # If the app asks for 'audio/...' but your local folder is actually 'SD/audio/...'
-    # we can silently redirect it to the correct local folder.
-    if mapped_path.startswith("audio/") and os.path.exists("SD/" + mapped_path):
-        mapped_path = "SD/" + mapped_path
+    return path
 
-    return mapped_path
-
+# Patch the file operations
 def _mock_stat(path, *args, **kwargs):
-    return _orig_stat(_map_virtual_path(path), *args, **kwargs)
+    JEBLogger.emulator("MOCK", f"Intercepted os.stat for path: {path}")
+    return _orig_stat(smart_path_mapper(path), *args, **kwargs)
 
 def _mock_open(file, *args, **kwargs):
-    return _orig_open(_map_virtual_path(file), *args, **kwargs)
+    JEBLogger.emulator("MOCK", f"Intercepted open for file: {file}")
+    return _orig_open(smart_path_mapper(file), *args, **kwargs)
+
+def _mock_mkdir(path, *args, **kwargs):
+    JEBLogger.emulator("MOCK", f"Intercepted os.mkdir for path: {path}")
+    return _orig_mkdir(smart_path_mapper(path), *args, **kwargs)
+
+class MockStorage:
+    @staticmethod
+    def getmount(path):
+        if path == "/sd":
+            return True # Simulate SD card being mounted
+        raise OSError("Mount not found")
+
+sys.modules['storage'] = MockStorage()
 
 # Apply the patches globally for the emulator session
 os.stat = _mock_stat
+os.mkdir = _mock_mkdir
 builtins.open = _mock_open
+
+# Console Mocks
+class MockRuntime:
+    serial_bytes_available = False
+
+class MockSupervisor:
+    runtime = MockRuntime()
+    @staticmethod
+    def reload():
+        JEBLogger.emulator("MOCK", "⚠️ supervisor.reload() called. Exiting...")
+        sys.exit(0)
+
+sys.modules['supervisor'] = MockSupervisor()
 
 #region --- Hardware Mocks ---
 
@@ -189,11 +227,11 @@ class MockDigitalInOut:
         elif str(pin) == "board.GP15": # Example SATBUS Detect pin
             HardwareMocks.register('satbus_detect_pin', self)
             self._value = True  # Assuming True = Pulled Up = Disconnected
-            print("[HW MOCK] Registered GP15 as SATBUS DETECT")
+            JEBLogger.emulator("MOCK","Registered GP15 as SATBUS DETECT")
         elif str(pin) == "board.GP14": # Example SATBUS MOSFET control pin
             HardwareMocks.register('satbus_mosfet_pin', self)
             self._value = False # Start with MOSFET off
-            print("[HW MOCK] Registered GP14 as SATBUS MOSFET CONTROL")
+            JEBLogger.emulator("MOCK","Registered GP14 as SATBUS MOSFET CONTROL")
 
     @property
     def value(self):
@@ -231,7 +269,7 @@ class MockWatchdog:
 
     def feed(self):
         # Optional: uncomment to see the heartbeat in the console
-        # print("[WATCHDOG] Fed")
+        # JEBLogger.note("MOCK", "[WATCHDOG] Fed", "EMUL")
         pass
 
 mock_watchdog = MockWatchdog()
@@ -416,6 +454,31 @@ class MockNeopixelModule:
 
 sys.modules['neopixel'] = MockNeopixelModule()
 
+# --- PIXEL FRAMEBUF MOCK ---
+class MockPixelFramebuffer:
+    """Mocks adafruit_pixel_framebuf to suppress warnings and allow text scrolling paths to execute."""
+    def __init__(self, pixels, width, height, **kwargs):
+        self.pixels = pixels
+        self.width = width
+        self.height = height
+
+    def text(self, string, x, y, color, font_name=None):
+        JEBLogger.emulator("MOCK", f"[FRAMEBUF] text('{string}', x={x}, y={y}, color={color}, font={font_name})")
+        pass
+
+    def display(self):
+        pass
+
+    def fill(self, color):
+        pass
+
+    def scroll(self, dx, dy):
+        pass
+
+sys.modules['adafruit_pixel_framebuf'] = type(
+    'MockPixelFramebufModule', (), {'PixelFramebuffer': MockPixelFramebuffer}
+)
+
 # --- AUDIOBUSIO / AUDIOPWMIO MOCKS (Direct Playback Fallbacks) ---
 class MockDirectAudioOut:
     """Handles cases where audio.play() is called without a mixer."""
@@ -428,7 +491,7 @@ class MockDirectAudioOut:
         filename = getattr(sample, 'filepath', 'synth/stream')
 
         if not AUDIO_AVAILABLE:
-            print(f"🔊 [AUDIO DUMMY] Direct intent to play: {filename} (Loop: {loop})")
+            JEBLogger.emulator("MOCK", f"🔊 Dummy play: {filename} (Loop: {loop})")
             return
 
         if hasattr(sample, 'sound') and sample.sound:
@@ -464,10 +527,10 @@ class MockPWMOut:
     def duty_cycle(self, value):
         # Detect transition from silence to sound
         if value > 0 and self._duty_cycle == 0:
-            print(f"[BUZZER] ON  ({self._frequency} Hz)")
+            JEBLogger.emulator("MOCK", f"[BUZZER] ON  ({self._frequency} Hz)")
         # Detect transition from sound to silence
         elif value == 0 and self._duty_cycle > 0:
-            print(f"[BUZZER] OFF")
+            JEBLogger.emulator("MOCK", f"[BUZZER] OFF")
 
         self._duty_cycle = value
 
@@ -478,7 +541,7 @@ class MockPWMOut:
     @frequency.setter
     def frequency(self, value):
         if value != self._frequency and self._duty_cycle > 0:
-            print(f"[BUZZER] FREQ CHANGE -> {value} Hz")
+            JEBLogger.emulator("MOCK", f"[BUZZER] FREQ CHANGE -> {value} Hz")
         self._frequency = value
 
     def deinit(self):
@@ -497,7 +560,7 @@ class MockWaveFile:
             try:
                 self.sound = pygame.mixer.Sound(self.filepath)
             except Exception as e:
-                print(f"❌ [AUDIO ERROR] Could not load '{self.filepath}': {e}")
+                JEBLogger.emulator("MOCK", f"❌ [AUDIO ERROR] Could not load '{self.filepath}': {e}")
     def deinit(self): pass
 
 class MockRawSample(MockWaveFile):
@@ -536,7 +599,7 @@ class MockMixerVoice:
 
         # 1. Fallback / VM Logging Mode
         if not AUDIO_AVAILABLE:
-            print(f"🔊 [AUDIO DUMMY] Channel {self.index} intent to play: {filename} (Loop: {loop})")
+            JEBLogger.emulator("MOCK", f"🔊 Dummy play: {filename} (Loop: {loop})")
             return
 
         # 2. Hardware Audio Mode
@@ -544,7 +607,7 @@ class MockMixerVoice:
             loops = -1 if loop else 0
             self.channel.play(sample.sound, loops=loops)
         else:
-            print(f"⚠️ [HW AUDIO] Channel {self.index} skipped unsupported sample: {filename}")
+            JEBLogger.emulator("MOCK", f"⚠️ [HW AUDIO] Channel {self.index} skipped unsupported sample: {filename}")
 
     def stop(self):
         self.playing = False
@@ -578,11 +641,11 @@ class MockSynthesizer:
         self.active_notes = set()
     def press(self, note):
         self.active_notes.add(note)
-        print(f"[SYNTH] Pressed Note:  {note.frequency:>6.1f} Hz")
+        JEBLogger.emulator("MOCK", f"[SYNTH] Pressed Note:  {note.frequency:>6.1f} Hz")
     def release(self, note):
         if note in self.active_notes:
             self.active_notes.remove(note)
-            print(f"[SYNTH] Released Note: {note.frequency:>6.1f} Hz")
+            JEBLogger.emulator("MOCK", f"[SYNTH] Released Note: {note.frequency:>6.1f} Hz")
     def release_all(self):
         self.active_notes.clear()
 

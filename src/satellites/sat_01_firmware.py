@@ -88,8 +88,7 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             encoders=Pins.ENCODERS,
             matrix_keypads=Pins.MATRIX_KEYPADS,
             expander_configs=Pins.EXPANDER_CONFIGS,
-            monitor_only=False,
-            logger=JEBLogger
+            monitor_only=False
         )
 
         # Init LED Hardware
@@ -119,7 +118,7 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             CMD_SYNC_FRAME: self._handle_sync_frame,
             CMD_SETENC: self._handle_set_enc,
         })
-        JEBLogger.info("FIRM", "Industrial Satellite Firmware initialized.", src=self.id)
+        JEBLogger.info("FIRM", f"[INIT] IndustrialSatelliteFirmware initialized.")
 
     async def _handle_sync_frame(self, val):
         # val is tuple (frame, time) from binary payload
