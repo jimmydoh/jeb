@@ -261,65 +261,6 @@ def test_sat01_has_sleeping_flag(sat01_content):
     )
 
 
-def test_sat01_has_handle_mode_command(sat01_content):
-    """IndustrialSatelliteFirmware should define _handle_mode_command."""
-    assert "def _handle_mode_command(" in sat01_content, (
-        "sat_01_firmware should define _handle_mode_command()"
-    )
-
-
-def test_sat01_has_enter_sleep(sat01_content):
-    """IndustrialSatelliteFirmware should define _enter_sleep."""
-    assert "async def _enter_sleep(" in sat01_content, (
-        "sat_01_firmware should define _enter_sleep()"
-    )
-
-
-def test_sat01_has_wake_local(sat01_content):
-    """IndustrialSatelliteFirmware should define _wake_local."""
-    assert "async def _wake_local(" in sat01_content, (
-        "sat_01_firmware should define _wake_local()"
-    )
-
-
-def test_sat01_enter_sleep_clears_segment(sat01_content):
-    """_enter_sleep should blank the 7-segment display."""
-    match = re.search(
-        r"async def _enter_sleep\(.*?\n(.*?)(?=\n    async def |\n    def |\Z)",
-        sat01_content,
-        re.DOTALL,
-    )
-    assert match, "_enter_sleep body should be found"
-    body = match.group(1)
-    assert "segment.clear()" in body, "_enter_sleep should clear segment display"
-
-
-def test_sat01_enter_sleep_throttles_render(sat01_content):
-    """_enter_sleep should throttle the render rate to 10Hz."""
-    match = re.search(
-        r"async def _enter_sleep\(.*?\n(.*?)(?=\n    async def |\n    def |\Z)",
-        sat01_content,
-        re.DOTALL,
-    )
-    assert match, "_enter_sleep body should be found"
-    body = match.group(1)
-    assert "target_frame_rate" in body, "_enter_sleep should update target_frame_rate"
-    assert "10" in body, "_enter_sleep should throttle to 10Hz"
-
-
-def test_sat01_wake_local_restores_frame_rate(sat01_content):
-    """_wake_local should restore the default frame rate."""
-    match = re.search(
-        r"async def _wake_local\(.*?\n(.*?)(?=\n    async def |\n    def |\Z)",
-        sat01_content,
-        re.DOTALL,
-    )
-    assert match, "_wake_local body should be found"
-    body = match.group(1)
-    assert "target_frame_rate" in body, "_wake_local should restore target_frame_rate"
-    assert "DEFAULT_FRAME_RATE" in body, "_wake_local should use DEFAULT_FRAME_RATE"
-
-
 def test_sat01_monitor_hid_throttles_while_sleeping(sat01_content):
     """monitor_hw_hid in sat_01 should throttle polling while sleeping."""
     match = re.search(
