@@ -15,7 +15,7 @@ class SynthManager:
     Can be instantiated for Hi-Fi (I2S) or Lo-Fi (PWM/Piezo).
     """
 
-    def __init__(self, sample_rate=22050, channel_count=None, waveform_override=None):
+    def __init__(self, sample_rate=22050, channel_count=1, waveform_override=None):
         self.override = waveform_override
 
         # Create the synthesizer object

@@ -2,6 +2,7 @@
 """MCP23017 Keypad Wrapper Module"""
 
 import digitalio
+import keypad
 from adafruit_ticks import ticks_ms
 
 class MCPKeys:
@@ -23,27 +24,35 @@ class MCPKeys:
             # Store initial state (True = Released for Pull-Up)
             self._last_state.append(pin.value)
 
-            # Enable Interrupts for this pin (Library specific, or direct register write)
-            mcp.interrupt_enable |= (1 << pin_num)
-            mcp.interrupt_configuration &= ~(1 << pin_num)  # Change on any state
+            # Enable Interrupts for this pin (if supported by the specific MCP library)
+            if hasattr(mcp, 'interrupt_enable') and hasattr(mcp, 'interrupt_configuration'):
+                mcp.interrupt_enable |= (1 << pin_num)
+                mcp.interrupt_configuration &= ~(1 << pin_num)  # Change on any state
 
         self.value_when_pressed = value_when_pressed
 
-    def get_into(self, event):
+    def get(self):
         """
-        Pop the next event from the queue into the event object.
-        Returns True if an event was popped, False otherwise.
+        Pop the next event from the queue and return it.
+        Returns None if the queue is empty.
         """
         if not self._queue:
-            return False
+            return None
 
-        # Pop the oldest event
         next_evt = self._queue.pop(0)
-        event.key_number = next_evt["key_number"]
-        event.pressed = next_evt["pressed"]
-        event.released = next_evt["released"]
-        event.timestamp = next_evt["timestamp"]
-        return True
+        
+        try:
+            import keypad
+            # Create a native keypad.Event (key_number, pressed)
+            return keypad.Event(next_evt["key_number"], next_evt["pressed"])
+        except ImportError:
+            # Fallback for pure CPython testing
+            class MockEvent:
+                def __init__(self, key_number, pressed):
+                    self.key_number = key_number
+                    self.pressed = pressed
+                    self.released = not pressed
+            return MockEvent(next_evt["key_number"], next_evt["pressed"])
 
     def update(self):
         """

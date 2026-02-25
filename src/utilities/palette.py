@@ -2,14 +2,31 @@
 A selection of colour palette classes for use in the JEB Project
 """
 
-class Color(tuple):
+class Color:
     """A simple RGB color class for better readability."""
-    def __new__(cls, index, name, r, g, b):
-        return super(Color, cls).__new__(cls, (r, g, b))
-
     def __init__(self, index, name, r, g, b):
         self.index = index
         self.name = name
+        self.r = r
+        self.g = g
+        self.b = b
+        self._rgb = (r, g, b)
+
+    # Make the class behave like a tuple for indexing (e.g., color[0])
+    def __getitem__(self, i):
+        return self._rgb[i]
+
+    # Make the class behave like a tuple for unpacking (e.g., r, g, b = color)
+    def __iter__(self):
+        return iter(self._rgb)
+
+    # Behave like a tuple of length 3
+    def __len__(self):
+        return 3
+
+    # (Optional) For nice debugging output
+    def __repr__(self):
+        return f"Color({self.index}, '{self.name}', {self.r}, {self.g}, {self.b})"
 
 class Palette:
     """

@@ -191,24 +191,23 @@ class HIDManager:
                     JEBLogger.info("HIDM", f"Configuring MCP Expander at {hex(cfg['address'])}")
                     chip_type = cfg.get("chip")
                     try:
+                        int_io = None
                         if chip_type == "MCP23008":
                             from adafruit_mcp230xx.mcp23008 import MCP23008
                             mcp = MCP23008(cfg.get("i2c"), cfg["address"])
                         elif chip_type == "MCP23017":
                             from adafruit_mcp230xx.mcp23017 import MCP23017
                             mcp = MCP23017(cfg.get("i2c"), cfg["address"])
+                            # Interrupt only supported on MCP23017 currently
+                            if cfg.get("int_pin"):
+                                import digitalio
+                                int_io = digitalio.DigitalInOut(cfg["int_pin"])
+                                int_io.direction = digitalio.Direction.INPUT
+                                int_io.pull = digitalio.Pull.UP
                         else:
                             continue
 
-                        self.has_expander = True
-
-                        # Setup interrupt pin if provided
-                        int_io = None
-                        if cfg.get("int_pin"):
-                            import digitalio
-                            int_io = digitalio.DigitalInOut(cfg["int_pin"])
-                            int_io.direction = digitalio.Direction.INPUT
-                            int_io.pull = digitalio.Pull.UP
+                        self.has_expander = True 
 
                         # Initialize MCPKeys
                         from utilities.mcp_keys import MCPKeys
@@ -761,13 +760,15 @@ class HIDManager:
         if self.monitor_only or not self.has_expander:
             return False
         changed = False
-        event = keypad.Event()
         for exp in self._active_expanders:
             keys = exp.get("btn_keys")
             if not keys:
                 continue
 
-            while keys.events.get_into(event):
+            while True:
+                event = keys.events.get()
+                if not event:
+                    break # Break the while loop when queue is empty
                 changed = True # State changed
                 key_idx = self._local_button_count + exp.get("btn_offset", 0) + event.key_number
                 now = ticks_ms()
@@ -787,12 +788,16 @@ class HIDManager:
         if self.monitor_only or not self.has_expander:
             return False
         changed = False
-        event = keypad.Event()
+
         for exp in self._active_expanders:
             keys = exp.get("latch_keys")
             if not keys:
                 continue
-            while keys.events.get_into(event):
+            
+            while True:
+                event = keys.events.get()
+                if not event:
+                    break # Break the while loop when queue is empty
                 changed = True # State changed
                 key_idx = self._local_latching_count + exp.get("latch_offset", 0) + event.key_number
                 now = ticks_ms()
@@ -814,13 +819,16 @@ class HIDManager:
         if self.monitor_only or not self.has_expander:
             return False
         changed = False
-        event = keypad.Event()
 
         for exp in self._active_expanders:
             keys = exp.get("mom_keys")
             if not keys:
                 continue
-            while keys.events.get_into(event):
+            
+            while True:
+                event = keys.events.get()
+                if not event:
+                    break # Break the while loop when queue is empty
                 changed = True # State changed
                 key_idx = self._local_momentary_count + exp.get("mom_offset", 0) + (event.key_number // 2)
                 direction = 0 if event.key_number % 2 == 0 else 1

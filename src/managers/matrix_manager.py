@@ -2,7 +2,6 @@
 """Manages Matrix style LEDs."""
 
 import asyncio
-from enum import Enum
 import math
 import sys
 import time
@@ -13,7 +12,7 @@ from utilities import matrix_animations
 
 from .base_pixel_manager import BasePixelManager, PixelLayout
 
-class PanelLayout(Enum):
+class PanelLayout:
     Z_PATTERN = "z_pattern"          # [0, 1] / [2, 3] -> Left-to-right, row by row (Current PR)
     SERPENTINE = "serpentine"        # [0, 1] / [3, 2] -> Left-to-right, right-to-left
     CUSTOM = "custom"                # Manual list mapping

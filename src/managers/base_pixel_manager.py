@@ -5,12 +5,11 @@ import asyncio
 import time
 import math
 import random
-from enum import Enum
 
 from utilities.palette import Palette
 from utilities.logger import JEBLogger
 
-class PixelLayout(Enum):
+class PixelLayout:
     """Defines the physical layout type of pixel arrays."""
     LINEAR = "linear"           # 1D strip, string, or straight line
     MATRIX_2D = "matrix_2d"     # 2D grid/matrix (e.g., 8x8)

@@ -1,5 +1,6 @@
 # File: src/managers/watchdog_manager.py
-import microcontroller
+from microcontroller import watchdog as w
+from watchdog import WatchDogMode
 from utilities.logger import JEBLogger
 
 class WatchdogManager:
@@ -20,9 +21,9 @@ class WatchdogManager:
 
         # Enable the hardware watchdog if a timeout is provided
         if timeout:
-            microcontroller.watchdog.timeout = timeout
-            microcontroller.watchdog.mode = microcontroller.watchdog.WatchDogMode.RESET
-            microcontroller.watchdog.feed()
+            w.timeout = timeout
+            w.mode = WatchDogMode.RESET
+            w.feed()
 
     def register_flags(self, task_names):
         """Register additional tasks to monitor."""
@@ -48,7 +49,7 @@ class WatchdogManager:
         """
         if all(self._flags.values()):
             if not self._rebooting:
-                microcontroller.watchdog.feed()
+                w.feed()
             # Reset flags for the next cycle
             for name in self._flags:
                 self._flags[name] = False
@@ -57,6 +58,6 @@ class WatchdogManager:
 
     def force_reboot(self):
         """Force a reboot by not feeding the watchdog."""
-        microcontroller.watchdog.timeout = 1  # Set a very short timeout
-        microcontroller.watchdog.mode = microcontroller.watchdog.WatchDogMode.RESET
+        w.timeout = 1  # Set a very short timeout
+        w.mode = WatchDogMode.RESET
         self._rebooting = True

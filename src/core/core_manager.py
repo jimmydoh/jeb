@@ -187,11 +187,15 @@ class CoreManager:
                 "audio/menu/select.wav",
             ]
         )
-        self.synth = SynthManager()
+        self.synth = SynthManager(sample_rate=22050, channel_count=1)
         self.audio.attach_synth(self.synth.source)  # Connect synth to audio mixer
 
         # Init Display (OLED)
         self.display = DisplayManager(self.i2c, device_address=Pins.I2C_ADDRESSES["OLED"])
+
+        # Init HID Manager for buttons and encoders
+        for cfg in Pins.EXPANDER_CONFIGS:
+            cfg["i2c"] = self.i2c
         self.hid = HIDManager(
             encoders=Pins.ENCODERS,
             expander_configs=Pins.EXPANDER_CONFIGS,
@@ -357,60 +361,64 @@ class CoreManager:
         """Execute a task while monitoring for interrupts.
 
         Parameters:
-            mode_coroutine (coroutine): The main game or mode coroutine to run.
+            mode_instance: The mode instance to run.
             target_sat (Satellite, optional): Specific satellite to monitor.
         """
-        # Create the mode and monitor event tasks
+        # Create the mode task
         sub_task = asyncio.create_task(mode_instance.execute())
-        estop_task = asyncio.create_task(self.estop_event.wait())
-        abort_task = asyncio.create_task(self.abort_event.wait())
 
         if target_sat:
             target_sat_monitor_task = asyncio.create_task(self.monitor_satellite(target_sat))
-            target_sat_task = asyncio.create_task(self.target_sat_event.wait())
 
         # Clear events before starting
         self.abort_event.clear()
         self.target_sat_event.clear()
 
-        # Wait for the first of the mode completion or any safety event
-        tasks_to_wait = [sub_task, estop_task, abort_task]
-        if target_sat:
-            tasks_to_wait.extend([target_sat_monitor_task, target_sat_task])
+        exit_reason = "UNKNOWN_EXIT"
+
         try:
-            done, pending = await asyncio.wait(
-                tasks_to_wait,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+            while True:
+                # 1. Check if the mode task finished naturally
+                if sub_task.done():
+                    exit_reason = "MODE_COMPLETE"
+                    break
+
+                # 2. Check for safety events directly (no need to spawn wait tasks!)
+                if self.estop_event.is_set():
+                    exit_reason = "ESTOP_ABORT"
+                    self.display.update_status("ESTOP ENGAGED", "EXITING MODE...")
+                    break
+
+                if self.abort_event.is_set():
+                    exit_reason = "SYSTEM_ABORT"
+                    self.display.update_status("SYSTEM ABORT", "RESETTING CORE...")
+                    self.abort_event.clear()  # Reset for future use
+                    break
+
+                if target_sat and self.target_sat_event.is_set():
+                    exit_reason = "LINK_LOST"
+                    self.display.update_status("LINK LOST", "EXITING MODE...")
+                    break
+
+                # Yield to the event loop so sub_task can execute
+                await asyncio.sleep(0.05)
+
         except Exception as e:
             JEBLogger.error("CORE", f"Error while running mode with safety monitoring: {e}")
             import traceback
             traceback.print_exc()
             self.display.update_status("MODE ERROR", "CHECK LOGS")
-            return "MODE_ERROR"
+            exit_reason = "MODE_ERROR"
 
-        # Cleanup: Cancel any pending tasks
-        for task in pending:
-            task.cancel()
+        # Cleanup: Cancel any pending tasks safely
+        if not sub_task.done():
+            sub_task.cancel()
 
-        if target_sat:
-            # Ensure the satellite monitor task is also cancelled
+        if target_sat and not target_sat_monitor_task.done():
             target_sat_monitor_task.cancel()
 
-        # Determine the result based on which task completed
-        if estop_task in done:
-            self.display.update_status("ESTOP ENGAGED", "EXITING MODE...")
-            return "ESTOP_ABORT"
-        elif abort_task in done:
-            self.display.update_status("SYSTEM ABORT", "RESETTING CORE...")
-            self.abort_event.clear()  # Reset the event for future use
-            return "SYSTEM_ABORT"
-        elif target_sat:
-            if target_sat_task in done:
-                self.display.update_status("LINK LOST", "EXITING MODE...")
-                return "LINK_LOST"
-
-        if sub_task in done:
+        # Return routing logic
+        if exit_reason == "MODE_COMPLETE":
             # Propagate any exceptions from the mode task
             try:
                 result = sub_task.result()  # Get the result or exception
@@ -421,8 +429,8 @@ class CoreManager:
                 traceback.print_exc()
                 self.display.update_status("MODE ERROR", "CHECK LOGS")
                 return "MODE_ERROR"
-
-        return "UNKNOWN_EXIT"
+        
+        return exit_reason
 
     # --- Background Tasks ---
     async def monitor_estop(self):

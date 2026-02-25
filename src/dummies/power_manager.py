@@ -53,4 +53,19 @@ class PowerManager:
         return True
 
     def get_telemetry_payload(self, *args, **kwargs):
-        return _SafeVoltageDict()
+        return None
+    
+    def get_input_bus(self, *args, **kwargs):
+        return None
+    
+    def get_satbus_bus(self, *args, **kwargs):
+        return None
+    
+    def get_main_bus(self, *args, **kwargs):
+        return None
+
+    def get_other_buses(self, *args, **kwargs):
+        return None
+    
+    def is_healthy(self, *args, **kwargs):
+        return True, "Dummy PowerManager always healthy"

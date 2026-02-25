@@ -213,7 +213,7 @@ class FileTransferSender:
             bool: ``True`` if ACK received, ``False`` on NACK or timeout.
         """
         try:
-            msg = await asyncio.wait_for(self.transport.receive(), timeout=self.timeout)
+            msg = await asyncio.wait_for_ms(self.transport.receive(), 1000 * self.timeout)
             return msg is not None and msg.command == CMD_ACK
         except asyncio.TimeoutError:
             return False

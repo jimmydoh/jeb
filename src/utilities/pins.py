@@ -40,13 +40,12 @@ class CoreProfile:
             "ADC_SENSE_A": getattr(board, "GP26", None),
             "ADC_SENSE_B": getattr(board, "GP27", None),
             "ADC_SENSE_C": getattr(board, "GP28", None),
-            "ADC_SENSE_D": getattr(board, "GP29", None),
         }
 
         # Helper arrays
         p["ENCODER_1"] = [p["ENCODER_1_A"], p["ENCODER_1_B"], p["ENCODER_PUSH"]]
         p["ENCODERS"] = [p["ENCODER_1"]]
-        p["SENSE_PINS"] = [p["ADC_SENSE_A"], p["ADC_SENSE_B"], p["ADC_SENSE_C"], p["ADC_SENSE_D"]]
+        p["SENSE_PINS"] = [p["ADC_SENSE_A"], p["ADC_SENSE_B"], p["ADC_SENSE_C"]]
 
         p["POWER_SENSORS"] = [
             {
@@ -56,7 +55,7 @@ class CoreProfile:
                     {"name": "input_20v", "pin": p["ADC_SENSE_A"], "multiplier": DIVIDER_MULTIPLIER_20V, "min": 17.0, "max": 21.0, "critical": True},
                     {"name": "satbus_20v", "pin": p["ADC_SENSE_B"], "multiplier": DIVIDER_MULTIPLIER_20V, "min": 17.0, "max": 21.0, "critical": False},
                     {"name": "main_5v", "pin": p["ADC_SENSE_C"], "multiplier": DIVIDER_MULTIPLIER_5V, "min": 4.5, "max": 5.5, "critical": True},
-                    {"name": "led_5v", "pin": p["ADC_SENSE_D"], "multiplier": DIVIDER_MULTIPLIER_5V, "min": 4.5, "max": 5.5, "critical": False},
+                    #{"name": "led_5v", "pin": p["ADC_SENSE_D"], "multiplier": DIVIDER_MULTIPLIER_5V, "min": 4.5, "max": 5.5, "critical": False},
                 ]
             },
         ]

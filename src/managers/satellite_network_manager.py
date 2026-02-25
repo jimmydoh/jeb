@@ -475,7 +475,7 @@ class SatelliteNetworkManager:
                 heartbeat_callback()
 
             try:
-                message = await asyncio.wait_for(self.transport.receive(), timeout=1.0)
+                message = await asyncio.wait_for_ms(self.transport.receive(), 1000)
             except asyncio.TimeoutError:
                 continue
 

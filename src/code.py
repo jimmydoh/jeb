@@ -17,6 +17,9 @@ from utilities.logger import JEBLogger, LogLevel
 JEBLogger.set_level(LogLevel.DEBUG)
 JEBLogger.enable_file_logging(False)
 
+# Cancel auto-reload
+supervisor.runtime.autoreload = False
+
 # Check if SD card was mounted in boot.py
 def is_sd_mounted():
     """Check if SD card is mounted by verifying the mount point."""
@@ -265,31 +268,38 @@ async def main():
         else:
             JEBLogger.info("CODE", f"Starting main app loop for {type_name}")
 
-            app_task = asyncio.create_task(app.start())
-
-            coros = [app_task]
+            # Keep a list of our top-level tasks
+            tasks = [asyncio.create_task(app.start())]
 
             if WEB_SERVER is not None:
-                web_task = asyncio.create_task(WEB_SERVER.start())
-                coros.append(web_task)
+                tasks.append(asyncio.create_task(WEB_SERVER.start()))
 
             if CONSOLE is not None:
-                console_task = asyncio.create_task(CONSOLE.start())
-                coros.append(console_task)
+                tasks.append(asyncio.create_task(CONSOLE.start()))
 
-            done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_EXCEPTION)
+            done_tasks = []
+            while True:
+                done_tasks = [t for t in tasks if t.done()]
+                if done_tasks:
+                    break
+                await asyncio.sleep(0.1)
 
             # Cancel any surviving background tasks before the supervisor reload
-            for task in pending:
-                task.cancel()
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
 
             # Log exceptions from completed tasks
             import traceback
-            for task in done:
-                exc = task.exception()
-                if exc is not None:
+            for task in done_tasks:
+                try:
+                    task.result()
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
                     JEBLogger.error("CODE", f"Task failed with error: {exc}")
                     traceback.print_exception(type(exc), exc, exc.__traceback__)
+
     except Exception as e:
         JEBLogger.error("CODE", f"🚨⛔ CRITICAL CRASH: {e}")
         import traceback

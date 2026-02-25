@@ -234,6 +234,27 @@ def _decode_payload(payload_bytes, cmd_schema=None, encoding_constants=None):
         return payload_bytes
 #endregion
 
+class _SimpleAsyncQueue:
+    """A lightweight async queue compatible with CircuitPython."""
+    def __init__(self):
+        self._items = []
+        self._event = asyncio.Event()
+
+    def put_nowait(self, item):
+        self._items.append(item)
+        self._event.set()
+
+    async def get(self):
+        while not self._items:
+            self._event.clear()
+            await self._event.wait()
+        return self._items.pop(0)
+
+    def get_nowait(self):
+        if not self._items:
+            return None
+        return self._items.pop(0)
+
 #region --- Main Transport Class ---
 class UARTTransport(BaseTransport):
     """UART transport implementation with binary protocol and COBS framing.
@@ -313,7 +334,7 @@ class UARTTransport(BaseTransport):
         self._rx_mv = memoryview(self._rx_buffer)
         self._rx_head = 0
         self._rx_tail = 0
-        self._rx_queue = asyncio.Queue()
+        self._rx_queue = _SimpleAsyncQueue()
         self._rx_task = None
 
         # Linear Scratchpad for Packet Unwrapping
@@ -745,10 +766,7 @@ class UARTTransport(BaseTransport):
         Returns:
             Message or None: The next received message if available, or None if the queue is empty.
         """
-        try:
-            return self._rx_queue.get_nowait()
-        except asyncio.QueueEmpty:
-            return None
+        return self._rx_queue.get_nowait()
 #endregion
 
     def start(self):
