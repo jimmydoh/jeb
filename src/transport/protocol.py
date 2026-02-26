@@ -174,16 +174,16 @@ PAYLOAD_SCHEMAS = {
     "SYNC_FRAME": {'type': ENCODING_FLOATS, 'desc': 'Frame sync: frame_number,time_seconds'},
     "REBOOT": {'type': ENCODING_RAW_TEXT, 'desc': 'Reboot command with optional reason text'},
 
-    # LED commands - RGB values plus parameters (variable count OK)
-    "LED": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index>,brightness bytes'},
-    "LEDFLASH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index>,brightness'},
-    "LEDBREATH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index>,brightness'},
-    "LEDCYLON": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index>,brightness'},
-    "LEDCENTRI": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index>,brightness'},
-    "LEDRAINBOW": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'speed,brightness'},
-    "LEDGLITCH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'color:color:color:color,intensity,brightness'},
-    "LEDPROG": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index>,brightness,progress'},
-    "LEDVU": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'Palette.<index> for low, mid, high levels,brightness'},
+    # LED commands - index-based and strip-wide animations
+    "LED": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'led_index (or "ALL"),palette_index,duration,brightness,priority'},
+    "LEDFLASH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'led_index (or "ALL"),palette_index,duration,brightness,priority,speed,off_speed'},
+    "LEDBREATH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'led_index (or "ALL"),palette_index,duration,brightness,priority,speed'},
+    "LEDCYLON": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'palette_index,duration,speed'},
+    "LEDCENTRI": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'palette_index,duration,speed'},
+    "LEDRAINBOW": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'duration,speed'},
+    "LEDGLITCH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'colon-separated palette indices (e.g. "0:1:2:3"),duration,speed'},
+    "LEDPROG": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'percentage,palette_index,background_palette_index,priority'},
+    "LEDVU": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'percentage,low_palette_index,mid_palette_index,high_palette_index,priority'},
 
     # Display commands
     "DSP": {'type': ENCODING_RAW_TEXT, 'desc': 'Display message text'},
