@@ -885,6 +885,28 @@ class MockMCP:
         else:
             HardwareMocks.register('mcp', self)
 
+    @property
+    def gpio(self):
+        # Check on number of pins to determine if this is the 23008 or 23017 variant
+        if len(self.pins) <= 8:
+            # Return a byte representing the state of all 8 pins (MCP23008)
+            value = 0
+            for pin_num, pin in self.pins.items():
+                if pin.value:
+                    value |= (1 << pin_num)
+            return value
+        else:
+            # For MCP23017, we need to return a 16-bit value. We'll assume pins 0-7 are GPIOA and 8-15 are GPIOB.
+            value_a = 0
+            value_b = 0
+            for pin_num, pin in self.pins.items():
+                if pin.value:
+                    if pin_num < 8:
+                        value_a |= (1 << pin_num)
+                    else:
+                        value_b |= (1 << (pin_num - 8))
+            return (value_b << 8) | value_a
+
     def get_pin(self, pin_num):
         if pin_num not in self.pins:
             self.pins[pin_num] = MockMCPPin(pin_num, self)
