@@ -58,7 +58,7 @@ def test_transport_queued_mode_exists():
 
     # In the new architecture, queuing is ALWAYS enabled (no optional parameter)
     # Check that RX queue is created (always present)
-    assert 'self._rx_queue = asyncio.Queue()' in content, \
+    assert 'self._rx_queue = _SimpleAsyncQueue()' in content, \
         "UARTTransport should create RX queue"
 
     # Check that TX buffer/event system exists (ring buffer + event-driven)

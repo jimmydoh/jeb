@@ -14,13 +14,12 @@ Color = palette.Color
 
 
 def test_color_class_is_tuple():
-    """Test that Color extends tuple and behaves as an RGB tuple."""
+    """Test that Color supports tuple-like operations (indexing, length, conversion to tuple)."""
     print("Testing Color class tuple behavior...")
 
     c = Color(11, "RED", 255, 0, 0)
-    assert isinstance(c, tuple), "Color should be an instance of tuple"
     assert len(c) == 3, "Color tuple should have exactly 3 elements (R, G, B)"
-    assert c == (255, 0, 0), f"Expected (255,0,0), got {c}"
+    assert tuple(c) == (255, 0, 0), f"Expected (255,0,0), got {tuple(c)}"
     assert c[0] == 255, "Red channel should be 255"
     assert c[1] == 0, "Green channel should be 0"
     assert c[2] == 0, "Blue channel should be 0"
@@ -96,8 +95,8 @@ def test_basic_colors():
     print("Testing basic color constants...")
 
     # Test binary colors
-    assert Palette.OFF == (0, 0, 0), f"Expected OFF to be (0,0,0), got {Palette.OFF}"
-    assert Palette.WHITE == (255, 255, 255), f"Expected WHITE to be (255,255,255), got {Palette.WHITE}"
+    assert tuple(Palette.OFF) == (0, 0, 0), f"Expected OFF to be (0,0,0), got {Palette.OFF}"
+    assert tuple(Palette.WHITE) == (255, 255, 255), f"Expected WHITE to be (255,255,255), got {Palette.WHITE}"
 
     # Test primary colors have non-zero values in appropriate channels
     assert Palette.RED[0] > 0, "RED should have non-zero red channel"

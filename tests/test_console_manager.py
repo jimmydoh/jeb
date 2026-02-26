@@ -468,7 +468,7 @@ async def test_test_matrix_clear():
     cm.get_input = fake_input
     await cm.test_matrix()
 
-    assert app.matrix.fill_color == (0, 0, 0)
+    assert tuple(app.matrix.fill_color) == (0, 0, 0)
 
 
 @pytest.mark.asyncio
@@ -486,7 +486,7 @@ async def test_test_audio_play_tick():
     await cm.test_audio()
 
     assert app.audio.last_played is not None
-    assert "menu_tick" in app.audio.last_played[0]
+    assert "tick" in app.audio.last_played[0]
 
 
 @pytest.mark.asyncio

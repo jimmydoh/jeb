@@ -379,7 +379,7 @@ async def test_progress_grid_different_sizes():
     matrix.show_progress_grid(5, 10, MockPalette.GREEN)
     await matrix.animate_loop(step=True)
     # 5/10 * 64 = 32 pixels should be lit
-    lit_pixels = sum(1 for i in range(64) if matrix.pixels[i] != MockPalette.OFF)
+    lit_pixels = sum(1 for i in range(64) if tuple(matrix.pixels[i]) != MockPalette.OFF)
     assert lit_pixels == 32, f"Expected 32 lit pixels, got {lit_pixels}"
 
     # Test on 16x16
@@ -388,7 +388,7 @@ async def test_progress_grid_different_sizes():
     matrix.show_progress_grid(5, 10, MockPalette.GREEN)
     await matrix.animate_loop(step=True)
     # 5/10 * 256 = 128 pixels should be lit
-    lit_pixels = sum(1 for i in range(256) if matrix.pixels[i] != MockPalette.OFF)
+    lit_pixels = sum(1 for i in range(256) if tuple(matrix.pixels[i]) != MockPalette.OFF)
     assert lit_pixels == 128, f"Expected 128 lit pixels, got {lit_pixels}"
 
     print("  ✓ Progress grid test passed")
