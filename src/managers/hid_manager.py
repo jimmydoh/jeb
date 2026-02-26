@@ -115,6 +115,9 @@ class HIDManager:
 
         #region --- Initialize Hardware Interfaces ---
         if not self.monitor_only:
+
+            self._shared_event = keypad.Event()  # Reusable event object for polling to minimize allocations
+
             # Buttons Hardware
             self._buttons = keypad.Keys(
                 buttons,
@@ -220,7 +223,10 @@ class HIDManager:
                             "latch_keys": MCPKeys(mcp, cfg["latching"], value_when_pressed=False, pull=True) if cfg.get("latching") else None,
                             "latch_offset": latch_offset,
                             "mom_keys": None,
-                            "mom_offset": mom_offset
+                            "mom_offset": mom_offset,
+                            "abs_btn_base": self._local_button_count + btn_offset,
+                            "abs_latch_base": self._local_latching_count + latch_offset,
+                            "abs_mom_base": self._local_momentary_count + mom_offset,
                         }
 
                         if cfg.get("momentary"):
@@ -278,15 +284,15 @@ class HIDManager:
         if self.monitor_only or not self._buttons:
             return False
         changed = False
-        event = keypad.Event()
-        while self._buttons.events.get_into(event):
+
+        while self._buttons.events.get_into(self._shared_event):
             changed = True # State changed
-            key_idx = event.key_number
+            key_idx = self._shared_event.key_number
             now = ticks_ms()
-            if event.pressed: # Button pressed
+            if self._shared_event.pressed: # Button pressed
                 self.buttons_values[key_idx] = True
                 self.buttons_timestamps[key_idx] = now
-            elif event.released: # Button released
+            elif self._shared_event.released: # Button released
                 start_time = self.buttons_timestamps[key_idx]
                 if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
                     self.buttons_tapped[key_idx] = True
@@ -347,15 +353,15 @@ class HIDManager:
         if self.monitor_only or not self._latching_toggles:
             return False
         changed = False
-        event = keypad.Event()
-        while self._latching_toggles.events.get_into(event):
+
+        while self._latching_toggles.events.get_into(self._shared_event):
             changed = True # State changed
-            key_idx = event.key_number
+            key_idx = self._shared_event.key_number
             now = ticks_ms()
-            if event.pressed: # Toggle turned on
+            if self._shared_event.pressed: # Toggle turned on
                 self.latching_values[key_idx] = True
                 self.latching_timestamps[key_idx] = now
-            elif event.released: # Toggle turned off
+            elif self._shared_event.released: # Toggle turned off
                 self.latching_values[key_idx] = False
                 start_time = self.latching_timestamps[key_idx]
                 if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
@@ -438,16 +444,16 @@ class HIDManager:
         if self.monitor_only or not self._momentary_toggles:
             return False
         changed = False
-        event = keypad.Event()
-        while self._momentary_toggles.events.get_into(event):
+
+        while self._momentary_toggles.events.get_into(self._shared_event):
             changed = True # State changed
-            key_idx = event.key_number // 2
-            direction = 0 if event.key_number % 2 == 0 else 1
+            key_idx = self._shared_event.key_number // 2
+            direction = 0 if self._shared_event.key_number % 2 == 0 else 1
             now = ticks_ms()
-            if event.pressed: # Button pressed
+            if self._shared_event.pressed: # Button pressed
                 self.momentary_values[key_idx][direction] = True
                 self.momentary_timestamps[key_idx][direction] = now
-            elif event.released: # Button released
+            elif self._shared_event.released: # Button released
                 start_time = self.momentary_timestamps[key_idx][direction]
                 if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
                     self.momentary_tapped[key_idx][direction] = True
@@ -606,15 +612,15 @@ class HIDManager:
         if self.monitor_only or not self._encoder_buttons:
             return False
         changed = False
-        event = keypad.Event()
-        while self._encoder_buttons.events.get_into(event):
+
+        while self._encoder_buttons.events.get_into(self._shared_event):
             changed = True # State changed
-            key_idx = event.key_number
+            key_idx = self._shared_event.key_number
             now = ticks_ms()
-            if event.pressed: # Button pressed
+            if self._shared_event.pressed: # Button pressed
                 self.encoder_buttons_values[key_idx] = True
                 self.encoder_buttons_timestamps[key_idx] = now
-            elif event.released: # Button released
+            elif self._shared_event.released: # Button released
                 start_time = self.encoder_buttons_timestamps[key_idx]
                 if start_time > 0 and ticks_diff(now, start_time) < 500: # Handle 'tap' detection
                     self.encoder_buttons_tapped[key_idx] = True
@@ -770,7 +776,7 @@ class HIDManager:
                 if not event:
                     break # Break the while loop when queue is empty
                 changed = True # State changed
-                key_idx = self._local_button_count + exp.get("btn_offset", 0) + event.key_number
+                key_idx = exp["abs_btn_base"] + event.key_number
                 now = ticks_ms()
                 if event.pressed: # Button pressed
                     self.buttons_values[key_idx] = True
@@ -799,7 +805,7 @@ class HIDManager:
                 if not event:
                     break # Break the while loop when queue is empty
                 changed = True # State changed
-                key_idx = self._local_latching_count + exp.get("latch_offset", 0) + event.key_number
+                key_idx = exp["abs_latch_base"] + event.key_number
                 now = ticks_ms()
                 if event.pressed: # Toggle turned on
                     self.latching_values[key_idx] = True
@@ -830,7 +836,7 @@ class HIDManager:
                 if not event:
                     break # Break the while loop when queue is empty
                 changed = True # State changed
-                key_idx = self._local_momentary_count + exp.get("mom_offset", 0) + (event.key_number // 2)
+                key_idx = exp["abs_mom_base"] + (event.key_number // 2)
                 direction = 0 if event.key_number % 2 == 0 else 1
                 now = ticks_ms()
                 if event.pressed: # Button pressed
@@ -1004,37 +1010,39 @@ class HIDManager:
         """Clear all input states and queues."""
         # Buttons
         if self._buttons:
-            evt = keypad.Event()
-            while self._buttons.events.get_into(evt):
+            while self._buttons.events.get_into(self._shared_event):
                 pass
 
         # Latching toggles
         if self._latching_toggles:
-            evt = keypad.Event()
-            while self._latching_toggles.events.get_into(evt):
+            while self._latching_toggles.events.get_into(self._shared_event):
                 pass
 
         # Momentary toggles
         if self._momentary_toggles:
-            evt = keypad.Event()
-            while self._momentary_toggles.events.get_into(evt):
+            while self._momentary_toggles.events.get_into(self._shared_event):
                 pass
 
         # TODO: Encoders - no events to flush, but reset positions if needed
 
         # Flush encoder button events
         if self._encoder_buttons:
-            evt = keypad.Event()
-            while self._encoder_buttons.events.get_into(evt):
+            while self._encoder_buttons.events.get_into(self._shared_event):
                 pass
-
-        # TODO: Expanders
+        
+        # Flush expander events
+        for exp in self._active_expanders:
+            for key in ["btn_keys", "latch_keys", "mom_keys"]:
+                if exp.get(key):
+                    exp[key]._queue.clear()
 
         # Flush matrix keypad events
         if self._matrix_keypads:
-            evt = keypad.Event()
             for k_pad in self._matrix_keypads:
-                while k_pad.events.get_into(evt):
+                while k_pad.events.get_into(self._shared_event):
                     pass
+
+        for q in self.matrix_keypads_queues:
+            q.clear()
 
     #endregion
