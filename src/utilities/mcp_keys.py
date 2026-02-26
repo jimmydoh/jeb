@@ -10,6 +10,7 @@ class MCPKeys:
     A wrapper for MCP23017 pins that mimics keypad.Keys behavior.
     """
     def __init__(self, mcp, pins, value_when_pressed=False, pull=True):
+        self._mcp = mcp
         self._pins = []
         self._last_state = []
         self.events = self  # Mimic the .events property
@@ -20,7 +21,7 @@ class MCPKeys:
             pin = mcp.get_pin(pin_num)
             pin.direction = digitalio.Direction.INPUT
             pin.pull = digitalio.Pull.UP if pull else None # *** MCP only supports Pull.UP
-            self._pins.append(pin)
+            self._pins.append((pin_num, pin))
             # Store initial state (True = Released for Pull-Up)
             self._last_state.append(pin.value)
 
@@ -62,8 +63,12 @@ class MCPKeys:
         # We read all pins we are tracking
         now = ticks_ms()
 
-        for i, pin in enumerate(self._pins):
-            val = pin.value
+        live_gpio_register = self._mcp.gpio  # Read the entire GPIO register once
+
+        for i, (pin_num, pin) in enumerate(self._pins):
+
+            val = bool((live_gpio_register >> pin_num) & 1)
+
             if val != self._last_state[i]:
                 # State Changed!
                 self._last_state[i] = val
