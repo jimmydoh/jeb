@@ -136,7 +136,8 @@ class SatelliteFirmware:
 
         self.watchdog = WatchdogManager(
             task_names=[],
-            timeout=5.0
+            timeout=5.0,
+            mode="RESET"
         )
 
     def __init_subclass__(cls, **kwargs):
@@ -757,23 +758,21 @@ class SatelliteFirmware:
         while True:
             self.watchdog.check_in("rx_upstream")
             try:
-                # Receive message via transport (async wait)
-                # This yields efficiently until a complete message is ready
-                message = await self.transport_up.receive()
+                message = self.transport_up.receive_nowait()
 
                 if message:
-                    #print(f"{self.sat_type_id}-{self.id}: Received upstream message: {message}")
-                    # 1. Local Processing
                     # Process if addressed to us (ID match) or broadcast (ALL)
                     if message.destination == self.id or message.destination == "ALL":
-                        #print(f"{self.sat_type_id}-{self.id}: Processing command '{message.command}' with payload: {message.payload}")
                         await self._process_local_cmd(message.command, message.payload)
+
                     if not message.destination == self.id:
-                        # 2. Forward Downstream (Application-level Relay)
-                        # We forward the message object downstream.
+                        # Forward Downstream (Application-level Relay)
                         if not self.transport_down.send(message):
-                            # Short delay if downstream buffer full, to avoid tight loop
                             await asyncio.sleep(0.01)
+                else:
+                    # No message, wait briefly before checking again
+                    await asyncio.sleep(0.05)
+
             except ValueError as e:
                 # Buffer overflow or CRC error
                 print(f"Transport Error: {e}")

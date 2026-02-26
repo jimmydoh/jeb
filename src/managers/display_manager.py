@@ -2,7 +2,15 @@
 
 import asyncio
 import displayio
-import i2cdisplaybus
+
+try:
+    # CircuitPython 9+ (Actual Hardware)
+    import i2cdisplaybus
+    I2CDisplayClass = i2cdisplaybus.I2CDisplayBus
+except ImportError:
+    # Blinka / Emulator / CircuitPython 8.x
+    I2CDisplayClass = displayio.I2CDisplay
+
 import terminalio
 import adafruit_displayio_ssd1306
 from adafruit_display_text import label
@@ -41,7 +49,7 @@ class DisplayManager:
     """
     def __init__(self, i2c_bus, device_address=0x3C):
         displayio.release_displays()
-        self.display_bus = i2cdisplaybus.I2CDisplayBus(i2c_bus, device_address=device_address)
+        self.display_bus = I2CDisplayClass(i2c_bus, device_address=device_address)
         self.hw = adafruit_displayio_ssd1306.SSD1306(self.display_bus, width=128, height=64)
 
         # Root group for all UI layers

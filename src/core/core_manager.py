@@ -429,7 +429,7 @@ class CoreManager:
                 traceback.print_exc()
                 self.display.update_status("MODE ERROR", "CHECK LOGS")
                 return "MODE_ERROR"
-        
+
         return exit_reason
 
     # --- Background Tasks ---
@@ -610,7 +610,8 @@ class CoreManager:
                     "connection",
                     "hw_hid"
                 ],
-                timeout=5.0
+                timeout=5.0,
+                mode="RAISE"
             )
 
             # Start transport monitoring to handle satellite activation
