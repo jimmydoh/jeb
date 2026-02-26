@@ -34,7 +34,8 @@ class BasePixelManager:
         pass
 
     def _apply_brightness(self, *args, **kwargs):
-        return tuple(0,0,0)
+        # Dummy implementation: always return "off" to avoid crashes in tests/emulator.
+        return (0, 0, 0)
 
     def solid(self, *args, **kwargs):
         pass
