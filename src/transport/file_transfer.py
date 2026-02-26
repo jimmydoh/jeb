@@ -37,6 +37,14 @@ any protocol changes.
 """
 
 import asyncio
+
+try:
+    wait_for_ms = asyncio.wait_for_ms
+except AttributeError:
+    # We are on standard CPython (desktop emulator)
+    async def wait_for_ms(aw, timeout_ms):
+        return await asyncio.wait_for(aw, timeout_ms / 1000.0)
+
 import hashlib
 import os
 import struct
@@ -213,7 +221,7 @@ class FileTransferSender:
             bool: ``True`` if ACK received, ``False`` on NACK or timeout.
         """
         try:
-            msg = await asyncio.wait_for_ms(self.transport.receive(), 1000 * self.timeout)
+            msg = await wait_for_ms(self.transport.receive(), 1000 * self.timeout)
             return msg is not None and msg.command == CMD_ACK
         except asyncio.TimeoutError:
             return False

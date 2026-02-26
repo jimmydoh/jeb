@@ -304,9 +304,8 @@ async def main():
         JEBLogger.error("CODE", f"🚨⛔ CRITICAL CRASH: {e}")
         import traceback
         traceback.print_exception(type(e), e, e.__traceback__)
-        # Reduced sleep to maintain watchdog margin before reload
-        time.sleep(2)
-        supervisor.reload()
+        JEBLogger.info("CODE", "System restarting in 10 seconds...")
+        time.sleep(10)
 
 # 3. Main Execution
 if __name__ == "__main__":

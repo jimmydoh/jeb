@@ -1,6 +1,14 @@
 """Manages satellite network discovery, health monitoring, and communication."""
 
 import asyncio
+
+try:
+    wait_for_ms = asyncio.wait_for_ms
+except AttributeError:
+    # We are on standard CPython (desktop emulator)
+    async def wait_for_ms(aw, timeout_ms):
+        return await asyncio.wait_for(aw, timeout_ms / 1000.0)
+
 from adafruit_ticks import ticks_ms, ticks_diff
 
 from transport import Message
@@ -475,7 +483,7 @@ class SatelliteNetworkManager:
                 heartbeat_callback()
 
             try:
-                message = await asyncio.wait_for_ms(self.transport.receive(), 1000)
+                message = await wait_for_ms(self.transport.receive(), 1000)
             except asyncio.TimeoutError:
                 continue
 
