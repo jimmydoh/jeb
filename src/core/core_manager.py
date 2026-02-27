@@ -575,18 +575,6 @@ class CoreManager:
                     await self._enter_sleep()
                 await asyncio.sleep(0.02)  # Poll at 50Hz when awake
 
-    async def monitor_audio(self):
-        """Background task to clean up finished audio streams to prevent memory leaks."""
-        while True:
-            # Set watchdog flag to indicate this task is alive
-            self.watchdog.check_in("audio")
-
-            # Clean up any streams that finished in the last 100ms
-            if hasattr(self, 'audio'):
-                self.audio.update()
-
-            await asyncio.sleep(0.1)  # Poll at 10Hz
-
     async def monitor_satellite(self, sat):
         """
         Background task to monitor a specific satellite.
@@ -636,7 +624,7 @@ class CoreManager:
             # Start hardware input monitoring
             asyncio.create_task(self.monitor_hw_hid())
             # Start audio cleanup task
-            asyncio.create_task(self.monitor_audio())
+            asyncio.create_task(self.audio.start_polling(heartbeat_callback=lambda: self.watchdog.check_in("audio")))
 
         else:
             self.buzzer.play_sequence(tones.POWER_FAIL)
