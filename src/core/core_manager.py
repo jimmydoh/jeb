@@ -575,18 +575,6 @@ class CoreManager:
                     await self._enter_sleep()
                 await asyncio.sleep(0.02)  # Poll at 50Hz when awake
 
-    async def monitor_audio(self):
-        """Background task to clean up finished audio streams to prevent memory leaks."""
-        while True:
-            # Set watchdog flag to indicate this task is alive
-            self.watchdog.check_in("audio")
-
-            # Clean up any streams that finished in the last 100ms
-            if hasattr(self, 'audio'):
-                self.audio.update()
-
-            await asyncio.sleep(0.1)  # Poll at 10Hz
-
     async def monitor_satellite(self, sat):
         """
         Background task to monitor a specific satellite.
@@ -620,8 +608,7 @@ class CoreManager:
                 task_names=[
                     "power",
                     "connection",
-                    "hw_hid",
-                    "audio"
+                    "hw_hid"
                 ],
                 timeout=5.0,
                 mode="RAISE"
@@ -635,8 +622,6 @@ class CoreManager:
             asyncio.create_task(self.monitor_power())
             # Start hardware input monitoring
             asyncio.create_task(self.monitor_hw_hid())
-            # Start audio cleanup task
-            asyncio.create_task(self.monitor_audio())
 
         else:
             self.buzzer.play_sequence(tones.POWER_FAIL)
@@ -647,6 +632,13 @@ class CoreManager:
                 await asyncio.sleep(1)
 
         # Continue with other background tasks after power integrity is confirmed
+        self.watchdog.register_flags(["audio"])
+        asyncio.create_task( # Audio Manager cleanup monitoring
+            self.audio.start_polling(
+                heartbeat_callback=lambda: self.watchdog.check_in("audio")
+            )
+        )
+
         self.watchdog.register_flags(["sat_network"])
         asyncio.create_task( # Satellite Network Management
             self.sat_network.monitor_satellites(
@@ -655,7 +647,7 @@ class CoreManager:
         )
 
         self.watchdog.register_flags(["sat_messages"])
-        asyncio.create_task(
+        asyncio.create_task( # Satellite Message Monitoring
             self.sat_network.monitor_messages(
                 heartbeat_callback=lambda: self.watchdog.check_in("sat_messages")
             )
