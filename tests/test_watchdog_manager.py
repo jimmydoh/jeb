@@ -45,6 +45,15 @@ class MockMicrocontroller:
 # Install the mock before importing WatchdogManager
 sys.modules['microcontroller'] = MockMicrocontroller()
 
+# Also mock the watchdog module so WatchDogMode.RESET resolves to "RESET"
+class MockWatchModule:
+    """Mock watchdog library module."""
+    class WatchDogMode:
+        RESET = "RESET"
+        RAISE = "RAISE"
+
+sys.modules['watchdog'] = MockWatchModule()
+
 # Add src to path for direct module import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'managers'))
 
@@ -88,9 +97,9 @@ def test_initialization_with_timeout():
     # Reset the mock
     MockMicrocontroller.watchdog.reset()
     
-    # Initialize with timeout
+    # Initialize with timeout in RESET mode
     task_names = ["task1", "task2"]
-    manager = WatchdogManager(task_names, timeout=5.0)
+    manager = WatchdogManager(task_names, timeout=5.0, mode="RESET")
     
     # Verify flags are initialized
     assert len(manager._flags) == 2, "Should have 2 flags"

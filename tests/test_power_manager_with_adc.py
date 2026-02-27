@@ -77,9 +77,16 @@ class MockPin:
 def _make_buses(mock_adc, names):
     """Helper: build a buses dict from an ADCManager and a list of rail names."""
     return {
-        name: PowerBus(name, ADCSensorWrapper(mock_adc, name))
+        name: PowerBus(name, ADCSensorWrapper(mock_adc, name), min_threshold=1.0)
         for name in names
     }
+
+
+def _make_power_manager(buses, mosfet_pin, detect_pin):
+    """Helper: build a PowerManager with pre-built buses (bypasses hardware config)."""
+    power = PowerManager([], mosfet_pin, detect_pin)
+    power.buses = buses
+    return power
 
 
 def test_power_manager_initialization():
@@ -90,7 +97,7 @@ def test_power_manager_initialization():
     sense_names = ["input_20v", "satbus_20v", "main_5v", "led_5v"]
     buses = _make_buses(mock_adc, sense_names)
     
-    power = PowerManager(buses, MockPin(), MockPin())
+    power = _make_power_manager(buses, MockPin(), MockPin())
     
     assert power.buses is buses
     assert set(power.buses.keys()) == set(sense_names)
@@ -108,18 +115,16 @@ def test_power_manager_status():
     sense_names = ["input_20v", "satbus_20v", "main_5v", "led_5v"]
     buses = _make_buses(mock_adc, sense_names)
     
-    power = PowerManager(buses, MockPin(), MockPin())
+    power = _make_power_manager(buses, MockPin(), MockPin())
     
-    # Get status
-    status = power.status
-    
-    # Verify readings match ADCManager mock values
-    assert abs(status["input_20v"] - 19.5) < 0.01
-    assert abs(status["satbus_20v"] - 18.8) < 0.01
-    assert abs(status["main_5v"] - 5.0) < 0.01
-    assert abs(status["led_5v"] - 4.9) < 0.01
-    
-    print(f"  ✓ Status: {status}")
+    # Trigger status update (updates v_now in each bus)
+    _ = power.status
+
+    # Verify voltage readings match ADCManager mock values
+    assert abs(power.buses["input_20v"].v_now - 19.5) < 0.01
+    assert abs(power.buses["satbus_20v"].v_now - 18.8) < 0.01
+    assert abs(power.buses["main_5v"].v_now - 5.0) < 0.01
+    assert abs(power.buses["led_5v"].v_now - 4.9) < 0.01
     print("✓ PowerManager status test passed")
 
 
@@ -131,7 +136,7 @@ def test_power_manager_max_min_tracking():
     sense_names = ["input_20v", "satbus_20v"]
     buses = _make_buses(mock_adc, sense_names)
     
-    power = PowerManager(buses, MockPin(), MockPin())
+    power = _make_power_manager(buses, MockPin(), MockPin())
     
     # Read initial values
     _ = power.status
@@ -168,7 +173,7 @@ def test_power_manager_mosfet_control():
     mock_adc = MockADCManager()
     buses = _make_buses(mock_adc, ["input_20v"])
     
-    power = PowerManager(buses, MockPin(), MockPin())
+    power = _make_power_manager(buses, MockPin(), MockPin())
     
     # MOSFET should be off initially
     assert power.sat_pwr.value == False
@@ -195,7 +200,7 @@ def test_power_manager_backward_compatibility():
     sense_names = ["input_20v", "satbus_20v", "main_5v", "led_5v"]
     buses = _make_buses(mock_adc, sense_names)
     
-    power = PowerManager(buses, MockPin(), MockPin())
+    power = _make_power_manager(buses, MockPin(), MockPin())
     
     # All original properties should work
     status = power.status
@@ -229,7 +234,7 @@ def test_power_manager_sat_profile():
     sense_names = ["input_20v", "satbus_20v", "main_5v"]
     buses = _make_buses(mock_adc, sense_names)
     
-    power = PowerManager(buses, MockPin(), MockPin())
+    power = _make_power_manager(buses, MockPin(), MockPin())
     
     status = power.status
     
@@ -286,7 +291,7 @@ def test_power_bus_update_and_tracking():
     
     mock_adc = MockADCManager()
     mock_adc.set_reading("input_20v", 19.5)
-    bus = PowerBus("input_20v", ADCSensorWrapper(mock_adc, "input_20v"))
+    bus = PowerBus("input_20v", ADCSensorWrapper(mock_adc, "input_20v"), min_threshold=1.0)
     
     bus.update()
     assert bus.v_now == 19.5
@@ -317,7 +322,7 @@ def test_power_bus_ina_current_tracking():
             self.power = 9900.0
     
     ina = MockINA()
-    bus = PowerBus("input_20v", INASensorWrapper(ina))
+    bus = PowerBus("input_20v", INASensorWrapper(ina), min_threshold=1.0)
     
     assert bus.has_current == True
     assert bus.has_power == True
@@ -346,7 +351,7 @@ def test_get_telemetry_payload():
     mock_adc = MockADCManager()
     
     # ADC-only bus
-    adc_bus = PowerBus("input_20v", ADCSensorWrapper(mock_adc, "input_20v"))
+    adc_bus = PowerBus("input_20v", ADCSensorWrapper(mock_adc, "input_20v"), min_threshold=1.0)
     adc_bus.update()
     
     # INA-backed bus
@@ -354,10 +359,10 @@ def test_get_telemetry_payload():
         voltage = 4.95
         current = 200.0
         power = 990.0
-    ina_bus = PowerBus("main_5v", INASensorWrapper(MockINA()))
+    ina_bus = PowerBus("main_5v", INASensorWrapper(MockINA()), min_threshold=1.0)
     ina_bus.update()
     
-    power = PowerManager(
+    power = _make_power_manager(
         {"input_20v": adc_bus, "main_5v": ina_bus},
         MockPin(), MockPin()
     )
