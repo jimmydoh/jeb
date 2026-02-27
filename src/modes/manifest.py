@@ -208,6 +208,16 @@ MODE_REGISTRY = {
         "requires": ["CORE"],
         "settings": []
     },
+    "POWER_TELEMETRY": {
+        "id": "POWER_TELEMETRY",
+        "name": "PWR TELEMETRY",
+        "module_path": "modes.power_telemetry",
+        "class_name": "PowerTelemetryMode",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "requires": ["CORE"],
+        "settings": []
+    },
     "SNAKE": {
         "id": "SNAKE",
         "name": "CYBER SNAKE",
