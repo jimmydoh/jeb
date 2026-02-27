@@ -9,7 +9,7 @@ import busio
 import neopixel
 from adafruit_ticks import ticks_ms, ticks_diff
 
-from managers import PowerManager, WatchdogManager
+from managers import PowerManager, ResourceManager, WatchdogManager
 
 from managers.audio_manager import AudioManager
 from managers.buzzer_manager import BuzzerManager
@@ -142,6 +142,9 @@ class CoreManager:
 
         # Init Data Manager for persistent storage of scores and settings
         self.data = DataManager(root_dir=self.root_data_dir)
+
+        # Init Resource Manager for system metrics (memory, CPU proxy, temperature)
+        self.resources = ResourceManager()
 
         # Init Pins
         Pins.initialize(profile="CORE", type_id="00")
@@ -609,6 +612,18 @@ class CoreManager:
             self.watchdog.safe_feed()
             await asyncio.sleep(1)  # Feed the watchdog every second
 
+    async def monitor_resources(self):
+        """Background task to refresh system resource metrics and update the display footer.
+
+        Runs every ``ResourceManager.UPDATE_INTERVAL_S`` seconds to avoid
+        expensive gc.collect() and temperature reads causing display lag.
+        """
+        while True:
+            self.resources.update()
+            if self.display:
+                self.display.update_footer(self.resources.get_status_bar_text())
+            await asyncio.sleep(self.resources.UPDATE_INTERVAL_S)
+
     async def start(self):
         """Main async loop for the Master Controller."""
         # --- POWER ON SELF TEST ---
@@ -679,6 +694,7 @@ class CoreManager:
             asyncio.create_task(self.display.scroll_loop())
 
         asyncio.create_task(self.monitor_watchdog_feed())  # Start watchdog feed loop
+        asyncio.create_task(self.monitor_resources())  # Start resource monitor
 
         # --- Experimental / Future Use ---
         #self.watchdog.register_flags(["estop"])
@@ -691,6 +707,9 @@ class CoreManager:
         await BootSequence(self.matrix, self.display, self.synth, self.buzzer).play(version_str)
 
         while True:
+            # Record loop tick for CPU-load proxy metric
+            self.resources.record_loop_tick()
+
             # Meltdown state pauses the menu selection
             while self.meltdown:
                 await asyncio.sleep(0.1)
