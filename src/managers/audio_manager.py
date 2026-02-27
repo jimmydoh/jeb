@@ -16,33 +16,42 @@ MAX_PRELOAD_SIZE_BYTES = 20 * 1024  # 20KB
 
 class AudioManager:
     """Manages audio playback and mixing."""
-    def __init__(self, sck, ws, sd, voice_count=None, root_data_dir="/"):
+    def __init__(self, sck, ws, sd, root_data_dir="/"):
+
+        # Bus ID Aliases for code readability
+        self.CH_ATMO = AudioChannels.CH_ATMO
+        self.CH_SFX = AudioChannels.CH_SFX
+        self.CH_VOICE = AudioChannels.CH_VOICE
+        self.CH_SYNTH = AudioChannels.CH_SYNTH
+
+        # Map buses to pools
+        self.pools = {
+            self.CH_ATMO: [0, 1],
+            self.CH_VOICE: [2],
+            self.CH_SYNTH: [3],
+            self.CH_SFX: [4, 5, 6]
+        }
+
+        # Track the round-robin index for each pool
+        self._pool_rr_index = {bus_id: 0 for bus_id in self.pools}
+
+        # Voice count for mixer
+        self.voice_count = self.pools[-1][-1] + 1
+
+        # Data storage root
         self.root_data_dir = root_data_dir
 
-        # Determine required voice count from channel definitions
-        # Ignore the voice_count parameter now
-        voice_count = AudioChannels.voice_count()
-
-        JEBLogger.info("AUDI", f"[INIT] AudioManager - voice_count: {voice_count} root_data_dir: '{self.root_data_dir}'")
+        JEBLogger.info("AUDI", f"[INIT] AudioManager - voice_count: {self.voice_count} root_data_dir: '{self.root_data_dir}'")
 
         self.audio = audiobusio.I2SOut(sck, ws, sd)
         self.mixer = audiomixer.Mixer(
-            voice_count=voice_count,
+            voice_count=self.voice_count,
             sample_rate=22050,
             channel_count=1,
             bits_per_sample=16,
             samples_signed=True
         )
         self.audio.play(self.mixer)
-
-        # Channel Aliases for code readability
-        self.CH_ATMO = AudioChannels.CH_ATMO
-        self.CH_SFX = AudioChannels.CH_SFX
-        self.CH_VOICE = AudioChannels.CH_VOICE
-        self.CH_SYNTH = AudioChannels.CH_SYNTH
-
-        self.SFX_POOL = AudioChannels.SFX_POOL
-        self._sfx_index = 0  # For round-robin SFX channel assignment
 
         # Cache for frequently used small sound files
         # Format: {"filename": RawSampleObject}
@@ -54,6 +63,32 @@ class AudioManager:
         # Track open file handles for streaming audio (by channel)
         # Format: {channel_number: file_handle}
         self._stream_files = {}
+
+    # --- Helper Methods ---
+    def _allocate_voice(self, bus_id):
+        """
+        Determines the best physical voice to use for a given logical bus.
+        """
+        pool = self.pools.get(bus_id)
+        if not pool:
+            raise ValueError(f"Unknown audio bus: {bus_id}")
+
+        # If it's a single-voice pool (VOICE, SYNTH), just return it
+        if len(pool) == 1:
+            return pool[0]
+
+        # For multi-voice pools, try to find a completely silent voice first
+        for voice_idx in pool:
+            if not self.mixer.voice[voice_idx].playing:
+                return voice_idx
+
+        # If all voices in the pool are busy, use Round-Robin to overwrite the oldest
+        allocated_idx = pool[self._pool_rr_index[bus_id]]
+
+        # Advance the index for the next request
+        self._pool_rr_index[bus_id] = (self._pool_rr_index[bus_id] + 1) % len(pool)
+
+        return allocated_idx
 
     def attach_synth(self, synth_source):
         """Attach a synth source (e.g., SynthManager) to the mixer."""
@@ -92,78 +127,71 @@ class AudioManager:
             except Exception as e:
                 JEBLogger.error("AUDI", f"Could not preload {filename}: {e}")
 
-    async def play(self, file, channel=1, loop=False, level=1.0, wait=False, interrupt=True):
+    async def play(self, file, bus_id=1, loop=False, level=1.0, wait=False, interrupt=True):
         """
         Plays a sound file.
         - file: Filename string.
-        - channel: 0=Atmo, 1=SFX, 2=Voice.
-        - interrupt: If False, will not play if channel is busy.
+        - bus_id: Logical bus ID (0=Atmo, 1=SFX, 2=Voice).
+        - interrupt: If False, will not play if bus is busy.
         """
 
-        if channel == self.CH_SFX:
-            # Round-robin through SFX pool channels
-            routed_channel = None
-            for sfx_chan in self.SFX_POOL:
-                if not self.mixer.voice[sfx_chan].playing:
-                    routed_channel = sfx_chan
-                    break
+        # 1. Allocate a physical voice using the new pool logic
+        try:
+            voice_idx = self._allocate_voice(bus_id)
+        except ValueError as e:
+            JEBLogger.error("AUDI", str(e))
+            return
 
-            if routed_channel is None:
-                routed_channel = self.SFX_POOL[self._sfx_index]
-                # Advance the index, looping back to 0 if at the end
-                self._sfx_index = (self._sfx_index + 1) % len(self.SFX_POOL)
-
-            channel = routed_channel
-
-        voice = self.mixer.voice[channel]
+        voice = self.mixer.voice[voice_idx]
 
         # 1. Manage Channel State
         if voice.playing:
             if not interrupt and not wait:
-                JEBLogger.info("AUDI", f"Channel {channel} busy, skipping '{file}'")
+                JEBLogger.info("AUDI", f"Voice {voice_idx} busy on bus {bus_id}, skipping '{file}'")
                 return
             elif wait:
-                JEBLogger.info("AUDI", f"Waiting for channel {channel} to finish before playing '{file}'")
+                JEBLogger.info("AUDI", f"Waiting for voice {voice_idx} on bus {bus_id} to finish before playing '{file}'")
                 while voice.playing:
                     await asyncio.sleep(0.05)
             elif interrupt:
-                JEBLogger.info("AUDI", f"Interrupting channel {channel} for '{file}'")
+                JEBLogger.info("AUDI", f"Interrupting voice {voice_idx} on bus {bus_id} for '{file}'")
 
         voice.level = level
 
-        # 2. Source Selection (Cache vs Stream)
-        file = self.root_data_dir + file
+        # Source Selection (Cache vs Stream)
+        full_path = self.root_data_dir + file
 
-        if file in self._cache:
-            # Use pre-loaded object (Fast, no allocation)
-            # Close any existing stream for this channel before playing cached audio
-            if channel in self._stream_files:
+        if full_path in self._cache:
+            # --- CACHED AUDIO ---
+            # Close any existing stream for this PHYSICAL voice before playing cached audio
+            if voice_idx in self._stream_files:
                 try:
-                    self._stream_files[channel].close()
+                    self._stream_files[voice_idx].close()
                 except Exception:
                     pass
-                del self._stream_files[channel]
-            JEBLogger.info("AUDI", f"Playing cached '{file}' on channel {channel}")
-            voice.play(self._cache[file], loop=loop)
+                del self._stream_files[voice_idx]
+
+            JEBLogger.info("AUDI", f"Playing cached '{file}' on voice {voice_idx} (Bus {bus_id})")
+            voice.play(self._cache[full_path], loop=loop)
+
         else:
-            # Stream from disk (For long narration/music)
-            # Close any existing stream for this channel before opening a new one
-            if channel in self._stream_files:
+            # --- STREAMED AUDIO ---
+            # Close any existing stream for this PHYSICAL voice before opening a new one
+            if voice_idx in self._stream_files:
                 try:
-                    self._stream_files[channel].close()
+                    self._stream_files[voice_idx].close()
                 except Exception:
                     pass
-                del self._stream_files[channel]
+                del self._stream_files[voice_idx]
 
             try:
-                f = open(file, "rb")
+                f = open(full_path, "rb")
             except OSError as e:
-                JEBLogger.error("AUDI",f"File not found {file}")
-                JEBLogger.error("AUDI",f"Error details: {e}")
+                JEBLogger.error("AUDI", f"File not found: {full_path} - {e}")
             else:
                 try:
                     wav = audiocore.WaveFile(f, self._stream_buffer)
-                    JEBLogger.info("AUDI", f"Streaming '{file}' on channel {channel}")
+                    JEBLogger.info("AUDI", f"Streaming '{file}' on voice {voice_idx} (Bus {bus_id})")
                     voice.play(wav, loop=loop)
                 except Exception:
                     # Ensure the file handle is not leaked on failure
@@ -174,57 +202,171 @@ class AudioManager:
                     raise
                 else:
                     # Track the file handle so we can close it later
-                    self._stream_files[channel] = f
+                    self._stream_files[voice_idx] = f
 
-    def stop(self, channel):
-        """Stops playback on a specific channel."""
+    async def fade_out(self, bus_id, duration=1.0):
+        """
+        Gradually fades out an entire logical bus over the specified duration (in seconds),
+        then cleanly stops playback and releases file handles.
+        """
+        JEBLogger.info("AUDI", f"Fading out bus {bus_id} over {duration}s")
 
-        if channel == self.CH_SFX:
-            JEBLogger.info("AUDI", "Stopping all SFX pool channels")
-            for sfx_chan in self.SFX_POOL:
-                self.mixer.voice[sfx_chan].stop()
-
-                # Safely close any open stream handles for this specific voice
-                if sfx_chan in self._stream_files:
-                    try:
-                        self._stream_files[sfx_chan].close()
-                    except Exception:
-                        pass
-                    del self._stream_files[sfx_chan]
+        pool = self.pools.get(bus_id)
+        if not pool:
+            JEBLogger.error("AUDI", f"Cannot fade out unknown bus {bus_id}")
             return
 
-        JEBLogger.info("AUDI", f"Stopping channel {channel}")
-        self.mixer.voice[channel].stop()
-        # Close any open file handle for this channel
-        if channel in self._stream_files:
+        # 1. Target only the actively playing voices in this pool
+        voices_to_fade = []
+        initial_levels = []
+
+        for voice_idx in pool:
+            if self.mixer.voice[voice_idx].playing:
+                voices_to_fade.append(voice_idx)
+                initial_levels.append(self.mixer.voice[voice_idx].level)
+
+        # Exit early if the bus is already silent
+        if not voices_to_fade:
+            return
+
+        # 2. Calculate fade steps
+        update_interval = 0.05
+        steps = max(1, int(duration / update_interval))
+
+        # 3. The Async Fade Loop
+        for step in range(steps):
+            progress = step / steps
+
+            for i, v_idx in enumerate(voices_to_fade):
+                if self.mixer.voice[v_idx].playing:
+                    # Linearly interpolate volume toward zero
+                    current_vol = initial_levels[i] * (1.0 - progress)
+                    self.mixer.voice[v_idx].level = max(0.0, current_vol)
+
+            await asyncio.sleep(update_interval)
+
+        # 4. Final Cleanup
+        # self.stop() handles stopping the hardware and closing all file streams in the pool
+        self.stop(bus_id)
+
+        # Reset the channel volumes back to their defaults for future plays
+        for i, v_idx in enumerate(voices_to_fade):
+            self.mixer.voice[v_idx].level = initial_levels[i]
+
+    async def crossfade(self, new_file, bus_id=0, duration=2.0, level=1.0, loop=True):
+        """
+        Smoothly transitions between the currently playing track and a new one
+        on a multi-voice bus (like ATMO) using pool allocation.
+        """
+        pool = self.pools.get(bus_id)
+
+        # Guard: Ensure the bus actually supports crossfading
+        if not pool or len(pool) < 2:
+            JEBLogger.warning("AUDI", f"Bus {bus_id} lacks the voices for crossfading. Falling back to hard cut.")
+            await self.play(new_file, bus_id=bus_id, loop=loop, level=level)
+            return
+
+        # 1. Identify the currently active voice (the one fading out)
+        active_voice_idx = next((v for v in pool if self.mixer.voice[v].playing), None)
+
+        if active_voice_idx is None:
+            # If the bus is silent, just fade/play it in normally
+            JEBLogger.info("AUDI", f"Bus {bus_id} is silent. Starting '{new_file}'.")
+            await self.play(new_file, bus_id=bus_id, loop=loop, level=level)
+            return
+
+        JEBLogger.info("AUDI", f"Crossfading bus {bus_id} to '{new_file}'")
+
+        # 2. Start the new track at zero volume
+        # Our _allocate_voice helper handles finding the free secondary voice perfectly
+        await self.play(new_file, bus_id=bus_id, loop=loop, level=0.0)
+
+        # 3. Identify the newly activated voice (the one fading in)
+        free_voice_idx = next((v for v in pool if self.mixer.voice[v].playing and v != active_voice_idx), None)
+
+        if free_voice_idx is None:
+            JEBLogger.error("AUDI", f"Crossfade failed: Could not allocate a secondary voice on bus {bus_id}.")
+            return
+
+        # 4. The Async Crossfade Loop
+        update_interval = 0.05
+        steps = max(1, int(duration / update_interval))
+
+        start_level_out = self.mixer.voice[active_voice_idx].level
+        target_level_in = level
+
+        for step in range(steps):
+            progress = step / steps
+
+            # Fade OUT the old active voice
+            if self.mixer.voice[active_voice_idx].playing:
+                current_out = start_level_out * (1.0 - progress)
+                self.mixer.voice[active_voice_idx].level = max(0.0, current_out)
+
+            # Fade IN the new free voice
+            if self.mixer.voice[free_voice_idx].playing:
+                current_in = target_level_in * progress
+                self.mixer.voice[free_voice_idx].level = min(target_level_in, current_in)
+
+            await asyncio.sleep(update_interval)
+
+        # 5. Final Cleanup
+        # We MUST manually close the old voice specifically.
+        # Calling self.stop(bus_id) would kill the entire pool, destroying our new track!
+        JEBLogger.info("AUDI", f"Cleaning up old crossfade voice {active_voice_idx}")
+        self.mixer.voice[active_voice_idx].stop()
+
+        if active_voice_idx in self._stream_files:
             try:
-                self._stream_files[channel].close()
+                self._stream_files[active_voice_idx].close()
             except Exception:
                 pass
-            del self._stream_files[channel]
+            del self._stream_files[active_voice_idx]
+
+        # Ensure the new voice lands exactly on the target volume to avoid rounding errors
+        self.mixer.voice[free_voice_idx].level = target_level_in
+
+    def stop(self, bus_id):
+        """Stops playback on an entire logical bus."""
+        JEBLogger.info("AUDI", f"Stopping bus {bus_id}")
+
+        if bus_id in self.pools:
+            for voice_idx in self.pools[bus_id]:
+                self.mixer.voice[voice_idx].stop()
+
+                # Close any open file handle for this voice
+                if voice_idx in self._stream_files:
+                    try:
+                        self._stream_files[voice_idx].close()
+                    except Exception:
+                        pass
+                    del self._stream_files[voice_idx]
 
     def stop_all(self):
-        """Stops playback on all channels."""
-        JEBLogger.info("AUDI", "Stopping all channels")
+        """Stops playback on all buses."""
+        JEBLogger.info("AUDI", "Stopping all buses")
         for voice in self.mixer.voice:
             voice.stop()
         # Close all open file handles
-        for channel in list(self._stream_files.keys()):
+        for voice_idx in list(self._stream_files.keys()):
             try:
-                self._stream_files[channel].close()
+                self._stream_files[voice_idx].close()
             except Exception:
                 pass
         self._stream_files.clear()
 
-    def set_level(self, channel, level):
-        """Set volume level for a specific channel."""
+    def set_level(self, bus_id, level):
+        """Set volume level for an entire logical bus."""
+        # Clamp level to safe bounds (0.0 to 1.0)
         level = max(0.0, min(1.0, level))
 
-        if channel == self.CH_SFX:
-            JEBLogger.info("AUDI", f"Setting all SFX pool channels level to {level}")
-            for sfx_chan in self.SFX_POOL:
-                self.mixer.voice[sfx_chan].level = level
+        pool = self.pools.get(bus_id)
+        if not pool:
+            JEBLogger.warning("AUDI", f"Cannot set level for unknown bus {bus_id}")
             return
 
-        JEBLogger.info("AUDI", f"Setting channel {channel} level to {level}")
-        self.mixer.voice[channel].level = level
+        JEBLogger.info("AUDI", f"Setting bus {bus_id} level to {level}")
+
+        # Apply the new volume to every physical voice assigned to this bus
+        for voice_idx in pool:
+            self.mixer.voice[voice_idx].level = level
