@@ -7,7 +7,7 @@ Supports lazy-loading to prevent crashes if libraries/hardware are missing.
 from utilities.logger import JEBLogger
 
 class ADCManager:
-    def __init__(self, i2c_bus=None, chip_type="ADS1115", address=0x48, channels=[]):
+    def __init__(self, i2c_bus=None, chip_type="ADS1115", address=0x48, channels=None):
         """
         Initializes the generic ADC Manager.
 
@@ -38,6 +38,7 @@ class ADCManager:
         self._lazy_init()
 
         # Add initial channels if provided
+        channels = channels or []
         for channel in channels:
             self.add_channel(**channel)
 
