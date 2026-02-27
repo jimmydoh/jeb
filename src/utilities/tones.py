@@ -385,6 +385,53 @@ WARP_ENGAGE = {
     ]
 }
 
+# --- UI BUZZER TONES ---
+# Short 2-note ascending ding for opening a menu (BuzzerManager)
+MENU_OPEN = {
+    'bpm': 240,
+    'sequence': [('C5', S), ('G5', S)]
+}
+
+# Short 2-note descending ding for closing a menu (BuzzerManager)
+MENU_CLOSE = {
+    'bpm': 240,
+    'sequence': [('G5', S), ('C5', S)]
+}
+
+# Quick confirmation tone for launching a mode (BuzzerManager)
+MENU_LAUNCH = {
+    'bpm': 240,
+    'sequence': [('C5', S), ('E5', S), ('G5', S)]
+}
+
+# --- CHIPTUNE 3-CHANNEL SCORES ---
+
+# Tetris theme bass line (A minor, follows chord changes)
+TETRIS_BASS = {
+    'bpm': 140,
+    'patch': Patches.RETRO_BASS,
+    'sequence': [
+        ('A3', H), ('E3', H),
+        ('A3', H), ('E3', H),
+        ('F3', H), ('C4', H),
+        ('G3', H), ('D4', H),
+        ('A3', H),
+    ]
+}
+
+# Tetris theme noise/percussion channel (quarter-note hi-hat pattern)
+TETRIS_NOISE = {
+    'bpm': 140,
+    'patch': Patches.RETRO_NOISE,
+    'sequence': [
+        (220, E), ('-', E), (220, E), ('-', E),
+        (220, E), ('-', E), (220, E), ('-', E),
+        (220, E), ('-', E), (220, E), ('-', E),
+        (220, E), ('-', E), (220, E), ('-', E),
+        (220, E),
+    ]
+}
+
 # --- TONE CALCULATOR ---
 def note(note_name):
     """Converts a note name (e.g., 'A4', 'C#5') to its frequency in Hz."""
