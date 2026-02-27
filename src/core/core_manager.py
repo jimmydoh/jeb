@@ -707,6 +707,9 @@ class CoreManager:
         await BootSequence(self.matrix, self.display, self.synth, self.buzzer).play(version_str)
 
         while True:
+            # Record loop tick for CPU-load proxy metric
+            self.resources.record_loop_tick()
+
             # Meltdown state pauses the menu selection
             while self.meltdown:
                 await asyncio.sleep(0.1)
