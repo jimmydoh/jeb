@@ -6,6 +6,7 @@ import math
 import sys
 import time
 
+from utilities.logger import JEBLogger
 from utilities.palette import Palette
 from utilities.icons import Icons
 from utilities import matrix_animations
@@ -44,6 +45,7 @@ class MatrixManager(BasePixelManager):
         For tiled configurations (e.g., four 8x8 panels as 16x16), specify:
             MatrixManager(jeb_pixel, width=16, height=16, panel_width=8, panel_height=8)
         """
+        JEBLogger.info("MATM", f"[INIT] MatrixManager - width: {width}, height: {height}, panel_width: {panel_width}, panel_height: {panel_height}, chain_layout: {chain_layout}")
         # Declare MATRIX_2D layout with configurable dimensions
         super().__init__(jeb_pixel, layout_type=PixelLayout.MATRIX_2D, dimensions=(width, height))
 
@@ -79,7 +81,7 @@ class MatrixManager(BasePixelManager):
                 alternating=(chain_layout == PanelLayout.SERPENTINE)
             )
         except ImportError:
-            print("WARNING: adafruit_pixel_framebuf not available. Text scrolling features will not be available.", file=sys.stderr)
+            JEBLogger.warning("MATM", "adafruit_pixel_framebuf not available. Text scrolling features will not be available.")
 
     def _get_panel_chain_index(self, panel_x, panel_y, panels_per_row):
         """Determines the hardware wiring index for a physical panel position."""

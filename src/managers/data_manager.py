@@ -9,7 +9,7 @@ from utilities.logger import JEBLogger
 class DataManager:
     """Handles loading and saving game data to JSON on the SD card."""
     def __init__(self, root_dir="/"):
-        JEBLogger.debug("DATA", "Initializing DataManager...")
+        JEBLogger.info("DATA", f"[INIT] DataManager - root_dir: {root_dir}")
         self.file_path = f"{root_dir}data/game_data.json"
         self.data = {}
         self._ensure_dir(f"{root_dir}data")
