@@ -370,3 +370,18 @@ class AudioManager:
         # Apply the new volume to every physical voice assigned to this bus
         for voice_idx in pool:
             self.mixer.voice[voice_idx].level = level
+
+    def update(self):
+        """
+        Polls the hardware voices to clean up file handles for streams
+        that have finished playing naturally.
+        """
+        # Iterate over a list of keys so we can safely delete from the dict
+        for voice_idx in list(self._stream_files.keys()):
+            if not self.mixer.voice[voice_idx].playing:
+                # The stream hit EOF naturally. Close the file.
+                try:
+                    self._stream_files[voice_idx].close()
+                except Exception:
+                    pass
+                del self._stream_files[voice_idx]

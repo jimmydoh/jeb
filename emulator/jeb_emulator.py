@@ -626,6 +626,11 @@ class MockMixerVoice:
 
 class MockMixer:
     def __init__(self, voice_count=1, **kwargs):
+        if AUDIO_AVAILABLE:
+            current_channels = pygame.mixer.get_num_channels()
+            if voice_count > current_channels:
+                JEBLogger.emulator("MOCK", f"Expanding Pygame channels from {current_channels} to {voice_count}")
+                pygame.mixer.set_num_channels(voice_count)
         self.voice = [MockMixerVoice(i) for i in range(voice_count)]
         self._playing_mock_state = False
 
