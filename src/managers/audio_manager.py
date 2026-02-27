@@ -36,7 +36,7 @@ class AudioManager:
         self._pool_rr_index = {bus_id: 0 for bus_id in self.pools}
 
         # Voice count for mixer
-        self.voice_count = self.pools[-1][-1] + 1
+        self.voice_count = max(v for pool in self.pools.values() for v in pool) + 1
 
         # Data storage root
         self.root_data_dir = root_data_dir
