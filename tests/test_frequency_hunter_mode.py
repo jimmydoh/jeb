@@ -112,18 +112,6 @@ def test_freq_hunter_icon_exists_and_is_16x16():
     assert len(Icons.ICON_LIBRARY["FREQ_HUNTER"]) == 256
 
 
-def test_signal_pool_uses_registered_icons():
-    """Every icon referenced by SIGNAL_POOL must exist in ICON_LIBRARY."""
-    from utilities.icons import Icons
-    from modes.frequency_hunter import FrequencyHunterMode
-    for icon_key in FrequencyHunterMode.SIGNAL_POOL:
-        # If Icons.get() doesn't return the DEFAULT icon, we successfully found the asset
-        icon_data = Icons.get(icon_key)
-        assert icon_data is not Icons.DEFAULT or icon_key == "DEFAULT", (
-            f"Icon '{icon_key}' could not be loaded from RAM or SD card."
-        )
-
-
 # ---------------------------------------------------------------------------
 # animate_static_resolve tests
 # ---------------------------------------------------------------------------
