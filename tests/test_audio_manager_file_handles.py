@@ -22,8 +22,13 @@ class MockRawSample:
 
 
 class MockWaveFile:
-    """Mock WaveFile for testing."""
-    def __init__(self, f, buffer):
+    """Mock WaveFile for testing.
+
+    The preload() path calls WaveFile(io.BytesIO(...)) with no buffer, while the
+    streaming path calls WaveFile(file_handle, stream_buffer).  Making buffer
+    optional handles both call signatures.
+    """
+    def __init__(self, f, buffer=None):
         self.sample_rate = 22050
         self.channel_count = 1
         self.bits_per_sample = 16
@@ -181,11 +186,11 @@ def test_close_on_new_stream():
 
         # Play first file
         asyncio.run(manager.play("stream1.wav", channel=0))
-        first_handle = manager._stream_files[1]
+        first_handle = manager._stream_files[0]
 
         # Play second file on same channel
         asyncio.run(manager.play("stream2.wav", channel=0))
-        second_handle = manager._stream_files[1]
+        second_handle = manager._stream_files[0]
 
         # Verify first handle was closed
         assert first_handle.closed, "First file handle should be closed"
@@ -279,14 +284,14 @@ def test_cached_vs_streamed():
         manager.preload(["small.wav"])
 
         try:
-            # Play cached file
-            asyncio.run(manager.play("small.wav", channel=1))
-            assert 1 not in manager._stream_files, "Cached file should not create stream file handle"
+            # Use CH_VOICE (channel=2) to avoid SFX pool routing which changes the physical channel
+            asyncio.run(manager.play("small.wav", channel=2))
+            assert 2 not in manager._stream_files, "Cached file should not create stream file handle"
 
-            # Play streamed file
-            asyncio.run(manager.play("large.wav", channel=1))
-            assert 1 in manager._stream_files, "Streamed file should create stream file handle"
-            assert not manager._stream_files[1].closed, "Streamed file handle should be open"
+            # Play streamed file on the same direct channel
+            asyncio.run(manager.play("large.wav", channel=2))
+            assert 2 in manager._stream_files, "Streamed file should create stream file handle"
+            assert not manager._stream_files[2].closed, "Streamed file handle should be open"
 
             print("  ✓ Cached file does not create stream file handle")
             print("  ✓ Streamed file creates stream file handle")
@@ -310,16 +315,16 @@ def test_close_stream_when_playing_cached():
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
         manager.preload(["small.wav"])
 
-        # Play streamed file first
-        asyncio.run(manager.play("large.wav", channel=1))
-        stream_handle = manager._stream_files[1]
+        # Use CH_VOICE (channel=2) to avoid SFX pool routing which changes the physical channel
+        asyncio.run(manager.play("large.wav", channel=2))
+        stream_handle = manager._stream_files[2]
 
         # Play cached file on same channel
-        asyncio.run(manager.play("small.wav", channel=1))
+        asyncio.run(manager.play("small.wav", channel=2))
 
         # Verify stream handle was closed
         assert stream_handle.closed, "Stream file handle should be closed when playing cached audio"
-        assert 1 not in manager._stream_files, "Stream file handle should be removed from tracking"
+        assert 2 not in manager._stream_files, "Stream file handle should be removed from tracking"
 
         print("  ✓ Stream file handle closed when switching to cached audio")
 
