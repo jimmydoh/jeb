@@ -180,11 +180,11 @@ def test_close_on_new_stream():
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
 
         # Play first file
-        asyncio.run(manager.play("stream1.wav", channel=1))
+        asyncio.run(manager.play("stream1.wav", channel=0))
         first_handle = manager._stream_files[1]
 
         # Play second file on same channel
-        asyncio.run(manager.play("stream2.wav", channel=1))
+        asyncio.run(manager.play("stream2.wav", channel=0))
         second_handle = manager._stream_files[1]
 
         # Verify first handle was closed

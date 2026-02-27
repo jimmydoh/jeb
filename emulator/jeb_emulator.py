@@ -578,7 +578,7 @@ class MockMixerVoice:
     def __init__(self, index):
         self.index = index
         self._level = 1.0
-        self.playing = False
+        self._playing_mock_state = False
 
         # [NEW] Map this voice to a physical Pygame Channel!
         self.channel = pygame.mixer.Channel(index) if AUDIO_AVAILABLE else None
@@ -593,13 +593,22 @@ class MockMixerVoice:
         if self.channel:
             self.channel.set_volume(val)
 
+    @property
+    def playing(self):
+        """Check if this voice is currently playing a sound."""
+        if self.channel:
+            return self.channel.get_busy()
+
+        return self._playing_mock_state
+
     def play(self, sample, loop=False):
-        self.playing = True
+        self._playing_mock_state = True
         filename = getattr(sample, 'filepath', 'synth/stream')
 
         # 1. Fallback / VM Logging Mode
         if not AUDIO_AVAILABLE:
             JEBLogger.emulator("MOCK", f"🔊 Dummy play: {filename} (Loop: {loop})")
+            self._playing_mock_state = False
             return
 
         # 2. Hardware Audio Mode
@@ -608,16 +617,17 @@ class MockMixerVoice:
             self.channel.play(sample.sound, loops=loops)
         else:
             JEBLogger.emulator("MOCK", f"⚠️ [HW AUDIO] Channel {self.index} skipped unsupported sample: {filename}")
+            self._playing_mock_state = False
 
     def stop(self):
-        self.playing = False
+        self._playing_mock_state = False
         if self.channel:
             self.channel.stop()
 
 class MockMixer:
     def __init__(self, voice_count=1, **kwargs):
         self.voice = [MockMixerVoice(i) for i in range(voice_count)]
-        self.playing = False
+        self._playing_mock_state = False
 
     def play(self, sample, voice=0, loop=False):
         self.voice[voice].play(sample, loop)

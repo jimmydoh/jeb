@@ -2,6 +2,7 @@
 
 import asyncio
 import displayio
+from utilities.logger import JEBLogger
 
 try:
     # CircuitPython 9+ (Actual Hardware)
@@ -48,6 +49,7 @@ class DisplayManager:
         display.set_custom_content(custom_group)
     """
     def __init__(self, i2c_bus, device_address=0x3C):
+        JEBLogger.info("DISP", f"[INIT] DisplayManager - device_address: {hex(device_address)}")
         displayio.release_displays()
         self.display_bus = I2CDisplayClass(i2c_bus, device_address=device_address)
         self.hw = adafruit_displayio_ssd1306.SSD1306(self.display_bus, width=128, height=64)
@@ -138,6 +140,8 @@ class DisplayManager:
         if self._layout_mode == "standard":
             return  # Already in standard mode
 
+        JEBLogger.info("DISP", "[LAYOUT] Switching to standard layout")
+
         # Clear root and rebuild with standard layout
         while len(self.root) > 0:
             self.root.pop()
@@ -166,6 +170,8 @@ class DisplayManager:
         """
         if self._layout_mode == "custom":
             return  # Already in custom mode
+
+        JEBLogger.info("DISP", "[LAYOUT] Switching to custom layout")
 
         # Clear root and add custom group
         while len(self.root) > 0:
@@ -198,6 +204,7 @@ class DisplayManager:
             text: String to display in header (e.g., "CPU: 45% | RAM: 120KB")
         """
         self.header_label.text = text
+        JEBLogger.debug("DISP", f"Updated header: '{text}'")
 
     def update_footer(self, text):
         """Update the footer zone text (logs, console messages).
@@ -206,6 +213,7 @@ class DisplayManager:
             text: String to display in footer (e.g., "Config saved")
         """
         self.footer_label.text = text
+        JEBLogger.debug("DISP", f"Updated footer: '{text}'")
 
     # ===== LEGACY/COMMON METHODS =====
 
@@ -216,9 +224,11 @@ class DisplayManager:
         In standard mode, updates the main zone content.
         """
         self._set_text_and_scroll_limits("status", main_text)
+        JEBLogger.debug("DISP", f"Status: '{main_text}' (scroll max: {self._scroll_max_distance})")
 
         if sub_text is not None:
             self._set_text_and_scroll_limits("sub_status", sub_text)
+            JEBLogger.debug("DISP", f"Sub-status: '{sub_text}' (scroll max: {self._scroll_max_distance})")
 
     def _set_text_and_scroll_limits(self, key, text):
         """Helper to calculate widths and trigger global scroll sync."""
@@ -340,9 +350,11 @@ class DisplayManager:
     def show_settings_menu(self, show=None):
         """Choose visibility of the settings menu, which replaces the main zone."""
         if show:
+            JEBLogger.info("DISP", "Showing settings menu")
             self.settings_group.hidden = False
             self.main_group.hidden = True
         else:
+            JEBLogger.info("DISP", "Hiding settings menu")
             self.settings_group.hidden = True
             self.main_group.hidden = False
 

@@ -12,6 +12,8 @@ from .utility_mode import UtilityMode
 class MainMenu(UtilityMode):
     """Main Menu for selecting modes."""
     def __init__(self, core):
+        """Initialize Main Menu mode."""
+        JEBLogger.info("MENU", "[INIT] MainMenu")
         super().__init__(core, name="MAIN MENU", description="Select a mode to begin", timeout=10)
         self.state = "DASHBOARD"
 
@@ -59,6 +61,8 @@ class MainMenu(UtilityMode):
 
     def _set_state(self, new_state):
         """Helper to switch states and update UI accordingly."""
+        JEBLogger.info("MENU", f"Transitioning to state: {new_state}")
+
         self.state = new_state
 
         if new_state == "DASHBOARD":
@@ -268,8 +272,9 @@ class MainMenu(UtilityMode):
             # 3. RENDER STAGE
             # =========================================
             # Only push updates to hardware if something visually changed!
-            if needs_render or self.state != last_rendered_state or focus_mode != last_rendered_focus:
-
+            if needs_render or self.state != last_rendered_state or focus_mode != last_rendered_focus or selected_setting_idx != last_rendered_setting:
+                JEBLogger.debug("MENU", f"Rendering... needs={needs_render}, state={self.state}, focus={focus_mode}, sett={selected_setting_idx}")
+                JEBLogger.debug("MENU", f"Last - state={last_rendered_state}, focus={last_rendered_focus}, sett={last_rendered_setting}")
                 if self.state == "DASHBOARD":
                     self.core.display.use_standard_layout()
                     self.core.display.update_header("JADNET Electronics Box")
@@ -327,13 +332,11 @@ class MainMenu(UtilityMode):
                         self.core.display.update_settings_menu(settings_strings, selected_setting_idx)
                         self.core.display.update_footer("Press 'D' to Exit")
 
-                        last_rendered_setting = selected_setting_idx
-
-                    last_rendered_focus = focus_mode
-
                 # Update tracking variables
                 needs_render = False
                 last_rendered_state = self.state
+                last_rendered_focus = focus_mode
+                last_rendered_setting = selected_setting_idx
 
             last_pos = curr_pos
 

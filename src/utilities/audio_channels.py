@@ -8,7 +8,7 @@ adjust the channel count.
 
 class AudioChannels:
     """Standard audio channel indices for the mixer.
-    
+
     These constants define the channel assignments used by AudioManager.
     The REQUIRED_VOICE_COUNT property ensures the mixer has enough channels
     for all defined aliases.
@@ -17,16 +17,13 @@ class AudioChannels:
     CH_SFX = 1    # Sound effects WAV files
     CH_VOICE = 2  # Voice narration WAV files
     CH_SYNTH = 3  # Synthio generated audio
-    
+    SFX_POOL = [1, 4, 5]  # Dedicated SFX channels
+
     @classmethod
-    def get_required_voice_count(cls):
+    def voice_count(cls):
         """Returns the minimum number of mixer voices needed for all defined channels.
-        
+
         Returns:
-            int: Minimum voice_count required (1 + highest channel index)
+            int: Minimum voice_count required
         """
-        channel_attrs = [attr for attr in dir(cls) if attr.startswith('CH_')]
-        if not channel_attrs:
-            return 1
-        max_channel = max(getattr(cls, attr) for attr in channel_attrs)
-        return max_channel + 1
+        return 6
