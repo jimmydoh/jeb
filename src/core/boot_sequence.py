@@ -87,13 +87,27 @@ class BootSequence:
             await asyncio.sleep(0.03)
 
         # Phase 2 — logo reveal (left → right column wipe)
-        icon = Icons.JEBRIS
-        for col in range(self.matrix.width):
+        icon = Icons.DEFAULT
+        # Calculate max steps for a 16x16 matrix from bottom-center
+        # Max row dist (15) + Max col dist (7) = 22. Range is 0 to 22 (23 steps).
+        for step in range(23):
             for row in range(self.matrix.height):
-                palette_idx = icon[row * self.matrix.width + col]
-                color = Palette.get_color(palette_idx)
-                self.matrix.draw_pixel(col, row, color)
-            await asyncio.sleep(0.04)
+                for col in range(self.matrix.width):
+                    # Calculate Manhattan distance from bottom-center
+                    row_dist = (self.matrix.height - 1) - row
+
+                    # Center columns are 7 and 8 (0-indexed).
+                    # This math creates distance 0 for cols 7&8, 1 for 6&9, etc.
+                    col_dist = abs(col * 2 - (self.matrix.width - 1)) // 2
+
+                    # If this pixel's distance equals the current animation step, draw it
+                    if row_dist + col_dist == step:
+                        palette_idx = icon[row * self.matrix.width + col]
+                        color = Palette.get_color(palette_idx)
+                        self.matrix.draw_pixel(col, row, color)
+
+            # 23 steps * 0.03s = 0.69s total (keeps timing synced with the audio swell!)
+            await asyncio.sleep(0.03)
 
     async def _oled_splash(self, version=""):
         """OLED version text drops from the top with a brief pixel bounce settle.
