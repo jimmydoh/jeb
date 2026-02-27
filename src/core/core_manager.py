@@ -39,6 +39,8 @@ from utilities.palette import Palette
 from utilities.pins import Pins
 from utilities import tones
 
+from core.boot_sequence import BootSequence
+
 # Dim blue used as low-power breathing colour during sleep
 SLEEP_LED_COLOR = (0, 0, 32)
 
@@ -248,6 +250,19 @@ class CoreManager:
         # Sleep state
         self._sleeping = False
         self._sleep_timeout_ms = 5 * 60 * 1000  # 5 minutes in milliseconds
+
+    def _read_version(self):
+        """Read version string from the VERSION file.
+
+        Returns:
+            Version string prefixed with 'v' (e.g. ``"v0.8.0"``), or an
+            empty string if the file cannot be read.
+        """
+        try:
+            with open(f"{self.root_data_dir}VERSION", "r") as f:
+                return f"v{f.read().strip()}"
+        except Exception:
+            return ""
 
     def _get_mode(self, mode_name):
         """Get a mode class from the registry with helpful error message.
@@ -670,8 +685,10 @@ class CoreManager:
         #asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
         #asyncio.create_task(self.synth.start_generative_drone())  # Background Music Drone
 
-        # Bootup has completed, play a fancy animation
-        # TODO Add boot animation and audio
+        # --- Boot Animation ---
+        # Run the console power-on sequence: matrix curtain + OLED splash + synth swell + ping
+        version_str = self._read_version()
+        await BootSequence(self.matrix, self.display, self.synth, self.buzzer).play(version_str)
 
         while True:
             # Meltdown state pauses the menu selection
