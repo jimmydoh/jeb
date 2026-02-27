@@ -6,6 +6,7 @@ Generates single-cycle waveforms and stores ADSR configurations.
 
 import array
 import math
+import random
 import synthio
 
 #region --- Waveform Maths ---
@@ -47,6 +48,14 @@ def _generate_pulse(sample_size=512, max_amp=32000, duty=0.25):
     for i in range(sample_size):
         b[i] = max_amp if i < cutoff else -max_amp
     return b
+
+def _generate_noise(sample_size=4096, max_amp=32767, seed=42):
+    """Generate a pseudo-random noise waveform for percussion and SFX."""
+    rng = random.Random(seed)
+    b = array.array("h", [0] * sample_size)
+    for i in range(sample_size):
+        b[i] = rng.randint(-max_amp, max_amp)
+    return b
 #endregion
 
 class Waveforms:
@@ -62,6 +71,7 @@ class Waveforms:
     TRIANGLE = _generate_triangle(SAMPLE_SIZE, MAX_AMP)
     PULSE = _generate_pulse(SAMPLE_SIZE, MAX_AMP)
     PULSE_125 = _generate_pulse(SAMPLE_SIZE, MAX_AMP, duty=0.125)
+    NOISE = _generate_noise(sample_size=4096, max_amp=32767)
 
 class Envelopes:
     """Pre-defined ADSR Envelopes."""
@@ -120,6 +130,14 @@ class Envelopes:
         sustain_level=0.5  # Echo/Ring level
     )
 
+    PERCUSSION = synthio.Envelope(
+        attack_time=0.01,
+        decay_time=0.15,
+        release_time=0.1,
+        attack_level=1.0,
+        sustain_level=0.0
+    )
+
 class Patches:
     """Named combinations of Waveforms and Envelopes."""
 
@@ -146,6 +164,11 @@ class Patches:
     BEEP_SQUARE = {
         "wave": Waveforms.SQUARE,
         "envelope": Envelopes.BEEP
+    }
+
+    NOISE = {
+        "wave": Waveforms.NOISE,
+        "envelope": Envelopes.PERCUSSION
     }
 
     PAD = {
@@ -253,6 +276,24 @@ class Patches:
             decay_time=0.1,
             release_time=0.1,
             attack_level=0.15,  # Very quiet
+            sustain_level=0.0
+        )
+    }
+
+    # 3-channel chiptune: bass channel (Triangle, instant response)
+    RETRO_BASS = {
+        "wave": Waveforms.TRIANGLE,
+        "envelope": Envelopes.GAME_LEAD
+    }
+
+    # 3-channel chiptune: noise/percussion channel (short burst of noise)
+    RETRO_NOISE = {
+        "wave": Waveforms.NOISE,
+        "envelope": synthio.Envelope(
+            attack_time=0.001,
+            decay_time=0.05,
+            release_time=0.02,
+            attack_level=0.6,
             sustain_level=0.0
         )
     }

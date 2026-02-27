@@ -112,7 +112,11 @@ class JEBris(GameMode):
         last_tick = ticks_ms()
 
         if self.music_on:
-            await self.core.buzzer.play_sequence(tones.TETRIS_THEME, loop=True)
+            self.core.synth.start_chiptune_sequencer({
+                'melody': tones.TETRIS_THEME,
+                'bass': tones.TETRIS_BASS,
+                'noise': tones.TETRIS_NOISE,
+            })
 
         while True:
             now = ticks_ms()
@@ -277,6 +281,9 @@ class JEBris(GameMode):
             self.game_state = self.STATE_CLEARING_LINES
             self.clear_animation_start = ticks_ms()
 
+            # UI feedback: buzzer click for line clear
+            self.core.buzzer.play_sequence(tones.COIN)
+
             # Flash lines white immediately (visual feedback)
             for y in self.lines_to_clear:
                 for x in range(self.playfield_width):
@@ -356,6 +363,7 @@ class JEBris(GameMode):
             speed=0.5
         )
         await self.core.audio.stop_all()
+        self.core.synth.stop_chiptune()
         await self.core.buzzer.stop()
         await self.core.buzzer.play_sequence(tones.GAME_OVER)
         await asyncio.sleep(2)

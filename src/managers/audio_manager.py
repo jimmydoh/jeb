@@ -92,7 +92,8 @@ class AudioManager:
 
     def attach_synth(self, synth_source):
         """Attach a synth source (e.g., SynthManager) to the mixer."""
-        self.mixer.voice[self.CH_SYNTH].play(synth_source)
+        voice_idx = self.pools[self.CH_SYNTH][0]
+        self.mixer.voice[voice_idx].play(synth_source)
 
     def preload(self, files):
         """

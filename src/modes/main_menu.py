@@ -131,7 +131,7 @@ class MainMenu(UtilityMode):
             # --- GLOBAL TIMEOUT CHECK ---
             if self.is_timed_out and self.state != "DASHBOARD":
                 self.core.leds.off_led(-1)
-                await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
+                self.core.buzzer.play_sequence(tones.MENU_CLOSE)
                 self._set_state("DASHBOARD")
                 focus_mode = "GAME"
                 needs_render = True
@@ -158,7 +158,7 @@ class MainMenu(UtilityMode):
                     menu_items = self._build_menu_items()
                     self._set_state("MENU")
                     needs_render = True
-                    await self.core.audio.play("audio/menu/open.wav", self.core.audio.CH_SFX, level=0.8)
+                    self.core.buzzer.play_sequence(tones.MENU_OPEN)
 
                     # Prepare hardware for MENU state
                     self.core.hid.reset_encoder(selected_game_idx)
@@ -172,18 +172,18 @@ class MainMenu(UtilityMode):
                 if encoder_diff != 0:
                     self.touch()
                     slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
-                    await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
+                    self.core.buzzer.play_sequence(tones.UI_TICK)
                     needs_render = True
 
                 if encoder_pressed and admin_items:
                     self.touch()
-                    await self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
+                    self.core.buzzer.play_sequence(tones.UI_CONFIRM)
                     self.core.mode = admin_items[admin_idx]
                     return "SUCCESS"
 
                 if btn_b_long:
                     self.touch()
-                    await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
+                    self.core.buzzer.play_sequence(tones.MENU_CLOSE)
                     self._set_state("DASHBOARD")
                     self.core.leds.stop_cylon()
                     self.core.leds.off_led(-1)
@@ -214,13 +214,13 @@ class MainMenu(UtilityMode):
                             selected_setting_idx = 0
                             self.core.hid.reset_encoder(0)
                             curr_pos = 0
-                            await self.core.audio.play("audio/menu/open.wav", self.core.audio.CH_SFX, level=0.8)
+                            self.core.buzzer.play_sequence(tones.MENU_OPEN)
                             needs_render = True
                     else: # Exiting Settings
                         focus_mode = "GAME"
                         self.core.hid.reset_encoder(selected_game_idx)
                         curr_pos = selected_game_idx
-                        await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
+                        self.core.buzzer.play_sequence(tones.MENU_CLOSE)
                         needs_render = True
 
                 # Handle GAME Focus Logic
@@ -230,12 +230,12 @@ class MainMenu(UtilityMode):
                         slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
                         selected_game_idx = curr_pos % len(menu_items)
                         JEBLogger.info("MENU", f"Encoder moved: diff={encoder_diff}, new_pos={curr_pos}, selected_game_idx={selected_game_idx}, menu_length={len(menu_items)}")
-                        await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
+                        self.core.buzzer.play_sequence(tones.UI_TICK)
                         needs_render = True
 
                     if encoder_pressed:
                         self.touch()
-                        await self.core.audio.play("audio/menu/power.wav", self.core.audio.CH_SFX, level=0.8)
+                        self.core.buzzer.play_sequence(tones.MENU_LAUNCH)
                         self.core.mode = menu_items[selected_game_idx]
                         return "SUCCESS"
 
@@ -249,7 +249,7 @@ class MainMenu(UtilityMode):
                         if encoder_diff != 0:
                             self.touch()
                             selected_setting_idx = curr_pos % len(mode_settings)
-                            await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
+                            self.core.buzzer.play_sequence(tones.UI_TICK)
                             needs_render = True
 
                         if encoder_pressed:
@@ -265,7 +265,7 @@ class MainMenu(UtilityMode):
                             new_value = setting["options"][new_idx]
 
                             self.core.data.set_setting(mode_meta["id"], setting["key"], new_value)
-                            await self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
+                            self.core.buzzer.play_sequence(tones.UI_CONFIRM)
                             needs_render = True
 
             # =========================================

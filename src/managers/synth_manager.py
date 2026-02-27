@@ -24,6 +24,9 @@ class SynthManager:
         # mode=synthio.Mode.POLYPHONIC allows multiple notes at once
         self.synth = synthio.Synthesizer(sample_rate=sample_rate, channel_count=channel_count)
 
+        # Background chiptune sequencer task handle
+        self._chiptune_task = None
+
         # Note: Active notes are managed directly by the synthesizer
         # using press() and release() methods
 
@@ -136,8 +139,54 @@ class SynthManager:
             duration = random.uniform(3.0, 6.0)
 
             # Fire and forget (the auto_release handles cleanup)
-            self.play_note(f_jitter, "ENGINE_HUM", duration)
+            self.play_note(f_jitter, Patches.ENGINE_HUM, duration)
 
             # Wait a bit before layering the next note
             # Overlapping notes creates chords
             await asyncio.sleep(random.uniform(2.0, 4.0))
+
+    async def _run_chiptune_channel(self, sequence_data, patch=None):
+        """Runs a single chiptune channel in a loop until cancelled."""
+        try:
+            while True:
+                await self.play_sequence(sequence_data, patch=patch)
+        except asyncio.CancelledError:
+            raise
+
+    async def _run_chiptune_sequencer(self, channels):
+        """Runs all chiptune channels concurrently using asyncio.gather."""
+        tasks = []
+        if 'melody' in channels:
+            tasks.append(self._run_chiptune_channel(channels['melody'], Patches.RETRO_LEAD))
+        if 'bass' in channels:
+            tasks.append(self._run_chiptune_channel(channels['bass'], Patches.RETRO_BASS))
+        if 'noise' in channels:
+            tasks.append(self._run_chiptune_channel(channels['noise'], Patches.RETRO_NOISE))
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            self.release_all()
+            raise
+
+    def start_chiptune_sequencer(self, channels):
+        """Starts a 3-channel chiptune sequencer as a background asyncio task.
+
+        Args:
+            channels (dict): Channel data with optional keys:
+                'melody': sequence_data dict (Square wave lead, RETRO_LEAD patch)
+                'bass':   sequence_data dict (Triangle wave bass, RETRO_BASS patch)
+                'noise':  sequence_data dict (Noise percussion, RETRO_NOISE patch)
+
+        Returns:
+            asyncio.Task: The running task, which can be cancelled to stop playback.
+        """
+        self.stop_chiptune()
+        self._chiptune_task = asyncio.create_task(self._run_chiptune_sequencer(channels))
+        return self._chiptune_task
+
+    def stop_chiptune(self):
+        """Stops the chiptune sequencer and silences all active notes."""
+        if self._chiptune_task and not self._chiptune_task.done():
+            self._chiptune_task.cancel()
+        self._chiptune_task = None
+        self.release_all()
