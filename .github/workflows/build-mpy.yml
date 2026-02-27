@@ -24,8 +24,8 @@ jobs:
       - name: Install CircuitPython mpy-cross
         run: |
           # Build CircuitPython-specific mpy-cross from source
-          # Using version 10.0.3 for CircuitPython 10.0.3 compatibility
-          CIRCUITPYTHON_VERSION="10.0.3"
+          # Using version 10.1.3 for CircuitPython 10.1.3 compatibility
+          CIRCUITPYTHON_VERSION="10.1.3"
 
           echo "Cloning CircuitPython ${CIRCUITPYTHON_VERSION}..."
           git clone --depth 1 --branch ${CIRCUITPYTHON_VERSION} https://github.com/adafruit/circuitpython.git /tmp/circuitpython || {
