@@ -987,3 +987,279 @@ class MockSeg14x4:
 sys.modules['adafruit_ht16k33'] = type('MockHT16K33', (), {})
 sys.modules['adafruit_ht16k33.segments'] = type('MockHTSegments', (), {'Seg14x4': MockSeg14x4})
 #endregion
+
+# ==========================================
+# WIFI & NETWORK MOCKS
+# ==========================================
+
+import socket as _socket_module
+
+# --- WIFI RADIO MOCK ---
+class MockWiFiRadio:
+    """Simulates the CircuitPython wifi.radio object. Always 'connects' to 127.0.0.1."""
+    def __init__(self):
+        self._connected = False
+        self._enabled = True
+        self.ipv4_address = "127.0.0.1"
+
+    @property
+    def connected(self):
+        return self._connected
+
+    @property
+    def enabled(self):
+        return self._enabled
+
+    @enabled.setter
+    def enabled(self, val):
+        self._enabled = val
+        if not val:
+            self._connected = False
+            JEBLogger.emulator("MOCK", "[WIFI] Radio disabled (simulated disconnect)")
+
+    def connect(self, ssid, password, timeout=30):
+        JEBLogger.emulator("MOCK", f"[WIFI] Simulated connect to '{ssid}' → {self.ipv4_address}")
+        self._connected = True
+        self._enabled = True
+
+class MockWifiModule:
+    def __init__(self):
+        self.radio = MockWiFiRadio()
+
+_mock_wifi_module = MockWifiModule()
+sys.modules['wifi'] = _mock_wifi_module
+
+# --- SOCKETPOOL MOCK ---
+class MockSocketPool:
+    """Minimal socketpool.SocketPool mock - the real socket work is done by MockHTTPServer."""
+    def __init__(self, radio):
+        self.radio = radio
+
+class MockSocketPoolModule:
+    SocketPool = MockSocketPool
+
+sys.modules['socketpool'] = MockSocketPoolModule()
+
+# --- ADAFRUIT_HTTPSERVER MOCK ---
+# A functional HTTP server implementation that binds to a real local TCP socket,
+# so the web UI can be accessed at http://127.0.0.1:<port> during emulation.
+
+class GET:
+    pass
+
+class POST:
+    pass
+
+class MockHTTPRequest:
+    """Represents an incoming HTTP request, matching the adafruit_httpserver.Request API."""
+    def __init__(self, method, path, query_string, headers, body):
+        self.method = method
+        self.path = path
+        self.query_params = self._parse_query(query_string)
+        self.headers = headers
+        self._body = body
+
+    def _parse_query(self, query_string):
+        params = {}
+        if query_string:
+            for part in query_string.split("&"):
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    params[k] = v.replace("+", " ")
+        return params
+
+    def json(self):
+        import json as _json
+        try:
+            return _json.loads(self._body) if self._body else None
+        except Exception:
+            return None
+
+class MockHTTPResponse:
+    """Represents an HTTP response, matching the adafruit_httpserver.Response API."""
+    def __init__(self, request, body, content_type="text/plain", status=200, headers=None):
+        self._request = request
+        self._body = body
+        self._content_type = content_type
+        self._status = status
+        self._headers = headers or {}
+
+class MockHTTPServer:
+    """
+    Functional HTTP server mock for the emulator.
+
+    Binds to a real TCP socket so the web UI can be tested in a browser
+    at http://127.0.0.1:<port>. Matches the adafruit_httpserver.Server API:
+      - route(path, methods) decorator for handler registration
+      - start(host, port) to bind and listen
+      - poll() for non-blocking request dispatch (called every asyncio tick)
+      - stop() to close the socket
+    """
+    _STATUS_TEXTS = {
+        200: "OK", 201: "Created", 204: "No Content",
+        400: "Bad Request", 403: "Forbidden", 404: "Not Found",
+        500: "Internal Server Error",
+    }
+    REQUEST_TIMEOUT = 2.0  # Seconds to wait for a complete HTTP request
+
+    def __init__(self, pool, root_path, debug=False):
+        self._routes = {}
+        self._root_path = root_path
+        self._debug = debug
+        self._sock = None
+
+    def route(self, path, methods=None):
+        """Decorator to register a route handler."""
+        def decorator(func):
+            # methods is the GET or POST sentinel class; default to GET
+            method_str = "POST" if (methods is POST) else "GET"
+            self._routes[(path, method_str)] = func
+            return func
+        return decorator
+
+    def start(self, host, port):
+        """Bind to host:port and start listening for connections."""
+        try:
+            self._sock = _socket_module.socket(_socket_module.AF_INET, _socket_module.SOCK_STREAM)
+            self._sock.setsockopt(_socket_module.SOL_SOCKET, _socket_module.SO_REUSEADDR, 1)
+            self._sock.setblocking(False)
+            self._sock.bind((host, int(port)))
+            self._sock.listen(5)
+            JEBLogger.emulator("WEBS", f"[HTTP] Listening on http://{host}:{port}")
+        except Exception as e:
+            JEBLogger.emulator("WEBS", f"[HTTP] Failed to start server: {e}")
+
+    def poll(self):
+        """Accept and handle one pending connection (non-blocking)."""
+        if self._sock is None:
+            return
+        try:
+            conn, _addr = self._sock.accept()
+        except (BlockingIOError, OSError):
+            return  # No connection waiting - normal case
+        try:
+            conn.settimeout(self.REQUEST_TIMEOUT)
+            data = b""
+            while True:
+                try:
+                    chunk = conn.recv(4096)
+                    if not chunk:
+                        break
+                    data += chunk
+                    # Once headers are complete, check if we have the full body too
+                    if b"\r\n\r\n" in data:
+                        header_end = data.find(b"\r\n\r\n") + 4
+                        header_text = data[:header_end].decode("utf-8", errors="replace")
+                        content_length = 0
+                        for line in header_text.split("\r\n")[1:]:
+                            if line.lower().startswith("content-length:"):
+                                content_length = int(line.split(":", 1)[1].strip())
+                        if len(data) - header_end >= content_length:
+                            break
+                except _socket_module.timeout:
+                    break
+
+            if not data:
+                return
+
+            # Parse HTTP request line and headers
+            header_end = data.find(b"\r\n\r\n") + 4
+            header_text = data[:header_end].decode("utf-8", errors="replace")
+            body_bytes = data[header_end:]
+            lines = header_text.strip().split("\r\n")
+            request_line_parts = lines[0].split(" ")
+            if len(request_line_parts) < 2:
+                return
+            method = request_line_parts[0]
+            full_path = request_line_parts[1]
+            path, query_string = (full_path.split("?", 1) + [""])[:2]
+            headers = {}
+            for line in lines[1:]:
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    headers[k.strip().lower()] = v.strip()
+
+            body_str = body_bytes.decode("utf-8", errors="replace")
+            request = MockHTTPRequest(method, path, query_string, headers, body_str)
+
+            # Dispatch to registered handler
+            handler = self._routes.get((path, method))
+            if handler is None:
+                err = b'{"error": "Not found"}'
+                conn.sendall(
+                    b"HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n"
+                    b"Content-Length: " + str(len(err)).encode() + b"\r\nConnection: close\r\n\r\n" + err
+                )
+                return
+
+            response_obj = handler(request)
+            status_code = getattr(response_obj, '_status', 200)
+            status_text = self._STATUS_TEXTS.get(status_code, "OK")
+            content_type = getattr(response_obj, '_content_type', 'text/plain')
+            body = getattr(response_obj, '_body', '')
+            extra_headers = getattr(response_obj, '_headers', {})
+
+            # Stream generator bodies using chunked transfer encoding;
+            # use __next__ check to identify true generators/iterators (not dicts or strings)
+            is_iter = hasattr(body, '__next__')
+            if is_iter:
+                header = (
+                    f"HTTP/1.1 {status_code} {status_text}\r\n"
+                    f"Content-Type: {content_type}\r\n"
+                    f"Transfer-Encoding: chunked\r\nConnection: close\r\n"
+                )
+                for k, v in extra_headers.items():
+                    header += f"{k}: {v}\r\n"
+                header += "\r\n"
+                conn.sendall(header.encode("utf-8"))
+                for chunk in body:
+                    if isinstance(chunk, str):
+                        chunk = chunk.encode("utf-8")
+                    conn.sendall(f"{len(chunk):x}\r\n".encode("utf-8") + chunk + b"\r\n")
+                conn.sendall(b"0\r\n\r\n")
+            else:
+                if isinstance(body, str):
+                    body_out = body.encode("utf-8")
+                elif isinstance(body, bytes):
+                    body_out = body
+                else:
+                    body_out = str(body).encode("utf-8")
+                header = (
+                    f"HTTP/1.1 {status_code} {status_text}\r\n"
+                    f"Content-Type: {content_type}\r\n"
+                    f"Content-Length: {len(body_out)}\r\nConnection: close\r\n"
+                )
+                for k, v in extra_headers.items():
+                    header += f"{k}: {v}\r\n"
+                header += "\r\n"
+                conn.sendall(header.encode("utf-8") + body_out)
+
+            if self._debug:
+                JEBLogger.emulator("WEBS", f"[HTTP] {method} {path} → {status_code}")
+
+        except Exception as e:
+            JEBLogger.emulator("WEBS", f"[HTTP] Request error: {e}")
+            try:
+                conn.sendall(b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            except Exception:
+                pass
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def stop(self):
+        """Close the listening socket."""
+        if self._sock:
+            self._sock.close()
+            self._sock = None
+            JEBLogger.emulator("WEBS", "[HTTP] Server stopped")
+
+sys.modules['adafruit_httpserver'] = type('MockAdafruitHTTPServer', (), {
+    'Server': MockHTTPServer,
+    'Request': MockHTTPRequest,
+    'Response': MockHTTPResponse,
+    'GET': GET,
+    'POST': POST,
+})()
