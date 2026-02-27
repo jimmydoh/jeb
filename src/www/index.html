@@ -864,7 +864,8 @@
                 const resp = await fetch('/api/pixel-art/palette');
                 paletteColors = await resp.json();
             } catch (e) {
-                // Fallback minimal palette if server unavailable
+                // Fallback minimal palette if server unavailable.
+                // Indices match the JEB palette: 0=OFF, 11=RED, 41=GREEN, 61=BLUE
                 paletteColors = {'0': {name:'OFF',r:0,g:0,b:0}, '11': {name:'RED',r:255,g:0,b:0}, '41': {name:'GREEN',r:0,g:200,b:0}, '61': {name:'BLUE',r:0,g:0,b:255}};
             }
 
@@ -875,7 +876,7 @@
                 const swatch = document.createElement('div');
                 swatch.className = 'palette-swatch' + (parseInt(idx) === 0 ? ' selected' : '');
                 const hex = rgbToHex(color.r, color.g, color.b);
-                swatch.style.background = parseInt(idx) === 0 ? '#222' : hex;
+                swatch.style.background = parseInt(idx) === 0 ? '#111' : hex;
                 swatch.title = `${idx}: ${color.name}`;
                 swatch.dataset.index = idx;
                 swatch.onclick = () => selectColor(parseInt(idx));

@@ -755,7 +755,7 @@ class WebServerManager:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
-
+    def _save_config(self):
         """Save configuration to config.json."""
         if self._testing:
             return
