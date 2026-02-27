@@ -176,6 +176,51 @@
         }
         .sat-badge.online { background: #2d5016; color: #90EE90; }
         .sat-badge.offline { background: #501616; color: #ffcccb; }
+        /* Pixel Art Studio */
+        .pixel-grid {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 1px;
+            width: 320px;
+            height: 320px;
+            background: #111;
+            border: 2px solid #444;
+            border-radius: 3px;
+            cursor: crosshair;
+            user-select: none;
+        }
+        .pixel-cell {
+            background: #000;
+            border: none;
+        }
+        .palette-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 10px;
+            max-width: 400px;
+        }
+        .palette-swatch {
+            width: 28px;
+            height: 28px;
+            border-radius: 3px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            box-sizing: border-box;
+        }
+        .palette-swatch.selected {
+            border-color: #fff;
+        }
+        .pixel-studio-layout {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+        .pixel-studio-controls {
+            flex: 1;
+            min-width: 200px;
+        }
     </style>
 </head>
 <body>
@@ -191,6 +236,7 @@
             <button class="tab" onclick="showTab('console')">Console</button>
             <button class="tab" onclick="showTab('actions')">Actions</button>
             <button class="tab" onclick="showTab('telemetry')">Telemetry</button>
+            <button class="tab" onclick="showTab('pixelart')">Pixel Art Studio</button>
         </div>
         
         <div id="system" class="tab-content active">
@@ -292,6 +338,36 @@
                 <canvas id="voltageChart" class="sparkline" width="800" height="120"></canvas>
             </div>
         </div>
+
+        <div id="pixelart" class="tab-content">
+            <h2>🎨 Pixel Art Studio</h2>
+            <p style="color: #b0b0b0; margin-bottom: 15px;">Draw 16×16 pixel art and preview it live on the LED matrix, then save as an icon.</p>
+            <div class="pixel-studio-layout">
+                <div>
+                    <div class="pixel-grid" id="pixelGrid" onmousedown="pixelMouseDown(event)" onmousemove="pixelMouseMove(event)" onmouseup="pixelMouseUp()"></div>
+                </div>
+                <div class="pixel-studio-controls">
+                    <div class="form-group">
+                        <label>Selected Color: <span id="selectedColorName">OFF</span></label>
+                        <div id="selectedColorPreview" style="width:32px;height:32px;background:#000;border:2px solid #666;border-radius:3px;margin-top:4px;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Palette:</label>
+                        <div class="palette-grid" id="paletteGrid"></div>
+                    </div>
+                    <div class="form-group" style="margin-top:15px;">
+                        <label>Icon Name:</label>
+                        <input type="text" id="iconName" placeholder="my_icon" maxlength="32" style="width:180px;">
+                    </div>
+                    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+                        <button onclick="previewPixelArt()">▶ Preview on Matrix</button>
+                        <button onclick="savePixelArt()">💾 Save Icon</button>
+                        <button class="secondary" onclick="clearCanvas()">Clear</button>
+                    </div>
+                    <div id="pixelArtStatus" class="status" style="display:none;margin-top:10px;"></div>
+                </div>
+            </div>
+        </div>
     </div>
     
     <script>
@@ -309,6 +385,7 @@
             if (tabName === 'logs') loadLogs();
             if (tabName === 'modes') loadModeSettings();
             if (tabName === 'telemetry') startTelemetry();
+            if (tabName === 'pixelart') initPixelArtStudio();
         }
         
         async function loadSystemStatus() {
@@ -754,6 +831,160 @@
 
         // Auto-load initial data
         loadSystemStatus();
+
+        // --- Pixel Art Studio ---
+        const GRID_SIZE = 16;
+        let pixelData = new Array(GRID_SIZE * GRID_SIZE).fill(0);
+        let selectedColorIndex = 0;
+        let selectedColorRGB = '#000000';
+        let paletteColors = {};
+        let pixelArtInitialized = false;
+        let isDrawing = false;
+
+        function rgbToHex(r, g, b) {
+            return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function initPixelArtStudio() {
+            if (pixelArtInitialized) return;
+            pixelArtInitialized = true;
+
+            // Build the 16x16 grid
+            const grid = document.getElementById('pixelGrid');
+            grid.innerHTML = '';
+            for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'pixel-cell';
+                cell.dataset.index = i;
+                grid.appendChild(cell);
+            }
+
+            // Fetch palette from server
+            try {
+                const resp = await fetch('/api/pixel-art/palette');
+                paletteColors = await resp.json();
+            } catch (e) {
+                // Fallback minimal palette if server unavailable.
+                // Indices match the JEB palette: 0=OFF, 11=RED, 41=GREEN, 61=BLUE
+                paletteColors = {'0': {name:'OFF',r:0,g:0,b:0}, '11': {name:'RED',r:255,g:0,b:0}, '41': {name:'GREEN',r:0,g:200,b:0}, '61': {name:'BLUE',r:0,g:0,b:255}};
+            }
+
+            // Build palette swatches
+            const paletteGrid = document.getElementById('paletteGrid');
+            paletteGrid.innerHTML = '';
+            for (const [idx, color] of Object.entries(paletteColors)) {
+                const swatch = document.createElement('div');
+                swatch.className = 'palette-swatch' + (parseInt(idx) === 0 ? ' selected' : '');
+                const hex = rgbToHex(color.r, color.g, color.b);
+                swatch.style.background = parseInt(idx) === 0 ? '#111' : hex;
+                swatch.title = `${idx}: ${color.name}`;
+                swatch.dataset.index = idx;
+                swatch.onclick = () => selectColor(parseInt(idx));
+                paletteGrid.appendChild(swatch);
+            }
+        }
+
+        function selectColor(idx) {
+            selectedColorIndex = idx;
+            const color = paletteColors[String(idx)];
+            if (!color) return;
+            const hex = (idx === 0) ? '#000000' : rgbToHex(color.r, color.g, color.b);
+            selectedColorRGB = hex;
+            document.getElementById('selectedColorName').textContent = `${idx}: ${color.name}`;
+            document.getElementById('selectedColorPreview').style.background = hex;
+            // Update swatch borders
+            document.querySelectorAll('.palette-swatch').forEach(s => {
+                s.classList.toggle('selected', parseInt(s.dataset.index) === idx);
+            });
+        }
+
+        function paintCell(index) {
+            if (index < 0 || index >= GRID_SIZE * GRID_SIZE) return;
+            pixelData[index] = selectedColorIndex;
+            const cell = document.querySelector(`.pixel-cell[data-index="${index}"]`);
+            if (cell) {
+                const color = paletteColors[String(selectedColorIndex)];
+                if (selectedColorIndex === 0 || !color) {
+                    cell.style.background = '#000';
+                } else {
+                    cell.style.background = rgbToHex(color.r, color.g, color.b);
+                }
+            }
+        }
+
+        function getCellIndexFromEvent(e) {
+            const target = e.target;
+            if (target && target.dataset && target.dataset.index !== undefined) {
+                return parseInt(target.dataset.index);
+            }
+            return -1;
+        }
+
+        function pixelMouseDown(e) {
+            isDrawing = true;
+            const idx = getCellIndexFromEvent(e);
+            if (idx >= 0) paintCell(idx);
+        }
+
+        function pixelMouseMove(e) {
+            if (!isDrawing) return;
+            const idx = getCellIndexFromEvent(e);
+            if (idx >= 0) paintCell(idx);
+        }
+
+        function pixelMouseUp() {
+            isDrawing = false;
+        }
+
+        function clearCanvas() {
+            pixelData.fill(0);
+            document.querySelectorAll('.pixel-cell').forEach(cell => {
+                cell.style.background = '#000';
+            });
+        }
+
+        async function previewPixelArt() {
+            try {
+                const resp = await fetch('/api/pixel-art/preview', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({pixels: pixelData})
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showStatus('pixelArtStatus', 'Preview sent to matrix!', 'success');
+                } else if (data.status === 'no_matrix') {
+                    showStatus('pixelArtStatus', 'Matrix not connected to web server', 'error');
+                } else {
+                    showStatus('pixelArtStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (e) {
+                showStatus('pixelArtStatus', 'Error: ' + e, 'error');
+            }
+        }
+
+        async function savePixelArt() {
+            const name = document.getElementById('iconName').value.trim();
+            if (!name) {
+                showStatus('pixelArtStatus', 'Please enter an icon name', 'error');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/pixel-art/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: name, pixels: pixelData})
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showStatus('pixelArtStatus', `Saved to ${data.path}`, 'success');
+                } else {
+                    showStatus('pixelArtStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (e) {
+                showStatus('pixelArtStatus', 'Error: ' + e, 'error');
+            }
+        }
     </script>
 </body>
 </html>

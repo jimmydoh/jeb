@@ -102,6 +102,19 @@ class MockWiFiManager:
     def create_http_session(self):
         return None
 
+class MockMatrixManager:
+    """Mock MatrixManager for testing pixel art preview."""
+    def __init__(self):
+        self.pixels = {}
+        self.cleared = False
+
+    def clear(self):
+        self.cleared = True
+        self.pixels = {}
+
+    def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None, brightness=1.0):
+        self.pixels[(x, y)] = color
+
 # Mock gc module for CircuitPython compatibility
 import gc as _gc
 if not hasattr(_gc, 'mem_free'):
@@ -1150,6 +1163,217 @@ def test_telemetry_keepalive_chunks():
     print("  ✓ SSE keepalive chunks test passed")
 
 
+def test_pixel_art_palette_route():
+    """Test GET /api/pixel-art/palette returns all palette colors."""
+    print("\nTesting pixel art palette route...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/pixel-art/palette":
+            handler = func
+            break
+    assert handler is not None, "/api/pixel-art/palette route not registered"
+
+    request = MockRequest()
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    # Palette index 0 (OFF) must be present
+    assert "0" in data
+    assert data["0"]["name"] == "OFF"
+    assert data["0"]["r"] == 0
+    # A few other well-known colors should exist
+    assert "11" in data  # RED
+    assert "41" in data  # GREEN
+    assert "61" in data  # BLUE
+
+    print("  ✓ Pixel art palette route test passed")
+
+
+def test_pixel_art_preview_no_matrix():
+    """Test POST /api/pixel-art/preview without a matrix manager."""
+    print("\nTesting pixel art preview without matrix...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/pixel-art/preview":
+            handler = func
+            break
+    assert handler is not None, "/api/pixel-art/preview route not registered"
+
+    request = MockRequest()
+    request.json = lambda: {"pixels": [0] * 256}
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "no_matrix"
+
+    print("  ✓ Pixel art preview (no matrix) test passed")
+
+
+def test_pixel_art_preview_with_matrix():
+    """Test POST /api/pixel-art/preview draws pixels on the matrix."""
+    print("\nTesting pixel art preview with matrix...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    mock_matrix = MockMatrixManager()
+    manager = WebServerManager(config, MockWiFiManager(), matrix_manager=mock_matrix, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/pixel-art/preview":
+            handler = func
+            break
+    assert handler is not None
+
+    # Draw a single red pixel at (0,0) using palette index 11 (RED)
+    pixels = [0] * 256
+    pixels[0] = 11  # Top-left pixel = RED
+    request = MockRequest()
+    request.json = lambda: {"pixels": pixels}
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert mock_matrix.cleared is True
+    assert (0, 0) in mock_matrix.pixels  # Pixel (0,0) was drawn
+
+    print("  ✓ Pixel art preview with matrix test passed")
+
+
+def test_pixel_art_preview_validation():
+    """Test POST /api/pixel-art/preview validates input correctly."""
+    print("\nTesting pixel art preview validation...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/pixel-art/preview":
+            handler = func
+            break
+
+    # Missing pixels
+    request = MockRequest()
+    request.json = lambda: {}
+    response = handler(request)
+    assert response.status == 400
+
+    # Wrong length
+    request2 = MockRequest()
+    request2.json = lambda: {"pixels": [0] * 64}
+    response2 = handler(request2)
+    assert response2.status == 400
+
+    # Invalid pixel value
+    request3 = MockRequest()
+    bad_pixels = [0] * 256
+    bad_pixels[0] = 999
+    request3.json = lambda: {"pixels": bad_pixels}
+    response3 = handler(request3)
+    assert response3.status == 400
+
+    print("  ✓ Pixel art preview validation test passed")
+
+
+def test_pixel_art_save_route():
+    """Test POST /api/pixel-art/save in testing mode (no file I/O)."""
+    print("\nTesting pixel art save route...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/pixel-art/save":
+            handler = func
+            break
+    assert handler is not None, "/api/pixel-art/save route not registered"
+
+    pixels = [0] * 256
+    pixels[5] = 11  # Some red pixels
+    request = MockRequest()
+    request.json = lambda: {"name": "test_icon", "pixels": pixels}
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert data["path"] == "/sd/icons/test_icon.bin"
+
+    print("  ✓ Pixel art save route test passed")
+
+
+def test_pixel_art_save_validation():
+    """Test POST /api/pixel-art/save validates name and pixels."""
+    print("\nTesting pixel art save validation...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/pixel-art/save":
+            handler = func
+            break
+
+    # Missing name
+    request = MockRequest()
+    request.json = lambda: {"pixels": [0] * 256}
+    response = handler(request)
+    assert response.status == 400
+
+    # Invalid name with special chars
+    request2 = MockRequest()
+    request2.json = lambda: {"name": "bad/name!", "pixels": [0] * 256}
+    response2 = handler(request2)
+    assert response2.status == 400
+
+    # Wrong pixel count
+    request3 = MockRequest()
+    request3.json = lambda: {"name": "ok_name", "pixels": [0] * 64}
+    response3 = handler(request3)
+    assert response3.status == 400
+
+    print("  ✓ Pixel art save validation test passed")
+
+
+def test_pixel_art_matrix_manager_stored():
+    """Test that matrix_manager is stored on WebServerManager when provided."""
+    print("\nTesting matrix_manager parameter storage...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    mock_matrix = MockMatrixManager()
+    manager = WebServerManager(config, MockWiFiManager(), matrix_manager=mock_matrix, testing=True)
+
+    assert manager.matrix_manager is mock_matrix
+    assert manager.matrix_manager is not None
+
+    # Without matrix_manager, defaults to None
+    manager2 = WebServerManager(config, MockWiFiManager(), testing=True)
+    assert manager2.matrix_manager is None
+
+    print("  ✓ matrix_manager parameter test passed")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -1182,6 +1406,13 @@ def run_all_tests():
         test_telemetry_sse_generator_with_managers,
         test_telemetry_sse_generator_no_managers,
         test_telemetry_keepalive_chunks,
+        test_pixel_art_palette_route,
+        test_pixel_art_preview_no_matrix,
+        test_pixel_art_preview_with_matrix,
+        test_pixel_art_preview_validation,
+        test_pixel_art_save_route,
+        test_pixel_art_save_validation,
+        test_pixel_art_matrix_manager_stored,
     ]
 
     try:
