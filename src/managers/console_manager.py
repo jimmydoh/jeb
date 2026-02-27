@@ -295,7 +295,8 @@ class ConsoleManager():
             print("\n[Audio Menu]")
             print("1. Play Menu Tick")
             print("2. Play Menu Select")
-            print("3. Stop All Audio")
+            print("3. Rapid Fire Tick (10x)")
+            print("4. Stop All Audio")
             print("0. Back to Main Menu")
 
             choice = await self.get_input(">> ")
@@ -309,6 +310,11 @@ class ConsoleManager():
                 await audio.play("audio/menu/select.wav", channel=audio.CH_SFX)
                 print("Playing menu select.")
             elif choice == "3":
+                print("Playing rapid fire ticks...")
+                for _ in range(10):
+                    await audio.play("audio/menu/tick.wav", channel=audio.CH_SFX, interrupt=False)
+                    await asyncio.sleep(0.1)
+            elif choice == "4":
                 audio.stop_all()
                 print("Audio stopped.")
             else:

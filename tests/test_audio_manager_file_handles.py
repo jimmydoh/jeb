@@ -22,8 +22,13 @@ class MockRawSample:
 
 
 class MockWaveFile:
-    """Mock WaveFile for testing."""
-    def __init__(self, f, buffer):
+    """Mock WaveFile for testing.
+
+    The preload() path calls WaveFile(io.BytesIO(...)) with no buffer, while the
+    streaming path calls WaveFile(file_handle, stream_buffer).  Making buffer
+    optional handles both call signatures.
+    """
+    def __init__(self, f, buffer=None):
         self.sample_rate = 22050
         self.channel_count = 1
         self.bits_per_sample = 16
@@ -152,15 +157,15 @@ def test_stream_file_tracking():
         # Create AudioManager
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
 
-        # Play the file (should stream since it's > 20KB)
-        asyncio.run(manager.play("stream.wav", channel=1))
+        # Play the file on CH_SFX (bus_id=1), which maps to pool [4, 5, 6]; first free = voice 4
+        asyncio.run(manager.play("stream.wav", bus_id=1))
 
-        # Verify file handle is tracked
-        assert 1 in manager._stream_files, "File handle should be tracked for channel 1"
-        assert not manager._stream_files[1].closed, "File handle should be open"
+        # Verify file handle is tracked at the physical voice index (4)
+        assert 4 in manager._stream_files, "File handle should be tracked for physical voice 4 (CH_SFX pool)"
+        assert not manager._stream_files[4].closed, "File handle should be open"
 
         print("  ✓ Stream file tracked in _stream_files")
-        print(f"  ✓ File handle for channel 1 is open")
+        print(f"  ✓ File handle for physical voice 4 (CH_SFX) is open")
 
         manager.stop_all()  # Clean up file handles after test
 
@@ -168,7 +173,7 @@ def test_stream_file_tracking():
 
 
 def test_close_on_new_stream():
-    """Test that old file handles are closed when playing new files."""
+    """Test that old file handles are closed when playing new files on the same bus."""
     print("\nTesting file handle closure on new stream...")
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -179,20 +184,21 @@ def test_close_on_new_stream():
         # Create AudioManager
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
 
-        # Play first file
-        asyncio.run(manager.play("stream1.wav", channel=1))
-        first_handle = manager._stream_files[1]
+        # Use CH_VOICE (bus_id=2), which has a single-voice pool [2].
+        # Both plays will reuse the same physical voice (2).
+        asyncio.run(manager.play("stream1.wav", bus_id=2))
+        first_handle = manager._stream_files[2]
 
-        # Play second file on same channel
-        asyncio.run(manager.play("stream2.wav", channel=1))
-        second_handle = manager._stream_files[1]
+        # Play second file on same bus — pool [2] is fully occupied, round-robin returns voice 2
+        asyncio.run(manager.play("stream2.wav", bus_id=2))
+        second_handle = manager._stream_files[2]
 
         # Verify first handle was closed
         assert first_handle.closed, "First file handle should be closed"
         assert not second_handle.closed, "Second file handle should be open"
         assert first_handle != second_handle, "Should be different file handles"
 
-        print("  ✓ First file handle closed when second file played")
+        print("  ✓ First file handle closed when second file played on same bus")
         print("  ✓ Second file handle is open")
 
         manager.stop_all()  # Clean up file handles after test
@@ -206,21 +212,21 @@ def test_close_on_stop():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create a large file
-        large_file = create_test_file(tmpdir, "stream.wav", 30720)
+        create_test_file(tmpdir, "stream.wav", 30720)
 
         # Create AudioManager
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
 
-        # Play file
-        asyncio.run(manager.play("stream.wav", channel=1))
-        file_handle = manager._stream_files[1]
+        # Play file on CH_SFX (bus_id=1), pool [4, 5, 6]; first free = voice 4
+        asyncio.run(manager.play("stream.wav", bus_id=1))
+        file_handle = manager._stream_files[4]
 
-        # Stop playback
+        # Stop the CH_SFX bus
         manager.stop(1)
 
         # Verify file handle was closed and removed from tracking
         assert file_handle.closed, "File handle should be closed after stop()"
-        assert 1 not in manager._stream_files, "File handle should be removed from tracking"
+        assert 4 not in manager._stream_files, "File handle should be removed from tracking"
 
         print("  ✓ File handle closed on stop()")
         print("  ✓ File handle removed from tracking")
@@ -241,22 +247,25 @@ def test_close_on_stop_all():
         # Create AudioManager
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
 
-        # Play files on different channels
-        asyncio.run(manager.play("stream1.wav", channel=0))
-        asyncio.run(manager.play("stream2.wav", channel=1))
-        asyncio.run(manager.play("stream3.wav", channel=2))
+        # Play files on different buses with predictable single-voice pools:
+        # CH_ATMO (bus_id=0) -> pool [0, 1], first free = voice 0
+        # CH_VOICE (bus_id=2) -> pool [2]  -> voice 2
+        # CH_SYNTH (bus_id=3) -> pool [3]  -> voice 3
+        asyncio.run(manager.play("stream1.wav", bus_id=0))
+        asyncio.run(manager.play("stream2.wav", bus_id=2))
+        asyncio.run(manager.play("stream3.wav", bus_id=3))
 
         handle1 = manager._stream_files[0]
-        handle2 = manager._stream_files[1]
-        handle3 = manager._stream_files[2]
+        handle2 = manager._stream_files[2]
+        handle3 = manager._stream_files[3]
 
         # Stop all playback
         manager.stop_all()
 
         # Verify all file handles were closed
-        assert handle1.closed, "Channel 0 file handle should be closed"
-        assert handle2.closed, "Channel 1 file handle should be closed"
-        assert handle3.closed, "Channel 2 file handle should be closed"
+        assert handle1.closed, "Voice 0 (CH_ATMO) file handle should be closed"
+        assert handle2.closed, "Voice 2 (CH_VOICE) file handle should be closed"
+        assert handle3.closed, "Voice 3 (CH_SYNTH) file handle should be closed"
         assert len(manager._stream_files) == 0, "All file handles should be removed from tracking"
 
         print("  ✓ All file handles closed on stop_all()")
@@ -272,21 +281,21 @@ def test_cached_vs_streamed():
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create a small file (will be cached) and a large file (will be streamed)
         create_test_file(tmpdir, "small.wav", 10240)
-        large_file = create_test_file(tmpdir, "large.wav", 30720)
+        create_test_file(tmpdir, "large.wav", 30720)
 
         # Create AudioManager and preload small file
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
         manager.preload(["small.wav"])
 
         try:
-            # Play cached file
-            asyncio.run(manager.play("small.wav", channel=1))
-            assert 1 not in manager._stream_files, "Cached file should not create stream file handle"
+            # Use CH_VOICE (bus_id=2), pool [2] -> physical voice 2
+            asyncio.run(manager.play("small.wav", bus_id=2))
+            assert 2 not in manager._stream_files, "Cached file should not create stream file handle"
 
-            # Play streamed file
-            asyncio.run(manager.play("large.wav", channel=1))
-            assert 1 in manager._stream_files, "Streamed file should create stream file handle"
-            assert not manager._stream_files[1].closed, "Streamed file handle should be open"
+            # Play streamed file on the same bus
+            asyncio.run(manager.play("large.wav", bus_id=2))
+            assert 2 in manager._stream_files, "Streamed file should create stream file handle"
+            assert not manager._stream_files[2].closed, "Streamed file handle should be open"
 
             print("  ✓ Cached file does not create stream file handle")
             print("  ✓ Streamed file creates stream file handle")
@@ -303,23 +312,23 @@ def test_close_stream_when_playing_cached():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create files
-        small_file = create_test_file(tmpdir, "small.wav", 10240)
-        large_file = create_test_file(tmpdir, "large.wav", 30720)
+        create_test_file(tmpdir, "small.wav", 10240)
+        create_test_file(tmpdir, "large.wav", 30720)
 
         # Create AudioManager and preload small file
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
         manager.preload(["small.wav"])
 
-        # Play streamed file first
-        asyncio.run(manager.play("large.wav", channel=1))
-        stream_handle = manager._stream_files[1]
+        # Use CH_VOICE (bus_id=2), pool [2] -> physical voice 2
+        asyncio.run(manager.play("large.wav", bus_id=2))
+        stream_handle = manager._stream_files[2]
 
-        # Play cached file on same channel
-        asyncio.run(manager.play("small.wav", channel=1))
+        # Play cached file on same bus
+        asyncio.run(manager.play("small.wav", bus_id=2))
 
         # Verify stream handle was closed
         assert stream_handle.closed, "Stream file handle should be closed when playing cached audio"
-        assert 1 not in manager._stream_files, "Stream file handle should be removed from tracking"
+        assert 2 not in manager._stream_files, "Stream file handle should be removed from tracking"
 
         print("  ✓ Stream file handle closed when switching to cached audio")
 
@@ -327,48 +336,51 @@ def test_close_stream_when_playing_cached():
 
 
 def test_multiple_channels():
-    """Test that file handles are managed independently per channel."""
-    print("\nTesting independent channel management...")
+    """Test that file handles are managed independently per bus."""
+    print("\nTesting independent bus management...")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         manager = None
         try:
             # Create multiple files
-            file1 = create_test_file(tmpdir, "stream1.wav", 30720)
-            file2 = create_test_file(tmpdir, "stream2.wav", 30720)
-            file3 = create_test_file(tmpdir, "stream3.wav", 30720)
+            create_test_file(tmpdir, "stream1.wav", 30720)
+            create_test_file(tmpdir, "stream2.wav", 30720)
+            create_test_file(tmpdir, "stream3.wav", 30720)
 
             # Create AudioManager
             manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
 
-            # Play different files on different channels
-            asyncio.run(manager.play("stream1.wav", channel=0))
-            asyncio.run(manager.play("stream2.wav", channel=1))
-            asyncio.run(manager.play("stream3.wav", channel=2))
+            # Play different files on different buses with predictable single-voice pools:
+            # CH_ATMO (bus_id=0) -> pool [0, 1], first free = voice 0
+            # CH_VOICE (bus_id=2) -> pool [2]  -> voice 2
+            # CH_SYNTH (bus_id=3) -> pool [3]  -> voice 3
+            asyncio.run(manager.play("stream1.wav", bus_id=0))
+            asyncio.run(manager.play("stream2.wav", bus_id=2))
+            asyncio.run(manager.play("stream3.wav", bus_id=3))
 
             handle1 = manager._stream_files[0]
-            handle2 = manager._stream_files[1]
-            handle3 = manager._stream_files[2]
+            handle2 = manager._stream_files[2]
+            handle3 = manager._stream_files[3]
 
-            # Stop channel 1
-            manager.stop(1)
+            # Stop CH_VOICE bus only
+            manager.stop(2)
 
-            # Verify only channel 1 was closed
-            assert not handle1.closed, "Channel 0 should still be open"
-            assert handle2.closed, "Channel 1 should be closed"
-            assert not handle3.closed, "Channel 2 should still be open"
+            # Verify only CH_VOICE was closed
+            assert not handle1.closed, "Voice 0 (CH_ATMO) should still be open"
+            assert handle2.closed, "Voice 2 (CH_VOICE) should be closed"
+            assert not handle3.closed, "Voice 3 (CH_SYNTH) should still be open"
 
-            assert 0 in manager._stream_files, "Channel 0 should still be tracked"
-            assert 1 not in manager._stream_files, "Channel 1 should not be tracked"
-            assert 2 in manager._stream_files, "Channel 2 should still be tracked"
+            assert 0 in manager._stream_files, "Voice 0 (CH_ATMO) should still be tracked"
+            assert 2 not in manager._stream_files, "Voice 2 (CH_VOICE) should not be tracked"
+            assert 3 in manager._stream_files, "Voice 3 (CH_SYNTH) should still be tracked"
 
-            print("  ✓ File handles managed independently per channel")
-            print("  ✓ Stopping one channel doesn't affect others")
+            print("  ✓ File handles managed independently per bus")
+            print("  ✓ Stopping one bus doesn't affect others")
         finally:
             if manager is not None:
                 manager.stop_all()
 
-    print("✓ Multiple channels test passed")
+    print("✓ Multiple buses test passed")
 
 
 if __name__ == "__main__":

@@ -495,7 +495,7 @@ async def test_test_audio_stop_all():
     app = MockApp()
     cm = ConsoleManager("CORE", "00", app=app)
 
-    input_queue = ["3", "0"]
+    input_queue = ["4", "0"]
 
     async def fake_input(prompt):
         return input_queue.pop(0) if input_queue else "0"
