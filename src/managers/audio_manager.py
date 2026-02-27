@@ -385,3 +385,11 @@ class AudioManager:
                 except Exception:
                     pass
                 del self._stream_files[voice_idx]
+
+    async def start_polling(self, heartbeat_callback=None):
+        """Background task to clean up finished audio streams to prevent memory leaks."""
+        while True:
+            if heartbeat_callback:
+                heartbeat_callback()
+            self.update()
+            await asyncio.sleep(0.1)  # Poll at 10Hz
