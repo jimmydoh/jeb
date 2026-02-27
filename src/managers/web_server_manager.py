@@ -12,6 +12,7 @@ Features:
 - Manual OTA update trigger
 - Debug mode toggle
 - Satellite reordering
+- Pixel Art Studio (live LED matrix drawing canvas)
 
 Dependencies:
 - JEBLogger (for logging within the web server)
@@ -29,6 +30,7 @@ import time
 from adafruit_httpserver import Server, Request, Response, GET, POST
 
 from utilities.logger import JEBLogger
+from utilities.palette import Palette
 
 class WebServerManager:
     """
@@ -43,7 +45,7 @@ class WebServerManager:
     MAX_UPLOAD_SIZE_BYTES = 50 * 1024  # Maximum upload size (50KB)
     DEFAULT_MAX_LOGS = 1000  # Default maximum log entries to keep
 
-    def __init__(self, config, wifi_manager, console_buffer=None, power_manager=None, satellite_manager=None, testing=False):
+    def __init__(self, config, wifi_manager, console_buffer=None, power_manager=None, satellite_manager=None, matrix_manager=None, testing=False):
         """
         Initialize the web server manager.
 
@@ -53,6 +55,7 @@ class WebServerManager:
             console_buffer (object): Optional console buffer for output capture
             power_manager (PowerManager): Optional PowerManager for live telemetry
             satellite_manager (SatelliteNetworkManager): Optional SatelliteNetworkManager for link telemetry
+            matrix_manager (MatrixManager): Optional MatrixManager for live pixel art preview
         """
         if wifi_manager is None:
             JEBLogger.warning("WEBS", "No WiFiManager provided - WebServerManager cannot start")
@@ -69,6 +72,7 @@ class WebServerManager:
         self.console_buffer = console_buffer
         self.power_manager = power_manager
         self.satellite_manager = satellite_manager
+        self.matrix_manager = matrix_manager
 
         self.server = None
         self.pool = None
@@ -639,7 +643,119 @@ class WebServerManager:
                 },
             )
 
-    def _save_config(self):
+        # API: Get pixel art palette
+        @self.server.route("/api/pixel-art/palette", GET)
+        def get_pixel_art_palette(request: Request):
+            """Return the color palette as JSON for use in the pixel art studio."""
+            try:
+                palette_data = {}
+                for idx in sorted(Palette.LIBRARY.keys()):
+                    color = Palette.LIBRARY[idx]
+                    palette_data[str(idx)] = {
+                        "name": color.name,
+                        "r": color.r,
+                        "g": color.g,
+                        "b": color.b,
+                    }
+                return Response(request, json.dumps(palette_data),
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Preview pixel art on the live LED matrix
+        @self.server.route("/api/pixel-art/preview", POST)
+        def preview_pixel_art(request: Request):
+            """Draw pixel art on the live LED matrix for real-time preview."""
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                pixels = data.get("pixels")
+                if not pixels or len(pixels) != 256:
+                    return Response(request, '{"error": "pixels must be an array of 256 values"}',
+                                  content_type="application/json", status=400)
+
+                for v in pixels:
+                    if not isinstance(v, int) or v < 0 or v > 255:
+                        return Response(request, '{"error": "pixel values must be integers 0-255"}',
+                                      content_type="application/json", status=400)
+
+                if self.matrix_manager is None:
+                    return Response(request, '{"status": "no_matrix", "message": "Matrix manager not available"}',
+                                  content_type="application/json")
+
+                # Clear matrix and draw each pixel
+                self.matrix_manager.clear()
+                for y in range(16):
+                    for x in range(16):
+                        val = pixels[y * 16 + x]
+                        if val != 0:
+                            color = Palette.LIBRARY.get(val)
+                            if color:
+                                self.matrix_manager.draw_pixel(x, y, color)
+
+                self.log("Pixel art preview updated on matrix")
+                return Response(request, '{"status": "success"}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Save pixel art as a .bin icon file
+        @self.server.route("/api/pixel-art/save", POST)
+        def save_pixel_art(request: Request):
+            """Save pixel art as a .bin file to /sd/icons/."""
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                name = data.get("name", "").strip()
+                pixels = data.get("pixels")
+
+                if not name:
+                    return Response(request, '{"error": "name is required"}',
+                                  content_type="application/json", status=400)
+
+                # Validate name: letters, numbers, and underscores only
+                valid_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+                if not all(c in valid_chars for c in name):
+                    return Response(request, '{"error": "name must contain only letters, numbers, and underscores"}',
+                                  content_type="application/json", status=400)
+
+                if not pixels or len(pixels) != 256:
+                    return Response(request, '{"error": "pixels must be an array of 256 values"}',
+                                  content_type="application/json", status=400)
+
+                for v in pixels:
+                    if not isinstance(v, int) or v < 0 or v > 255:
+                        return Response(request, '{"error": "pixel values must be integers 0-255"}',
+                                      content_type="application/json", status=400)
+
+                filepath = f"/sd/icons/{name.lower()}.bin"
+
+                if not self._testing:
+                    # Ensure /sd/icons/ directory exists
+                    try:
+                        os.mkdir("/sd/icons")
+                    except OSError:
+                        pass  # Directory already exists
+
+                    with open(filepath, "wb") as f:
+                        f.write(bytes(pixels))
+
+                self.log(f"Pixel art saved: {filepath}")
+                return Response(request, f'{{"status": "success", "path": "{filepath}"}}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+
         """Save configuration to config.json."""
         if self._testing:
             return
