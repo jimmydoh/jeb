@@ -66,8 +66,8 @@ def test_get_required_voice_count():
 
     required = AudioChannels.voice_count()
 
-    # Should be 6 (highest index is 3, plus 2 additional SFX pool channels)
-    assert required == 6, f"Required voice count should be 6, got {required}"
+    # Should be 7 (2 atmo + 1 voice + 1 synth + 3 sfx)
+    assert required == 7, f"Required voice count should be 7, got {required}"
 
     print(f"  ✓ Required voice count is {required}")
     print("✓ get_required_voice_count() test passed")

@@ -17,3 +17,11 @@ class AudioChannels:
     CH_SFX = 1    # Sound effects WAV files
     CH_VOICE = 2  # Voice narration WAV files
     CH_SYNTH = 3  # Synthio generated audio
+
+    # Total mixer voices: 2 atmo + 1 voice + 1 synth + 3 sfx
+    VOICE_COUNT = 7
+
+    @classmethod
+    def voice_count(cls):
+        """Return the total number of mixer voices required."""
+        return cls.VOICE_COUNT
