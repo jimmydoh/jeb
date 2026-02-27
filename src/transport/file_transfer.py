@@ -37,6 +37,14 @@ any protocol changes.
 """
 
 import asyncio
+
+try:
+    wait_for_ms = asyncio.wait_for_ms
+except AttributeError:
+    # We are on standard CPython (desktop emulator)
+    async def wait_for_ms(aw, timeout_ms):
+        return await asyncio.wait_for(aw, timeout_ms / 1000.0)
+
 import hashlib
 import os
 import struct
@@ -64,6 +72,10 @@ def _makedirs(path):
     """
     if not path:
         return
+
+    # Normalize Windows paths for PC testing
+    path = path.replace("\\", "/")
+
     # Build the list of ancestor paths to create, innermost last.
     parts = []
     current = path
@@ -165,7 +177,7 @@ class FileTransferSender:
         """
         file_stat = os.stat(filepath)
         file_size = file_stat[6]
-        filename = remote_filename if remote_filename is not None else filepath.split("/")[-1]
+        filename = remote_filename if remote_filename is not None else filepath.replace("\\", "/").split("/")[-1]
 
         # --- FILE_START ---
         start_payload = f"{filename},{file_size}"
@@ -209,7 +221,7 @@ class FileTransferSender:
             bool: ``True`` if ACK received, ``False`` on NACK or timeout.
         """
         try:
-            msg = await asyncio.wait_for(self.transport.receive(), timeout=self.timeout)
+            msg = await wait_for_ms(self.transport.receive(), 1000 * self.timeout)
             return msg is not None and msg.command == CMD_ACK
         except asyncio.TimeoutError:
             return False

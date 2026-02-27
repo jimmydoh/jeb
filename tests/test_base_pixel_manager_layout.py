@@ -44,20 +44,20 @@ PixelLayout = base_pixel_manager_module.PixelLayout
 
 
 def test_pixel_layout_enum():
-    """Test that PixelLayout enum has expected values."""
-    print("Testing PixelLayout enum...")
+    """Test that PixelLayout has expected string constants."""
+    print("Testing PixelLayout constants...")
     
     assert hasattr(PixelLayout, 'LINEAR'), "PixelLayout should have LINEAR"
     assert hasattr(PixelLayout, 'MATRIX_2D'), "PixelLayout should have MATRIX_2D"
     assert hasattr(PixelLayout, 'CIRCLE'), "PixelLayout should have CIRCLE"
     assert hasattr(PixelLayout, 'CUSTOM'), "PixelLayout should have CUSTOM"
     
-    assert PixelLayout.LINEAR.value == "linear"
-    assert PixelLayout.MATRIX_2D.value == "matrix_2d"
-    assert PixelLayout.CIRCLE.value == "circle"
-    assert PixelLayout.CUSTOM.value == "custom"
+    assert PixelLayout.LINEAR == "linear"
+    assert PixelLayout.MATRIX_2D == "matrix_2d"
+    assert PixelLayout.CIRCLE == "circle"
+    assert PixelLayout.CUSTOM == "custom"
     
-    print("✓ PixelLayout enum test passed")
+    print("✓ PixelLayout constants test passed")
 
 
 def test_base_pixel_manager_default_layout():
@@ -155,7 +155,7 @@ def test_get_shape_returns_dict():
     assert isinstance(shape, dict), "get_shape should return a dict"
     assert 'type' in shape, "shape dict should have 'type' key"
     assert 'dimensions' in shape, "shape dict should have 'dimensions' key"
-    assert isinstance(shape['type'], PixelLayout), "shape['type'] should be PixelLayout enum"
+    assert isinstance(shape['type'], str), "shape['type'] should be a string layout identifier"
     assert isinstance(shape['dimensions'], tuple), "shape['dimensions'] should be a tuple"
     
     print("✓ get_shape() structure test passed")

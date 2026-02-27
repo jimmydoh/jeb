@@ -1,0 +1,1 @@
+Adafruit CircuitPython 10.0.3 on 2025-01-01; Raspberry Pi Pico 2 with rp2350

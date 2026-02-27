@@ -21,6 +21,9 @@ from transport.protocol import (
     CMD_REBOOT,
     CMD_MODE,
     CMD_ACK,
+    CMD_SET_OFFSET,
+    CMD_GLOBAL_RAINBOW,
+    CMD_GLOBAL_RAIN,
     CMD_VERSION_CHECK,
     CMD_UPDATE_START,
     CMD_UPDATE_WAIT,
@@ -33,12 +36,8 @@ from transport.protocol import (
     PAYLOAD_SCHEMAS
 )
 
+from utilities.logger import JEBLogger
 from utilities.pins import Pins
-
-POW_INPUT = "input_20v"
-POW_BUS = "satbus_20v"
-POW_MAIN = "main_5v"
-POW_LED = "led_5v"
 
 class SatelliteFirmware:
     """
@@ -59,6 +58,9 @@ class SatelliteFirmware:
         self.sat_type_id = sat_type_id
         self.sat_type_name = sat_type_name
 
+        JEBLogger.set_source(self.id)
+        JEBLogger.info("FIRM", f"[INIT] SatelliteFirmware - type_id: {self.sat_type_id}, type_name: {self.sat_type_name}")
+
         Pins.initialize(profile="SAT", type_id=self.sat_type_id)
 
         # State Variables
@@ -72,34 +74,18 @@ class SatelliteFirmware:
         self.time_offset = 0.0  # Estimated time difference from Core (in seconds)
 
         self.operating_mode = "IDLE"
+        self._sleeping = False
 
         # Common Hardware
         # Init I2C bus (if needed for future expansion)
         self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
 
-        # Init ADC Manager for voltage sensing
-        from managers.adc_manager import ADCManager
-        adc_config = Pins.ADC_CONFIG
-        self.adc = ADCManager(
-            i2c_bus=self.i2c if adc_config["chip_type"] != "NATIVE" else None,
-            chip_type=adc_config["chip_type"],
-            address=adc_config.get("address", 0x48)
-        )
-        
-        # Configure ADC channels from Pins configuration
-        for channel in adc_config["channels"]:
-            self.adc.add_channel(
-                channel["name"],
-                channel["pin"],
-                channel["multiplier"]
-            )
-
-        # Init power manager with ADCManager
+        # Init power manager with PowerBus dependencies
         self.power = PowerManager(
-            self.adc,
-            [POW_INPUT, POW_BUS, POW_MAIN],
+            Pins.POWER_SENSORS,
             Pins.MOSFET_CONTROL,
-            Pins.SATBUS_DETECT
+            Pins.SATBUS_DETECT,
+            i2c_bus = self.i2c
         )
 
         # UART for satellite communication
@@ -127,9 +113,16 @@ class SatelliteFirmware:
             CMD_REBOOT: self._handle_reboot_command,
             CMD_MODE: self._handle_mode_command,
             CMD_ACK: self._handle_ack_command,
+            CMD_SET_OFFSET: self._handle_set_offset,
+            CMD_GLOBAL_RAINBOW: self._handle_global_rainbow,
+            CMD_GLOBAL_RAIN: self._handle_global_rain,
             CMD_UPDATE_START: self._handle_update_start,
             CMD_UPDATE_WAIT: self._handle_update_wait,
         }
+
+        # Global animation state: instantiated when SETOFF is received
+        self._global_anim_ctrl = None
+        self._global_anim_task = None  # Tracked task for active global animation
 
         # Version check and firmware update state
         self._version_check_sent = False      # True after VERSION_CHECK sent to core
@@ -143,7 +136,8 @@ class SatelliteFirmware:
 
         self.watchdog = WatchdogManager(
             task_names=[],
-            timeout=5.0
+            timeout=5.0,
+            mode="RESET"
         )
 
     def __init_subclass__(cls, **kwargs):
@@ -184,6 +178,8 @@ class SatelliteFirmware:
                 # I don't have an ID yet, use the current index
                 new_index = current_index + 1
                 self.id = f"{type_prefix}{new_index:02d}"
+                JEBLogger.set_source(self.id)
+                JEBLogger.info("FIRM", f"Assigned new ID based on NEW_SAT: {self.id}")
                 #print(f"{self.sat_type_id}-{self.id}: Assigned new ID based on NEW_SAT: {self.id}")
 
             # Send back a HELLO
@@ -224,8 +220,20 @@ class SatelliteFirmware:
         if isinstance(val, bytes):
             val = val.decode('utf-8')
         new_mode = val.strip().upper()
-        
+
+        # 1. Power State Management
+        if new_mode == "SLEEP":
+            await self._enter_sleep()
+            return
+        elif new_mode == "WAKE":
+            await self._wake_local()
+            return
+
+        # 2. Operating State Management (IDLE / ACTIVE)
         if new_mode in ("IDLE", "ACTIVE"):
+            # If we enter a game state, implicitly wake up hardware
+            await self._wake_local()
+
             if self.operating_mode != new_mode:
                 self.operating_mode = new_mode
                 # Notify upstream that the switch was successful
@@ -233,6 +241,28 @@ class SatelliteFirmware:
                     pass
                 # Trigger subclass specific cleanups
                 await self.on_mode_change(new_mode)
+
+    async def _enter_sleep(self):
+        """Enter global sleep state and trigger hardware-specific power downs."""
+        if self._sleeping:
+            return
+        self._sleeping = True
+        await self.on_sleep()
+
+    async def _wake_local(self):
+        """Exit sleep state and trigger hardware-specific wake routines."""
+        if not self._sleeping:
+            return
+        self._sleeping = False
+        await self.on_wake()
+
+    async def on_sleep(self):
+        """Virtual hook for subclasses to power down hardware."""
+        pass
+
+    async def on_wake(self):
+        """Virtual hook for subclasses to restore hardware state."""
+        pass
 
     async def on_mode_change(self, new_mode):
         """Virtual hook for subclasses to react to mode transitions."""
@@ -262,6 +292,109 @@ class SatelliteFirmware:
         """
         if self._version_check_sent and not self._version_confirmed and not self._update_mode:
             self._version_confirmed = True
+
+    async def _handle_set_offset(self, val):
+        """Handle SETOFF from core.
+
+        Stores the satellite's spatial position on the global animation canvas
+        and instantiates a :class:`GlobalAnimationController`, registering this
+        satellite's LEDs at the provided offset so that global animations can be
+        rendered locally with correct coordinates.
+
+        Subclasses may override :meth:`_register_global_anim_leds` to attach
+        their specific hardware managers to the controller.
+
+        Parameters:
+            val: Payload — a tuple/list of two integers ``[offset_x, offset_y]``.
+        """
+        try:
+            if isinstance(val, (list, tuple)) and len(val) >= 2:
+                offset_x = int(val[0])
+                offset_y = int(val[1])
+            else:
+                parts = str(val).split(',')
+                offset_x = int(parts[0])
+                offset_y = int(parts[1]) if len(parts) > 1 else 0
+        except (ValueError, IndexError, TypeError):
+            print(f"{self.sat_type_id}-{self.id}: Invalid SETOFF payload: {val}")
+            return
+
+        from managers.global_animation_controller import GlobalAnimationController
+        self._global_anim_ctrl = GlobalAnimationController()
+        self._register_global_anim_leds(offset_x, offset_y)
+        print(f"{self.sat_type_id}-{self.id}: Global canvas offset set to ({offset_x}, {offset_y})")
+
+    def _register_global_anim_leds(self, offset_x, offset_y):
+        """Hook for subclasses to register their LEDs with the global animation controller.
+
+        Called automatically by :meth:`_handle_set_offset` after the controller
+        is created.  The default implementation does nothing; concrete satellite
+        subclasses should override this method to call
+        ``self._global_anim_ctrl.register_led_strip(...)`` (or similar) with
+        their hardware managers.
+
+        Parameters:
+            offset_x: Global X offset received from the Core.
+            offset_y: Global Y offset received from the Core.
+        """
+        pass  # Intentionally empty; subclasses override to attach hardware managers
+
+    async def _handle_global_rainbow(self, val):
+        """Handle GLOBALRBOW from core — start a synchronized rainbow wave.
+
+        Parses the speed parameter and starts :meth:`global_rainbow_wave` on the
+        local :class:`GlobalAnimationController` (if one has been initialised via
+        SETOFF).  Any previously running global animation task is cancelled first
+        to avoid resource leaks and conflicting animations.
+
+        Parameters:
+            val: Payload — a float or tuple containing ``[speed]``.
+        """
+        if self._global_anim_ctrl is None:
+            return
+        try:
+            if isinstance(val, (list, tuple)):
+                speed = float(val[0])
+            else:
+                speed = float(val)
+        except (ValueError, TypeError):
+            speed = 30.0
+        import asyncio
+        if self._global_anim_task and not self._global_anim_task.done():
+            self._global_anim_task.cancel()
+        self._global_anim_task = asyncio.create_task(
+            self._global_anim_ctrl.global_rainbow_wave(speed=speed)
+        )
+
+    async def _handle_global_rain(self, val):
+        """Handle GLOBALRAIN from core — start a synchronized rain animation.
+
+        Parses the speed and density parameters and starts :meth:`global_rain`
+        on the local :class:`GlobalAnimationController` (if one has been
+        initialised via SETOFF).  Any previously running global animation task is
+        cancelled first to avoid resource leaks and conflicting animations.
+
+        Parameters:
+            val: Payload — a tuple/list of ``[speed, density]`` floats.
+        """
+        if self._global_anim_ctrl is None:
+            return
+        try:
+            if isinstance(val, (list, tuple)):
+                speed = float(val[0]) if len(val) > 0 else 0.15
+                density = float(val[1]) if len(val) > 1 else 0.3
+            else:
+                speed = float(val)
+                density = 0.3
+        except (ValueError, TypeError):
+            speed = 0.15
+            density = 0.3
+        import asyncio
+        if self._global_anim_task and not self._global_anim_task.done():
+            self._global_anim_task.cancel()
+        self._global_anim_task = asyncio.create_task(
+            self._global_anim_ctrl.global_rain(speed=speed, density=density)
+        )
 
     async def _handle_update_start(self, val):
         """Handle UPDATE_START from core — enter firmware update mode.
@@ -409,15 +542,61 @@ class SatelliteFirmware:
         """Background task to watch for local brownouts or downstream faults."""
         last_broadcast = 0
         while True:
+            # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("power")
 
-            # Update voltages and get current readings
-            v = self.power.status
             now = time.monotonic()
 
-            # Safety Check: Downstream Bus Failure cut-off
-            if self.power.sat_pwr.value and v[POW_BUS] < 17.0:
-                self.power.emergency_kill() # Instant cut-off
+            # Use the PowerManager to check the health of the power buses
+            healthy, message = self.power.is_healthy()
+            if not healthy:
+                pass
+                #TODO: Action to take for problematic power
+
+            # Get specific buses
+            input_bus = self.power.get_input_bus()
+            satbus_bus = self.power.get_satbus_bus()
+            main_bus = self.power.get_main_bus()
+
+            # Check input bus
+            if input_bus and not input_bus.is_healthy():
+                if not self.transport_up.send(
+                    Message(
+                        self.id,
+                        "CORE",
+                        "ERROR",
+                        f"INPUT BUS BROWNOUT: {input_bus.name} - {input_bus.get_status_string()} {input_bus.v_now:.2f}V"
+                    )
+                ):
+                    # TODO: Implement retry logic for critical error messages like brownouts
+                    pass
+
+            # Check satbus downstream bus
+            if satbus_bus and not satbus_bus.is_healthy():
+                self.power.emergency_kill() # Immediate hardware cut-off
+                if not self.transport_up.send(
+                    Message(
+                        self.id,
+                        "CORE",
+                        "ERROR",
+                        f"SATBUS BUS BROWNOUT: {satbus_bus.name} - {satbus_bus.get_status_string()} {satbus_bus.v_now:.2f}V"
+                    )
+                ):
+                    # TODO: Implement retry logic for critical error messages like brownouts
+                    pass
+
+            # Check main bus
+            if main_bus and not main_bus.is_healthy():
+                if not self.transport_up.send(
+                    Message(
+                        self.id,
+                        "CORE",
+                        "ERROR",
+                        f"MAIN BUS BROWNOUT: {main_bus.name} - {main_bus.get_status_string()} {main_bus.v_now:.2f}V"
+                    )
+                ):
+                    # TODO: Implement retry logic for critical error messages like brownouts
+                    pass
 
             # Suppress power monitoring messages during initial
             # discovery phase when ID is not yet assigned
@@ -432,39 +611,13 @@ class SatelliteFirmware:
                         self.id,
                         "CORE",
                         "POWER",
-                        [v[POW_INPUT], v[POW_BUS], v[POW_MAIN]]
+                        f"{input_bus.v_now:.2f},{satbus_bus.v_now:.2f},{main_bus.v_now:.2f}"
                     )
                 ):
                     # Ignore send failure, will retry on next status update or command
                     pass
                 else:
                     last_broadcast = now
-
-            # Send Error Message for Logic rail sagging
-            if v[POW_MAIN] < 4.7:
-                if not self.transport_up.send(
-                    Message(
-                        self.id,
-                        "CORE",
-                        "ERROR",
-                        f"LOGIC_BROWNOUT:{v[POW_MAIN]}V"
-                    )
-                ):
-                    # TODO: Implement retry logic for critical error messages like brownouts
-                    pass
-
-            # Send Error Message for Downstream Bus Failure
-            if self.power.sat_pwr.value and v[POW_BUS] < 17.0:
-                if not self.transport_up.send(
-                    Message(
-                        self.id,
-                        "CORE",
-                        "ERROR",
-                        "BUS_SHUTDOWN:LOW_V"
-                    )
-                ):
-                    # TODO: Implement retry logic for critical error messages like bus shutdown
-                    pass
 
             await asyncio.sleep(0.5)
 
@@ -605,23 +758,21 @@ class SatelliteFirmware:
         while True:
             self.watchdog.check_in("rx_upstream")
             try:
-                # Receive message via transport (async wait)
-                # This yields efficiently until a complete message is ready
-                message = await self.transport_up.receive()
+                message = self.transport_up.receive_nowait()
 
                 if message:
-                    #print(f"{self.sat_type_id}-{self.id}: Received upstream message: {message}")
-                    # 1. Local Processing
                     # Process if addressed to us (ID match) or broadcast (ALL)
                     if message.destination == self.id or message.destination == "ALL":
-                        #print(f"{self.sat_type_id}-{self.id}: Processing command '{message.command}' with payload: {message.payload}")
                         await self._process_local_cmd(message.command, message.payload)
+
                     if not message.destination == self.id:
-                        # 2. Forward Downstream (Application-level Relay)
-                        # We forward the message object downstream.
+                        # Forward Downstream (Application-level Relay)
                         if not self.transport_down.send(message):
-                            # Short delay if downstream buffer full, to avoid tight loop
                             await asyncio.sleep(0.01)
+                else:
+                    # No message, wait briefly before checking again
+                    await asyncio.sleep(0.05)
+
             except ValueError as e:
                 # Buffer overflow or CRC error
                 print(f"Transport Error: {e}")

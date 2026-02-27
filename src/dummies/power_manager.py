@@ -3,7 +3,6 @@
 
 import asyncio
 
-
 class _SafeVoltageDict(dict):
     """Dict subclass that returns a safe non-alerting voltage for any missing key."""
 
@@ -20,6 +19,8 @@ class PowerManager:
     """
 
     def __init__(self, *args, **kwargs):
+        self.sat_pwr = type('sat_pwr', (), {'value': False})()
+        self.sat_detect = type('sat_detect', (), {'value': False})()
         pass
 
     @property
@@ -50,3 +51,21 @@ class PowerManager:
 
     async def check_power_integrity(self):
         return True
+
+    def get_telemetry_payload(self, *args, **kwargs):
+        return None
+    
+    def get_input_bus(self, *args, **kwargs):
+        return None
+    
+    def get_satbus_bus(self, *args, **kwargs):
+        return None
+    
+    def get_main_bus(self, *args, **kwargs):
+        return None
+
+    def get_other_buses(self, *args, **kwargs):
+        return None
+    
+    def is_healthy(self, *args, **kwargs):
+        return True, "Dummy PowerManager always healthy"

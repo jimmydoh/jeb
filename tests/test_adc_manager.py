@@ -127,14 +127,14 @@ def test_adc_manager_add_channel():
     adc = ADCManager(mock_i2c)
     
     # Add a 20V channel with 11:1 voltage divider
-    adc.add_channel("20V_MAIN", pin_or_index=0, divider_multiplier=11.0)
+    adc.add_channel("20V_MAIN", pin=0, multiplier=11.0)
     
     assert "20V_MAIN" in adc.channels
     assert adc.channels["20V_MAIN"]["multiplier"] == 11.0
     assert adc.channels["20V_MAIN"]["analog_in"] is not None
     
     # Add a 5V channel with 2:1 voltage divider
-    adc.add_channel("5V_LED", pin_or_index=2, divider_multiplier=2.0)
+    adc.add_channel("5V_LED", pin=2, multiplier=2.0)
     
     assert "5V_LED" in adc.channels
     assert adc.channels["5V_LED"]["multiplier"] == 2.0
@@ -150,7 +150,7 @@ def test_adc_manager_read_channel():
     adc = ADCManager(mock_i2c)
     
     # Add channel and configure it
-    adc.add_channel("20V_MAIN", pin_or_index=0, divider_multiplier=11.0)
+    adc.add_channel("20V_MAIN", pin=0, multiplier=11.0)
     
     # Mock voltage is 1.81V by default, which should be 19.91V with 11x multiplier
     voltage = adc.read("20V_MAIN")
@@ -186,10 +186,10 @@ def test_adc_manager_read_all():
     adc = ADCManager(mock_i2c)
     
     # Add multiple channels
-    adc.add_channel("20V_MAIN", pin_or_index=0, divider_multiplier=11.0)
-    adc.add_channel("20V_SAT", pin_or_index=1, divider_multiplier=11.0)
-    adc.add_channel("5V_LED", pin_or_index=2, divider_multiplier=2.0)
-    adc.add_channel("5V_LOGIC", pin_or_index=3, divider_multiplier=2.0)
+    adc.add_channel("20V_MAIN", pin=0, multiplier=11.0)
+    adc.add_channel("20V_SAT", pin=1, multiplier=11.0)
+    adc.add_channel("5V_LED", pin=2, multiplier=2.0)
+    adc.add_channel("5V_LOGIC", pin=3, multiplier=2.0)
     
     # Read all channels
     all_voltages = adc.read_all()
@@ -224,7 +224,7 @@ def test_adc_manager_voltage_divider_math():
     ]
     
     for name, pin, multiplier, raw_v, expected_v in test_cases:
-        adc.add_channel(name, pin_or_index=pin, divider_multiplier=multiplier)
+        adc.add_channel(name, pin=pin, multiplier=multiplier)
         
         # Set the mock voltage
         adc.channels[name]["analog_in"]._voltage = raw_v
@@ -252,7 +252,7 @@ def test_adc_manager_unsupported_chip():
     assert adc.chip_type == "UNSUPPORTED_CHIP"
     
     # Adding channels should do nothing
-    adc.add_channel("TEST", pin_or_index=0, divider_multiplier=1.0)
+    adc.add_channel("TEST", pin=0, multiplier=1.0)
     assert len(adc.channels) == 0
     
     # Reading should return 0.0
@@ -270,7 +270,7 @@ def test_adc_manager_invalid_pin_index():
     adc = ADCManager(mock_i2c)
     
     # Try to add a channel with invalid pin index
-    adc.add_channel("INVALID", pin_or_index=999, divider_multiplier=1.0)
+    adc.add_channel("INVALID", pin=999, multiplier=1.0)
     
     # Channel should not be added
     assert "INVALID" not in adc.channels
@@ -333,7 +333,7 @@ def test_adc_manager_native_add_channel():
     adc = ADCManager(i2c_bus=None, chip_type="NATIVE")
     
     # Add a native 20V channel with voltage divider
-    adc.add_channel("20V_INPUT", mock_pin, divider_multiplier=11.0)
+    adc.add_channel("20V_INPUT", mock_pin, multiplier=11.0)
     
     assert "20V_INPUT" in adc.channels
     assert adc.channels["20V_INPUT"]["multiplier"] == 11.0
@@ -353,7 +353,7 @@ def test_adc_manager_native_read_channel():
     mock_pin = MockPin()
     
     adc = ADCManager(i2c_bus=None, chip_type="NATIVE")
-    adc.add_channel("20V_INPUT", mock_pin, divider_multiplier=11.0)
+    adc.add_channel("20V_INPUT", mock_pin, multiplier=11.0)
     
     # Mock the analog_in value (simulating 1.81V at the pin = 19.91V with 11x multiplier)
     # Native ADC value is 0-65535 for 0-3.3V
@@ -376,7 +376,7 @@ def test_adc_manager_mixed_channels():
     # Create I2C ADC manager
     mock_i2c = MockModule()
     adc_i2c = ADCManager(mock_i2c, chip_type="ADS1115")
-    adc_i2c.add_channel("I2C_CHANNEL", 0, divider_multiplier=2.0)
+    adc_i2c.add_channel("I2C_CHANNEL", 0, multiplier=2.0)
     
     # Create native ADC manager
     class MockPin:
@@ -384,7 +384,7 @@ def test_adc_manager_mixed_channels():
     
     mock_pin = MockPin()
     adc_native = ADCManager(i2c_bus=None, chip_type="NATIVE")
-    adc_native.add_channel("NATIVE_CHANNEL", mock_pin, divider_multiplier=11.0)
+    adc_native.add_channel("NATIVE_CHANNEL", mock_pin, multiplier=11.0)
     
     # Both should work independently
     assert "I2C_CHANNEL" in adc_i2c.channels

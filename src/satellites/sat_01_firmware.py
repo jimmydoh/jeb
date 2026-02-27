@@ -4,6 +4,22 @@ Industrial Satellite Firmware (Satellite-side)
 Handles hardware I/O and logic for the Industrial Satellite when running
 on the actual satellite hardware. This class manages physical hardware
 including neopixels, segment displays, encoders, and power management.
+
+Hardware HID Layout:
+    Latching Toggles  (12 total):
+        [0-7]  — 8x Small latching toggles arranged in 2 rows of 4 (Expander 1, pins 0-7)
+        [8]    — Guarded latching toggle / Master Arm (Expander 2, pin 2)
+        [9]    — 2-Position key switch / Secure State (Expander 2, pin 3)
+        [10]   — 3-Position rotary switch, Position A / Mode A (Expander 2, pin 4)
+        [11]   — 3-Position rotary switch, Position B / Mode B (Expander 2, pin 5)
+    Momentary Toggles (1 pair):
+        [0]    — On-Off-On toggle, UP/DOWN directions (Expander 2, pins 0-1)
+    Encoders          (1):
+        [0]    — Rotary encoder with integrated push button (GP2/GP3/GP12)
+    Buttons           (1):
+        [0]    — Large momentary button / Panic or Execute (Expander 2, pin 6)
+    Matrix Keypads    (1):
+        [0]    — 9-digit 3x3 keypad (rows GP16-18, cols GP19-21)
 """
 
 import asyncio
@@ -18,11 +34,13 @@ from utilities.palette import Palette
 from utilities.payload_parser import parse_values, get_int
 
 from transport.protocol import (
+    CMD_MODE,
     CMD_SYNC_FRAME,
     CMD_SETENC,
     LED_COMMANDS,
     DSP_COMMANDS,
 )
+from transport import Message
 from managers.hid_manager import HIDManager
 from managers.led_manager import LEDManager
 from managers.render_manager import RenderManager
@@ -32,6 +50,9 @@ from .base_firmware import SatelliteFirmware
 
 TYPE_ID = "01"
 TYPE_NAME = "INDUSTRIAL"
+
+# Dim blue used as low-power breathing colour during sleep
+SLEEP_LED_COLOR = (0, 0, 32)
 
 class IndustrialSatelliteFirmware(SatelliteFirmware):
     """Satellite-side firmware for Industrial Satellite.
@@ -66,25 +87,20 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         self.hid = HIDManager(
             encoders=Pins.ENCODERS,
             matrix_keypads=Pins.MATRIX_KEYPADS,
-            mcp_chip="MCP23008",
-            mcp_i2c=self.i2c,
-            mcp_i2c_address=Pins.I2C_ADDRESSES.get("EXPANDER"),
-            mcp_int_pin=Pins.EXPANDER_INT,
-            expanded_latching_toggles=Pins.EXPANDER_LATCHING,
-            expanded_momentary_toggles=Pins.EXPANDER_MOMENTARY,
+            expander_configs=Pins.EXPANDER_CONFIGS,
             monitor_only=False
         )
 
         # Init LED Hardware
         self.root_pixels = neopixel.NeoPixel(
             Pins.LED_CONTROL,
-            4,
+            8,
             brightness=0.3,
             auto_write=False
         )
 
-        # Init LEDManager with JEBPixel wrapper for the 4 onboard LEDs
-        self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=4)
+        # Init LEDManager with JEBPixel wrapper for the 8 onboard LEDs
+        self.led_jeb_pixel = JEBPixel(self.root_pixels, start_idx=0, num_pixels=8, pixel_order="RGB")
         self.leds = LEDManager(self.led_jeb_pixel)
 
         self.renderer = RenderManager(
@@ -102,11 +118,14 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             CMD_SYNC_FRAME: self._handle_sync_frame,
             CMD_SETENC: self._handle_set_enc,
         })
-        JEBLogger.info("FIRM", "Industrial Satellite Firmware initialized.", src=self.id)
+        JEBLogger.info("FIRM", f"[INIT] IndustrialSatelliteFirmware initialized.")
 
     async def _handle_sync_frame(self, val):
         # val is tuple (frame, time) from binary payload
         self.renderer.apply_sync(int(val[0]))
+        # Keep GlobalAnimationController in sync if one has been initialised
+        if self._global_anim_ctrl is not None:
+            self._global_anim_ctrl.sync_frame(int(val[0]))
 
     async def _handle_set_enc(self, val):
         # Handle both binary tuple and text formats
@@ -116,6 +135,16 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             values = parse_values(val)
             self.hid.reset_encoder(get_int(values, 0))
 
+    async def on_sleep(self):
+        """Hardware-specific sleep routine."""
+        await self.segment.clear()
+        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim="BREATH", speed=0.5)
+        self.renderer.target_frame_rate = 10
+
+    async def on_wake(self):
+        """Hardware-specific wake routine."""
+        self.renderer.target_frame_rate = self.renderer.DEFAULT_FRAME_RATE
+
     async def _process_local_cmd(self, cmd, val):
         """Process a command received from upstream that is addressed to this satellite.
 
@@ -123,6 +152,9 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             cmd (str): Command type.
             val (str or bytes): Command value.
         """
+        if self._sleeping:
+            await self._wake_local()
+
         if await super()._process_local_cmd(cmd, val):
             return True # Command was handled!
 
@@ -135,6 +167,15 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             return True
         return False
 
+    def _register_global_anim_leds(self, offset_x, offset_y):
+        """Register onboard LEDs with the global animation controller at the given offset."""
+        self._global_anim_ctrl.register_led_strip(
+            self.leds,
+            offset_x=offset_x,
+            offset_y=offset_y,
+            orientation='horizontal',
+        )
+
     def _get_status_bytes(self):
         return self.hid.get_status_bytes()
 
@@ -144,14 +185,14 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         self.attract_running = False
         self.last_interaction_time = time.monotonic()
         self._idle_display_buffer = ""
-        
+
         # Clear LEDs (using priority 99 to override local animations)
         for i in range(5):
             self.leds.off_led(i, priority=99)
-            
+
         # Clear Segment display
         await self.segment.clear()
-        
+
         # Flush the HID queues so old button presses don't trigger game events
         self.hid.flush()
 
@@ -161,7 +202,17 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         while True:
             self.watchdog.check_in("hw_hid")
             changed = self.hid.hw_update(self.id)
-            
+
+            if self._sleeping:
+                if changed:
+                    # Local interaction while sleeping: wake locally and notify Core
+                    await self._wake_local()
+                    self.transport_up.send(Message(self.id, "CORE", CMD_MODE, "ACTIVE"))
+                else:
+                    # Still sleeping, skip processing
+                    await asyncio.sleep(0.1)
+                    continue
+
             if changed:
                 # Any hardware interaction resets the attract mode timer
                 self.last_interaction_time = time.monotonic()
@@ -173,19 +224,16 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
 
             if self.operating_mode == "IDLE":
                 if changed:
-                    # 1. Hardware Toggles directly drive Local LEDs (Assuming 5 toggles, 5 LEDs)
-                    for i in range(4):
+                    # Small Toggles directly drive Local LEDs (8 toggles, 8 LEDs)
+                    for i in range(8):
                         if self.hid.is_latching_toggled(i):
-                            JEBLogger.info("FIRM", f"Local Idle Toggle {i} ON", src=self.id)
                             self.leds.set_led(i, Palette.GREEN, priority=5)
                         else:
-                            JEBLogger.info("FIRM", f"Local Idle Toggle {i} OFF", src=self.id)
-                            self.leds.set_led(i, Palette.AMBER, priority=5)
+                            self.leds.set_led(i, Palette.ORANGE, priority=5)
 
                     # 2. Keypad typing directly to 14-Segment Displays
                     key = self.hid.get_keypad_next_key(0) # Assuming index 0 is your matrix keypad
                     while key:
-                        JEBLogger.info("FIRM", f"Keypad Idle input received: {key}", src=self.id)
                         # Keep a running 4-character buffer
                         if len(self._idle_display_buffer) >= 8: # 4 chars * 2 displays = 8 total
                             self._idle_display_buffer = self._idle_display_buffer[1:]
@@ -196,11 +244,9 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
                     # 3. Momentary Switch triggers an animation
                     # Direction "U" or "D" depends on your switch wiring
                     if self.hid.is_momentary_toggled(0, direction="U", action="tap"):
-                        JEBLogger.info("FIRM", "Momentary Idle UP Triggered", src=self.id)
                         self._idle_display_buffer = "UP"
                         await self.segment.apply_command("DSP", self._idle_display_buffer)
                     if self.hid.is_momentary_toggled(0, direction="D", action="tap"):
-                        JEBLogger.info("FIRM", "Momentary Idle DOWN Triggered", src=self.id)
                         self._idle_display_buffer = "DOWN"
                         await self.segment.apply_command("DSP", self._idle_display_buffer)
 
@@ -208,25 +254,25 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
                 # ACTIVE MODE: Only trigger upstream updates
                 if changed:
                     self.trigger_status_update()
-                    
+
             await asyncio.sleep(0.01)
 
     async def attract_loop(self):
         """Passive background animation when nobody touches the satellite in IDLE mode."""
         # 30 seconds of inactivity triggers attract
-        ATTRACT_TIMEOUT = 30.0 
-        
+        ATTRACT_TIMEOUT = 30.0
+
         while True:
             self.watchdog.check_in("attract")
-            
+
             if self.operating_mode == "IDLE" and not self.attract_running:
                 if time.monotonic() - self.last_interaction_time > ATTRACT_TIMEOUT:
                     JEBLogger.info("FIRM", "Entering Idle Attract Mode", src=self.id)
                     self.attract_running = True
-                    
+
                     # Fire off a passive sweeping LED animation
                     self.leds.start_cylon(Palette.CYAN, speed=0.08)
-                    
+
                     # Put a fun message on the segment displays
                     await self.segment.apply_command("DSP", "** JEB ROCKS **")
 

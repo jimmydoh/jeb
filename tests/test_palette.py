@@ -10,6 +10,84 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'utiliti
 # Import Palette module directly
 import palette
 Palette = palette.Palette
+Color = palette.Color
+
+
+def test_color_class_is_tuple():
+    """Test that Color supports tuple-like operations (indexing, length, conversion to tuple)."""
+    print("Testing Color class tuple behavior...")
+
+    c = Color(11, "RED", 255, 0, 0)
+    assert len(c) == 3, "Color tuple should have exactly 3 elements (R, G, B)"
+    assert tuple(c) == (255, 0, 0), f"Expected (255,0,0), got {tuple(c)}"
+    assert c[0] == 255, "Red channel should be 255"
+    assert c[1] == 0, "Green channel should be 0"
+    assert c[2] == 0, "Blue channel should be 0"
+
+    print("✓ Color class tuple behavior test passed")
+
+
+def test_color_class_index():
+    """Test that Color objects have an index attribute."""
+    print("\nTesting Color.index attribute...")
+
+    assert Palette.OFF.index == 0, f"OFF.index should be 0, got {Palette.OFF.index}"
+    assert Palette.WHITE.index == 4, f"WHITE.index should be 4, got {Palette.WHITE.index}"
+    assert Palette.RED.index == 11, f"RED.index should be 11, got {Palette.RED.index}"
+    assert Palette.GREEN.index == 41, f"GREEN.index should be 41, got {Palette.GREEN.index}"
+    assert Palette.BLUE.index == 61, f"BLUE.index should be 61, got {Palette.BLUE.index}"
+    assert Palette.CYAN.index == 51, f"CYAN.index should be 51, got {Palette.CYAN.index}"
+    assert Palette.MAGENTA.index == 71, f"MAGENTA.index should be 71, got {Palette.MAGENTA.index}"
+
+    print("✓ Color.index attribute test passed")
+
+
+def test_color_class_name():
+    """Test that Color objects have a name attribute."""
+    print("\nTesting Color.name attribute...")
+
+    assert Palette.OFF.name == "OFF", f"OFF.name should be 'OFF', got {Palette.OFF.name}"
+    assert Palette.WHITE.name == "WHITE", f"WHITE.name should be 'WHITE', got {Palette.WHITE.name}"
+    assert Palette.RED.name == "RED", f"RED.name should be 'RED', got {Palette.RED.name}"
+    assert Palette.GREEN.name == "GREEN", f"GREEN.name should be 'GREEN', got {Palette.GREEN.name}"
+    assert Palette.BLUE.name == "BLUE", f"BLUE.name should be 'BLUE', got {Palette.BLUE.name}"
+
+    print("✓ Color.name attribute test passed")
+
+
+def test_color_index_matches_library():
+    """Test that each Color's index attribute matches its key in LIBRARY."""
+    print("\nTesting Color index consistency with LIBRARY...")
+
+    for idx, color in Palette.LIBRARY.items():
+        assert color.index == idx, (
+            f"Color '{color.name}' has index {color.index} but is stored at key {idx} in LIBRARY"
+        )
+
+    print("✓ Color index consistency test passed")
+
+
+def test_get_color():
+    """Test that Palette.get_color() returns the correct color by index."""
+    print("\nTesting Palette.get_color()...")
+
+    assert Palette.get_color(0) == Palette.OFF, "Index 0 should return OFF"
+    assert Palette.get_color(4) == Palette.WHITE, "Index 4 should return WHITE"
+    assert Palette.get_color(11) == Palette.RED, "Index 11 should return RED"
+    assert Palette.get_color(41) == Palette.GREEN, "Index 41 should return GREEN"
+    assert Palette.get_color(61) == Palette.BLUE, "Index 61 should return BLUE"
+
+    # Test that get_color returns Color objects with correct attributes
+    color = Palette.get_color(51)
+    assert color == Palette.CYAN, "Index 51 should return CYAN"
+    assert color.index == 51, "Returned color should have index 51"
+    assert color.name == "CYAN", "Returned color should have name 'CYAN'"
+
+    # Test unknown index falls back to OFF
+    unknown = Palette.get_color(999)
+    assert unknown == Palette.OFF, "Unknown index should return OFF"
+
+    print("✓ Palette.get_color() test passed")
 
 
 def test_basic_colors():
@@ -17,8 +95,8 @@ def test_basic_colors():
     print("Testing basic color constants...")
 
     # Test binary colors
-    assert Palette.OFF == (0, 0, 0), f"Expected OFF to be (0,0,0), got {Palette.OFF}"
-    assert Palette.WHITE == (255, 255, 255), f"Expected WHITE to be (255,255,255), got {Palette.WHITE}"
+    assert tuple(Palette.OFF) == (0, 0, 0), f"Expected OFF to be (0,0,0), got {Palette.OFF}"
+    assert tuple(Palette.WHITE) == (255, 255, 255), f"Expected WHITE to be (255,255,255), got {Palette.WHITE}"
 
     # Test primary colors have non-zero values in appropriate channels
     assert Palette.RED[0] > 0, "RED should have non-zero red channel"
@@ -145,6 +223,11 @@ def run_all_tests():
     print("=" * 60)
 
     try:
+        test_color_class_is_tuple()
+        test_color_class_index()
+        test_color_class_name()
+        test_color_index_matches_library()
+        test_get_color()
         test_basic_colors()
         test_palette_library()
         test_hsv_to_rgb_grayscale()

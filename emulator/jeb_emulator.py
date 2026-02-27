@@ -1,6 +1,10 @@
 import sys
 import time
 import pygame
+import os
+import builtins
+
+from utilities.logger import JEBLogger
 
 # ==========================================
 # SAFE AUDIO INITIALIZATION
@@ -11,9 +15,78 @@ try:
     pygame.mixer.pre_init(44100, -16, 2, 512)
     pygame.mixer.init()
     AUDIO_AVAILABLE = True
-    print("🔊 [EMULATOR] Hardware Audio Device Found. Sound Enabled.")
+    JEBLogger.emulator("MOCK", "🔊 Hardware Audio Device found")
 except Exception as e:
-    print(f"⚠️ [EMULATOR] No audio device available ({e}). Falling back to silent logging.")
+    JEBLogger.emulator("MOCK", f"⚠️ No audio device available")
+
+# ==========================================
+# FILESYSTEM / SD CARD MOCK
+# ==========================================
+# Intercept file operations to map CircuitPython paths to the local Windows repo
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
+SRC_DIR = os.path.join(PROJECT_ROOT, 'src')
+SD_DIR = os.path.join(PROJECT_ROOT, 'sd') # <--- Get absolute path to the SD folder
+
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+_orig_stat = os.stat
+_orig_mkdir = os.mkdir
+_orig_open = builtins.open
+
+def smart_path_mapper(path):
+    if not isinstance(path, str):
+        return path
+
+    # If the code is looking for the SD card, route it absolutely to the repo's SD folder
+    if path.lower().startswith('/sd/') or path.lower().startswith('sd/'):
+        # Strip the '/sd/' prefix and append the rest to our absolute SD_DIR
+        clean_path = path[4:] if path.lower().startswith('/sd/') else path[3:]
+        JEBLogger.emulator("MOCK", f"Path {path} mapped -> {os.path.join(SD_DIR, clean_path)}")
+        return os.path.join(SD_DIR, clean_path)
+
+    return path
+
+# Patch the file operations
+def _mock_stat(path, *args, **kwargs):
+    JEBLogger.emulator("MOCK", f"Intercepted os.stat for path: {path}")
+    return _orig_stat(smart_path_mapper(path), *args, **kwargs)
+
+def _mock_open(file, *args, **kwargs):
+    JEBLogger.emulator("MOCK", f"Intercepted open for file: {file}")
+    return _orig_open(smart_path_mapper(file), *args, **kwargs)
+
+def _mock_mkdir(path, *args, **kwargs):
+    JEBLogger.emulator("MOCK", f"Intercepted os.mkdir for path: {path}")
+    return _orig_mkdir(smart_path_mapper(path), *args, **kwargs)
+
+class MockStorage:
+    @staticmethod
+    def getmount(path):
+        if path == "/sd":
+            return True # Simulate SD card being mounted
+        raise OSError("Mount not found")
+
+sys.modules['storage'] = MockStorage()
+
+# Apply the patches globally for the emulator session
+os.stat = _mock_stat
+os.mkdir = _mock_mkdir
+builtins.open = _mock_open
+
+# Console Mocks
+class MockRuntime:
+    serial_bytes_available = False
+
+class MockSupervisor:
+    runtime = MockRuntime()
+    @staticmethod
+    def reload():
+        JEBLogger.emulator("MOCK", "⚠️ supervisor.reload() called. Exiting...")
+        sys.exit(0)
+
+sys.modules['supervisor'] = MockSupervisor()
 
 #region --- Hardware Mocks ---
 
@@ -68,20 +141,6 @@ class HardwareMocks:
         if key is not None:
             return device_dict.get(mock_type, {}).get(key)
         return device_dict.get(mock_type)
-
-#class HardwareMocks:
-#    """Globally accessible registry of hardware mock instances for Pygame to talk to."""
-#    buttons = None          # Will hold the keypad.Keys instance for main buttons
-#    encoder_btn = None      # Will hold the keypad.Keys instance for the dial push
-#    encoder = None          # Will hold the rotaryio.IncrementalEncoder instance
-#    estop = None            # Will hold the digitalio.DigitalInOut instance
-#    mcp = None              # Will hold the MCP expander instance if configured
-#    mcp_int = None          # Will hold the MCP interrupt pin object if configured
-
-    # [NEW] Hot-Plug State
-#    satellite_plugged_in = False
-#    satbus_detect_pin = None
-#    satbus_mosfet_pin = None
 
 # --- KEYPAD MOCK ---
 class MockKeypadEvent:
@@ -161,16 +220,18 @@ class MockDigitalInOut:
         # Note: 'board.GP15' is the standard MCP_INT pin in your Pins class
         if str(pin) == "board.GP11":
             HardwareMocks.register('mcp_int', self)
+        elif str(pin) == "board.GP13":  # Expander 2 INT
+            HardwareMocks.register('mcp2_int', self)
         elif str(pin) == "board.GP7": # Example E-Stop pin
             HardwareMocks.register('estop', self)
         elif str(pin) == "board.GP15": # Example SATBUS Detect pin
             HardwareMocks.register('satbus_detect_pin', self)
             self._value = True  # Assuming True = Pulled Up = Disconnected
-            print("[HW MOCK] Registered GP15 as SATBUS DETECT")
+            JEBLogger.emulator("MOCK","Registered GP15 as SATBUS DETECT")
         elif str(pin) == "board.GP14": # Example SATBUS MOSFET control pin
             HardwareMocks.register('satbus_mosfet_pin', self)
             self._value = False # Start with MOSFET off
-            print("[HW MOCK] Registered GP14 as SATBUS MOSFET CONTROL")
+            JEBLogger.emulator("MOCK","Registered GP14 as SATBUS MOSFET CONTROL")
 
     @property
     def value(self):
@@ -208,7 +269,7 @@ class MockWatchdog:
 
     def feed(self):
         # Optional: uncomment to see the heartbeat in the console
-        # print("[WATCHDOG] Fed")
+        # JEBLogger.note("MOCK", "[WATCHDOG] Fed", "EMUL")
         pass
 
 mock_watchdog = MockWatchdog()
@@ -295,14 +356,14 @@ class MockAnalogIn:
     def __init__(self, pin):
         self.pin = pin
         self._value = 49650  # Default ~2.5V raw
-        
+
         # Register so the Pygame UI can dynamically manipulate rail voltages
         HardwareMocks.register('analog_pin', self, key=str(pin))
 
     @property
     def value(self):
         return self._value
-        
+
     @value.setter
     def value(self, val):
         self._value = max(0, min(65535, int(val))) # Clamp to 16-bit int
@@ -329,7 +390,7 @@ class MockADSAnalogIn:
     def voltage(self):
         # I2C ADCs return calculated float voltages, unlike analogio's raw 16-bit value
         return self._voltage
-        
+
     @voltage.setter
     def voltage(self, val):
         self._voltage = float(val)
@@ -393,6 +454,31 @@ class MockNeopixelModule:
 
 sys.modules['neopixel'] = MockNeopixelModule()
 
+# --- PIXEL FRAMEBUF MOCK ---
+class MockPixelFramebuffer:
+    """Mocks adafruit_pixel_framebuf to suppress warnings and allow text scrolling paths to execute."""
+    def __init__(self, pixels, width, height, **kwargs):
+        self.pixels = pixels
+        self.width = width
+        self.height = height
+
+    def text(self, string, x, y, color, font_name=None):
+        JEBLogger.emulator("MOCK", f"[FRAMEBUF] text('{string}', x={x}, y={y}, color={color}, font={font_name})")
+        pass
+
+    def display(self):
+        pass
+
+    def fill(self, color):
+        pass
+
+    def scroll(self, dx, dy):
+        pass
+
+sys.modules['adafruit_pixel_framebuf'] = type(
+    'MockPixelFramebufModule', (), {'PixelFramebuffer': MockPixelFramebuffer}
+)
+
 # --- AUDIOBUSIO / AUDIOPWMIO MOCKS (Direct Playback Fallbacks) ---
 class MockDirectAudioOut:
     """Handles cases where audio.play() is called without a mixer."""
@@ -405,7 +491,7 @@ class MockDirectAudioOut:
         filename = getattr(sample, 'filepath', 'synth/stream')
 
         if not AUDIO_AVAILABLE:
-            print(f"🔊 [AUDIO DUMMY] Direct intent to play: {filename} (Loop: {loop})")
+            JEBLogger.emulator("MOCK", f"🔊 Dummy play: {filename} (Loop: {loop})")
             return
 
         if hasattr(sample, 'sound') and sample.sound:
@@ -441,10 +527,10 @@ class MockPWMOut:
     def duty_cycle(self, value):
         # Detect transition from silence to sound
         if value > 0 and self._duty_cycle == 0:
-            print(f"[BUZZER] ON  ({self._frequency} Hz)")
+            JEBLogger.emulator("MOCK", f"[BUZZER] ON  ({self._frequency} Hz)")
         # Detect transition from sound to silence
         elif value == 0 and self._duty_cycle > 0:
-            print(f"[BUZZER] OFF")
+            JEBLogger.emulator("MOCK", f"[BUZZER] OFF")
 
         self._duty_cycle = value
 
@@ -455,7 +541,7 @@ class MockPWMOut:
     @frequency.setter
     def frequency(self, value):
         if value != self._frequency and self._duty_cycle > 0:
-            print(f"[BUZZER] FREQ CHANGE -> {value} Hz")
+            JEBLogger.emulator("MOCK", f"[BUZZER] FREQ CHANGE -> {value} Hz")
         self._frequency = value
 
     def deinit(self):
@@ -466,33 +552,34 @@ sys.modules['pwmio'] = type('MockPWMIO', (), {'PWMOut': MockPWMOut})
 # --- AUDIOCORE MOCK (.wav File Decoder) ---
 class MockWaveFile:
     def __init__(self, file_obj, buffer=None):
-        # Extract the filename from the file object
         self.filepath = getattr(file_obj, 'name', 'unknown_audio')
-        
-        # Clean up absolute paths for PC compatibility
         if self.filepath.startswith("/"):
             self.filepath = self.filepath[1:]
-
-        # [NEW] Pre-load the Pygame Sound object if audio is available!
         self.sound = None
         if AUDIO_AVAILABLE:
             try:
                 self.sound = pygame.mixer.Sound(self.filepath)
             except Exception as e:
-                print(f"❌ [AUDIO ERROR] Could not load '{self.filepath}': {e}")
+                JEBLogger.emulator("MOCK", f"❌ [AUDIO ERROR] Could not load '{self.filepath}': {e}")
+    def deinit(self): pass
 
-    def deinit(self):
-        pass
+class MockRawSample(MockWaveFile):
+    """Mocks RawSample used by AudioManager for preloaded UI sounds."""
+    def __init__(self, file_obj, *args, **kwargs):
+        super().__init__(file_obj)
 
-sys.modules['audiocore'] = type('MockAudioCore', (), {'WaveFile': MockWaveFile})
+sys.modules['audiocore'] = type('MockAudioCore', (), {
+    'WaveFile': MockWaveFile,
+    'RawSample': MockRawSample
+})
 
 # --- AUDIOMIXER MOCK (Multi-channel Audio Router) ---
 class MockMixerVoice:
     def __init__(self, index):
         self.index = index
         self._level = 1.0
-        self.playing = False
-        
+        self._playing_mock_state = False
+
         # [NEW] Map this voice to a physical Pygame Channel!
         self.channel = pygame.mixer.Channel(index) if AUDIO_AVAILABLE else None
 
@@ -506,13 +593,22 @@ class MockMixerVoice:
         if self.channel:
             self.channel.set_volume(val)
 
+    @property
+    def playing(self):
+        """Check if this voice is currently playing a sound."""
+        if self.channel:
+            return self.channel.get_busy()
+
+        return self._playing_mock_state
+
     def play(self, sample, loop=False):
-        self.playing = True
+        self._playing_mock_state = True
         filename = getattr(sample, 'filepath', 'synth/stream')
 
         # 1. Fallback / VM Logging Mode
         if not AUDIO_AVAILABLE:
-            print(f"🔊 [AUDIO DUMMY] Channel {self.index} intent to play: {filename} (Loop: {loop})")
+            JEBLogger.emulator("MOCK", f"🔊 Dummy play: {filename} (Loop: {loop})")
+            self._playing_mock_state = False
             return
 
         # 2. Hardware Audio Mode
@@ -520,17 +616,23 @@ class MockMixerVoice:
             loops = -1 if loop else 0
             self.channel.play(sample.sound, loops=loops)
         else:
-            print(f"⚠️ [HW AUDIO] Channel {self.index} skipped unsupported sample: {filename}")
+            JEBLogger.emulator("MOCK", f"⚠️ [HW AUDIO] Channel {self.index} skipped unsupported sample: {filename}")
+            self._playing_mock_state = False
 
     def stop(self):
-        self.playing = False
+        self._playing_mock_state = False
         if self.channel:
             self.channel.stop()
 
 class MockMixer:
     def __init__(self, voice_count=1, **kwargs):
+        if AUDIO_AVAILABLE:
+            current_channels = pygame.mixer.get_num_channels()
+            if voice_count > current_channels:
+                JEBLogger.emulator("MOCK", f"Expanding Pygame channels from {current_channels} to {voice_count}")
+                pygame.mixer.set_num_channels(voice_count)
         self.voice = [MockMixerVoice(i) for i in range(voice_count)]
-        self.playing = False
+        self._playing_mock_state = False
 
     def play(self, sample, voice=0, loop=False):
         self.voice[voice].play(sample, loop)
@@ -554,11 +656,11 @@ class MockSynthesizer:
         self.active_notes = set()
     def press(self, note):
         self.active_notes.add(note)
-        print(f"[SYNTH] Pressed Note:  {note.frequency:>6.1f} Hz")
+        JEBLogger.emulator("MOCK", f"[SYNTH] Pressed Note:  {note.frequency:>6.1f} Hz")
     def release(self, note):
         if note in self.active_notes:
             self.active_notes.remove(note)
-            print(f"[SYNTH] Released Note: {note.frequency:>6.1f} Hz")
+            JEBLogger.emulator("MOCK", f"[SYNTH] Released Note: {note.frequency:>6.1f} Hz")
     def release_all(self):
         self.active_notes.clear()
 
@@ -568,6 +670,76 @@ class MockSynthioModule:
     Synthesizer = MockSynthesizer
 
 sys.modules['synthio'] = MockSynthioModule()
+
+# --- ANALOGBUFIO MOCK (Audio DMA) ---
+class MockBufferedIn:
+    def __init__(self, pin, sample_rate=10000):
+        self.pin = pin
+        self.sample_rate = sample_rate
+
+    def readinto(self, buffer):
+        # Fill the buffer with a simulated sine wave + noise so the OLED waveform looks alive
+        import math, random, time
+        t = time.time()
+        for i in range(len(buffer)):
+            # Base 1.65V (32768) + sine wave + noise
+            val = 32768 + int(10000 * math.sin(t * 10 + i * 0.1)) + random.randint(-2000, 2000)
+            buffer[i] = max(0, min(65535, val))
+
+    def deinit(self): pass
+
+sys.modules['analogbufio'] = type('MockAnalogBufIO', (), {'BufferedIn': MockBufferedIn})
+
+# --- ULAB.NUMPY MOCK (FFT & Spectrum Analysis) ---
+class MockUlabArray:
+    """A very dumbed-down numpy array mock to support the math in AudioAnalyzer."""
+    def __init__(self, data):
+        self.data = list(data)
+    def __sub__(self, other):
+        if isinstance(other, (int, float)):
+            return MockUlabArray([x - other for x in self.data])
+        return MockUlabArray([x - y for x, y in zip(self.data, other.data)])
+    def __pow__(self, power):
+        return MockUlabArray([x ** power for x in self.data])
+    def __add__(self, other):
+        return MockUlabArray([x + y for x, y in zip(self.data, other.data)])
+    def __len__(self):
+        return len(self.data)
+    def __getitem__(self, key):
+        if isinstance(key, slice): return MockUlabArray(self.data[key])
+        return self.data[key]
+
+class MockUlabFFT:
+    @staticmethod
+    def fft(array_obj):
+        import random
+        length = len(array_obj.data)
+        # Generate fake bouncy magnitudes for the EQ display
+        real = [random.uniform(0, 50000) for _ in range(length)]
+        imag = [0] * length
+        return MockUlabArray(real), MockUlabArray(imag)
+
+class MockUlabNumpy:
+    float = float
+    fft = MockUlabFFT()
+
+    @staticmethod
+    def array(buf, dtype=None):
+        return MockUlabArray(buf)
+
+    @staticmethod
+    def mean(array_obj):
+        if not array_obj.data: return 0
+        return sum(array_obj.data) / len(array_obj.data)
+
+    @staticmethod
+    def sqrt(array_obj):
+        import math
+        return MockUlabArray([math.sqrt(abs(x)) for x in array_obj.data])
+
+mock_numpy = MockUlabNumpy()
+sys.modules['ulab'] = type('MockUlab', (), {'numpy': mock_numpy})
+sys.modules['ulab.numpy'] = mock_numpy
 
 # --- DISPLAYIO MOCKS ---
 class MockDisplayGroup:
@@ -583,12 +755,62 @@ class MockDisplayGroup:
     def __len__(self): return len(self._items)
     def __iter__(self): return iter(self._items)
 
+class MockBitmap:
+    """Mocks displayio.Bitmap for drawing waveforms and EQ bars."""
+    def __init__(self, width, height, value_count):
+        self.width = width
+        self.height = height
+        self.value_count = value_count
+        self._data = [0] * (width * height)
+
+    def fill(self, value):
+        self._data = [value] * (self.width * self.height)
+
+    def __setitem__(self, index, value):
+        if isinstance(index, tuple):
+            x, y = index
+            if 0 <= x < self.width and 0 <= y < self.height:
+                self._data[y * self.width + x] = value
+        else:
+            self._data[index] = value
+
+    def __getitem__(self, index):
+        if isinstance(index, tuple):
+            x, y = index
+            if 0 <= x < self.width and 0 <= y < self.height:
+                return self._data[y * self.width + x]
+            return 0
+        return self._data[index]
+
+class MockPalette:
+    """Mocks displayio.Palette."""
+    def __init__(self, num_colors):
+        self.colors = [0] * num_colors
+
+    def __setitem__(self, index, color):
+        self.colors[index] = color
+
+    def __getitem__(self, index):
+        return self.colors[index]
+
+class MockTileGrid:
+    """Mocks displayio.TileGrid to wrap the Bitmap and Palette."""
+    def __init__(self, bitmap, pixel_shader=None, **kwargs):
+        self.bitmap = bitmap
+        self.pixel_shader = pixel_shader
+        self.x = kwargs.get('x', 0)
+        self.y = kwargs.get('y', 0)
+        self.hidden = False
+
 class MockI2CDisplay:
     def __init__(self, *args, **kwargs): pass
 
 sys.modules['displayio'] = type('MockDisplayIO', (), {
     'Group': MockDisplayGroup,
     'I2CDisplay': MockI2CDisplay,
+    'Bitmap': MockBitmap,
+    'Palette': MockPalette,
+    'TileGrid': MockTileGrid,
     'release_displays': lambda: None
 })
 
@@ -604,31 +826,60 @@ sys.modules['adafruit_displayio_ssd1306'] = type('MockSSD1306Mod', (), {'SSD1306
 
 # --- ADAFRUIT_DISPLAY_TEXT MOCK ---
 class MockLabel:
-    """Mocks adafruit_display_text.label.Label to hold text, coordinates, and visibility."""
+    """Mocks adafruit_display_text.label.Label to hold text, coordinates, visibility, and colors."""
     def __init__(self, font, text="", x=0, y=0, **kwargs):
         self.font = font
         self.text = text
         self.x = x
         self.y = y
         self.hidden = False
+        self.color = kwargs.get('color', 0xFFFFFF)
+        self.background_color = kwargs.get('background_color', None)
 
 class MockLabelModule:
     Label = MockLabel
 
-# Map both the package and the submodule to handle `from adafruit_display_text import label`
 sys.modules['adafruit_display_text'] = type('MockAdatruitDisplayText', (), {'label': MockLabelModule})
 sys.modules['adafruit_display_text.label'] = MockLabelModule
 
 # --- MCP230XX EXPANDER MOCK ---
 class MockMCPPin:
-    def __init__(self, pin_num):
+    def __init__(self, pin_num, mcp_instance):
         self.pin = pin_num
-        self.direction = None
-        self.pull = None
-        self._value = True # Default UP (assuming pull-ups)
+        self._mcp = mcp_instance
+        self._direction = None
+        self._pull = None
+        self._value = True # Default UP
+
+    @property
+    def direction(self):
+        return self._direction
+
+    @direction.setter
+    def direction(self, val):
+        self._direction = val
+
+    @property
+    def pull(self):
+        return self._pull
+
+    @pull.setter
+    def pull(self, val):
+        self._pull = val
+        # Simulate the physical electrical pull resistor
+        if val == MockPull.UP:
+            self._value = True
+        elif val == MockPull.DOWN:
+            self._value = False
 
     @property
     def value(self):
+        # THE FIRMWARE DOOR: Reading the GPIO register clears the interrupt (Active LOW -> pulls back True)
+        int_key = 'mcp2_int' if self._mcp.address == 0x21 else 'mcp_int'
+        mcp_int = HardwareMocks.get(self._mcp._context, int_key)
+        if mcp_int:
+            mcp_int.value = True
+
         return self._value
 
     @value.setter
@@ -644,21 +895,41 @@ class MockMCP:
         self.interrupt_configuration = 0
         self.pins = {} # Dictionary to track pin objects
         self._context = HardwareMocks._current_context
-        HardwareMocks.register('mcp', self)
+        if address == 0x21:
+            HardwareMocks.register('mcp2', self)
+        else:
+            HardwareMocks.register('mcp', self)
+
+    @property
+    def gpio(self):
+        # Check on number of pins to determine if this is the 23008 or 23017 variant
+        if len(self.pins) <= 8:
+            # Return a byte representing the state of all 8 pins (MCP23008)
+            value = 0
+            for pin_num, pin in self.pins.items():
+                if pin.value:
+                    value |= (1 << pin_num)
+            return value
+        else:
+            # For MCP23017, we need to return a 16-bit value. We'll assume pins 0-7 are GPIOA and 8-15 are GPIOB.
+            value_a = 0
+            value_b = 0
+            for pin_num, pin in self.pins.items():
+                if pin.value:
+                    if pin_num < 8:
+                        value_a |= (1 << pin_num)
+                    else:
+                        value_b |= (1 << (pin_num - 8))
+            return (value_b << 8) | value_a
 
     def get_pin(self, pin_num):
-        mcp_int = HardwareMocks.get(self._context, 'mcp_int')
-        if mcp_int:
-            mcp_int.value = True
         if pin_num not in self.pins:
-            self.pins[pin_num] = MockMCPPin(pin_num)
+            self.pins[pin_num] = MockMCPPin(pin_num, self)
         return self.pins[pin_num]
 
     def peek_pin(self, pin_num):
-        # [NEW] Pygame uses this: it leaves the interrupt alone!
-        if pin_num not in self.pins:
-            self.pins[pin_num] = MockMCPPin(pin_num)
-        return self.pins[pin_num]
+        # Backwards compatibility method used by the firmware to read pin state without clearing interrupts
+        return self.get_pin(pin_num)
 
 # Inject the parent package and the specific chip submodules
 sys.modules['adafruit_mcp230xx'] = type('MockMCPMod', (), {})

@@ -17,6 +17,9 @@ from utilities.logger import JEBLogger, LogLevel
 JEBLogger.set_level(LogLevel.DEBUG)
 JEBLogger.enable_file_logging(False)
 
+# Cancel auto-reload
+supervisor.runtime.autoreload = False
+
 # Check if SD card was mounted in boot.py
 def is_sd_mounted():
     """Check if SD card is mounted by verifying the mount point."""
@@ -36,7 +39,7 @@ def is_wifi_available():
         return False
 
 SD_MOUNTED = is_sd_mounted()
-ROOT_DATA_DIR = "/sd" if SD_MOUNTED else "/"
+ROOT_DATA_DIR = "/sd/" if SD_MOUNTED else "/"
 WEB_SERVER = None
 
 def file_exists(filename):
@@ -106,6 +109,7 @@ def _inject_hardware_dummies(features):
         "buzzer":  ["managers.buzzer_manager"],
         "power":   ["managers.power_manager", "managers.adc_manager"],
         "segment": ["managers.segment_manager"],
+        "hid":     ["managers.hid_manager"],
     }
 
     # Maps each real manager module to its dummy counterpart
@@ -119,6 +123,7 @@ def _inject_hardware_dummies(features):
         "managers.power_manager":   "dummies.power_manager",
         "managers.adc_manager":     "dummies.adc_manager",
         "managers.segment_manager": "dummies.segment_manager",
+        "managers.hid_manager":     "dummies.hid_manager",
     }
 
     for feature, enabled in features.items():
@@ -129,6 +134,8 @@ def _inject_hardware_dummies(features):
             if dummy_module_name is None:
                 continue
             try:
+                if manager_module in sys.modules:
+                    del sys.modules[manager_module]
                 __import__(dummy_module_name)
                 sys.modules[manager_module] = sys.modules[dummy_module_name]
                 JEBLogger.info("CODE", f"Dummy injected: {manager_module}")
@@ -215,11 +222,12 @@ if config.get("wifi_ssid") and config.get("wifi_password"):
     except ImportError:
         JEBLogger.warning("CODE", "⚠️ WiFiManager not available - skipping OTA update and web server")
 else:
-    JEBLogger.info("CODE", "No Wi-Fi credentials provided - skipping OTA update and web server initialization")
+    JEBLogger.info("CODE", "No WiFi config - skipping OTA update and web server init")
 
 
 # --- APPLICATION RUN ---
 app = None
+CONSOLE = None
 
 role = config.get("role", "UNKNOWN")
 type_id = config.get("type_id", "--")
@@ -232,23 +240,23 @@ JEBLogger.info("CODE", f"ROLE: {role}, ID: {type_id}, NAME: {type_name}")
 # Add computed values to config for manager initialization
 config["root_data_dir"] = ROOT_DATA_DIR
 
-if test_mode:
-    JEBLogger.warning("CODE", "⚠️ Running in TEST MODE. No main application will be loaded. ⚠️")
-    from managers.console_manager import ConsoleManager
-    app = ConsoleManager(role, type_id)
+if role == "CORE" and type_id == "00":
+    from core.core_manager import CoreManager
+    app = CoreManager(config=config)
+
+elif role == "SAT" and type_id == "01":
+    from satellites.sat_01_firmware import IndustrialSatelliteFirmware
+    app = IndustrialSatelliteFirmware()
+
 else:
-    if role == "CORE" and type_id == "00":
-        from core.core_manager import CoreManager
-        app = CoreManager(config=config)
+    JEBLogger.error("CODE", "❗Unknown role/type_id combination. No application loaded.❗")
+    while True:
+        time.sleep(1)
 
-    elif role == "SAT" and type_id == "01":
-        from satellites.sat_01_firmware import IndustrialSatelliteFirmware
-        app = IndustrialSatelliteFirmware()
-
-    else:
-        JEBLogger.error("CODE", "❗Unknown role/type_id combination. No application loaded.❗")
-        while True:
-            time.sleep(1)
+if test_mode:
+    JEBLogger.warning("CODE", "⚠️ Test Mode: Console Manager loading")
+    from managers.console_manager import ConsoleManager
+    CONSOLE = ConsoleManager(role, type_id, app=app)
 
 async def main():
     """Main asynchronous entry point for running the application and web server."""
@@ -260,34 +268,44 @@ async def main():
         else:
             JEBLogger.info("CODE", f"Starting main app loop for {type_name}")
 
-            app_task = asyncio.create_task(app.start())
-
-            coros = [app_task]
+            # Keep a list of our top-level tasks
+            tasks = [asyncio.create_task(app.start())]
 
             if WEB_SERVER is not None:
-                web_task = asyncio.create_task(WEB_SERVER.start())
-                coros.append(web_task)
+                tasks.append(asyncio.create_task(WEB_SERVER.start()))
 
-            done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_EXCEPTION)
+            if CONSOLE is not None:
+                tasks.append(asyncio.create_task(CONSOLE.start()))
+
+            done_tasks = []
+            while True:
+                done_tasks = [t for t in tasks if t.done()]
+                if done_tasks:
+                    break
+                await asyncio.sleep(0.1)
 
             # Cancel any surviving background tasks before the supervisor reload
-            for task in pending:
-                task.cancel()
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
 
             # Log exceptions from completed tasks
             import traceback
-            for task in done:
-                exc = task.exception()
-                if exc is not None:
+            for task in done_tasks:
+                try:
+                    task.result()
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
                     JEBLogger.error("CODE", f"Task failed with error: {exc}")
                     traceback.print_exception(type(exc), exc, exc.__traceback__)
+
     except Exception as e:
         JEBLogger.error("CODE", f"🚨⛔ CRITICAL CRASH: {e}")
         import traceback
         traceback.print_exception(type(e), e, e.__traceback__)
-        # Reduced sleep to maintain watchdog margin before reload
-        time.sleep(2)
-        supervisor.reload()
+        JEBLogger.info("CODE", "System restarting in 10 seconds...")
+        time.sleep(10)
 
 # 3. Main Execution
 if __name__ == "__main__":

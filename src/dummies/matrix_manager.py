@@ -3,6 +3,7 @@
 
 import asyncio
 
+from dummies.base_pixel_manager import BasePixelManager
 
 class PanelLayout:
     """Dummy PanelLayout constants mirroring the real enum values."""
@@ -11,12 +12,16 @@ class PanelLayout:
     CUSTOM = "custom"
 
 
-class MatrixManager:
+class MatrixManager(BasePixelManager):
     """Drop-in dummy for MatrixManager. All methods are no-ops."""
 
     def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.width = kwargs.get('width', 8)
         self.height = kwargs.get('height', 8)
+
+    def _get_idx(self, x, y):
+        return 0
 
     def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None, brightness=1.0):
         pass
@@ -37,6 +42,12 @@ class MatrixManager:
         pass
 
     def draw_wedge(self, quad_idx, color, anim_mode=None, speed=1.0, duration=None):
+        pass
+
+    def display_text(self, text, color=(255, 255, 255), scroll_speed=0.05):
+        pass
+
+    def stop_text(self):
         pass
 
     async def animate_loop(self, step=True):

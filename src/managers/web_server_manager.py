@@ -43,7 +43,7 @@ class WebServerManager:
     MAX_UPLOAD_SIZE_BYTES = 50 * 1024  # Maximum upload size (50KB)
     DEFAULT_MAX_LOGS = 1000  # Default maximum log entries to keep
 
-    def __init__(self, config, wifi_manager, console_buffer=None, power_manager=None, satellite_manager=None):
+    def __init__(self, config, wifi_manager, console_buffer=None, power_manager=None, satellite_manager=None, testing=False):
         """
         Initialize the web server manager.
 
@@ -57,6 +57,9 @@ class WebServerManager:
         if wifi_manager is None:
             JEBLogger.warning("WEBS", "No WiFiManager provided - WebServerManager cannot start")
             raise RuntimeError("No WiFiManager provided")
+
+        JEBLogger.info("WEBS", f"[INIT] WebServerManager - port: {config.get('web_server_port', 80)}, enabled: {config.get('web_server_enabled', False)}, testing: {testing}")
+        self._testing = testing
 
         self.config = config
         self.port = config.get("web_server_port", 80)
@@ -638,6 +641,8 @@ class WebServerManager:
 
     def _save_config(self):
         """Save configuration to config.json."""
+        if self._testing:
+            return
         try:
             with open("config.json", "w") as f:
                 json.dump(self.config, f)

@@ -48,9 +48,23 @@ class MockVoice:
 
 
 # Create mock modules
+class MockWaveFile:
+    """Mock WaveFile for testing.
+
+    The new preload() path wraps file data in io.BytesIO and passes it to
+    audiocore.WaveFile(stream) — no buffer argument.
+    """
+    def __init__(self, stream, buffer=None):
+        self.stream = stream
+        self.sample_rate = 22050
+        self.channel_count = 1
+        self.bits_per_sample = 16
+
+
 class MockAudioCore:
     """Mock audiocore module."""
     RawSample = MockRawSample
+    WaveFile = MockWaveFile
 
 
 class MockAudioBusIO:
@@ -128,7 +142,7 @@ def test_preload_small_file():
         # Verify it was cached
         expected_key = tmpdir + "/small.wav"
         assert expected_key in manager._cache, "Small file should be in cache"
-        assert isinstance(manager._cache[expected_key], MockRawSample), "Cached object should be RawSample"
+        assert isinstance(manager._cache[expected_key], MockWaveFile), "Cached object should be WaveFile"
         
         print("  ✓ Small file (10KB) preloaded successfully")
     

@@ -1,64 +1,111 @@
 import sys
 import os
 
-# 1. PATH INJECTION: Force Python to treat the 'src' folder as the root directory
-# This allows all absolute imports inside the JEB codebase (e.g., 'from managers.matrix_manager')
-# to resolve perfectly on the PC.
+# ==========================================
+# PATH & SD CARD INJECTION
+# ==========================================
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
 SRC_DIR = os.path.join(PROJECT_ROOT, 'src')
+SD_DIR = os.path.join(PROJECT_ROOT, 'sd')
 
 if SRC_DIR not in sys.path:
-    sys.path.insert(0, SRC_DIR) # insert(0) ensures 'src' takes priority over system packages
+    sys.path.insert(0, SRC_DIR)
 
-# 1. IMPORT YOUR MOCKS FIRST!
-# This MUST happen before importing any real JEB code so sys.modules is patched
+# ==========================================
+# HARDWARE MOCKS & PATCHES
+# ==========================================
 import jeb_emulator
 from jeb_emulator import HardwareMocks, MockKeypadEvent
 
-# 2. IMPORT THE REAL CODE
 import asyncio
-import math
-import pygame
-from core.core_manager import CoreManager
-from satellites.sat_01_firmware import IndustrialSatelliteFirmware
-from utilities.logger import JEBLogger, LogLevel
+import importlib.util
 
+
+# Setup JEBLogger
+from utilities.logger import JEBLogger, LogLevel
 JEBLogger.set_level(LogLevel.DEBUG)
 JEBLogger.enable_file_logging(False)
 
-# ==========================================
-# UART WIRETAP (Monkey Patching)
-# ==========================================
-from transport.uart_transport import UARTTransport
+# Patch JEBLogger for emulation
 
-# 1. Save the original, un-modified transmit method
-# (If your method is called 'send', 'transmit', or 'send_message', update this!)
+# Save the original logging method
+original_log = JEBLogger._log
+
+def patched_log(cls, level, module_tag, message, source_tag=None, file_override=None):
+    if source_tag is None:
+        source_tag = 'MISC'
+        try:
+            # 1. Walk up the call stack to find the object that owns this execution thread
+            frame = sys._getframe(2)
+            caller_file = frame.f_code.co_filename.replace('\\', '/')
+
+            while frame:
+                # If the current frame is inside a class method, inspect 'self'
+                if 'self' in frame.f_locals:
+                    caller_self = frame.f_locals['self']
+
+                    # Check for our dynamically injected emulator tag
+                    if hasattr(caller_self, '_emul_source'):
+                        source_tag = getattr(caller_self, '_emul_source')
+                        break
+
+                    # Check class name as a fallback for the main apps
+                    cls_name = caller_self.__class__.__name__
+                    if cls_name == 'CoreManager':
+                        source_tag = 'CORE'
+                        break
+                    elif 'Satellite' in cls_name:
+                        source_tag = '0101'
+                        break
+
+                # Move one step up the call stack
+                frame = frame.f_back
+
+            # 2. If no object ownership was found (e.g., a module-level helper function)
+            # Fall back to checking the folder path of the original caller
+            if source_tag == 'MISC':
+                if 'satellites' in caller_file:
+                    source_tag = '0101'
+                elif 'core' in caller_file:
+                    source_tag = 'CORE'
+                elif 'emulator' in caller_file:
+                    source_tag = 'EMUL'
+        except Exception:
+            pass
+
+    # Pass it back to the original logger
+    original_log(level, module_tag, message, source_tag, file_override)
+
+# Apply the patch!
+JEBLogger._log = classmethod(patched_log)
+
+# Setup UART Wiretap
+from transport.uart_transport import UARTTransport
 original_transmit = UARTTransport.send
 
-# 2. Create our Wiretap function
-# NOTE: If your real send method uses 'async def', make this 'async def' and 'await' the original call!
 def spy_transmit(self, message):
-    # Adjust these attribute names to match your actual transport/message.py class properties
     src = getattr(message, 'source', 'Unknown')
     dest = getattr(message, 'destination', 'Unknown')
     cmd = getattr(message, 'command', 'Unknown')
     payload = getattr(message, 'payload', '')
-
     suppressed_commands = [
         "SYNC_FRAME",
         "STATUS",
-        "POWER"
+        "POWER",
+        "PING",
+        "NEW_SAT"
     ]
-
     if cmd not in suppressed_commands:
-        # Format a beautiful console log
-        JEBLogger.info("UART", f"{src:<4}➔ {dest:<4} | CMD:{cmd:<10} | DATA:{payload}", src="EMUL")
-
-    # 3. Pass it along to the real transport layer so it still gets sent!
+        JEBLogger.emulator("UART", f"{src:<4}➔ {dest:<4} | CMD:{cmd:<10} | DATA:{payload}")
     return original_transmit(self, message)
 
-# 4. Hijack the class! Every time ANY transport tries to send, it hits our spy first.
 UARTTransport.send = spy_transmit
+
+# ==========================================
+# GUI LOOP (Pygame)
+# ==========================================
+import math
+import pygame
 
 async def run_hardware_spy_loop(core, satellite, screen):
     """
@@ -70,14 +117,14 @@ async def run_hardware_spy_loop(core, satellite, screen):
     oled_font = pygame.font.SysFont("courier", 12, bold=True)
 
     # ==========================================
-    # UI LAYOUT CONSTANTS (900x600 Widescreen)
+    # UI LAYOUT CONSTANTS (1600x800 Widescreen)
     # ==========================================
-    WINDOW_SIZE_W = 1200
+    WINDOW_SIZE_W = 1600
     WINDOW_SIZE_H = 800
 
     # SATELLITE (Type 01 - Right Side)
-    SAT_W = 260
-    SAT_H = 560
+    SAT_W = 760
+    SAT_H = 680
     SAT_X = WINDOW_SIZE_W - SAT_W - 20
     SAT_Y = 20
 
@@ -116,7 +163,9 @@ async def run_hardware_spy_loop(core, satellite, screen):
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
-                    sys.exit()
+                    for task in asyncio.all_tasks():
+                        task.cancel()
+                    return
 
                 # --- MOUSE CLICKS (Interactive UI) ---
                 if (event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.MOUSEBUTTONUP):
@@ -135,88 +184,116 @@ async def run_hardware_spy_loop(core, satellite, screen):
                                 core_mcp_int = HardwareMocks.get("CORE", "mcp_int")
 
                                 if core_mcp:
-                                    core_mcp.get_pin(i).value = not is_pressed
+                                    core_mcp.get_pin(i)._value = not is_pressed
                                     if core_mcp_int:
                                         core_mcp_int.value = False # Trigger Interrupt!
 
                         # Check Encoder Push
                         if (mx - ENC_X)**2 + (my - ENC_Y)**2 <= ENC_RADIUS**2:
                             if HardwareMocks.get("CORE", "encoder_btn"):
-                                JEBLogger.note("CORE", f"Encoder Button {'Pressed' if is_pressed else 'Released'}", src="EMUL")
+                                JEBLogger.emulator("INPT", f"Encoder Button {'Pressed' if is_pressed else 'Released'}")
                                 HardwareMocks.get("CORE", "encoder_btn").events.queue.append(
                                     MockKeypadEvent(key_number=0, pressed=is_pressed, released=not is_pressed)
                                 )
-                                JEBLogger.note("CORE", f"Encoder Button Queue: {HardwareMocks.get('CORE', 'encoder_btn').events.queue}", src="EMUL")
+                                JEBLogger.emulator("INPT", f"Encoder Button Queue: {HardwareMocks.get('CORE', 'encoder_btn').events.queue}")
 
                         # ==================================================
-                        # SATELLITE TYPE 01 INPUTS
+                        # SATELLITE TYPE 01 INPUTS (QUADRANT LAYOUT)
                         # ==================================================
                         # Fetch the mocks from the SAT_01 context sandbox
                         sat_mcp = HardwareMocks.get("SAT_01", "mcp")
                         sat_mcp_int = HardwareMocks.get("SAT_01", "mcp_int")
+                        sat_mcp2 = HardwareMocks.get("SAT_01", "mcp2")
+                        sat_mcp2_int = HardwareMocks.get("SAT_01", "mcp2_int")
                         sat_keypad = HardwareMocks.get("SAT_01", "matrix_keypad")
                         sat_encoder_btn = HardwareMocks.get("SAT_01", "encoder_btn")
 
-                        # 1. Satellite Keypad (3x4)
+                        # --- QUADRANT 1 (Top Left): Latching Toggles ---
+                        if event.type == pygame.MOUSEBUTTONDOWN and sat_mcp:
+                            for i in range(8):
+                                tx, ty = SAT_X + 60 + (i % 4)*80, SAT_Y + 110 + (i // 4)*120
+                                if (mx - tx)**2 + (my - ty)**2 <= 25**2:
+                                    sat_mcp.get_pin(i)._value = not sat_mcp.get_pin(i)._value
+                                    JEBLogger.emulator("INPT", f"Toggle Pin {i} {'UP' if sat_mcp.get_pin(i)._value else 'DOWN'}")
+                                    if sat_mcp_int:
+                                        sat_mcp_int.value = False # FIRE INTERRUPT!
+
+                        # --- QUADRANT 2 (Top Right): Keypad ---
                         if sat_keypad:
                             for r in range(4):
                                 for c in range(3):
-                                    kx, ky = SAT_X + 55 + c*75, SAT_Y + 140 + r*45
-                                    if (mx - kx)**2 + (my - ky)**2 <= 20**2:
+                                    kx, ky = SAT_X + 460 + c*70, SAT_Y + 160 + r*60
+                                    if (mx - kx)**2 + (my - ky)**2 <= 22**2:
                                         key_idx = r * 3 + c
+                                        JEBLogger.emulator("INPT", f"Keypad Button {key_idx} {'Pressed' if is_pressed else 'Released'}")
                                         sat_keypad.events.queue.append(
                                             MockKeypadEvent(key_number=key_idx, pressed=is_pressed, released=not is_pressed)
                                         )
-                                        # [NEW] Diagnostic Prints!
-                                        #JEBLogger.warning("KEYP", f"🖱️ Pygame queued Key {key_idx} (Pressed: {is_pressed})", src="EMUL")
-                                        #JEBLogger.warning("KEYP", f"📦 Keypad Queue Size: {len(sat_keypad.events.queue)}", src="EMUL")
 
-                        # 2. Satellite Encoder Push
-                        SAT_ENC_X, SAT_ENC_Y = SAT_X + 110, SAT_Y + 480
-                        if (mx - SAT_ENC_X)**2 + (my - SAT_ENC_Y)**2 <= 30**2:
+                        # --- QUADRANT 3 (Bottom Left): Specials, Momentary, Big Button ---
+                        if event.type == pygame.MOUSEBUTTONDOWN and sat_mcp2:
+                            for j, pin_num in enumerate([2, 3, 4, 5]):
+                                tx, ty = SAT_X + 60 + j*80, SAT_Y + 400
+                                if (mx - tx)**2 + (my - ty)**2 <= 25**2:
+                                    sat_mcp2.get_pin(pin_num)._value = not sat_mcp2.get_pin(pin_num)._value
+                                    JEBLogger.emulator("INPT", f"Special Pin {pin_num} {'UP' if sat_mcp2.get_pin(pin_num)._value else 'DOWN'}")
+                                    if sat_mcp2_int:
+                                        sat_mcp2_int.value = False
+
+                        MOM_X, MOM_Y = SAT_X + 100, SAT_Y + 540
+                        if sat_mcp2:
+                            if event.type == pygame.MOUSEBUTTONDOWN:
+                                if (mx - MOM_X)**2 + (my - (MOM_Y - 20))**2 <= 20**2:
+                                    sat_mcp2.get_pin(0)._value = False # Pushed UP
+                                    JEBLogger.emulator("INPT", f"Momentary UP")
+                                    if sat_mcp2_int:
+                                        sat_mcp2_int.value = False
+                                elif (mx - MOM_X)**2 + (my - (MOM_Y + 20))**2 <= 20**2:
+                                    sat_mcp2.get_pin(1)._value = False # Pushed DOWN
+                                    JEBLogger.emulator("INPT", f"Momentary DOWN")
+                                    if sat_mcp2_int:
+                                        sat_mcp2_int.value = False
+                            elif event.type == pygame.MOUSEBUTTONUP:
+                                if not sat_mcp2.get_pin(0)._value or not sat_mcp2.get_pin(1)._value:
+                                    sat_mcp2.get_pin(0)._value = True
+                                    sat_mcp2.get_pin(1)._value = True
+                                    JEBLogger.emulator("INPT", f"Momentary CENTER")
+                                    if sat_mcp2_int:
+                                        sat_mcp2_int.value = False
+
+                        BIG_BTN_X, BIG_BTN_Y = SAT_X + 260, SAT_Y + 540
+                        if sat_mcp2:
+                            if event.type == pygame.MOUSEBUTTONDOWN:
+                                if (mx - BIG_BTN_X)**2 + (my - BIG_BTN_Y)**2 <= 34**2:
+                                    sat_mcp2.get_pin(6)._value = False
+                                    JEBLogger.emulator("INPT", f"Big Button Pressed")
+                                    if sat_mcp2_int:
+                                        sat_mcp2_int.value = False
+                            elif event.type == pygame.MOUSEBUTTONUP:
+                                if not sat_mcp2.get_pin(6)._value:
+                                    sat_mcp2.get_pin(6)._value = True
+                                    JEBLogger.emulator("INPT", f"Big Button Released")
+                                    if sat_mcp2_int:
+                                        sat_mcp2_int.value = False
+
+                        # --- QUADRANT 4 (Bottom Right): Rotary Encoder ---
+                        SAT_ENC_X, SAT_ENC_Y = SAT_X + 560, SAT_Y + 500
+                        if (mx - SAT_ENC_X)**2 + (my - SAT_ENC_Y)**2 <= 35**2:
                             if sat_encoder_btn:
+                                JEBLogger.emulator("INPT", f"Rotary Encoder Button {'Pressed' if is_pressed else 'Released'}")
                                 sat_encoder_btn.events.queue.append(
                                     MockKeypadEvent(key_number=0, pressed=is_pressed, released=not is_pressed)
                                 )
 
-                        # 3. Satellite Latching Toggles (Click to flip)
-                        if event.type == pygame.MOUSEBUTTONDOWN and sat_mcp:
-                            for i in range(4):
-                                tx, ty = SAT_X + 40 + i*60, SAT_Y + 70
-                                if (mx - tx)**2 + (my - ty)**2 <= 25**2:
-                                    pin = sat_mcp.get_pin(i) # Assuming pins 0-3 are latching
-                                    pin.value = not pin.value
-                                    if sat_mcp_int:
-                                        sat_mcp_int.value = False # FIRE INTERRUPT!
-
-                        # 4. Satellite Momentary Toggle (ON-OFF-ON)
-                        MOM_X, MOM_Y = SAT_X + 210, SAT_Y + 480
-                        if sat_mcp:
-                            if event.type == pygame.MOUSEBUTTONDOWN:
-                                if (mx - MOM_X)**2 + (my - (MOM_Y - 20))**2 <= 20**2:
-                                    sat_mcp.get_pin(4).value = False # Pushed UP (Active Low)
-                                    if sat_mcp_int: sat_mcp_int.value = False
-                                elif (mx - MOM_X)**2 + (my - (MOM_Y + 20))**2 <= 20**2:
-                                    sat_mcp.get_pin(5).value = False # Pushed DOWN (Active Low)
-                                    if sat_mcp_int: sat_mcp_int.value = False
-                            elif event.type == pygame.MOUSEBUTTONUP:
-                                # SPRING RETURN: If either pin is currently held down, snap them back to True!
-                                if not sat_mcp.get_pin(4).value or not sat_mcp.get_pin(5).value:
-                                    sat_mcp.get_pin(4).value = True
-                                    sat_mcp.get_pin(5).value = True
-                                    if sat_mcp_int:
-                                        sat_mcp_int.value = False # FIRE INTERRUPT ON RELEASE!
-
                 # --- MOUSE WHEEL (Interactive Encoder) ---
                 elif event.type == pygame.MOUSEWHEEL:
                     mx, my = pygame.mouse.get_pos()
-                    step_multiplier = 1
                     if mx < (WINDOW_SIZE_W - SAT_W): # Left side (Core Encoder)
                         if HardwareMocks.get("CORE", "encoder"):
-                            HardwareMocks.get("CORE", "encoder").position += (event.y * step_multiplier)
+                            HardwareMocks.get("CORE", "encoder").position += 1 if event.y > 0 else -1
                     else: # Right side (Satellite Encoder)
                         if HardwareMocks.get("SAT_01", "encoder") and HardwareMocks.get("SAT_01", "encoder"):
-                            HardwareMocks.get("SAT_01", "encoder").position += (event.y * step_multiplier)
+                            HardwareMocks.get("SAT_01", "encoder").position += 1 if event.y > 0 else -1
 
                 # --- KEYBOARD FALLBACK ---
                 elif event.type == pygame.KEYDOWN or event.type == pygame.KEYUP:
@@ -237,7 +314,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     key_map = {pygame.K_q: 0, pygame.K_w: 1, pygame.K_e: 2, pygame.K_r: 3}
                     if event.key in key_map and HardwareMocks.get("CORE", "mcp"):
                         idx = key_map[event.key]
-                        HardwareMocks.get("CORE", "mcp").get_pin(idx).value = not is_pressed
+                        HardwareMocks.get("CORE", "mcp").get_pin(idx)._value = not is_pressed
                         if HardwareMocks.get("CORE", "mcp_int"):
                             HardwareMocks.get("CORE", "mcp_int").value = False
 
@@ -251,9 +328,9 @@ async def run_hardware_spy_loop(core, satellite, screen):
                             satbus_detect.value = not HardwareMocks.satellite_plugged_in
 
                             if HardwareMocks.satellite_plugged_in:
-                                JEBLogger.note("EMUL", ">>> PHYSICAL ACTION: SATELLITE CABLE PLUGGED IN >>>", src="EMUL")
+                                JEBLogger.emulator("EMUL", ">>> PHYSICAL ACTION: SATELLITE CABLE PLUGGED IN >>>")
                             else:
-                                JEBLogger.note("EMUL", "<<< PHYSICAL ACTION: SATELLITE CABLE UNPLUGGED <<<", src="EMUL")
+                                JEBLogger.emulator("EMUL", "<<< PHYSICAL ACTION: SATELLITE CABLE UNPLUGGED <<<")
 
                     # [NEW] ADC Voltage Manipulation for Testing
                     # Simulate Native ADC voltage drop (for native analogio-based power monitoring)
@@ -262,16 +339,16 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         native_pin = HardwareMocks.get("CORE", "analog_pin", "board.GP26")
                         if native_pin:
                             native_pin.value = 10000  # Drop voltage significantly (~0.5V)
-                            JEBLogger.warning("EMUL", "⚡ SIMULATED VOLTAGE DROP (Native ADC GP26) -> 10000 (~0.5V)", src="EMUL")
+                            JEBLogger.emulator("EMUL", "⚡ SIMULATED VOLTAGE DROP (Native ADC GP26) -> 10000 (~0.5V)")
                         else:
-                            JEBLogger.note("EMUL", "No native analog pin found at GP26", src="EMUL")
+                            JEBLogger.emulator("EMUL", "No native analog pin found at GP26")
 
                     # Restore Native ADC voltage
                     if event.key == pygame.K_b and is_pressed:
                         native_pin = HardwareMocks.get("CORE", "analog_pin", "board.GP26")
                         if native_pin:
                             native_pin.value = 49650  # Restore to healthy ~2.5V
-                            JEBLogger.note("EMUL", "✅ RESTORED VOLTAGE (Native ADC GP26) -> 49650 (~2.5V)", src="EMUL")
+                            JEBLogger.emulator("EMUL", "✅ RESTORED VOLTAGE (Native ADC GP26) -> 49650 (~2.5V)")
 
                     # Simulate I2C ADC voltage drop (for ADS1115-based power monitoring)
                     if event.key == pygame.K_n and is_pressed:
@@ -279,16 +356,16 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         i2c_pin = HardwareMocks.get("CORE", "ads_channel", 0)  # 0 is P0
                         if i2c_pin:
                             i2c_pin.voltage = 0.5  # Drop directly to 0.5V
-                            JEBLogger.warning("EMUL", "⚡ SIMULATED VOLTAGE DROP (I2C ADC P0) -> 0.5V", src="EMUL")
+                            JEBLogger.emulator("EMUL", "⚡ SIMULATED VOLTAGE DROP (I2C ADC P0) -> 0.5V")
                         else:
-                            JEBLogger.note("EMUL", "No I2C ADC channel found at P0", src="EMUL")
+                            JEBLogger.emulator("EMUL", "No I2C ADC channel found at P0")
 
                     # Restore I2C ADC voltage
                     if event.key == pygame.K_m and is_pressed:
                         i2c_pin = HardwareMocks.get("CORE", "ads_channel", 0)
                         if i2c_pin:
                             i2c_pin.voltage = 2.5  # Restore to healthy 2.5V
-                            JEBLogger.note("EMUL", "✅ RESTORED VOLTAGE (I2C ADC P0) -> 2.5V", src="EMUL")
+                            JEBLogger.emulator("EMUL", "✅ RESTORED VOLTAGE (I2C ADC P0) -> 2.5V")
 
 
             # ==========================================
@@ -325,13 +402,58 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     if hasattr(element, '_items'):
                         for child in element._items:
                             render_display_tree(child, base_x + ex, base_y + ey)
-                    elif hasattr(element, 'text') and element.text:
+
+                    elif hasattr(element, 'text') and element.text != "":
                         screen_x = OLED_X + (base_x + ex) * 2
                         screen_y = OLED_Y + (base_y + ey - 4) * 2
 
-                        # REMOVED the [:21] truncation so the full text can slide!
-                        text_surface = oled_font.render(str(element.text), True, (150, 220, 255))
+                        # Handle Custom Colors and Backgrounds (for Settings Menu)
+                        t_color = getattr(element, 'color', 0xFFFFFF)
+                        bg_color = getattr(element, 'background_color', None)
+
+                        # Translate to emulator OLED colors
+                        def hex_to_rgb(hex_val, is_bg=False):
+                            if hex_val == 0xFFFFFF:
+                                return (150, 220, 255) # Classic JEB Emulator blue
+                            elif hex_val == 0x000000:
+                                return (10, 10, 12)    # OLED background color
+                            return ((hex_val >> 16) & 0xFF, (hex_val >> 8) & 0xFF, hex_val & 0xFF)
+
+                        text_rgb = hex_to_rgb(t_color)
+
+                        text_surface = oled_font.render(str(element.text), True, text_rgb)
+
+                        if bg_color is not None:
+                            bg_rgb = hex_to_rgb(bg_color, is_bg=True)
+                            text_w, text_h = text_surface.get_size()
+                            # Draw a background rectangle slightly padded
+                            pygame.draw.rect(screen, bg_rgb, (screen_x - 2, screen_y, text_w + 4, text_h))
+
                         screen.blit(text_surface, (screen_x, screen_y))
+
+                    elif hasattr(element, 'bitmap'):
+                        # Render TileGrid Bitmaps (for Audio Visualizer)
+                        bmp = element.bitmap
+                        palette = getattr(element, 'pixel_shader', None)
+
+                        # Optimization: Only draw pixels that are active (val > 0)
+                        for y in range(bmp.height):
+                            for x in range(bmp.width):
+                                val = bmp[x, y]
+                                if val > 0:
+                                    # Default to emulator blue if palette mapping fails
+                                    color_rgb = (150, 220, 255)
+                                    if palette:
+                                        raw_hex = palette[val]
+                                        if raw_hex == 0xFFFFFF:
+                                            color_rgb = (150, 220, 255)
+                                        else:
+                                            color_rgb = ((raw_hex >> 16) & 0xFF, (raw_hex >> 8) & 0xFF, raw_hex & 0xFF)
+
+                                    # Scale 1x1 pixels to 2x2 blocks for the emulator OLED view
+                                    rect_x = OLED_X + (base_x + ex + x) * 2
+                                    rect_y = OLED_Y + (base_y + ey + y) * 2
+                                    pygame.draw.rect(screen, color_rgb, (rect_x, rect_y, 2, 2))
 
                 render_display_tree(core.display.root, 0, 0)
 
@@ -417,41 +539,49 @@ async def run_hardware_spy_loop(core, satellite, screen):
                 iy = ENC_Y + math.sin(rad) * (ENC_RADIUS - 10)
                 pygame.draw.line(screen, (255, 100, 100), (ENC_X, ENC_Y), (ix, iy), 4)
 
-            # ==========================================
-            # --- SPY: TYPE 01 INDUSTRIAL SATELLITE ---
-            # ==========================================
-            # Add a helpful prompt on screen
-            plug_text = "Press 'P' to Unplug Satellite" if HardwareMocks.satellite_plugged_in else "Press 'P' to Plug In Satellite"
-            prompt_surf = oled_font.render(plug_text, True, (100, 100, 100))
-            screen.blit(prompt_surf, (SAT_X, 10))
-
             if HardwareMocks.satellite_plugged_in:
                 # Simulate Power Loss (Overrides graphics if MOSFET is off)
                 is_powered = HardwareMocks.get("CORE", "satbus_mosfet_pin", None) and HardwareMocks.get("CORE", "satbus_mosfet_pin").value
                 if not is_powered:
-                    JEBLogger.warning("EMUL", "⚡ SAT_01 POWER LOST ⚡ - MOSFET is OFF, simulating blackout!", src="EMUL")
-                    # Force hardware buffers to empty so they render dark
+                    JEBLogger.emulator("EMUL", "⚡ SAT_01 POWER LOST ⚡ - MOSFET is OFF, simulating blackout!")
                     if HardwareMocks.get("SAT_01", "pixels"):
                         HardwareMocks.get("SAT_01", "pixels").fill((0,0,0))
 
-                # Industrial Yellow Chassis
+                # ==========================================
+                # INDUSTRIAL YELLOW CHASSIS BOX
+                # ==========================================
+                # This draws the background box to separate the Sat from the Core
                 pygame.draw.rect(screen, (220, 180, 40), (SAT_X, SAT_Y, SAT_W, SAT_H), border_radius=10)
                 pygame.draw.rect(screen, (100, 80, 20), (SAT_X, SAT_Y, SAT_W, SAT_H), 4, border_radius=10)
 
-                # 1. TOP: LATCHING TOGGLES
-                for i in range(4):
-                    tx, ty = SAT_X + 40 + i*60, SAT_Y + 70
+                # ==========================================
+                # --- QUADRANT 1 (Top Left): LEDs & Toggles
+                # ==========================================
+                sat_pixels = HardwareMocks.get("SAT_01", "pixels")
+                sat_mcp = HardwareMocks.get("SAT_01", "mcp")
+                for i in range(8):
+                    # 1. NeoPixels
+                    led_tx = SAT_X + 60 + (i % 4) * 80
+                    led_ty = SAT_Y + 60 + (i // 4) * 120
+                    pygame.draw.circle(screen, (30, 30, 30), (led_tx, led_ty), 12)
+                    try:
+                        if sat_pixels:
+                            color = sat_pixels[i]
+                            if isinstance(color, int):
+                                color = ((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF)
+                            safe_color = tuple(max(0, min(255, int(c))) for c in color[:3])
+                            if any(c > 0 for c in safe_color):
+                                pygame.draw.circle(screen, safe_color, (led_tx, led_ty), 9)
+                            else:
+                                pygame.draw.circle(screen, (10, 10, 10), (led_tx, led_ty), 9)
+                    except: pass
 
-                    # Read simulated electrical state
-                    state = True
-                    if HardwareMocks.get("SAT_01", "mcp"):
-                        state = HardwareMocks.get("SAT_01", "mcp").peek_pin(i).value
-
-                    # Switch Base
+                    # 2. Latching Toggles
+                    tx = SAT_X + 60 + (i % 4)*80
+                    ty = SAT_Y + 110 + (i // 4)*120
+                    state = True if not sat_mcp else sat_mcp.get_pin(i)._value
                     pygame.draw.rect(screen, (80, 80, 80), (tx-15, ty-25, 30, 50), border_radius=4)
                     pygame.draw.rect(screen, (40, 40, 40), (tx-15, ty-25, 30, 50), 2, border_radius=4)
-
-                    # Switch Bat Angle
                     if state: # UP
                         pygame.draw.rect(screen, (180, 180, 180), (tx-6, ty-25, 12, 28), border_radius=3)
                         pygame.draw.circle(screen, (150, 150, 150), (tx, ty-25), 6)
@@ -460,55 +590,9 @@ async def run_hardware_spy_loop(core, satellite, screen):
                         pygame.draw.circle(screen, (90, 90, 90), (tx, ty+28), 6)
 
                 # ==========================================
-                # RENDER SAT 01 LEDs
+                # --- QUADRANT 2 (Top Right): Segment & Keypad
                 # ==========================================
-                sat_pixels = HardwareMocks.get("SAT_01", "pixels")
-
-                if sat_pixels:
-                    led_y = SAT_Y + 25
-                    for i in range(4):
-                        tx = SAT_X + 40 + i * 60
-
-                        # Draw outer Bezel
-                        pygame.draw.circle(screen, (30, 30, 30), (tx, led_y), 12)
-
-                        try:
-                            color = sat_pixels[i]
-
-                            # Handle hex integers just in case
-                            if isinstance(color, int):
-                                r = (color >> 16) & 0xFF
-                                g = (color >> 8) & 0xFF
-                                b = color & 0xFF
-                                color = (r, g, b)
-
-                            safe_color = tuple(max(0, min(255, int(c))) for c in color[:3])
-
-                            # If the color is lit (>0), draw the glowing dome
-                            if any(c > 0 for c in safe_color):
-                                pygame.draw.circle(screen, safe_color, (tx, led_y), 9)
-                            else:
-                                pygame.draw.circle(screen, (10, 10, 10), (tx, led_y), 9)
-
-                        except Exception as e:
-                            print(f"⚠️ [EMULATOR] LED Render Error on SAT_01 LED {i}: {e}")
-
-                # 2. MIDDLE: KEYPAD (3x4)
-                KEYPAD_LABELS = ['1','2','3','4','5','6','7','8','9','*','0','#']
-                for r in range(4):
-                    for c in range(3):
-                        kx, ky = SAT_X + 55 + c*75, SAT_Y + 140 + r*45
-                        # Button Bezel and Dome
-                        pygame.draw.circle(screen, (30, 30, 30), (kx, ky), 22)
-                        pygame.draw.circle(screen, (180, 180, 180), (kx, ky), 20)
-
-                        # Key Text
-                        idx = r * 3 + c
-                        lbl = oled_font.render(KEYPAD_LABELS[idx], True, (0, 0, 0))
-                        lbl_rect = lbl.get_rect(center=(kx, ky))
-                        screen.blit(lbl, lbl_rect)
-
-                # 3. LOWER-MIDDLE: SEGMENT DISPLAYS
+                # 1. 14-Segment Display
                 if HardwareMocks.get("SAT_01", "segments", key=0x70) and HardwareMocks.get("SAT_01", "segments", key=0x71):
                     seg_font = pygame.font.SysFont("courier", 32, bold=True)
                     left_display = HardwareMocks.get("SAT_01", "segments", key=0x71)
@@ -517,8 +601,8 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     full_text = "".join(left_display.chars) if left_display else "    "
                     full_text += "".join(right_display.chars) if right_display else "    "
 
-                    SEG_X, SEG_Y = SAT_X + 20, SAT_Y + 340
-                    SEG_W, SEG_H = 220, 60
+                    SEG_X, SEG_Y = SAT_X + 430, SAT_Y + 60
+                    SEG_W, SEG_H = 240, 60
                     pygame.draw.rect(screen, (15, 5, 5), (SEG_X, SEG_Y, SEG_W, SEG_H))
                     pygame.draw.rect(screen, (40, 10, 10), (SEG_X, SEG_Y, SEG_W, SEG_H), 2)
 
@@ -526,12 +610,74 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     text_rect = text_surface.get_rect(center=(SEG_X + SEG_W//2, SEG_Y + SEG_H//2))
                     screen.blit(text_surface, text_rect)
 
-                # 4. BOTTOM LEFT: ROTARY ENCODER
-                SAT_ENC_X, SAT_ENC_Y = SAT_X + 110, SAT_Y + 480
-                pygame.draw.circle(screen, (20, 20, 20), (SAT_ENC_X, SAT_ENC_Y), 35) # Base Bezel
-                pygame.draw.circle(screen, (70, 70, 75), (SAT_ENC_X, SAT_ENC_Y), 30) # Knob
+                # 2. Keypad (3x4)
+                KEYPAD_LABELS = ['1','2','3','4','5','6','7','8','9','*','0','#']
+                for r in range(4):
+                    for c in range(3):
+                        kx, ky = SAT_X + 460 + c*70, SAT_Y + 160 + r*60
+                        pygame.draw.circle(screen, (30, 30, 30), (kx, ky), 22)
+                        pygame.draw.circle(screen, (180, 180, 180), (kx, ky), 20)
+                        idx = r * 3 + c
+                        lbl = oled_font.render(KEYPAD_LABELS[idx], True, (0, 0, 0))
+                        lbl_rect = lbl.get_rect(center=(kx, ky))
+                        screen.blit(lbl, lbl_rect)
 
-                # Dial Position indicator
+                # ==========================================
+                # --- QUADRANT 3 (Bottom Left): Specials, Mom, Big Btn
+                # ==========================================
+                sat_mcp2 = HardwareMocks.get("SAT_01", "mcp2")
+                # 1. Specials
+                spec_labels = ["ARM", "KEY", "ROT-A", "ROT-B"]
+                spec_pins2  = [2, 3, 4, 5]
+                spec_colors = [(200, 60, 60), (60, 120, 200), (100, 200, 100), (100, 200, 100)]
+                for j, (pin_num, label, act_color) in enumerate(zip(spec_pins2, spec_labels, spec_colors)):
+                    tx, ty = SAT_X + 60 + j*80, SAT_Y + 400
+                    state = True if not sat_mcp2 else sat_mcp2.get_pin(pin_num)._value
+                    pygame.draw.rect(screen, (80, 80, 80), (tx-15, ty-25, 30, 50), border_radius=4)
+                    pygame.draw.rect(screen, (40, 40, 40), (tx-15, ty-25, 30, 50), 2, border_radius=4)
+                    ind_color = act_color if not state else (60, 60, 60)
+                    pygame.draw.circle(screen, ind_color, (tx, ty+30), 5)
+                    if state: # UP
+                        pygame.draw.rect(screen, (180, 180, 180), (tx-6, ty-25, 12, 28), border_radius=3)
+                        pygame.draw.circle(screen, (150, 150, 150), (tx, ty-25), 6)
+                    else:     # DOWN
+                        pygame.draw.rect(screen, (120, 120, 120), (tx-6, ty, 12, 28), border_radius=3)
+                        pygame.draw.circle(screen, (90, 90, 90), (tx, ty+28), 6)
+                    lbl_surf = oled_font.render(label, True, (50, 30, 10))
+                    screen.blit(lbl_surf, (tx - 18, ty + 37))
+
+                # 2. Momentary
+                MOM_X, MOM_Y = SAT_X + 100, SAT_Y + 540
+                pygame.draw.rect(screen, (80, 80, 80), (MOM_X-15, MOM_Y-25, 30, 50), border_radius=4)
+                pygame.draw.rect(screen, (40, 40, 40), (MOM_X-15, MOM_Y-25, 30, 50), 2, border_radius=4)
+                state_up = True if not sat_mcp2 else sat_mcp2.get_pin(0)._value
+                state_down = True if not sat_mcp2 else sat_mcp2.get_pin(1)._value
+                if not state_up:
+                    pygame.draw.rect(screen, (180, 180, 180), (MOM_X-6, MOM_Y-25, 12, 28), border_radius=3)
+                    pygame.draw.circle(screen, (150, 150, 150), (MOM_X, MOM_Y-25), 6)
+                elif not state_down:
+                    pygame.draw.rect(screen, (120, 120, 120), (MOM_X-6, MOM_Y, 12, 28), border_radius=3)
+                    pygame.draw.circle(screen, (90, 90, 90), (MOM_X, MOM_Y+28), 6)
+                else:
+                    pygame.draw.rect(screen, (150, 150, 150), (MOM_X-6, MOM_Y-12, 12, 24), border_radius=3)
+                    pygame.draw.circle(screen, (130, 130, 130), (MOM_X, MOM_Y), 6)
+
+                # 3. Big Red Button
+                BIG_BTN_X, BIG_BTN_Y = SAT_X + 260, SAT_Y + 540
+                btn_pressed = sat_mcp2 and not sat_mcp2.get_pin(6)._value
+                big_btn_color = (150, 10, 10) if btn_pressed else (220, 30, 30)
+                pygame.draw.circle(screen, (20, 20, 20), (BIG_BTN_X, BIG_BTN_Y), 34)
+                pygame.draw.circle(screen, big_btn_color, (BIG_BTN_X, BIG_BTN_Y), 30)
+                lbl_surf = oled_font.render("!", True, (255, 200, 200))
+                lbl_rect = lbl_surf.get_rect(center=(BIG_BTN_X, BIG_BTN_Y))
+                screen.blit(lbl_surf, lbl_rect)
+
+                # ==========================================
+                # --- QUADRANT 4 (Bottom Right): Encoder
+                # ==========================================
+                SAT_ENC_X, SAT_ENC_Y = SAT_X + 560, SAT_Y + 500
+                pygame.draw.circle(screen, (20, 20, 20), (SAT_ENC_X, SAT_ENC_Y), 35)
+                pygame.draw.circle(screen, (70, 70, 75), (SAT_ENC_X, SAT_ENC_Y), 30)
                 if HardwareMocks.get("SAT_01", "encoder"):
                     angle = (HardwareMocks.get("SAT_01", "encoder").position * 18) % 360
                     rad = math.radians(angle - 90)
@@ -539,61 +685,95 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     iy = SAT_ENC_Y + math.sin(rad) * 25
                     pygame.draw.line(screen, (255, 100, 100), (SAT_ENC_X, SAT_ENC_Y), (ix, iy), 4)
 
-                # 5. BOTTOM RIGHT: MOMENTARY TOGGLE (ON-OFF-ON)
-                MOM_X, MOM_Y = SAT_X + 210, SAT_Y + 480
-                pygame.draw.rect(screen, (80, 80, 80), (MOM_X-15, MOM_Y-25, 30, 50), border_radius=4)
-                pygame.draw.rect(screen, (40, 40, 40), (MOM_X-15, MOM_Y-25, 30, 50), 2, border_radius=4)
-
-                state_up = True
-                state_down = True
-                if HardwareMocks.get("SAT_01", "mcp"):
-                    # Assumes Pins 4 and 5 are the momentary inputs
-                    state_up = HardwareMocks.get("SAT_01", "mcp").peek_pin(4).value
-                    state_down = HardwareMocks.get("SAT_01", "mcp").peek_pin(5).value
-
-                if not state_up: # Pushed UP
-                    pygame.draw.rect(screen, (180, 180, 180), (MOM_X-6, MOM_Y-25, 12, 28), border_radius=3)
-                    pygame.draw.circle(screen, (150, 150, 150), (MOM_X, MOM_Y-25), 6)
-                elif not state_down: # Pushed DOWN
-                    pygame.draw.rect(screen, (120, 120, 120), (MOM_X-6, MOM_Y, 12, 28), border_radius=3)
-                    pygame.draw.circle(screen, (90, 90, 90), (MOM_X, MOM_Y+28), 6)
-                else: # Centered (Spring returned)
-                    pygame.draw.rect(screen, (150, 150, 150), (MOM_X-6, MOM_Y-12, 12, 24), border_radius=3)
-                    pygame.draw.circle(screen, (130, 130, 130), (MOM_X, MOM_Y), 6)
-
             pygame.display.flip()
             await asyncio.sleep(0.016) # ~60 FPS
         except Exception as e:
-            JEBLogger.error("EMUL", f"Error in render loop: {e}", src="EMUL")
+            JEBLogger.emulator("EMUL", f"Error in render loop: {e}")
             import traceback
             traceback.print_exc()
             await asyncio.sleep(1) # Pause to prevent spamming errors
 
 async def main():
-    pygame.init()
-    screen = pygame.display.set_mode((1200, 800))
-    pygame.display.set_caption("JEB Embedded Hardware Emulator")
+    HEADLESS = "--headless" in sys.argv
 
-    JEBLogger.note("CORE", " --- BOOTING CORE MANAGER --- ", src="EMUL")
+    # Setup Pygame if not in headless mode
+    screen = None
+    if not HEADLESS:
+        pygame.init()
+        screen = pygame.display.set_mode((1600, 800))
+        pygame.display.set_caption("JEB Unified Emulator")
+
+    def tag_managers(app_instance, tag_name):
+        if app_instance is None: return
+        setattr(app_instance, '_emul_source', tag_name)
+        for key, obj in vars(app_instance).items():
+            if hasattr(obj, '__dict__'): # If it's a class instance (like HIDManager)
+                setattr(obj, '_emul_source', tag_name)
+
+    # 2. Boot the Primary Application via code.py
+    JEBLogger.emulator("EMUL", " --- BOOTING via src/code.py --- ")
     HardwareMocks.set_context("CORE")
-    core = CoreManager()
-    core.matrix.fill((0,255,0))
 
-    JEBLogger.note("SAT1", " --- BOOTING SAT TYPE 01 FIRMWARE --- ", src="EMUL")
-    HardwareMocks.set_context("SAT_01")
-    satellite = IndustrialSatelliteFirmware()
+    os.chdir(SRC_DIR) # Force config.json to load from src/
+    code_path = os.path.join(SRC_DIR, "code.py")
+    spec = importlib.util.spec_from_file_location("jeb_code", code_path)
+    jeb_code = importlib.util.module_from_spec(spec)
+    sys.modules["jeb_code"] = jeb_code
+    spec.loader.exec_module(jeb_code)
 
-    JEBLogger.note("EMUL", " --- STARTING HARDWARE EMULATOR --- ", src="EMUL")
+    # Console Manager Asyncio Patch
+    from managers.console_manager import ConsoleManager
+    async def patched_get_input(self, prompt):
+        try:
+            return await asyncio.to_thread(input, prompt)
+        except (EOFError, KeyboardInterrupt):
+            await asyncio.sleep(3600)
+            return ""
+
+    ConsoleManager.get_input = patched_get_input
+
+    primary_app = jeb_code.app
+    role = jeb_code.role
+
+    core = None
+    satellite = None
+
+    tasks = [jeb_code.main()]
+
+    if role == "CORE":
+        core = primary_app
+        tag_managers(core, 'CORE')
+        JEBLogger.emulator("EMUL", " --- BOOTING SECONDARY SAT_01 FIRMWARE --- ")
+        HardwareMocks.set_context("SAT_01")
+        from satellites.sat_01_firmware import IndustrialSatelliteFirmware
+        satellite = IndustrialSatelliteFirmware()
+        tag_managers(satellite, '0101')
+        tasks.append(satellite.start())
+    elif role == "SAT":
+        satellite = primary_app
+        JEBLogger.emulator("EMUL", "Primary is Satellite. Core simulation not active.")
+
+    # Attach GUI Loop
+    if not HEADLESS:
+        tasks.append(run_hardware_spy_loop(core, satellite, screen))
+    else:
+        JEBLogger.emulator("EMUL", "Running in HEADLESS mode (No GUI).")
+
+    # Run Everything!
+    JEBLogger.emulator("EMUL", " --- EMULATOR ONLINE --- ")
     try:
-        await asyncio.gather(
-            core.start(),
-            satellite.start(),
-            run_hardware_spy_loop(core, satellite, screen)
-        )
+        await asyncio.gather(*tasks)
+    except asyncio.CancelledError:
+        JEBLogger.emulator("EMUL", "🛑 Emulator closed cleanly.")
     except Exception as e:
-        JEBLogger.error("EMUL", f"System crashed: {e}", src="EMUL")
+        JEBLogger.emulator("EMUL", f"System crashed: {e}")
         import traceback
         traceback.print_exc()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        JEBLogger.emulator("EMUL", "🛑 Shutting down from console (Ctrl+C)...")
+    finally:
+        pygame.quit()

@@ -5,16 +5,19 @@ import asyncio
 
 from utilities.palette import Palette
 from utilities import tones
+from utilities.logger import JEBLogger
 
 from .utility_mode import UtilityMode
 
 class MainMenu(UtilityMode):
     """Main Menu for selecting modes."""
     def __init__(self, core):
+        """Initialize Main Menu mode."""
+        JEBLogger.info("MENU", "[INIT] MainMenu")
         super().__init__(core, name="MAIN MENU", description="Select a mode to begin", timeout=10)
         self.state = "DASHBOARD"
 
-    def _build_menu_items(self):
+    def _build_menu_items(self, menu="MAIN"):
         """Dynamically build menu based on mode registry and connected hardware.
 
         This method accesses self.core.mode_registry which is a Dict[str, dict]
@@ -25,14 +28,15 @@ class MainMenu(UtilityMode):
         Returns:
             List[str]: List of mode_id strings for modes that have their requirements met.
         """
+        JEBLogger.info("MENU",f"Building menu items for menu '{menu}'...")
         items = []
 
         # Sort by name or predefined order if you wish
         # self.core.mode_registry is Dict[mode_id: str, metadata: dict]
         for mode_id, meta in self.core.mode_registry.items():
 
-            # Skip system modes (like Main Menu itself, or Debug if not needed)
-            if mode_id in ["MAINMENU", "DASHBOARD"]:
+            # Skip modes that don't belong to the current menu context (if using menu categories)
+            if "menu" not in meta or meta["menu"] != menu:
                 continue
 
             # Check requirements
@@ -52,10 +56,13 @@ class MainMenu(UtilityMode):
             if requirements_met:
                 items.append(mode_id)
 
+        JEBLogger.info("MENU", f"Built menu items: {items}")
         return items
 
     def _set_state(self, new_state):
         """Helper to switch states and update UI accordingly."""
+        JEBLogger.info("MENU", f"Transitioning to state: {new_state}")
+
         self.state = new_state
 
         if new_state == "DASHBOARD":
@@ -87,6 +94,7 @@ class MainMenu(UtilityMode):
 
         # Data Variables
         menu_items = self._build_menu_items()
+        admin_items = self._build_menu_items("ADMIN")
         selected_game_idx = 0
         selected_setting_idx = 0
 
@@ -98,8 +106,10 @@ class MainMenu(UtilityMode):
         needs_render = True
         last_rendered_game = -1
         last_rendered_setting = -1
+        last_rendered_admin = -1
         last_rendered_state = None
         last_rendered_focus = None
+        slide_direction = "SLIDE_LEFT"
 
         # Turn off all button LEDs
         self.core.leds.off_led(-1)
@@ -132,6 +142,7 @@ class MainMenu(UtilityMode):
             if curr_sat_keys != last_sat_keys:
                 last_sat_keys = curr_sat_keys
                 menu_items = self._build_menu_items()
+                admin_items = self._build_menu_items("ADMIN")
                 if menu_items and selected_game_idx >= len(menu_items):
                     selected_game_idx = len(menu_items) - 1
                 needs_render = True
@@ -156,20 +167,19 @@ class MainMenu(UtilityMode):
 
             # --- ADMIN STATE ---
             elif self.state == "ADMIN":
-                admin_items = ["Settings", "Debug Dash", "Calibration", "UART Logs", "Reset"]
-                admin_keys = ["SETTINGS", "DEBUG", "CALIB", "UARTLOG", "RESET"]
+                admin_idx = curr_pos % len(admin_items) if admin_items else 0
 
                 if encoder_diff != 0:
                     self.touch()
+                    slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
                     await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
                     needs_render = True
 
-                admin_idx = curr_pos % len(admin_items)
-
-                if encoder_pressed:
+                if encoder_pressed and admin_items:
                     self.touch()
                     await self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
-                    return admin_keys[admin_idx]
+                    self.core.mode = admin_items[admin_idx]
+                    return "SUCCESS"
 
                 if btn_b_long:
                     self.touch()
@@ -217,7 +227,9 @@ class MainMenu(UtilityMode):
                 if focus_mode == "GAME":
                     if encoder_diff != 0:
                         self.touch()
+                        slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
                         selected_game_idx = curr_pos % len(menu_items)
+                        JEBLogger.info("MENU", f"Encoder moved: diff={encoder_diff}, new_pos={curr_pos}, selected_game_idx={selected_game_idx}, menu_length={len(menu_items)}")
                         await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
                         needs_render = True
 
@@ -260,8 +272,9 @@ class MainMenu(UtilityMode):
             # 3. RENDER STAGE
             # =========================================
             # Only push updates to hardware if something visually changed!
-            if needs_render or self.state != last_rendered_state or focus_mode != last_rendered_focus:
-
+            if needs_render or self.state != last_rendered_state or focus_mode != last_rendered_focus or selected_setting_idx != last_rendered_setting:
+                JEBLogger.debug("MENU", f"Rendering... needs={needs_render}, state={self.state}, focus={focus_mode}, sett={selected_setting_idx}")
+                JEBLogger.debug("MENU", f"Last - state={last_rendered_state}, focus={last_rendered_focus}, sett={last_rendered_setting}")
                 if self.state == "DASHBOARD":
                     self.core.display.use_standard_layout()
                     self.core.display.update_header("JADNET Electronics Box")
@@ -270,15 +283,25 @@ class MainMenu(UtilityMode):
                     self.core.matrix.clear()
 
                 elif self.state == "ADMIN":
-                    admin_items = ["Settings", "Debug Dash", "Calibration", "UART Logs", "Reset"]
-                    admin_idx = curr_pos % len(admin_items)
+                    admin_idx = curr_pos % len(admin_items) if admin_items else 0
 
                     self.core.display.use_standard_layout()
                     self.core.display.update_header("- ADMIN MODE -")
-                    # Emulate an inverted selection bar for standard labels using brackets
-                    self.core.display.update_status(f"> {admin_items[admin_idx]} <", "Hold 'W' to Exit")
-                    self.core.display.update_footer("WARNING: System Override")
-                    self.core.matrix.show_icon("WARNING")
+
+                    if admin_items:
+                        mode_id = admin_items[admin_idx]
+                        mode_meta = self.core.mode_registry[mode_id]
+                        self.core.display.update_status(f"> {mode_meta['name']} <", "Push to Select")
+                        self.core.display.update_footer("Hold 'W' to Exit")
+
+                        # Only re-trigger the slide animation if the admin mode actually changed
+                        if admin_idx != last_rendered_admin:
+                            self.core.matrix.show_icon(mode_meta["icon"], anim_mode=slide_direction, speed=2.0)
+                        last_rendered_admin = admin_idx
+                    else:
+                        self.core.display.update_status("NO ADMIN MODES", "Hold 'W' to Exit")
+                        self.core.display.update_footer("WARNING: System Override")
+                        self.core.matrix.show_icon("WARNING")
 
                 elif self.state == "MENU":
                     mode_id = menu_items[selected_game_idx]
@@ -294,7 +317,7 @@ class MainMenu(UtilityMode):
 
                         # Only re-trigger the slide animation if the game actually changed
                         if selected_game_idx != last_rendered_game:
-                            self.core.matrix.show_icon(mode_meta["icon"], anim_mode="SLIDE_LEFT", speed=2.0)
+                            self.core.matrix.show_icon(mode_meta["icon"], anim_mode=slide_direction, speed=2.0)
 
                         last_rendered_game = selected_game_idx
 
@@ -309,13 +332,11 @@ class MainMenu(UtilityMode):
                         self.core.display.update_settings_menu(settings_strings, selected_setting_idx)
                         self.core.display.update_footer("Press 'D' to Exit")
 
-                        last_rendered_setting = selected_setting_idx
-
-                    last_rendered_focus = focus_mode
-
                 # Update tracking variables
                 needs_render = False
                 last_rendered_state = self.state
+                last_rendered_focus = focus_mode
+                last_rendered_setting = selected_setting_idx
 
             last_pos = curr_pos
 

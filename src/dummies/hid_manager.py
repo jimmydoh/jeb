@@ -42,6 +42,9 @@ class HIDManager:
     def hw_update(self, sid=None):
         return False
 
+    def get_idle_time_ms(self):
+        return 0
+
     def set_remote_state(self, buttons, latching_toggles, momentary_toggles, encoders, encoder_buttons, matrix_keypads, estop, sid):
         return False
 

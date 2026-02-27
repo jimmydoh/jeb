@@ -7,11 +7,13 @@ import time
 
 from adafruit_ht16k33.segments import Seg14x4
 
+from utilities.logger import JEBLogger
 from utilities.payload_parser import parse_values, get_float, get_str
 
 class SegmentManager:
     """Manages dual 14-segment displays."""
     def __init__(self, i2c, device_addresses=[0x70, 0x71]):
+        JEBLogger.info("SEGM", f"[INIT] SegmentManager - device_addresses: {device_addresses}")
         self._display_right = Seg14x4(i2c, address=device_addresses[0])
         self._display_right.brightness = 0.5
         self._display_left = Seg14x4(i2c, address=device_addresses[1])
@@ -22,6 +24,7 @@ class SegmentManager:
     # --- BASIC TRIGGERS ---
     async def start_message(self, message, loop=False, speed=0.3, direction="L"):
         """Starts a marquee message as a task."""
+        JEBLogger.debug("SEGM", f"Starting message: '{message}' - loop: {loop}, speed: {speed}, direction: {direction}")
         if self._display_task and not self._display_task.done():
             self._display_task.cancel()
             await asyncio.sleep(0.1)
@@ -29,6 +32,7 @@ class SegmentManager:
 
     async def apply_command(self, cmd, val):
         """Parses and executes a raw protocol command."""
+        JEBLogger.debug("SEGM", f"Applying command '{cmd}' with value: {val}")
         if isinstance(val, (list, tuple)):
             values = val
         else:
@@ -47,6 +51,18 @@ class SegmentManager:
         elif cmd == "DSPMATRIX":
             duration = get_float(values, 0, 2.0)
             await self.start_matrix(duration if duration > 0 else 2.0)
+
+    async def clear(self):
+        """Clears both displays and cancels any active tasks."""
+        JEBLogger.debug("SEGM", "Clearing displays and cancelling active tasks.")
+        if self._display_task and not self._display_task.done():
+            self._display_task.cancel()
+            await asyncio.sleep(0.1)
+
+        self._display_left.fill(0)
+        self._display_right.fill(0)
+        self._display_left.show()
+        self._display_right.show()
 
     # --- BASIC LOGIC ---
     async def _message_logic(self, text, loop=False, speed=0.3, direction="L"):

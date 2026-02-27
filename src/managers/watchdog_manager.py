@@ -1,5 +1,43 @@
 # File: src/managers/watchdog_manager.py
-import microcontroller
+"""
+WatchdogManager - A 'Flag Pattern' implementation for managing the Watchdog Timer.
+Instead of blindly feeding the dog, this manager requires all registered
+critical tasks to 'check-in' (set a flag) during their loop. The dog is
+only fed if ALL tasks have checked in since the last feed. This ensures that
+if any task is hanging, the watchdog will not be fed and will eventually reset
+the system, providing a more robust and reliable way to manage the watchdog timer.
+"""
+import time
+from adafruit_ticks import ticks_ms, ticks_diff
+
+try:
+    from microcontroller import watchdog as w
+except ImportError:
+    # Mock watchdog for non-hardware environments (e.g., testing)
+    class MockWatchdog:
+        def __init__(self):
+            self.timeout = None
+            self.mode = None
+            self._feed_count = 0
+
+        def feed(self):
+            self._feed_count += 1  # In a real implementation, this would reset the watchdog timer
+
+        @property
+        def feed_count(self):
+            return self._feed_count
+
+    w = MockWatchdog()
+
+try:
+    from watchdog import WatchDogMode
+except ImportError:
+    # Mock WatchDogMode enum
+    class WatchDogMode:
+        RESET = 0
+        RAISE = 1
+
+from utilities.logger import JEBLogger
 
 class WatchdogManager:
     """
@@ -9,28 +47,43 @@ class WatchdogManager:
     critical tasks to 'check-in' (set a flag) during their loop.
     The dog is only fed if ALL tasks have checked in since the last feed.
     """
-    def __init__(self, task_names, timeout=None):
+    def __init__(self, task_names, timeout=None, mode="RAISE"):
         # Initialize flags for all tasks as False
         self._flags = {name: False for name in task_names}
+        # Flag to indicate if a reboot is in progress
+        self._rebooting = False
 
-        self._rebooting = False  # Flag to indicate if a reboot is in progress
+        # Starvation tracking properties
+        self._starving = False
+        self._starvation_start = 0
 
-        # Enable the hardware watchdog if a timeout is provided
-        if timeout:
-            microcontroller.watchdog.timeout = timeout
-            microcontroller.watchdog.mode = microcontroller.watchdog.WatchDogMode.RESET
-            microcontroller.watchdog.feed()
+        # Watchdog operation mode: "RESET", "RAISE", "LOG_ONLY"
+        self._mode = mode.upper()
+
+        JEBLogger.info("WDOG", f"[INIT] WatchdogManager - timeout: {timeout}s, mode: {self._mode}")
+
+        if timeout and w and WatchDogMode:
+            if self._mode != "LOG_ONLY":
+                w.timeout = timeout
+                w.mode = WatchDogMode.RAISE if self._mode == "RAISE" else WatchDogMode.RESET
+                w.feed()
+            else:
+                JEBLogger.warning("WDOG", "Hardware watchdog disabled (LOG_ONLY mode active)")
+        elif timeout:
+            JEBLogger.warning("WDOG", "Watchdog hardware not available (Emulator)")
 
     def register_flags(self, task_names):
         """Register additional tasks to monitor."""
         for name in task_names:
             if name not in self._flags:
+                JEBLogger.info("WDOG", f"Registering task '{name}'")
                 self._flags[name] = False
 
     def unregister_flags(self, task_names):
         """Unregister tasks that no longer need monitoring."""
         for name in task_names:
             if name in self._flags:
+                JEBLogger.info("WDOG", f"Unregistering task '{name}'")
                 del self._flags[name]
 
     def check_in(self, task_name):
@@ -41,19 +94,46 @@ class WatchdogManager:
     def safe_feed(self):
         """
         Feeds the watchdog ONLY if all tasks have checked in.
-        Returns True if fed, False if a task is hanging (which will eventually cause a reset).
+        Returns True if fed, False if a task is hanging
+        (which will eventually cause a reset).
         """
         if all(self._flags.values()):
-            if not self._rebooting:
-                microcontroller.watchdog.feed()
+            if not self._rebooting and w and self._mode != "LOG_ONLY":
+                w.feed()
+
             # Reset flags for the next cycle
             for name in self._flags:
                 self._flags[name] = False
+
+            # Clear starvation state if we just recovered
+            if self._starving:
+                JEBLogger.info("WDOG", "Watchdog recovered! All tasks checked in.")
+                self._starving = False
+
             return True
-        return False
+        else:
+            # --- BLAME ATTRIBUTION ---
+            now = ticks_ms()
+            stuck_tasks = [name for name, flag in self._flags.items() if not flag]
+
+            if not self._starving:
+                # Log immediately on the first missed feed
+                JEBLogger.error("WDOG", f"🚨 STARVATION DETECTED! Stuck tasks: {stuck_tasks}")
+                self._starving = True
+                self._starvation_start = now
+            elif ticks_diff(now, self._starvation_start) > 1000:
+                # Throttle the reminder logs to once per second
+                JEBLogger.error("WDOG", f"Still starving... Stuck tasks: {stuck_tasks}")
+                self._starvation_start = now
+
+            return False
 
     def force_reboot(self):
         """Force a reboot by not feeding the watchdog."""
-        microcontroller.watchdog.timeout = 1  # Set a very short timeout
-        microcontroller.watchdog.mode = microcontroller.watchdog.WatchDogMode.RESET
+        JEBLogger.critical("WDOG", "Force reboot triggered!")
+        time.sleep(2)  # Give the console 2 seconds to flush the log
+
+        if w and WatchDogMode and self._mode != "LOG_ONLY":
+            w.timeout = 1
+            w.mode = WatchDogMode.RESET
         self._rebooting = True

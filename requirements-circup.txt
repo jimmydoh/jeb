@@ -1,0 +1,7 @@
+adafruit-circuitpython-ticks
+adafruit-circuitpython-ads1x15
+adafruit-circuitpython-neopixel
+adafruit-circuitpython-displayio-ssd1306
+adafruit-circuitpython-display-text
+adafruit-circuitpython-mcp230xx
+adafruit-circuitpython-ht16k33

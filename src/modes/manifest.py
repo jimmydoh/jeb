@@ -37,6 +37,7 @@ MODE_REGISTRY = {
         "module_path": "modes.simon",
         "class_name": "Simon",
         "icon": "SIMON",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
@@ -59,6 +60,7 @@ MODE_REGISTRY = {
         "module_path": "modes.jebris",
         "class_name": "JEBris",
         "icon": "JEBRIS",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
@@ -81,6 +83,7 @@ MODE_REGISTRY = {
         "module_path": "modes.safe_cracker",
         "class_name": "SafeCracker",
         "icon": "SAFE",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": []
     },
@@ -90,6 +93,7 @@ MODE_REGISTRY = {
         "module_path": "modes.industrial_startup",
         "class_name": "IndustrialStartup",
         "icon": "IND",
+        "menu": "MAIN",
         "requires": ["INDUSTRIAL"],
         "settings": []
     },
@@ -99,6 +103,7 @@ MODE_REGISTRY = {
         "module_path": "modes.pong",
         "class_name": "Pong",
         "icon": "PONG",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "optional": ["INDUSTRIAL"],
         "settings": [
@@ -122,6 +127,7 @@ MODE_REGISTRY = {
         "module_path": "modes.astro_breaker",
         "class_name": "AstroBreaker",
         "icon": "ASTRO_BREAKER",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
@@ -138,6 +144,7 @@ MODE_REGISTRY = {
         "module_path": "modes.trench_run",
         "class_name": "TrenchRun",
         "icon": "TRENCH_RUN",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
@@ -160,6 +167,7 @@ MODE_REGISTRY = {
         "module_path": "modes.data_flow",
         "class_name": "DataFlowMode",
         "icon": "DATA_FLOW",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
@@ -170,12 +178,43 @@ MODE_REGISTRY = {
             }
         ]
     },
+    "LAYOUT_CONFIGURATOR": {
+        "id": "LAYOUT_CONFIGURATOR",
+        "name": "LAYOUT CONFIG",
+        "module_path": "modes.layout_configurator",
+        "class_name": "LayoutConfigurator",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "GLOBAL_SETTINGS": {
+        "id": "GLOBAL_SETTINGS",
+        "name": "GLOBAL SETTINGS",
+        "module_path": "modes.global_settings",
+        "class_name": "GlobalSettings",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "DEBUG": {
+        "id": "DEBUG",
+        "name": "DEBUG DASH",
+        "module_path": "modes.debug",
+        "class_name": "DebugMode",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "requires": ["CORE"],
+        "settings": []
+    },
     "SNAKE": {
         "id": "SNAKE",
         "name": "CYBER SNAKE",
         "module_path": "modes.cyber_snake",
         "class_name": "CyberSnakeMode",
         "icon": "SNAKE",
+        "menu": "MAIN",
         "requires": ["CORE"],
         "settings": [
             {
@@ -189,6 +228,75 @@ MODE_REGISTRY = {
                 "label": "EDGES",
                 "options": ["WRAP", "WALLS"],
                 "default": "WRAP"
+            }
+        ]
+    },
+    "RHYTHM": {
+        "id": "RHYTHM",
+        "name": "NEON BEATS",
+        "module_path": "modes.rhythm_mode",
+        "class_name": "RhythmMode",
+        "icon": "RHYTHM",
+        "menu": "MAIN",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY", "NORMAL", "HARD"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "latency",
+                "label": "LATENCY",
+                "options": ["0", "20", "45", "70", "100"],
+                "default": "45"
+            }
+        ]
+    },
+    "EMOJI_REVEAL": {
+        "id": "EMOJI_REVEAL",
+        "name": "EMOJI REVEAL",
+        "module_path": "modes.emoji_reveal",
+        "class_name": "EmojiRevealMode",
+        "icon": "EMOJI_REVEAL",
+        "menu": "MAIN",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY", "NORMAL", "HARD"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "rounds",
+                "label": "ROUNDS",
+                "options": ["3", "5", "10"],
+                "default": "5"
+            }
+        ]
+    },
+    "FREQ_HUNTER": {
+        "id": "FREQ_HUNTER",
+        "name": "FREQ HUNTER",
+        "module_path": "modes.frequency_hunter",
+        "class_name": "FrequencyHunterMode",
+        "icon": "FREQ_HUNTER",
+        "menu": "MAIN",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "time_limit",
+                "label": "TIME",
+                "options": ["30", "60", "90"],
+                "default": "60"
             }
         ]
     }

@@ -15,7 +15,7 @@ BOOT_PY_PATH = os.path.join(os.path.dirname(__file__), '..', 'src', 'boot.py')
 
 def get_boot_source():
     """Return the full source of boot.py."""
-    with open(BOOT_PY_PATH, 'r') as f:
+    with open(BOOT_PY_PATH, 'r', encoding='utf-8') as f:
         return f.read()
 
 
@@ -250,4 +250,3 @@ if __name__ == "__main__":
     else:
         print(f"{passed} passed, {failed} FAILED ✗")
         sys.exit(1)
-

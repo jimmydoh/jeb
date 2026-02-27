@@ -1,12 +1,22 @@
 """Manages satellite network discovery, health monitoring, and communication."""
 
 import asyncio
+
+try:
+    wait_for_ms = asyncio.wait_for_ms
+except AttributeError:
+    # We are on standard CPython (desktop emulator)
+    async def wait_for_ms(aw, timeout_ms):
+        return await asyncio.wait_for(aw, timeout_ms / 1000.0)
+
 from adafruit_ticks import ticks_ms, ticks_diff
 
 from transport import Message
 
 from transport.protocol import (
     CMD_ACK,
+    CMD_MODE,
+    CMD_SET_OFFSET,
     CMD_VERSION_CHECK,
     CMD_UPDATE_START,
     CMD_UPDATE_WAIT,
@@ -25,18 +35,30 @@ class SatelliteNetworkManager:
     - Satellite registry management
     """
 
-    def __init__(self, transport, display, audio, abort_event):
+    def __init__(self, transport, display, audio, abort_event, config=None):
         """Initialize the satellite network manager.
 
         Args:
             transport: UARTTransport instance for communication
             display: DisplayManager instance for status updates
             audio: AudioManager instance for audio feedback
+            abort_event: Event to signal abort conditions
+            config: Optional configuration dict. May contain a
+                ``"satellite_offsets"`` key mapping satellite IDs to
+                ``{"offset_x": int, "offset_y": int}`` dicts used to
+                transmit the ``SETOFF`` command upon satellite connection.
         """
         self.transport = transport
         self.display = display
         self.audio = audio
         self.abort_event = abort_event
+
+        # Satellite spatial offsets for the global animation canvas.
+        # Keys are satellite IDs (e.g. "0101"), values are {"offset_x", "offset_y"}.
+        # Config key "satellites" is canonical; "satellite_offsets" is accepted for
+        # backwards compatibility with existing config files.
+        _cfg = config or {}
+        self._satellite_offsets = _cfg.get("satellites", _cfg.get("satellite_offsets", {}))
 
         # Satellite Registry
         self.satellites = {}
@@ -53,6 +75,9 @@ class SatelliteNetworkManager:
         self._current_status_task = None
         self._current_audio_task = None
 
+        # Callback invoked when a satellite sends CMD_MODE ACTIVE (remote wake)
+        self._wake_callback = None
+
         # System command handlers (can be extended for common commands across satellites)
         self._system_handlers = {
             "STATUS": self._handle_status_command,
@@ -62,12 +87,54 @@ class SatelliteNetworkManager:
             "NEW_SAT": self._handle_new_sat_command,
             "LOG": self._handle_log_command,
             "PING": self._handle_ping_command,
+            CMD_MODE: self._handle_mode_command,
             CMD_VERSION_CHECK: self._handle_version_check_command,
         }
 
     def set_debug_mode(self, debug_mode):
         """Enable or disable debug mode for message logging."""
         self._debug_mode = debug_mode
+
+    @property
+    def satellite_offsets(self):
+        """Return the current satellite offset mapping.
+
+        Returns:
+            dict: Mapping of satellite ID -> {"offset_x": int, "offset_y": int}.
+        """
+        return self._satellite_offsets
+
+    def set_satellite_offset(self, sid, offset_x, offset_y):
+        """Update the in-memory spatial offset for a satellite.
+
+        This does **not** persist the change to ``config.json``; call
+        :func:`~modes.layout_configurator.save_satellite_offsets` from the
+        Layout Configurator mode to persist.  Immediately sends a ``SETOFF``
+        command to the satellite so it can reposition itself on the global
+        canvas in real-time.
+
+        Args:
+            sid (str): Satellite ID (e.g. ``"0101"``).
+            offset_x (int): New X offset on the global animation canvas.
+            offset_y (int): New Y offset on the global animation canvas.
+        """
+        self._satellite_offsets[sid] = {"offset_x": offset_x, "offset_y": offset_y}
+        if sid in self.satellites:
+            self.transport.send(
+                Message("CORE", sid, CMD_SET_OFFSET, [offset_x, offset_y])
+            )
+            JEBLogger.info(
+                "NETM",
+                f"Live SETOFF ({offset_x},{offset_y}) to {sid}."
+            )
+
+    def set_wake_callback(self, callback):
+        """Register a coroutine callback to invoke when a satellite triggers a remote wake.
+
+        Args:
+            callback: An async callable (coroutine function) to call on remote wake.
+        """
+        self._wake_callback = callback
 
     def _spawn_status_task(self, coro_func, *args, **kwargs):
         """Spawn a status update task with throttling to prevent unbounded task creation.
@@ -201,6 +268,20 @@ class SatelliteNetworkManager:
             self.display.update_status("NEW SAT", f"{sid} sent HELLO {val}.")
             JEBLogger.info("NETM", f"New sat {sid} TYPE-{val} via HELLO.")
 
+            # Send spatial offset if configured so the satellite can register
+            # its LEDs on the correct position of the global animation canvas.
+            offset = self._satellite_offsets.get(sid)
+            if offset is not None:
+                offset_x = int(offset.get("offset_x", 0))
+                offset_y = int(offset.get("offset_y", 0))
+                self.transport.send(
+                    Message("CORE", sid, CMD_SET_OFFSET, [offset_x, offset_y])
+                )
+                JEBLogger.info(
+                    "NETM",
+                    f"Sent SETOFF ({offset_x},{offset_y}) to {sid}."
+                )
+
     async def _handle_new_sat_command(self, sid, val):
         """
         Handle NEW_SAT command from satellite,
@@ -221,7 +302,7 @@ class SatelliteNetworkManager:
         self._spawn_audio_task(
             self.audio.play,
             "alarm_klaxon.wav",
-            channel=self.audio.CH_SFX
+            bus_id=self.audio.CH_SFX
         )
 
     async def _handle_log_command(self, sid, val):
@@ -239,9 +320,22 @@ class SatelliteNetworkManager:
         """
         if sid in self.satellites:
             self.satellites[sid].update_heartbeat()
-            JEBLogger.info("NETM", f"PING", src=sid)
+            #JEBLogger.info("NETM", f"PING", src=sid)
         else:
             JEBLogger.warning("NETM", f"PING from unknown sat", src=sid)
+
+    async def _handle_mode_command(self, sid, val):
+        """Handle CMD_MODE from a satellite.
+
+        When a satellite sends ACTIVE (remote wake trigger), wake the Core
+        and echo the ACTIVE broadcast to all other satellites.
+        """
+        mode_str = val.strip() if isinstance(val, str) else str(val).strip()
+        JEBLogger.info("NETM", f"MODE '{mode_str}' from sat", src=sid)
+        if mode_str == "ACTIVE" and self._wake_callback:
+            await self._wake_callback()
+            # Echo ACTIVE to all satellites so they also wake up
+            self.send_all(CMD_MODE, "ACTIVE")
 
     async def _handle_version_check_command(self, sid, val):
         """Handle VERSION_CHECK from a satellite.
@@ -389,7 +483,7 @@ class SatelliteNetworkManager:
                 heartbeat_callback()
 
             try:
-                message = await asyncio.wait_for(self.transport.receive(), timeout=1.0)
+                message = await wait_for_ms(self.transport.receive(), 1000)
             except asyncio.TimeoutError:
                 continue
 
@@ -437,7 +531,7 @@ class SatelliteNetworkManager:
                         self._spawn_audio_task(
                             self.audio.play,
                             "link_restored.wav",
-                            channel=self.audio.CH_SFX
+                            bus_id=self.audio.CH_SFX
                         )
                         sat.was_offline = False
 
@@ -451,7 +545,7 @@ class SatelliteNetworkManager:
                         self._spawn_audio_task(
                             self.audio.play,
                             "link_lost.wav",
-                            channel=self.audio.CH_SFX
+                            bus_id=self.audio.CH_SFX
                         )
 
             await asyncio.sleep(0.5)

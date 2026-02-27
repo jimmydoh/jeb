@@ -32,6 +32,8 @@ CMD_LEDCYLON = "LEDCYLON"
 CMD_LEDCENTRI = "LEDCENTRI"
 CMD_LEDRAINBOW = "LEDRAINBOW"
 CMD_LEDGLITCH = "LEDGLITCH"
+CMD_LEDPROG = "LEDPROG"
+CMD_LEDVU = "LEDVU"
 
 # Display Commands
 CMD_DSP = "DSP"
@@ -40,6 +42,11 @@ CMD_DSPMATRIX = "DSPMATRIX"
 
 # Encoder Commands
 CMD_SETENC = "SETENC"
+CMD_SET_OFFSET = "SETOFF"
+
+# Global Animation Commands
+CMD_GLOBAL_RAINBOW = "GLOBALRBOW"
+CMD_GLOBAL_RAIN = "GLOBALRAIN"
 
 # File Transfer Commands
 CMD_FILE_START = "FILE_START"
@@ -76,6 +83,8 @@ COMMAND_MAP = {
     "LEDCENTRI": 0x14,
     "LEDRAINBOW": 0x15,
     "LEDGLITCH": 0x16,
+    "LEDPROG": 0x17,
+    "LEDVU": 0x18,
 
     # Display commands
     "DSP": 0x20,
@@ -84,6 +93,11 @@ COMMAND_MAP = {
 
     # Encoder commands
     CMD_SETENC: 0x30,
+    CMD_SET_OFFSET: 0x31,
+
+    # Global Animation commands
+    CMD_GLOBAL_RAINBOW: 0x60,
+    CMD_GLOBAL_RAIN: 0x61,
 
     # File Transfer commands
     CMD_FILE_START: 0x40,
@@ -115,12 +129,14 @@ LED_COMMANDS = {k for k in COMMAND_MAP if k.startswith("LED")}
 DSP_COMMANDS = {k for k in COMMAND_MAP if k.startswith("DSP")}
 FILE_COMMANDS = {CMD_FILE_START, CMD_FILE_CHUNK, CMD_FILE_END}
 UPDATE_COMMANDS = {CMD_VERSION_CHECK, CMD_UPDATE_START, CMD_UPDATE_WAIT}
+GLOBAL_ANIMATION_COMMANDS = {CMD_GLOBAL_RAINBOW, CMD_GLOBAL_RAIN}
 
 # Commands that are handled directly by the Firmware class
 SYSTEM_COMMANDS = {
     CMD_ID_ASSIGN,
     CMD_SYNC_FRAME,
     CMD_SETENC,
+    CMD_SET_OFFSET,
     CMD_NEW_SAT,
     CMD_MODE,
 }
@@ -150,7 +166,7 @@ ENCODING_RAW_BYTES = 'raw_bytes'
 PAYLOAD_SCHEMAS = {
     # Core commands
     CMD_HELLO: {'type': ENCODING_RAW_TEXT, 'desc': 'Hello message with optional text'},
-    CMD_MODE: {'type': ENCODING_RAW_TEXT, 'desc': 'Operating mode: IDLE or ACTIVE'},
+    CMD_MODE: {'type': ENCODING_RAW_TEXT, 'desc': 'Operating mode: IDLE, ACTIVE, or SLEEP'},
     "ID_ASSIGN": {'type': ENCODING_RAW_TEXT, 'desc': 'Device ID string like "0100"'},
     "NEW_SAT": {'type': ENCODING_RAW_TEXT, 'desc': 'Satellite type ID like "01"'},
     "ERROR": {'type': ENCODING_RAW_TEXT, 'desc': 'Error description text'},
@@ -158,14 +174,16 @@ PAYLOAD_SCHEMAS = {
     "SYNC_FRAME": {'type': ENCODING_FLOATS, 'desc': 'Frame sync: frame_number,time_seconds'},
     "REBOOT": {'type': ENCODING_RAW_TEXT, 'desc': 'Reboot command with optional reason text'},
 
-    # LED commands - RGB values plus parameters (variable count OK)
-    "LED": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness bytes'},
-    "LEDFLASH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
-    "LEDBREATH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
-    "LEDCYLON": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
-    "LEDCENTRI": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'R,G,B,brightness'},
-    "LEDRAINBOW": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'speed,brightness'},
-    "LEDGLITCH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'intensity,brightness'},
+    # LED commands - index-based and strip-wide animations
+    "LED": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'led_index (or "ALL"),palette_index,duration,brightness,priority'},
+    "LEDFLASH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'led_index (or "ALL"),palette_index,duration,brightness,priority,speed,off_speed'},
+    "LEDBREATH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'led_index (or "ALL"),palette_index,duration,brightness,priority,speed'},
+    "LEDCYLON": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'palette_index,duration,speed'},
+    "LEDCENTRI": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'palette_index,duration,speed'},
+    "LEDRAINBOW": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'duration,speed'},
+    "LEDGLITCH": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'colon-separated palette indices (e.g. "0:1:2:3"),duration,speed'},
+    "LEDPROG": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'percentage,palette_index,background_palette_index,priority'},
+    "LEDVU": {'type': ENCODING_NUMERIC_BYTES, 'desc': 'percentage,low_palette_index,mid_palette_index,high_palette_index,priority'},
 
     # Display commands
     "DSP": {'type': ENCODING_RAW_TEXT, 'desc': 'Display message text'},
@@ -178,6 +196,11 @@ PAYLOAD_SCHEMAS = {
 
     # Encoder
     "SETENC": {'type': ENCODING_NUMERIC_WORDS, 'desc': 'encoder position'},
+    CMD_SET_OFFSET: {'type': ENCODING_NUMERIC_WORDS, 'desc': 'global canvas offset: offset_x, offset_y'},
+
+    # Global Animation triggers
+    CMD_GLOBAL_RAINBOW: {'type': ENCODING_FLOATS, 'desc': 'speed (degrees/sec)'},
+    CMD_GLOBAL_RAIN: {'type': ENCODING_FLOATS, 'desc': 'speed (sec/step), density (0.0-1.0)'},
 
     # File Transfer
     CMD_FILE_START: {'type': ENCODING_RAW_TEXT, 'desc': 'filename,total_size e.g. "firmware.bin,4096"'},

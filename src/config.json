@@ -17,6 +17,7 @@
         "leds": true,
         "buzzer": true,
         "power": true,
-        "segment": true
+        "segment": true,
+        "hid": true
     }
 }

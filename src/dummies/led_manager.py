@@ -3,12 +3,14 @@
 
 import asyncio
 
+from dummies.base_pixel_manager import BasePixelManager
 
-class LEDManager:
+class LEDManager(BasePixelManager):
     """Drop-in dummy for LEDManager. All methods are no-ops."""
 
     def __init__(self, *args, **kwargs):
-        pass
+        super().__init__(*args, **kwargs)
+        self.pixels = []
 
     def set_led(self, index, color, brightness=1.0, anim=None, duration=None, priority=2, speed=1.0):
         pass

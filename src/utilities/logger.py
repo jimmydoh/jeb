@@ -13,7 +13,9 @@ class LogLevel:
     INFO = 1
     NOTE = 2
     WARNING = 3
-    ERROR = 4
+    CRITICAL = 4
+    ERROR = 5
+    EMULATOR = 99
 
 class JEBLogger:
     """Centralized, memory-efficient logger for CircuitPython."""
@@ -31,7 +33,9 @@ class JEBLogger:
         LogLevel.INFO: "\033[94m",     # Blue
         LogLevel.NOTE: "\033[96m",     # Cyan
         LogLevel.WARNING: "\033[93m",  # Yellow
+        LogLevel.CRITICAL: "\033[33m", # Orange
         LogLevel.ERROR: "\033[91m",    # Red
+        LogLevel.EMULATOR: "\033[95m", # Magenta
         "RESET": "\033[0m"
     }
 
@@ -40,12 +44,19 @@ class JEBLogger:
         LogLevel.INFO: "INFO",
         LogLevel.NOTE: "NOTE",  # Optional level for important info that isn't a warning
         LogLevel.WARNING: "WARN",
-        LogLevel.ERROR: "!ERR"
+        LogLevel.ERROR: "!ERR",
+        LogLevel.CRITICAL: "CRIT",
+        LogLevel.EMULATOR: "EMUL"
     }
 
     @classmethod
     def set_level(cls, level):
         cls.LEVEL = level
+
+    @classmethod
+    def set_source(cls, source):
+        if source is not None and isinstance(source, str) and len(source) <= 4:
+            cls.SOURCE = source
 
     @classmethod
     def enable_file_logging(cls, enable=True):
@@ -108,5 +119,13 @@ class JEBLogger:
         cls._log(LogLevel.WARNING, tag, msg, source_tag=src, file_override=file)
 
     @classmethod
+    def critical(cls, tag, msg, src=None, file=None):
+        cls._log(LogLevel.CRITICAL, tag, msg, source_tag=src, file_override=file)
+
+    @classmethod
     def error(cls, tag, msg, src=None, file=None):
         cls._log(LogLevel.ERROR, tag, msg, source_tag=src, file_override=file)
+
+    @classmethod
+    def emulator(cls, tag, msg, src=None, file=None):
+        cls._log(LogLevel.EMULATOR, tag, msg, source_tag=src, file_override=file)

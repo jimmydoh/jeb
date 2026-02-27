@@ -26,6 +26,7 @@ from modes.manifest import MODE_REGISTRY
 
 from transport import UARTTransport
 from transport.protocol import (
+    CMD_MODE,
     COMMAND_MAP,
     DEST_MAP,
     MAX_INDEX_VALUE,
@@ -33,13 +34,13 @@ from transport.protocol import (
 )
 
 from utilities.jeb_pixel import JEBPixel
+from utilities.logger import JEBLogger
+from utilities.palette import Palette
 from utilities.pins import Pins
 from utilities import tones
 
-POW_INPUT = "input_20v"
-POW_BUS = "satbus_20v"
-POW_MAIN = "main_5v"
-POW_LED = "led_5v"
+# Dim blue used as low-power breathing colour during sleep
+SLEEP_LED_COLOR = (0, 0, 32)
 
 class SafeMode:
     """Minimal fail-safe mode with zero external hardware dependencies.
@@ -68,13 +69,13 @@ class SafeMode:
                 self.core.display.update_status("DASHBOARD CORRUPT", "Developer intervention required")
                 self.core.display.update_footer("Safe mode active")
         except Exception as e:
-            # If display fails, print to console
-            print(f"SAFE MODE: Display error: {e}")
-            print("SYSTEM HALT: DASHBOARD CORRUPT - Developer intervention required")
+            # If display fails, log the error
+            JEBLogger.error("CORE", f"Display error: {e}")
+            JEBLogger.error("CORE", "SYSTEM HALT: DASHBOARD CORRUPT - Developer intervention required")
 
     async def run(self):
         """Run safe mode - just wait indefinitely."""
-        print("SAFE MODE ACTIVE: System halted. Awaiting developer intervention.")
+        JEBLogger.error("CORE", "SAFE MODE ACTIVE: System halted. Awaiting developer intervention.")
         # Wait indefinitely - system is halted
         while True:
             await asyncio.sleep(1)
@@ -146,30 +147,18 @@ class CoreManager:
         # Init I2C bus
         self.i2c = busio.I2C(Pins.I2C_SCL, Pins.I2C_SDA)
 
-        # Init ADC Manager for voltage sensing
-        from managers.adc_manager import ADCManager
-        adc_config = Pins.ADC_CONFIG
-        self.adc = ADCManager(
-            i2c_bus=self.i2c if adc_config["chip_type"] != "NATIVE" else None,
-            chip_type=adc_config["chip_type"],
-            address=adc_config.get("address", 0x48)
-        )
-
-        # Configure ADC channels from Pins configuration
-        for channel in adc_config["channels"]:
-            self.adc.add_channel(
-                channel["name"],
-                channel["pin"],
-                channel["multiplier"]
-            )
-
-        # Init power manager with ADCManager
+        # Init power manager with PowerBus dependencies
         self.power = PowerManager(
-            self.adc,
-            [POW_INPUT, POW_BUS, POW_MAIN, POW_LED],
+            Pins.POWER_SENSORS,
             Pins.MOSFET_CONTROL,
             Pins.SATBUS_DETECT,
+            i2c_bus = self.i2c
         )
+
+        self._pow_input = self.power.get_input_bus()
+        self._pow_satbus = self.power.get_satbus_bus()
+        self._pow_main = self.power.get_main_bus()
+        self._pow_others = self.power.get_other_buses()
 
         # UART for satellite communication
         uart_hw = busio.UART(
@@ -194,22 +183,22 @@ class CoreManager:
         )
         self.audio.preload(
             [
-                "audio/common/menu_tick.wav",
-                "audio/common/menu_select.wav",
+                "audio/menu/tick.wav",
+                "audio/menu/select.wav",
             ]
         )
-        self.synth = SynthManager()
+        self.synth = SynthManager(sample_rate=22050, channel_count=1)
         self.audio.attach_synth(self.synth.source)  # Connect synth to audio mixer
 
         # Init Display (OLED)
         self.display = DisplayManager(self.i2c, device_address=Pins.I2C_ADDRESSES["OLED"])
+
+        # Init HID Manager for buttons and encoders
+        for cfg in Pins.EXPANDER_CONFIGS:
+            cfg["i2c"] = self.i2c
         self.hid = HIDManager(
             encoders=Pins.ENCODERS,
-            mcp_chip="MCP23008",
-            mcp_i2c=self.i2c,
-            mcp_i2c_address=Pins.I2C_ADDRESSES.get("EXPANDER"),
-            mcp_int_pin=Pins.EXPANDER_INT,
-            expanded_buttons=Pins.EXPANDER_BUTTONS,
+            expander_configs=Pins.EXPANDER_CONFIGS,
         )
 
         # Initialize Satellite Network Manager
@@ -218,9 +207,12 @@ class CoreManager:
             self.display,
             self.audio,
             self.abort_event,
+            config=config,
         )
         if self.debug_mode:
             self.sat_network.set_debug_mode(True)
+        # Register remote wake callback so satellites can wake the Core
+        self.sat_network.set_wake_callback(self._wake_system)
 
         # Init LEDs
         self.root_pixels = neopixel.NeoPixel(
@@ -252,6 +244,10 @@ class CoreManager:
         # Fail-safe mode tracking to prevent infinite error loops
         self.dashboard_failure_count = 0
         self.max_dashboard_failures = 3  # Enter safe mode after 3 consecutive failures
+
+        # Sleep state
+        self._sleeping = False
+        self._sleep_timeout_ms = 5 * 60 * 1000  # 5 minutes in milliseconds
 
     def _get_mode(self, mode_name):
         """Get a mode class from the registry with helpful error message.
@@ -365,72 +361,76 @@ class CoreManager:
         """Execute a task while monitoring for interrupts.
 
         Parameters:
-            mode_coroutine (coroutine): The main game or mode coroutine to run.
+            mode_instance: The mode instance to run.
             target_sat (Satellite, optional): Specific satellite to monitor.
         """
-        # Create the mode and monitor event tasks
+        # Create the mode task
         sub_task = asyncio.create_task(mode_instance.execute())
-        estop_task = asyncio.create_task(self.estop_event.wait())
-        abort_task = asyncio.create_task(self.abort_event.wait())
 
         if target_sat:
             target_sat_monitor_task = asyncio.create_task(self.monitor_satellite(target_sat))
-            target_sat_task = asyncio.create_task(self.target_sat_event.wait())
 
         # Clear events before starting
         self.abort_event.clear()
         self.target_sat_event.clear()
 
-        # Wait for the first of the mode completion or any safety event
-        tasks_to_wait = [sub_task, estop_task, abort_task]
-        if target_sat:
-            tasks_to_wait.extend([target_sat_monitor_task, target_sat_task])
+        exit_reason = "UNKNOWN_EXIT"
+
         try:
-            done, pending = await asyncio.wait(
-                tasks_to_wait,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+            while True:
+                # 1. Check if the mode task finished naturally
+                if sub_task.done():
+                    exit_reason = "MODE_COMPLETE"
+                    break
+
+                # 2. Check for safety events directly (no need to spawn wait tasks!)
+                if self.estop_event.is_set():
+                    exit_reason = "ESTOP_ABORT"
+                    self.display.update_status("ESTOP ENGAGED", "EXITING MODE...")
+                    break
+
+                if self.abort_event.is_set():
+                    exit_reason = "SYSTEM_ABORT"
+                    self.display.update_status("SYSTEM ABORT", "RESETTING CORE...")
+                    self.abort_event.clear()  # Reset for future use
+                    break
+
+                if target_sat and self.target_sat_event.is_set():
+                    exit_reason = "LINK_LOST"
+                    self.display.update_status("LINK LOST", "EXITING MODE...")
+                    break
+
+                # Yield to the event loop so sub_task can execute
+                await asyncio.sleep(0.05)
+
         except Exception as e:
-            print(f"Error while running mode with safety monitoring: {e}")
+            JEBLogger.error("CORE", f"Error while running mode with safety monitoring: {e}")
             import traceback
             traceback.print_exc()
             self.display.update_status("MODE ERROR", "CHECK LOGS")
-            return "MODE_ERROR"
+            exit_reason = "MODE_ERROR"
 
-        # Cleanup: Cancel any pending tasks
-        for task in pending:
-            task.cancel()
+        # Cleanup: Cancel any pending tasks safely
+        if not sub_task.done():
+            sub_task.cancel()
 
-        if target_sat:
-            # Ensure the satellite monitor task is also cancelled
+        if target_sat and not target_sat_monitor_task.done():
             target_sat_monitor_task.cancel()
 
-        # Determine the result based on which task completed
-        if estop_task in done:
-            self.display.update_status("ESTOP ENGAGED", "EXITING MODE...")
-            return "ESTOP_ABORT"
-        elif abort_task in done:
-            self.display.update_status("SYSTEM ABORT", "RESETTING CORE...")
-            self.abort_event.clear()  # Reset the event for future use
-            return "SYSTEM_ABORT"
-        elif target_sat:
-            if target_sat_task in done:
-                self.display.update_status("LINK LOST", "EXITING MODE...")
-                return "LINK_LOST"
-
-        if sub_task in done:
+        # Return routing logic
+        if exit_reason == "MODE_COMPLETE":
             # Propagate any exceptions from the mode task
             try:
                 result = sub_task.result()  # Get the result or exception
                 return result if result else "SUCCESS"
             except Exception as e:
-                print(f"Error in mode execution: {e}")
+                JEBLogger.error("CORE", f"Error in mode execution: {e}")
                 import traceback
                 traceback.print_exc()
                 self.display.update_status("MODE ERROR", "CHECK LOGS")
                 return "MODE_ERROR"
 
-        return "UNKNOWN_EXIT"
+        return exit_reason
 
     # --- Background Tasks ---
     async def monitor_estop(self):
@@ -466,17 +466,17 @@ class CoreManager:
                 # E-Stop has been engaged, trigger meltdown
                 self.meltdown = True
                 self.estop_event.set()  # Signal to any listening tasks that E-Stop is engaged
-                self.sat_network.send_all("LED", "ALL,0,0,0")  # Kill all LEDs
+                self.sat_network.send_all("LED", f"ALL,{Palette.OFF.index}")  # Kill all LEDs
                 # Audio Alarms
                 await self.audio.play(
-                    "background_winddown.wav", channel=self.audio.CH_ATMO, loop=False
+                    "background_winddown.wav", bus_id=self.audio.CH_ATMO, loop=False
                 )
                 await self.audio.set_level(self.audio.CH_ATMO, 0.2)
                 await self.audio.play(
-                    "alarm_klaxon.wav", channel=self.audio.CH_SFX, loop=True
+                    "alarm_klaxon.wav", bus_id=self.audio.CH_SFX, loop=True
                 )
                 await self.audio.play(
-                    "voice_meltdown.wav", channel=self.audio.CH_VOICE, loop=True
+                    "voice_meltdown.wav", bus_id=self.audio.CH_VOICE, loop=True
                 )
                 self.display.update_status("!!! EMERGENCY STOP !!!", "PULL UP TO RESET")
 
@@ -488,22 +488,16 @@ class CoreManager:
             # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("power")
 
-            v = self.power.status
-
             if self.mode == "DASHBOARD":
                 # self.display.update_telemetry(v["bus"], v["log"])
                 # TODO Implement telemetry display
-                #print(f"Power Rail - BUS: {v[POW_BUS]:.2f}V | LOGIC: {v[POW_MAIN]:.2f}V")
                 pass
 
-            # Scenario: LED buck converter is failing or overloaded
-            if v[POW_LED] < 4.5 and v[POW_INPUT] > 18.0:
-                self.display.update_status("LED PWR FAILURE", "CHECK 5A FUSE")
-
-            # Scenario: Logic rail is sagging (Audio Amp drawing too much?)
-            if v[POW_MAIN] < 4.7:
-                self.display.update_status("LOGIC BROWNOUT", "REDUCING VOLUME")
-                await self.audio.set_level(self.audio.CH_SFX, 0.5)  # Lower SFX volume
+            # Use the PowerManager to check the health of the power buses
+            healthy, message = self.power.is_healthy()
+            if not healthy:
+                self.display.update_status("POWER ERROR", message)
+            #TODO: Action to take for problematic power
 
             await asyncio.sleep(0.5)
 
@@ -520,34 +514,78 @@ class CoreManager:
 
                 if success:
                     await self.audio.play(
-                        "link_restored.wav", channel=self.audio.CH_SFX
+                        "link_restored.wav", bus_id=self.audio.CH_SFX
                     )
                     # Power is stable, trigger the ID assignment chain
                     await self.sat_network.discover_satellites()
                 else:
                     self.display.update_status("PWR ERROR", error)
-                    await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
+                    await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
 
             elif not self.power.satbus_connected and self.power.satbus_powered:
                 # PHYSICAL LINK LOST - Immediate Hardware Cut-off
                 self.power.emergency_kill()
                 self.display.update_status("SAT LINK LOST", "BUS OFFLINE")
-                await self.audio.play("link_lost.wav", channel=self.audio.CH_SFX)
+                await self.audio.play("link_lost.wav", bus_id=self.audio.CH_SFX)
 
             await asyncio.sleep(0.5)  # Poll twice per second to save CPU
+
+    async def _enter_sleep(self):
+        """Put the Core into sleep state and broadcast SLEEP to all satellites."""
+        if self._sleeping:
+            return
+        self._sleeping = True
+        # Blank the display and set LEDs to a low-power breathing animation
+        self.display.update_status("", "")
+        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim="BREATH", speed=0.5)
+        # Throttle render loop to 10Hz to reduce power draw
+        self.renderer.target_frame_rate = 10
+        # Broadcast SLEEP to all satellites
+        self.sat_network.send_all(CMD_MODE, "SLEEP")
+
+    async def _wake_system(self):
+        """Wake the Core from sleep and broadcast ACTIVE to all satellites."""
+        if not self._sleeping:
+            return
+        self._sleeping = False
+        # Restore LEDs and render rate
+        self.leds.off_led(-1)
+        self.renderer.target_frame_rate = self.renderer.DEFAULT_FRAME_RATE
+        # Broadcast ACTIVE to all satellites
+        self.sat_network.send_all(CMD_MODE, "WAKE")
 
     async def monitor_hw_hid(self):
         """Background task to poll hardware inputs."""
         while True:
             # Set watchdog flag to indicate this task is alive
             self.watchdog.check_in("hw_hid")
-            self.hid.hw_update()
+            changed = self.hid.hw_update()
 
             if self.hid.is_button_pressed(3, long=True, duration=5000):
                 # Long-press Button D to trigger manual abort
                 self.abort_event.set()
 
-            await asyncio.sleep(0.02) # Poll at 50Hz
+            if self._sleeping:
+                if changed:
+                    # Local interaction wakes the system
+                    await self._wake_system()
+                await asyncio.sleep(0.1)  # Throttled polling while sleeping
+            else:
+                if self.hid.get_idle_time_ms() >= self._sleep_timeout_ms:
+                    await self._enter_sleep()
+                await asyncio.sleep(0.02)  # Poll at 50Hz when awake
+
+    async def monitor_audio(self):
+        """Background task to clean up finished audio streams to prevent memory leaks."""
+        while True:
+            # Set watchdog flag to indicate this task is alive
+            self.watchdog.check_in("audio")
+
+            # Clean up any streams that finished in the last 100ms
+            if hasattr(self, 'audio'):
+                self.audio.update()
+
+            await asyncio.sleep(0.1)  # Poll at 10Hz
 
     async def monitor_satellite(self, sat):
         """
@@ -574,18 +612,19 @@ class CoreManager:
         # Check power integrity before starting main application loop
         if await self.power.check_power_integrity():
             self.buzzer.play_sequence(tones.POWER_UP)
-            print("Power integrity check passed. Starting system...")
+            JEBLogger.info("CORE", "Power integrity check passed")
             self.display.update_status("POWER OK", "STARTING SYSTEM...")
             await asyncio.sleep(1)
 
-            print("Initializing Watchdog Manager...")
             self.watchdog = WatchdogManager(
                 task_names=[
                     "power",
                     "connection",
-                    "hw_hid"
+                    "hw_hid",
+                    "audio"
                 ],
-                timeout=5.0
+                timeout=5.0,
+                mode="RAISE"
             )
 
             # Start transport monitoring to handle satellite activation
@@ -596,10 +635,12 @@ class CoreManager:
             asyncio.create_task(self.monitor_power())
             # Start hardware input monitoring
             asyncio.create_task(self.monitor_hw_hid())
+            # Start audio cleanup task
+            asyncio.create_task(self.monitor_audio())
 
         else:
             self.buzzer.play_sequence(tones.POWER_FAIL)
-            print("Power integrity check failed! Check power supply and connections.")
+            JEBLogger.error("CORE", "Power integrity check failed, check power supply and connections")
             self.display.update_status("POWER ERROR", "CHECK CONNECTIONS")
             # Do not start main loop if power is not stable
             while True:
@@ -684,26 +725,26 @@ class CoreManager:
                     try:
                         mode_class = self._load_mode_class(self.mode)
                     except (ImportError, KeyError) as e:
-                        print(f"Error loading mode '{self.mode}': {e}")
+                        JEBLogger.error("CORE", f"Error loading mode '{self.mode}': {e}")
 
                         # Check if DASHBOARD itself is failing
                         if self.mode == "DASHBOARD":
                             self.dashboard_failure_count += 1
-                            print(f"DASHBOARD failure #{self.dashboard_failure_count}/{self.max_dashboard_failures}")
+                            JEBLogger.error("CORE", f"DASHBOARD failure #{self.dashboard_failure_count}/{self.max_dashboard_failures}")
 
                             if self.dashboard_failure_count >= self.max_dashboard_failures:
                                 # DASHBOARD is corrupted - enter SAFE_MODE
-                                print("!!! CRITICAL: DASHBOARD failed repeatedly. Entering SAFE_MODE !!!")
+                                JEBLogger.critical("CORE", "!!! CRITICAL: DASHBOARD failed repeatedly. Entering SAFE_MODE !!!")
                                 self.mode = "SAFE_MODE"
                                 continue
 
                         # Try to display error (may fail if display is broken)
                         try:
                             self.display.update_status("MODE LOAD ERROR", self.mode)
-                            await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
+                            await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
                         except Exception as e:
                             # Display/audio failure - log and continue anyway
-                            print(f"Error displaying mode load error: {e}")
+                            JEBLogger.error("CORE", f"Error displaying mode load error: {e}")
 
                         await asyncio.sleep(2)
                         self.mode = "DASHBOARD"  # Return to dashboard if mode fails to load
@@ -726,7 +767,7 @@ class CoreManager:
                                 )
                                 asyncio.create_task(
                                     self.audio.play(
-                                        "link_lost.wav", channel=self.audio.CH_SFX
+                                        "link_lost.wav", bus_id=self.audio.CH_SFX
                                     )
                                 )
                                 await asyncio.sleep(1)
@@ -748,7 +789,7 @@ class CoreManager:
                                     )
                                     asyncio.create_task(
                                         self.audio.play(
-                                            "link_restored.wav", channel=self.audio.CH_SFX
+                                            "link_restored.wav", bus_id=self.audio.CH_SFX
                                         )
                                     )
                                     await asyncio.sleep(1)
@@ -757,31 +798,31 @@ class CoreManager:
                     else:
                         await self.run_mode_with_safety(mode_instance)
                 else:
-                    print(f"Cannot start {self.mode}: Missing Dependency")
+                    JEBLogger.warning("CORE", f"Cannot start {self.mode}: Missing Dependency")
 
                     # Try to display error (may fail if display is broken)
                     try:
                         self.display.update_status(
                             "REQUIREMENT MISSING", f"NEED: {', '.join(requirements)}"
                         )
-                        await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
+                        await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
                     except Exception as e:
                         # Display/audio failure - log and continue anyway
-                        print(f"Error displaying requirements missing error: {e}")
+                        JEBLogger.error("CORE", f"Error displaying requirements missing error: {e}")
 
                     await asyncio.sleep(2)
                     self.mode = "DASHBOARD"  # Return to dashboard if requirements not met
 
             else:
-                print(f"Mode {self.mode} not found in registry.")
+                JEBLogger.warning("CORE", f"Mode {self.mode} not found in registry.")
 
                 # Try to display error (may fail if display is broken)
                 try:
                     self.display.update_status("MODE NOT FOUND", self.mode)
-                    await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
+                    await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
                 except Exception as e:
                     # Display/audio failure - log and continue anyway
-                    print(f"Error displaying mode not found error: {e}")
+                    JEBLogger.error("CORE", f"Error displaying mode not found error: {e}")
 
                 await asyncio.sleep(2)
                 self.mode = "DASHBOARD"  # Return to dashboard if mode not found
