@@ -40,6 +40,13 @@ T = 0.33 # Triplet
 # =================================
 
 # --- User Interface Tones ---
+# Console power-on boot swell: warm, building 3-note pad arpeggio (C4 -> G4 -> E5)
+CONSOLE_BOOT_SWELL = {
+    'bpm': 120,
+    'patch': Patches.PAD,  # Slow attack (0.5s) for a warm, swelling texture
+    'sequence': [('C4', E), ('G4', E), ('E5', Q)]
+}
+
 # A quick, optimistic ascending major triad (C-E-G)
 SYSTEM_BOOT = {
     'bpm': 120,
