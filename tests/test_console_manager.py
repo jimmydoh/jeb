@@ -168,8 +168,8 @@ class MockAudio:
         self.last_played = None
         self.stopped_all = False
 
-    async def play(self, file, channel=1, loop=False, level=1.0, wait=False, interrupt=True):
-        self.last_played = (file, channel)
+    async def play(self, file, bus_id=1, loop=False, level=1.0, wait=False, interrupt=True):
+        self.last_played = (file, bus_id)
 
     def stop_all(self):
         self.stopped_all = True

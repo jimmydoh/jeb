@@ -272,7 +272,7 @@ class ConsoleManager():
                 matrix.fill(color)
                 print(f"Matrix filled {color_name}.")
             elif choice == "5":
-                matrix.start_rainbow(duration=5.0)
+                matrix.rainbow(duration=5.0)
                 print("Rainbow animation started (5s).")
             elif choice == "6":
                 matrix.fill(Palette.OFF)
@@ -304,15 +304,15 @@ class ConsoleManager():
             if choice == "0":
                 break
             elif choice == "1":
-                await audio.play("audio/menu/tick.wav", channel=audio.CH_SFX)
+                await audio.play("audio/menu/tick.wav", bus_id=audio.CH_SFX)
                 print("Playing menu tick.")
             elif choice == "2":
-                await audio.play("audio/menu/select.wav", channel=audio.CH_SFX)
+                await audio.play("audio/menu/select.wav", bus_id=audio.CH_SFX)
                 print("Playing menu select.")
             elif choice == "3":
                 print("Playing rapid fire ticks...")
                 for _ in range(10):
-                    await audio.play("audio/menu/tick.wav", channel=audio.CH_SFX, interrupt=False)
+                    await audio.play("audio/menu/tick.wav", bus_id=audio.CH_SFX, interrupt=False)
                     await asyncio.sleep(0.1)
             elif choice == "4":
                 audio.stop_all()

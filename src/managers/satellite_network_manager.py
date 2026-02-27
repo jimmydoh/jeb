@@ -302,7 +302,7 @@ class SatelliteNetworkManager:
         self._spawn_audio_task(
             self.audio.play,
             "alarm_klaxon.wav",
-            channel=self.audio.CH_SFX
+            bus_id=self.audio.CH_SFX
         )
 
     async def _handle_log_command(self, sid, val):
@@ -531,7 +531,7 @@ class SatelliteNetworkManager:
                         self._spawn_audio_task(
                             self.audio.play,
                             "link_restored.wav",
-                            channel=self.audio.CH_SFX
+                            bus_id=self.audio.CH_SFX
                         )
                         sat.was_offline = False
 
@@ -545,7 +545,7 @@ class SatelliteNetworkManager:
                         self._spawn_audio_task(
                             self.audio.play,
                             "link_lost.wav",
-                            channel=self.audio.CH_SFX
+                            bus_id=self.audio.CH_SFX
                         )
 
             await asyncio.sleep(0.5)

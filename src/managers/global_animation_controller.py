@@ -12,6 +12,7 @@ import asyncio
 import time
 import random
 
+from utilities.logger import JEBLogger
 from utilities.palette import Palette
 
 
@@ -32,6 +33,7 @@ class GlobalAnimationController:
 
     def __init__(self):
         """Initialize an empty global animation controller."""
+        JEBLogger.info("GANC", "[INIT] GlobalAnimationController")
         self._components = []   # list of component dicts
         self._pixel_map = {}    # (global_x, global_y) -> (manager, pixel_idx)
         self._canvas_width = 0
@@ -82,6 +84,7 @@ class GlobalAnimationController:
             'offset_x': offset_x,
             'offset_y': offset_y,
         })
+        JEBLogger.debug("GANC", f"Registered MatrixManager at offset ({offset_x}, {offset_y})")
         self._rebuild_pixel_map()
 
     def register_led_strip(self, led_manager, offset_x=0, offset_y=0, orientation='horizontal'):
@@ -108,6 +111,7 @@ class GlobalAnimationController:
             'offset_y': offset_y,
             'orientation': orientation,
         })
+        JEBLogger.debug("GANC", f"Registered LEDManager strip at offset ({offset_x}, {offset_y}) with orientation '{orientation}'")
         self._rebuild_pixel_map()
 
     def register_discrete_leds(self, led_manager, pixel_coordinates):
@@ -141,6 +145,7 @@ class GlobalAnimationController:
             'manager': led_manager,
             'coordinates': list(pixel_coordinates),
         })
+        JEBLogger.debug("GANC", f"Registered LEDManager with {len(pixel_coordinates)} custom pixel coordinates")
         self._rebuild_pixel_map()
 
     def _rebuild_pixel_map(self):
