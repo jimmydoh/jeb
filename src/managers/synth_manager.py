@@ -6,6 +6,7 @@ Manager for Generative Audio using synthio.
 import asyncio
 import random
 import synthio
+from utilities.logger import JEBLogger
 from utilities.synth_registry import Patches, Waveforms
 from utilities.tones import note
 
@@ -16,6 +17,7 @@ class SynthManager:
     """
 
     def __init__(self, sample_rate=22050, channel_count=1, waveform_override=None):
+        JEBLogger.info("SYNTH", f"[INIT] SynthManager - sample_rate: {sample_rate}, channel_count: {channel_count}, waveform_override: {waveform_override}")
         self.override = waveform_override
 
         # Create the synthesizer object
@@ -40,6 +42,7 @@ class SynthManager:
             duration (float): If set, note auto-releases after seconds.
                               If None, note holds until stop_note is called.
         """
+        JEBLogger.debug("SYNTH", f"Playing note - frequency: {frequency}, patch: {patch}, duration: {duration}")
         patch = patch or Patches.SELECT
         wave = self.override if self.override else patch["wave"]
 

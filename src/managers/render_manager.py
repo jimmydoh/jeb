@@ -2,6 +2,7 @@
 import time
 import asyncio
 from adafruit_ticks import ticks_ms
+from utilities.logger import JEBLogger
 
 class RenderManager:
     """
@@ -23,6 +24,7 @@ class RenderManager:
             sync_role: "MASTER" (broadcasts sync), "SLAVE" (tracks drift), or "NONE".
             network_manager: Reference to sat_network (if MASTER) to send broadcasts.
         """
+        JEBLogger.info("REND", f"[INIT] RenderManager - sync_role: {sync_role}")
         self.pixels = pixel_object
         self.sync_role = sync_role
         self.network = network_manager
@@ -47,6 +49,7 @@ class RenderManager:
 
     def add_animator(self, manager):
         """Register a manager that needs its .animate_loop(step=True) called."""
+        JEBLogger.debug("REND", f"Adding animator: {manager.__class__.__name__}")
         self._animators.append(manager)
 
     def add_global_animation_controller(self, controller):
@@ -59,11 +62,12 @@ class RenderManager:
         Args:
             controller: GlobalAnimationController instance to register.
         """
+        JEBLogger.debug("REND", f"Adding GlobalAnimationController: {controller.__class__.__name__}")
         self._global_anim_controllers.append(controller)
 
     async def run(self, heartbeat_callback=None):
         """The main render loop (default 60Hz, configurable via target_frame_rate).
-        
+
         Automatically adapts frame rate when unable to keep up with target timing.
         """
         next_frame_time = time.monotonic()
@@ -110,7 +114,7 @@ class RenderManager:
                 # Track good frames for potential recovery
                 self.consecutive_good_frames += 1
                 self.consecutive_lag_frames = 0
-                
+
                 # Gradually recover frame rate if consistently keeping up
                 if self.consecutive_good_frames >= self.RECOVERY_THRESHOLD:
                     if self.target_frame_rate < self.DEFAULT_FRAME_RATE:
@@ -125,11 +129,11 @@ class RenderManager:
                 # Lagging: Reset target and enforce minimum sleep to prevent event loop starvation
                 next_frame_time = now
                 await asyncio.sleep(self.MIN_SLEEP_DURATION)
-                
+
                 # Track lag frames for potential backoff
                 self.consecutive_lag_frames += 1
                 self.consecutive_good_frames = 0
-                
+
                 # Gradually reduce frame rate if consistently lagging
                 if self.consecutive_lag_frames >= self.BACKOFF_THRESHOLD:
                     if self.target_frame_rate > self.MIN_FRAME_RATE:

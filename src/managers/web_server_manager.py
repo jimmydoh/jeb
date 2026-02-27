@@ -58,6 +58,7 @@ class WebServerManager:
             JEBLogger.warning("WEBS", "No WiFiManager provided - WebServerManager cannot start")
             raise RuntimeError("No WiFiManager provided")
 
+        JEBLogger.info("WEBS", f"[INIT] WebServerManager - port: {config.get('web_server_port', 80)}, enabled: {config.get('web_server_enabled', False)}, testing: {testing}")
         self._testing = testing
 
         self.config = config

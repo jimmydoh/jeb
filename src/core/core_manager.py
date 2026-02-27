@@ -469,14 +469,14 @@ class CoreManager:
                 self.sat_network.send_all("LED", f"ALL,{Palette.OFF.index}")  # Kill all LEDs
                 # Audio Alarms
                 await self.audio.play(
-                    "background_winddown.wav", channel=self.audio.CH_ATMO, loop=False
+                    "background_winddown.wav", bus_id=self.audio.CH_ATMO, loop=False
                 )
                 await self.audio.set_level(self.audio.CH_ATMO, 0.2)
                 await self.audio.play(
-                    "alarm_klaxon.wav", channel=self.audio.CH_SFX, loop=True
+                    "alarm_klaxon.wav", bus_id=self.audio.CH_SFX, loop=True
                 )
                 await self.audio.play(
-                    "voice_meltdown.wav", channel=self.audio.CH_VOICE, loop=True
+                    "voice_meltdown.wav", bus_id=self.audio.CH_VOICE, loop=True
                 )
                 self.display.update_status("!!! EMERGENCY STOP !!!", "PULL UP TO RESET")
 
@@ -514,19 +514,19 @@ class CoreManager:
 
                 if success:
                     await self.audio.play(
-                        "link_restored.wav", channel=self.audio.CH_SFX
+                        "link_restored.wav", bus_id=self.audio.CH_SFX
                     )
                     # Power is stable, trigger the ID assignment chain
                     await self.sat_network.discover_satellites()
                 else:
                     self.display.update_status("PWR ERROR", error)
-                    await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
+                    await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
 
             elif not self.power.satbus_connected and self.power.satbus_powered:
                 # PHYSICAL LINK LOST - Immediate Hardware Cut-off
                 self.power.emergency_kill()
                 self.display.update_status("SAT LINK LOST", "BUS OFFLINE")
-                await self.audio.play("link_lost.wav", channel=self.audio.CH_SFX)
+                await self.audio.play("link_lost.wav", bus_id=self.audio.CH_SFX)
 
             await asyncio.sleep(0.5)  # Poll twice per second to save CPU
 
@@ -741,7 +741,7 @@ class CoreManager:
                         # Try to display error (may fail if display is broken)
                         try:
                             self.display.update_status("MODE LOAD ERROR", self.mode)
-                            await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
+                            await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
                         except Exception as e:
                             # Display/audio failure - log and continue anyway
                             JEBLogger.error("CORE", f"Error displaying mode load error: {e}")
@@ -767,7 +767,7 @@ class CoreManager:
                                 )
                                 asyncio.create_task(
                                     self.audio.play(
-                                        "link_lost.wav", channel=self.audio.CH_SFX
+                                        "link_lost.wav", bus_id=self.audio.CH_SFX
                                     )
                                 )
                                 await asyncio.sleep(1)
@@ -789,7 +789,7 @@ class CoreManager:
                                     )
                                     asyncio.create_task(
                                         self.audio.play(
-                                            "link_restored.wav", channel=self.audio.CH_SFX
+                                            "link_restored.wav", bus_id=self.audio.CH_SFX
                                         )
                                     )
                                     await asyncio.sleep(1)
@@ -805,7 +805,7 @@ class CoreManager:
                         self.display.update_status(
                             "REQUIREMENT MISSING", f"NEED: {', '.join(requirements)}"
                         )
-                        await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
+                        await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
                     except Exception as e:
                         # Display/audio failure - log and continue anyway
                         JEBLogger.error("CORE", f"Error displaying requirements missing error: {e}")
@@ -819,7 +819,7 @@ class CoreManager:
                 # Try to display error (may fail if display is broken)
                 try:
                     self.display.update_status("MODE NOT FOUND", self.mode)
-                    await self.audio.play("fail.wav", channel=self.audio.CH_SFX)
+                    await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
                 except Exception as e:
                     # Display/audio failure - log and continue anyway
                     JEBLogger.error("CORE", f"Error displaying mode not found error: {e}")

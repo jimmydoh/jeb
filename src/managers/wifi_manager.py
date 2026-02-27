@@ -36,6 +36,8 @@ class WiFiManager:
         self.ssid = config.get("wifi_ssid", "")
         self.password = config.get("wifi_password", "")
 
+        JEBLogger.info("WIFI", f"[INIT] WiFiManager - wifi_ssid: {self.ssid}, wifi_password: {'***' if self.password else ''}")
+
         self.online_callers = set()  # Track which callers want WiFi online
 
         # Lazily populated when connect() is called
@@ -54,6 +56,7 @@ class WiFiManager:
     def ip_address(self):
         """Return the current IP address, or None if not connected."""
         if self.is_connected:
+            JEBLogger.debug("WIFI", f"Current WiFi IP address: {self._wifi.radio.ipv4_address}")
             return self._wifi.radio.ipv4_address
         return None
 

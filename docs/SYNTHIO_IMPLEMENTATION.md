@@ -120,7 +120,7 @@ self.synth = SynthManager()
 self.audio.attach_synth(self.synth.source)
 
 # Now both WAV files and synth can play simultaneously
-self.audio.play("voice/welcome.wav", channel=self.audio.CH_VOICE)
+self.audio.play("voice/welcome.wav", bus_id=self.audio.CH_VOICE)
 self.synth.play_note(440.0, "UI_SELECT", duration=0.1)
 ```
 
@@ -246,7 +246,7 @@ class AudioManager:
     def __init__(self, sck, ws, sd, voice_count=4):
         self.mixer = audiomixer.Mixer(voice_count=4, ...)
         self.CH_SYNTH = 3
-    
+
     def attach_synth(self, synth_source):
         """Attach synthio output to mixer."""
         self.mixer.voice[self.CH_SYNTH].play(synth_source)
@@ -276,7 +276,7 @@ class MainMenu(BaseMode):
             # Tick sound on encoder rotation
             if encoder_changed:
                 core.synth.play_note(800.0, "UI_SELECT", duration=0.03)
-            
+
             # Confirmation sound on button press
             if button_pressed:
                 await core.synth.play_sequence(UI_CONFIRM)
