@@ -291,7 +291,7 @@ class WebServerManager:
                     if chunk_size is None:
                         chunk_size = self.CHUNK_SIZE
                     try:
-                        with open(filepath, "rb") as f:
+                        with open(filepath, "rb", encoding="utf-8") as f:
                             while True:
                                 chunk = f.read(chunk_size)
                                 if not chunk:
@@ -373,7 +373,7 @@ class WebServerManager:
                 bytes_written = 0
                 upload_method = "unknown"
 
-                with open(filepath, "wb") as f:
+                with open(filepath, "wb", encoding="utf-8") as f:
                     # Try to use streaming interface if available
                     # First, check for request.stream (newer adafruit_httpserver versions)
                     if hasattr(request, 'stream') and request.stream:
@@ -556,7 +556,7 @@ class WebServerManager:
             try:
                 # Set update flag
                 try:
-                    with open("/sd/UPDATE_FLAG.txt", "w") as f:
+                    with open("/sd/UPDATE_FLAG.txt", "w", encoding="utf-8") as f:
                         f.write("UPDATE_REQUESTED\n")
                 except OSError as e:
                     # Provide more specific error message
@@ -638,67 +638,35 @@ class WebServerManager:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
-        # API: Real-time telemetry via Server-Sent Events (SSE)
-        @self.server.route("/api/telemetry/stream", GET)
-        def telemetry_stream(request: Request):
-            """Stream live power and satellite telemetry as Server-Sent Events.
+        # API: Real-time telemetry via standard AJAX polling
+        @self.server.route("/api/telemetry/status", GET)
+        def telemetry_status(request: Request):
+            """Return current power and satellite telemetry as a single JSON response."""
+            try:
+                power_data = {}
+                if self.power_manager is not None:
+                    try:
+                        power_data = self.power_manager.status
+                    except Exception:
+                        pass
 
-            Yields one JSON data event per second containing:
-            - power: voltage readings from PowerManager (bus, logic, LED rails)
-            - satellites: link state for each satellite in SatelliteNetworkManager
-            - ts: monotonic timestamp
+                sat_data = {}
+                if self.satellite_manager is not None:
+                    try:
+                        for sid, sat in self.satellite_manager.satellites.items():
+                            sat_data[sid] = {"active": sat.is_active}
+                    except Exception:
+                        pass
 
-            SSE comment lines (': keepalive') are sent between data events to
-            maintain the connection without flooding the client.
-            """
-            power_manager = self.power_manager
-            satellite_manager = self.satellite_manager
-
-            def sse_generator():
-                # Emit the first event immediately by pre-dating the last emit time
-                last_emit = time.monotonic() - 1.0
-                while True:
-                    now = time.monotonic()
-                    if now - last_emit >= 1.0:
-                        power_data = {}
-                        if power_manager is not None:
-                            try:
-                                power_data = power_manager.status
-                            except Exception:
-                                pass
-
-                        sat_data = {}
-                        if satellite_manager is not None:
-                            try:
-                                for sid, sat in satellite_manager.satellites.items():
-                                    sat_data[sid] = {"active": sat.is_active}
-                            except Exception:
-                                pass
-
-                        payload = json.dumps({
-                            "power": power_data,
-                            "satellites": sat_data,
-                            "ts": now,
-                        })
-                        last_emit = now
-                        yield f"data: {payload}\n\n"
-                    else:
-                        # SSE comment used as keepalive between data events.
-                        # Each yield returns control to adafruit_httpserver's poll()
-                        # which sleeps ~10ms before calling next(), so CPU impact
-                        # is minimal and no additional sleep is required here.
-                        yield ": keepalive\n\n"
-
-            return Response(
-                request,
-                sse_generator(),
-                content_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                },
-            )
+                payload = json.dumps({
+                    "power": power_data,
+                    "satellites": sat_data,
+                    "ts": time.monotonic(),
+                })
+                return Response(request, payload, content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
 
         # API: Get pixel art palette
         @self.server.route("/api/pixel-art/palette", GET)
@@ -802,7 +770,7 @@ class WebServerManager:
                     except OSError:
                         pass  # Directory already exists
 
-                    with open(filepath, "wb") as f:
+                    with open(filepath, "wb", encoding="utf-8") as f:
                         f.write(bytes(pixels))
 
                 self.log(f"Pixel art saved: {filepath}")
@@ -817,7 +785,7 @@ class WebServerManager:
         if self._testing:
             return
         try:
-            with open("config.json", "w") as f:
+            with open("config.json", "w", encoding="utf-8") as f:
                 json.dump(self.config, f)
             print("Configuration saved to config.json")
         except Exception as e:
@@ -855,14 +823,14 @@ class WebServerManager:
         for html_path in html_paths:
             try:
                 # Check if file exists before creating generator
-                with open(html_path, "r") as test_f:
+                with open(html_path, "r", encoding="utf-8") as test_f:
                     pass  # File exists, proceed
 
                 def html_generator(filepath, chunk_size=None):
                     """Generator that yields HTML file chunks to save RAM."""
                     if chunk_size is None:
                         chunk_size = self.CHUNK_SIZE
-                    with open(filepath, "r") as f:
+                    with open(filepath, "r", encoding="utf-8") as f:
                         while True:
                             chunk = f.read(chunk_size)
                             if not chunk:

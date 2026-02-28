@@ -42,16 +42,18 @@ class ResourceManager:
     #: Ideal loop period (seconds) used as the CPU-load baseline (20 Hz)
     LOOP_BUDGET_S = 0.05
 
-    def __init__(self, total_ram_bytes=_DEFAULT_TOTAL_RAM_BYTES):
+    def __init__(self, interval=UPDATE_INTERVAL_S, total_ram_bytes=_DEFAULT_TOTAL_RAM_BYTES):
         """Initialise the ResourceManager.
 
         Args:
+            interval: Seconds between full metric refreshes. Defaults to 4.0 seconds.
             total_ram_bytes: Total RAM available on the platform in bytes.
                 Defaults to 520 KB (RP2350).
         """
         JEBLogger.info("RSRC", "[INIT] ResourceManager")
 
         self._total_ram = total_ram_bytes
+        self._interval = interval
 
         # Cached metric values (updated lazily by update())
         self._mem_percent = 0.0
@@ -70,9 +72,9 @@ class ResourceManager:
     # ------------------------------------------------------------------
 
     def update(self):
-        """Refresh all metrics (throttled by ``UPDATE_INTERVAL_S``)."""
+        """Refresh all metrics (throttled by ``_interval``)."""
         now = time.monotonic()
-        if now - self._last_update < self.UPDATE_INTERVAL_S:
+        if now - self._last_update < self._interval:
             return
         self._last_update = now
 

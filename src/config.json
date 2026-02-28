@@ -8,6 +8,10 @@
     "wifi_ssid": "emulator_network",
     "wifi_password": "emulator_pass",
     "update_url": "",
+    "resource_monitor": {
+        "enabled": true,
+        "interval_seconds": 15
+    },
     "web_server_enabled": true,
     "web_server_port": 8080,
     "hardware_features": {
