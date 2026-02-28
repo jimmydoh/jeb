@@ -201,16 +201,16 @@ class HIDManager:
                         elif chip_type == "MCP23017":
                             from adafruit_mcp230xx.mcp23017 import MCP23017
                             mcp = MCP23017(cfg.get("i2c"), cfg["address"])
-                            # Interrupt only supported on MCP23017 currently
-                            if cfg.get("int_pin"):
-                                import digitalio
-                                int_io = digitalio.DigitalInOut(cfg["int_pin"])
-                                int_io.direction = digitalio.Direction.INPUT
-                                int_io.pull = digitalio.Pull.UP
                         else:
                             continue
 
-                        self.has_expander = True 
+                        if cfg.get("int_pin"):
+                            import digitalio
+                            int_io = digitalio.DigitalInOut(cfg["int_pin"])
+                            int_io.direction = digitalio.Direction.INPUT
+                            int_io.pull = digitalio.Pull.UP
+
+                        self.has_expander = True
 
                         # Initialize MCPKeys
                         from utilities.mcp_keys import MCPKeys
@@ -790,6 +790,7 @@ class HIDManager:
                 event = keys.events.get()
                 if not event:
                     break # Break the while loop when queue is empty
+                JEBLogger.info("HIDM", f"Expander Button Event: {event.key_number}, Pressed: {event.pressed}, Released: {event.released}")
                 changed = True # State changed
                 key_idx = exp["abs_btn_base"] + event.key_number
                 now = ticks_ms()
@@ -814,7 +815,7 @@ class HIDManager:
             keys = exp.get("latch_keys")
             if not keys:
                 continue
-            
+
             while True:
                 event = keys.events.get()
                 if not event:
@@ -845,7 +846,7 @@ class HIDManager:
             keys = exp.get("mom_keys")
             if not keys:
                 continue
-            
+
             while True:
                 event = keys.events.get()
                 if not event:
@@ -871,6 +872,8 @@ class HIDManager:
         """Poll hardware inputs to update states."""
         if self.monitor_only:
             return False
+
+        temp_original = self.get_status_string()
 
         dirty = False
         dirty |= self._hw_poll_buttons()
@@ -900,7 +903,8 @@ class HIDManager:
 
         if dirty:
             self.last_interaction_time = ticks_ms()
-            JEBLogger.debug("HIDM", "HID HW `I want to clean your dusty cups`")
+            JEBLogger.debug("HIDM", f"Was: {temp_original}")
+            JEBLogger.debug("HIDM", f"Now: {self.get_status_string()}")
 
         return dirty
 

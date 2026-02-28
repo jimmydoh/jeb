@@ -183,6 +183,8 @@ async def run_hardware_spy_loop(core, satellite, screen):
                                 core_mcp = HardwareMocks.get("CORE", "mcp")
                                 core_mcp_int = HardwareMocks.get("CORE", "mcp_int")
 
+                                JEBLogger.emulator("INPT", f"Button {i} {'Pressed' if is_pressed else 'Released'}")
+
                                 if core_mcp:
                                     core_mcp.get_pin(i)._value = not is_pressed
                                     if core_mcp_int:
@@ -195,7 +197,6 @@ async def run_hardware_spy_loop(core, satellite, screen):
                                 HardwareMocks.get("CORE", "encoder_btn").events.queue.append(
                                     MockKeypadEvent(key_number=0, pressed=is_pressed, released=not is_pressed)
                                 )
-                                JEBLogger.emulator("INPT", f"Encoder Button Queue: {HardwareMocks.get('CORE', 'encoder_btn').events.queue}")
 
                         # ==================================================
                         # SATELLITE TYPE 01 INPUTS (QUADRANT LAYOUT)

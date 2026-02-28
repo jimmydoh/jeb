@@ -4,6 +4,7 @@
 import digitalio
 import keypad
 from adafruit_ticks import ticks_ms
+from utilities.logger import JEBLogger
 
 class MCPKeys:
     """
@@ -41,11 +42,13 @@ class MCPKeys:
             return None
 
         next_evt = self._queue.pop(0)
-        
+
         try:
             import keypad
             # Create a native keypad.Event (key_number, pressed)
-            return keypad.Event(next_evt["key_number"], next_evt["pressed"])
+            event = keypad.Event(next_evt["key_number"], next_evt["pressed"])
+            JEBLogger.debug("MCPKeys", f"Creating keypad.Event: key_number={event.key_number}, pressed={event.pressed}, released={not event.pressed}, timestamp={event.timestamp} ms")
+            return event
         except ImportError:
             # Fallback for pure CPython testing
             class MockEvent:
@@ -53,7 +56,10 @@ class MCPKeys:
                     self.key_number = key_number
                     self.pressed = pressed
                     self.released = not pressed
-            return MockEvent(next_evt["key_number"], next_evt["pressed"])
+                    self.timestamp = ticks_ms()
+            event = MockEvent(next_evt["key_number"], next_evt["pressed"])
+            JEBLogger.debug("MCPKeys", f"Creating MockEvent: key_number={event.key_number}, pressed={event.pressed}, released={event.released}, timestamp={event.timestamp} ms")
+            return event
 
     def update(self):
         """
@@ -65,9 +71,13 @@ class MCPKeys:
 
         live_gpio_register = self._mcp.gpio  # Read the entire GPIO register once
 
+        JEBLogger.debug("MCPKeys", f"GPIO Register Read: {bin(live_gpio_register)} at {now} ms")
+
         for i, (pin_num, pin) in enumerate(self._pins):
 
             val = bool((live_gpio_register >> pin_num) & 1)
+
+            JEBLogger.debug("MCPKeys", f"Pin {pin_num} state: {val} (was {self._last_state[i]})")
 
             if val != self._last_state[i]:
                 # State Changed!
@@ -82,6 +92,8 @@ class MCPKeys:
                     "released": not is_pressed,
                     "timestamp": now
                 })
+
+                JEBLogger.info("MCPKeys", f"Adding to Queue: key_number={i}, pressed={is_pressed}, released={not is_pressed}, timestamp={now}")
 
     @property
     def num_pins(self):
