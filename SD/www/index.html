@@ -297,38 +297,14 @@
 
         <div id="logs" class="tab-content">
             <h2>System Logs</h2>
-            <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
-                <select id="logLevelFilter" onchange="loadLogs()" style="width:auto;">
-                    <option value="">All Levels</option>
-                    <option value="0">DEBUG+</option>
-                    <option value="1">INFO+</option>
-                    <option value="2">NOTE+</option>
-                    <option value="3">WARNING+</option>
-                    <option value="4">CRITICAL+</option>
-                    <option value="5">ERROR only</option>
-                </select>
-                <input type="text" id="logSearch" placeholder="Search logs…" oninput="loadLogs()" style="width:220px;">
-                <button onclick="loadLogs()">Refresh</button>
-                <button class="secondary" onclick="clearLogs()">Clear</button>
-            </div>
+            <button onclick="loadLogs()">Refresh Logs</button>
             <div class="log-viewer" id="logViewer"></div>
         </div>
 
         <div id="console" class="tab-content">
-            <h2>Console</h2>
-            <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center;">
-                <button onclick="loadConsole()">Refresh</button>
-                <label style="display:inline; margin:0;">
-                    <input type="checkbox" id="consoleAutoRefresh" onchange="toggleConsoleAutoRefresh()"> Auto-refresh
-                </label>
-            </div>
+            <h2>Console Output</h2>
+            <button onclick="loadConsole()">Refresh Console</button>
             <div class="log-viewer" id="consoleViewer"></div>
-            <div style="display:flex; gap:8px; margin-top:10px;">
-                <input type="text" id="consoleInput" placeholder="Type command and press Enter…" style="flex:1;"
-                       onkeydown="if(event.key==='Enter') sendConsoleInput()">
-                <button onclick="sendConsoleInput()">Send</button>
-            </div>
-            <div id="consoleStatus" class="status" style="display:none;"></div>
         </div>
 
         <div id="actions" class="tab-content">
@@ -407,7 +383,6 @@
             if (tabName === 'system') loadSystemStatus();
             if (tabName === 'files') loadFiles();
             if (tabName === 'logs') loadLogs();
-            if (tabName === 'console') loadConsole();
             if (tabName === 'modes') loadModeSettings();
             if (tabName === 'telemetry') startTelemetry();
             if (tabName === 'pixelart') initPixelArtStudio();
@@ -552,73 +527,22 @@
             if (bytes < 1024 * 1024) return Math.floor(bytes / 1024) + ' KB';
             return Math.floor(bytes / (1024 * 1024)) + ' MB';
         }
-        
-        const LOG_LEVEL_COLORS = {
-            'DBUG': '#888',
-            'INFO': '#4fc3f7',
-            'NOTE': '#80deea',
-            'WARN': '#ffcc02',
-            'CRIT': '#ffa726',
-            '!ERR': '#ef5350',
-            'EMUL': '#ce93d8',
-        };
 
         async function loadLogs() {
             try {
-                const level = document.getElementById('logLevelFilter').value;
-                const search = document.getElementById('logSearch').value.trim();
-                let url = '/api/logs';
-                const params = [];
-                if (level !== '') params.push('level=' + encodeURIComponent(level));
-                if (search) params.push('search=' + encodeURIComponent(search));
-                if (params.length) url += '?' + params.join('&');
-
-                const response = await fetch(url);
+                const response = await fetch('/api/logs');
                 const logs = await response.json();
 
                 const logViewer = document.getElementById('logViewer');
-                logViewer.innerHTML = '';
-
-                logs.forEach(entry => {
-                    const line = document.createElement('div');
-                    const tag = entry.level_tag || '';
-                    const color = LOG_LEVEL_COLORS[tag] || '#e0e0e0';
-                    // Escape HTML to prevent XSS, then colorise
-                    const text = `[${entry.time}][${tag}][${entry.source}][${entry.module}] ${entry.message}`;
-                    const escaped = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
-                    line.innerHTML = `<span style="color:${color}">${escaped}</span>`;
-                    logViewer.appendChild(line);
-                });
-
-                if (logs.length === 0) {
-                    logViewer.textContent = 'No log entries.';
-                }
+                // Use textContent to prevent XSS - build text with newlines
+                logViewer.textContent = logs.map(log =>
+                    `[${Math.floor(log.time)}s] ${log.message}`
+                ).join('\n');
 
                 // Scroll to bottom
                 logViewer.scrollTop = logViewer.scrollHeight;
             } catch (error) {
                 document.getElementById('logViewer').textContent = 'Error loading logs: ' + error;
-            }
-        }
-
-        async function clearLogs() {
-            try {
-                await fetch('/api/logs/clear', { method: 'POST' });
-            } catch (_) {}
-            document.getElementById('logViewer').textContent = '';
-        }
-
-        let _consoleAutoRefreshTimer = null;
-
-        function toggleConsoleAutoRefresh() {
-            const enabled = document.getElementById('consoleAutoRefresh').checked;
-            if (enabled) {
-                _consoleAutoRefreshTimer = setInterval(loadConsole, 2000);
-            } else {
-                if (_consoleAutoRefreshTimer) {
-                    clearInterval(_consoleAutoRefreshTimer);
-                    _consoleAutoRefreshTimer = null;
-                }
             }
         }
 
@@ -629,36 +553,12 @@
 
                 // Use textContent to prevent XSS attacks
                 const consoleViewer = document.getElementById('consoleViewer');
-                const atBottom = consoleViewer.scrollHeight - consoleViewer.scrollTop <= consoleViewer.clientHeight + 40; // 40px tolerance
                 consoleViewer.textContent = data.output;
-                if (atBottom) consoleViewer.scrollTop = consoleViewer.scrollHeight;
             } catch (error) {
                 document.getElementById('consoleViewer').textContent = 'Error loading console: ' + error;
             }
         }
 
-        async function sendConsoleInput() {
-            const inputEl = document.getElementById('consoleInput');
-            const line = inputEl.value.trim();
-            if (!line) return;
-            try {
-                const response = await fetch('/api/console/input', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ input: line })
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    inputEl.value = '';
-                    setTimeout(loadConsole, 200);
-                } else {
-                    showStatus('consoleStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
-                }
-            } catch (error) {
-                showStatus('consoleStatus', 'Error: ' + error, 'error');
-            }
-        }
-        
         async function triggerOTAUpdate() {
             if (!confirm('Trigger OTA update? Device will update on next boot.')) return;
 

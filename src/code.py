@@ -168,6 +168,43 @@ if config.get("test_mode", False):
 # manager imports occur (including the CoreManager module-level imports).
 _inject_hardware_dummies(config.get("hardware_features", {}))
 
+# --- APPLICATION RUN ---
+app = None
+CONSOLE = None
+
+role = config.get("role", "UNKNOWN")
+type_id = config.get("type_id", "--")
+type_name = config.get("type_name", "UNKNOWN")
+debug_mode = config.get("debug_mode", False)
+test_mode = config.get("test_mode", False)
+resource_monitor = config.get("resource_monitor", {})
+
+JEBLogger.info("CODE", f"ROLE: {role}, ID: {type_id}, NAME: {type_name}")
+
+# Add computed values to config for manager initialization
+config["root_data_dir"] = ROOT_DATA_DIR
+config["debug_mode"] = debug_mode
+config["test_mode"] = test_mode
+config["resource_monitor"] = resource_monitor
+
+if role == "CORE" and type_id == "00":
+    from core.core_manager import CoreManager
+    app = CoreManager(config=config)
+
+elif role == "SAT" and type_id == "01":
+    from satellites.sat_01_firmware import IndustrialSatelliteFirmware
+    app = IndustrialSatelliteFirmware()
+
+else:
+    JEBLogger.error("CODE", "❗Unknown role/type_id combination. No application loaded.❗")
+    while True:
+        time.sleep(1)
+
+if test_mode:
+    JEBLogger.warning("CODE", "⚠️ Test Mode: Console Manager loading")
+    from managers.console_manager import ConsoleManager
+    CONSOLE = ConsoleManager(role, type_id, app=app)
+
 # Do we have an SSID and Password
 if config.get("wifi_ssid") and config.get("wifi_password"):
     JEBLogger.info("CODE", "Wi-Fi credentials provided in config")
@@ -212,7 +249,13 @@ if config.get("wifi_ssid") and config.get("wifi_password"):
             try:
                 from managers.web_server_manager import WebServerManager
                 JEBLogger.info("CODE", " --- WEB SERVER INITIALIZATION --- ")
-                WEB_SERVER = WebServerManager(config, wifi_manager=wifi_manager)
+                WEB_SERVER = WebServerManager(
+                    config,
+                    wifi_manager=wifi_manager,
+                    power_manager=app.power if app else None,
+                    satellite_manager=app.satellites if app and hasattr(app, "satellites") else None,
+                    matrix_manager=app.matrix if app and hasattr(app, "matrix") else None
+                )
                 JEBLogger.info("CODE", "Web server manager initialized - will start with app")
             except ImportError:
                 JEBLogger.warning("CODE", "⚠️ WebServerManager not available - check dependencies")
@@ -223,40 +266,6 @@ if config.get("wifi_ssid") and config.get("wifi_password"):
         JEBLogger.warning("CODE", "⚠️ WiFiManager not available - skipping OTA update and web server")
 else:
     JEBLogger.info("CODE", "No WiFi config - skipping OTA update and web server init")
-
-
-# --- APPLICATION RUN ---
-app = None
-CONSOLE = None
-
-role = config.get("role", "UNKNOWN")
-type_id = config.get("type_id", "--")
-type_name = config.get("type_name", "UNKNOWN")
-debug_mode = config.get("debug_mode", False)
-test_mode = config.get("test_mode", False)
-
-JEBLogger.info("CODE", f"ROLE: {role}, ID: {type_id}, NAME: {type_name}")
-
-# Add computed values to config for manager initialization
-config["root_data_dir"] = ROOT_DATA_DIR
-
-if role == "CORE" and type_id == "00":
-    from core.core_manager import CoreManager
-    app = CoreManager(config=config)
-
-elif role == "SAT" and type_id == "01":
-    from satellites.sat_01_firmware import IndustrialSatelliteFirmware
-    app = IndustrialSatelliteFirmware()
-
-else:
-    JEBLogger.error("CODE", "❗Unknown role/type_id combination. No application loaded.❗")
-    while True:
-        time.sleep(1)
-
-if test_mode:
-    JEBLogger.warning("CODE", "⚠️ Test Mode: Console Manager loading")
-    from managers.console_manager import ConsoleManager
-    CONSOLE = ConsoleManager(role, type_id, app=app)
 
 async def main():
     """Main asynchronous entry point for running the application and web server."""

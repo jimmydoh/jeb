@@ -130,6 +130,8 @@ class CoreManager:
 
         self.debug_mode = config.get("debug_mode", False)
         self.root_data_dir = config.get("root_data_dir", "/")
+        self.resource_monitor_enabled = config.get("resource_monitor", {}).get("enabled", False)
+        self.resource_monitor_interval = config.get("resource_monitor", {}).get("interval_seconds", 5)
 
         # --- SAFETY EVENTS ---
         self.estop_event = asyncio.Event()
@@ -144,7 +146,7 @@ class CoreManager:
         self.data = DataManager(root_dir=self.root_data_dir)
 
         # Init Resource Manager for system metrics (memory, CPU proxy, temperature)
-        self.resources = ResourceManager()
+        self.resources = ResourceManager(interval=self.resource_monitor_interval)
 
         # Init Pins
         Pins.initialize(profile="CORE", type_id="00")
@@ -622,7 +624,17 @@ class CoreManager:
             self.resources.update()
             if self.display:
                 self.display.update_footer(self.resources.get_status_bar_text())
-            await asyncio.sleep(self.resources.UPDATE_INTERVAL_S)
+            await asyncio.sleep(self.resources._interval)
+
+    async def monitor_ticks(self):
+        """
+        Canary task to measure event loop latency.
+        Yields immediately; the time it takes to resume equals the time
+        taken by all other tasks in the event loop cycle.
+        """
+        while True:
+            self.resources.record_loop_tick()
+            await asyncio.sleep(0)
 
     async def start(self):
         """Main async loop for the Master Controller."""
@@ -694,7 +706,9 @@ class CoreManager:
             asyncio.create_task(self.display.scroll_loop())
 
         asyncio.create_task(self.monitor_watchdog_feed())  # Start watchdog feed loop
-        asyncio.create_task(self.monitor_resources())  # Start resource monitor
+        if self.resource_monitor_enabled:
+            asyncio.create_task(self.monitor_ticks())  # Start event loop latency monitor
+            asyncio.create_task(self.monitor_resources())  # Start resource monitor
 
         # --- Experimental / Future Use ---
         #self.watchdog.register_flags(["estop"])
@@ -707,9 +721,6 @@ class CoreManager:
         await BootSequence(self.matrix, self.display, self.synth, self.buzzer).play(version_str)
 
         while True:
-            # Record loop tick for CPU-load proxy metric
-            self.resources.record_loop_tick()
-
             # Meltdown state pauses the menu selection
             while self.meltdown:
                 await asyncio.sleep(0.1)
