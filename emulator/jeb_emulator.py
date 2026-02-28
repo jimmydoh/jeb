@@ -144,10 +144,11 @@ class HardwareMocks:
 
 # --- KEYPAD MOCK ---
 class MockKeypadEvent:
-    def __init__(self, key_number=0, pressed=True, released=False):
+    def __init__(self, key_number=0, pressed=True):
         self.key_number = key_number
         self.pressed = pressed
-        self.released = released
+        self.released = not pressed
+        self.timestamp = MockTicksModule.ticks_ms()
 
 class MockEventQueue:
     def __init__(self):
