@@ -273,9 +273,12 @@ class HIDManager:
             val = char == "1"
             if val != self.buttons_values[i]:
                 self.buttons_values[i] = val
-                self.buttons_timestamps[i] = now
-                if val and ticks_diff(now, self.buttons_timestamps[i]) < 500:
-                    self.buttons_tapped[i] = True
+                if val:  # Button pressed - record timestamp
+                    self.buttons_timestamps[i] = now
+                else:  # Button released - detect tap
+                    start_time = self.buttons_timestamps[i]
+                    if start_time > 0 and ticks_diff(now, start_time) < 500:
+                        self.buttons_tapped[i] = True
                 dirty = True
         return dirty
 
@@ -342,9 +345,12 @@ class HIDManager:
             val = char == "1"
             if val != self.latching_values[i]:
                 self.latching_values[i] = val
-                self.latching_timestamps[i] = now
-                if val and ticks_diff(now, self.latching_timestamps[i]) < 500:
-                    self.latching_tapped[i] = True
+                if val:  # Toggle turned on - record timestamp
+                    self.latching_timestamps[i] = now
+                else:  # Toggle turned off - detect tap
+                    start_time = self.latching_timestamps[i]
+                    if start_time > 0 and ticks_diff(now, start_time) < 500:
+                        self.latching_tapped[i] = True
                 dirty = True
         return dirty
 
@@ -428,15 +434,21 @@ class HIDManager:
                 # Up Direction
                 if up_val != self.momentary_values[i][0]:
                     self.momentary_values[i][0] = up_val
-                    self.momentary_timestamps[i][0] = now
-                    if up_val and ticks_diff(now, self.momentary_timestamps[i][0]) < 500:
-                        self.momentary_tapped[i][0] = True
+                    if up_val:  # Pressed up - record timestamp
+                        self.momentary_timestamps[i][0] = now
+                    else:  # Released up - detect tap
+                        start_time = self.momentary_timestamps[i][0]
+                        if start_time > 0 and ticks_diff(now, start_time) < 500:
+                            self.momentary_tapped[i][0] = True
                 # Down Direction
                 if down_val != self.momentary_values[i][1]:
                     self.momentary_values[i][1] = down_val
-                    self.momentary_timestamps[i][1] = now
-                    if down_val and ticks_diff(now, self.momentary_timestamps[i][1]) < 500:
-                        self.momentary_tapped[i][1] = True
+                    if down_val:  # Pressed down - record timestamp
+                        self.momentary_timestamps[i][1] = now
+                    else:  # Released down - detect tap
+                        start_time = self.momentary_timestamps[i][1]
+                        if start_time > 0 and ticks_diff(now, start_time) < 500:
+                            self.momentary_tapped[i][1] = True
         return dirty
 
     def _hw_poll_momentary_toggles(self):
@@ -599,9 +611,12 @@ class HIDManager:
         for i, val in enumerate(encoder_buttons):
             if val != self.encoder_buttons_values[i]:
                 self.encoder_buttons_values[i] = val
-                self.encoder_buttons_timestamps[i] = now
-                if val and ticks_diff(now, self.encoder_buttons_timestamps[i]) < 500:
-                    self.encoder_buttons_tapped[i] = True
+                if val:  # Button pressed - record timestamp
+                    self.encoder_buttons_timestamps[i] = now
+                else:  # Button released - detect tap
+                    start_time = self.encoder_buttons_timestamps[i]
+                    if start_time > 0 and ticks_diff(now, start_time) < 500:
+                        self.encoder_buttons_tapped[i] = True
                 dirty = True
         return dirty
 
@@ -1008,41 +1023,47 @@ class HIDManager:
 
     def flush(self):
         """Clear all input states and queues."""
-        # Buttons
-        if self._buttons:
-            while self._buttons.events.get_into(self._shared_event):
-                pass
-
-        # Latching toggles
-        if self._latching_toggles:
-            while self._latching_toggles.events.get_into(self._shared_event):
-                pass
-
-        # Momentary toggles
-        if self._momentary_toggles:
-            while self._momentary_toggles.events.get_into(self._shared_event):
-                pass
-
-        # TODO: Encoders - no events to flush, but reset positions if needed
-
-        # Flush encoder button events
-        if self._encoder_buttons:
-            while self._encoder_buttons.events.get_into(self._shared_event):
-                pass
-        
-        # Flush expander events
-        for exp in self._active_expanders:
-            for key in ["btn_keys", "latch_keys", "mom_keys"]:
-                if exp.get(key):
-                    exp[key]._queue.clear()
-
-        # Flush matrix keypad events
-        if self._matrix_keypads:
-            for k_pad in self._matrix_keypads:
-                while k_pad.events.get_into(self._shared_event):
+        if not self.monitor_only:
+            # Flush hardware event queues (non-monitor-only only)
+            if self._buttons:
+                while self._buttons.events.get_into(self._shared_event):
                     pass
+
+            if self._latching_toggles:
+                while self._latching_toggles.events.get_into(self._shared_event):
+                    pass
+
+            if self._momentary_toggles:
+                while self._momentary_toggles.events.get_into(self._shared_event):
+                    pass
+
+            # TODO: Encoders - no events to flush, but reset positions if needed
+
+            if self._encoder_buttons:
+                while self._encoder_buttons.events.get_into(self._shared_event):
+                    pass
+
+            for exp in self._active_expanders:
+                for key in ["btn_keys", "latch_keys", "mom_keys"]:
+                    if exp.get(key):
+                        exp[key]._queue.clear()
+
+            if self._matrix_keypads:
+                for k_pad in self._matrix_keypads:
+                    while k_pad.events.get_into(self._shared_event):
+                        pass
 
         for q in self.matrix_keypads_queues:
             q.clear()
+
+        # Clear all pending tap flags to prevent ghost inputs from previous modes
+        for i in range(len(self.buttons_tapped)):
+            self.buttons_tapped[i] = False
+        for i in range(len(self.latching_tapped)):
+            self.latching_tapped[i] = False
+        for i in range(len(self.momentary_tapped)):
+            self.momentary_tapped[i] = [False, False]
+        for i in range(len(self.encoder_buttons_tapped)):
+            self.encoder_buttons_tapped[i] = False
 
     #endregion
