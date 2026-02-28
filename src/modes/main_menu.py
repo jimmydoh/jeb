@@ -162,6 +162,7 @@ class MainMenu(UtilityMode):
             # --- DASHBOARD STATE ---
             if self.state == "DASHBOARD":
                 if encoder_diff != 0 or encoder_pressed:
+                    JEBLogger.info("MENU", f"Encoder activity detected on DASHBOARD: diff={encoder_diff}, pressed={encoder_pressed}")
                     self.touch()
                     menu_items = self._build_menu_items()
                     self._set_state("MENU")
@@ -178,18 +179,21 @@ class MainMenu(UtilityMode):
                 admin_idx = curr_pos % len(admin_items) if admin_items else 0
 
                 if encoder_diff != 0:
+                    JEBLogger.info("MENU", f"Encoder activity detected in ADMIN: diff={encoder_diff}, pressed={encoder_pressed}")
                     self.touch()
                     slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
                     self.core.buzzer.play_sequence(tones.UI_TICK)
                     needs_render = True
 
                 if encoder_pressed and admin_items:
+                    JEBLogger.info("MENU", f"Encoder button pressed in ADMIN: selected_idx={admin_idx}, mode_id={admin_items[admin_idx]}")
                     self.touch()
                     self.core.buzzer.play_sequence(tones.UI_CONFIRM)
                     self.core.mode = admin_items[admin_idx]
                     return "SUCCESS"
 
                 if btn_b_long:
+                    JEBLogger.info("MENU", "Long press detected on 'B' button in ADMIN, returning to DASHBOARD")
                     self.touch()
                     self.core.buzzer.play_sequence(tones.MENU_CLOSE)
                     self._set_state("DASHBOARD")
@@ -201,10 +205,11 @@ class MainMenu(UtilityMode):
             elif self.state == "MENU":
                 # Check for Admin transition
                 if focus_mode == "GAME" and btn_a_long and btn_d_long:
+                    JEBLogger.info("MENU", "Admin access granted via long press on 'A' and 'D' buttons")
                     self.touch()
                     self.core.buzzer.play_sequence(tones.SECRET_FOUND)
                     self._set_state("ADMIN")
-                    print("DEBUG: Entering Admin Menu")
+                    JEBLogger.info("MENU", "Entering Admin Menu")
                     self.core.leds.off_led(-1)
                     self.core.leds.start_cylon(Palette.RED, speed=0.05)
                     self.core.leds.set_led(1, color=Palette.ORANGE, anim="FLASH", speed=2.0)
@@ -213,11 +218,13 @@ class MainMenu(UtilityMode):
 
                 # Handle Focus Toggle ('D' Button)
                 if btn_d_pressed:
+                    JEBLogger.info("MENU", f"'D' button pressed, toggling focus from {focus_mode}")
                     self.touch()
                     if focus_mode == "GAME":
                         # Only enter settings if the current game HAS settings
                         current_game = menu_items[selected_game_idx]
                         if len(self.core.mode_registry[current_game].get("settings", [])) > 0:
+                            JEBLogger.info("MENU", f"Entering SETTINGS focus for game '{current_game}'")
                             focus_mode = "SETTINGS"
                             selected_setting_idx = 0
                             self.core.hid.reset_encoder(0)
@@ -225,6 +232,7 @@ class MainMenu(UtilityMode):
                             self.core.buzzer.play_sequence(tones.MENU_OPEN)
                             needs_render = True
                     else: # Exiting Settings
+                        JEBLogger.info("MENU", "Exiting SETTINGS focus, returning to GAME focus")
                         focus_mode = "GAME"
                         self.core.hid.reset_encoder(selected_game_idx)
                         curr_pos = selected_game_idx
@@ -234,6 +242,7 @@ class MainMenu(UtilityMode):
                 # Handle GAME Focus Logic
                 if focus_mode == "GAME":
                     if encoder_diff != 0:
+                        JEBLogger.info("MENU", f"Encoder activity detected in GAME focus: diff={encoder_diff}")
                         self.touch()
                         slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
                         selected_game_idx = curr_pos % len(menu_items)
@@ -242,6 +251,7 @@ class MainMenu(UtilityMode):
                         needs_render = True
 
                     if encoder_pressed:
+                        JEBLogger.info("MENU", f"Encoder button pressed in GAME focus: selected_idx={selected_game_idx}, mode_id={menu_items[selected_game_idx]}")
                         self.touch()
                         self.core.buzzer.play_sequence(tones.MENU_LAUNCH)
                         self.core.mode = menu_items[selected_game_idx]
@@ -255,12 +265,14 @@ class MainMenu(UtilityMode):
 
                     if len(mode_settings) > 0:
                         if encoder_diff != 0:
+                            JEBLogger.info("MENU", f"Encoder activity detected in SETTINGS focus: diff={encoder_diff}")
                             self.touch()
                             selected_setting_idx = curr_pos % len(mode_settings)
                             self.core.buzzer.play_sequence(tones.UI_TICK)
                             needs_render = True
 
                         if encoder_pressed:
+                            JEBLogger.info("MENU", f"Encoder button pressed in SETTINGS focus: selected_setting_idx={selected_setting_idx}")
                             self.touch()
                             setting = mode_settings[selected_setting_idx]
                             # Toggle Logic
