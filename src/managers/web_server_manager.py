@@ -29,7 +29,7 @@ import time
 
 from adafruit_httpserver import Server, Request, Response, GET, POST
 
-from utilities.logger import JEBLogger
+from utilities.logger import JEBLogger, LogLevel
 from utilities.palette import Palette
 
 class WebServerManager:
@@ -79,6 +79,9 @@ class WebServerManager:
         self.connected = False
         self.logs = []  # Ring buffer for log messages
         self.max_logs = self.DEFAULT_MAX_LOGS  # Maximum log entries to keep
+
+        # Enable JEBLogger ring buffer so all system logs feed the Logging tab
+        JEBLogger.enable_buffer(max_entries=self.DEFAULT_MAX_LOGS)
 
     async def connect_wifi(self, timeout=30):
         """
@@ -476,8 +479,39 @@ class WebServerManager:
         # API: Get logs
         @self.server.route("/api/logs", GET)
         def get_logs(request: Request):
-            """Return recent log messages."""
-            return Response(request, json.dumps(self.logs),
+            """Return JEBLogger ring buffer, optionally filtered.
+
+            Query parameters:
+                level  (int) – minimum LogLevel value (0=DEBUG … 5=ERROR)
+                search (str) – case-insensitive substring filter
+            """
+            try:
+                level_param = request.query_params.get("level")
+                search_param = request.query_params.get("search", "").strip()
+
+                level_filter = None
+                if level_param is not None:
+                    try:
+                        level_filter = int(level_param)
+                    except (ValueError, TypeError):
+                        pass
+
+                entries = JEBLogger.get_buffer(
+                    level=level_filter,
+                    search=search_param if search_param else None,
+                )
+                return Response(request, json.dumps(entries),
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Clear log buffer
+        @self.server.route("/api/logs/clear", POST)
+        def clear_logs(request: Request):
+            """Clear the JEBLogger ring buffer."""
+            JEBLogger.clear_buffer()
+            return Response(request, '{"status": "cleared"}',
                           content_type="application/json")
 
         # API: Get console output
@@ -491,6 +525,29 @@ class WebServerManager:
 
             return Response(request, json.dumps({"output": output}),
                           content_type="application/json")
+
+        # API: Send input to the console manager
+        @self.server.route("/api/console/input", POST)
+        def post_console_input(request: Request):
+            """Inject a line of text into the ConsoleManager input queue."""
+            try:
+                if self.console_buffer is None:
+                    return Response(request, '{"error": "Console not available"}',
+                                  content_type="application/json", status=503)
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+                line = data.get("input", "").strip()
+                if not line:
+                    return Response(request, '{"error": "input field required"}',
+                                  content_type="application/json", status=400)
+                self.console_buffer.input_queue.append(line)
+                return Response(request, '{"status": "queued"}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
 
         # API: Trigger OTA update
         @self.server.route("/api/actions/ota-update", POST)
