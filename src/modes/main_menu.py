@@ -17,6 +17,14 @@ class MainMenu(UtilityMode):
         super().__init__(core, name="MAIN MENU", description="Select a mode to begin", timeout=10)
         self.state = "DASHBOARD"
 
+    async def enter(self):
+        """Override base setup to prevent clearing the boot logo."""
+        self.core.audio.stop_all()
+        self.core.hid.flush()
+        # We explicitly omit self.core.matrix.clear() here to keep the boot logo!
+        self.core.display.update_status("MAIN MENU", "LOADING...")
+        await asyncio.sleep(0.1)
+
     def _build_menu_items(self, menu="MAIN"):
         """Dynamically build menu based on mode registry and connected hardware.
 
@@ -68,7 +76,7 @@ class MainMenu(UtilityMode):
         if new_state == "DASHBOARD":
             self.set_timeout(None)
             self.core.display.update_status("SYSTEM READY", "AWAITING INPUT")
-            self.core.matrix.show_icon("DEFAULT")
+            #self.core.matrix.show_icon("DEFAULT")
 
         elif new_state == "MENU":
             self.set_timeout(30)
@@ -280,7 +288,10 @@ class MainMenu(UtilityMode):
                     self.core.display.update_header("JADNET Electronics Box")
                     self.core.display.update_status("SYSTEM READY", "Push encoder to begin")
                     self.core.display.update_footer("")
-                    self.core.matrix.clear()
+                    #self.core.matrix.clear()
+
+                    if last_rendered_state is not None and last_rendered_state != "DASHBOARD":
+                        self.core.matrix.show_icon("DEFAULT", anim_mode="FADE_IN", speed=1.0)
 
                 elif self.state == "ADMIN":
                     admin_idx = curr_pos % len(admin_items) if admin_items else 0
