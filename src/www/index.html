@@ -221,6 +221,138 @@
             flex: 1;
             min-width: 200px;
         }
+        /* Audio Studio */
+        .audio-studio-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .audio-transport {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .audio-transport label {
+            display: inline;
+            color: #b0b0b0;
+            margin: 0;
+        }
+        .audio-transport input[type=number] {
+            width: 70px;
+            padding: 6px;
+        }
+        .channel-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 6px 8px;
+        }
+        .channel-label {
+            width: 28px;
+            font-size: 0.75em;
+            color: #888;
+            flex-shrink: 0;
+        }
+        .channel-patch {
+            width: 130px;
+            flex-shrink: 0;
+            font-size: 0.8em;
+            padding: 4px 6px;
+        }
+        .step-grid {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 2px;
+            flex: 1;
+            min-width: 0;
+        }
+        .step-btn {
+            padding: 4px 2px;
+            font-size: 0.65em;
+            background: #2a2a2a;
+            color: #888;
+            border: 1px solid #444;
+            border-radius: 3px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+        }
+        .step-btn.active {
+            background: #1a3a1a;
+            color: #4CAF50;
+            border-color: #4CAF50;
+        }
+        .step-btn:hover {
+            border-color: #888;
+        }
+        .note-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            margin-top: 8px;
+            max-width: 100%;
+        }
+        .note-pick-btn {
+            padding: 4px 6px;
+            font-size: 0.7em;
+            background: #2a2a2a;
+            color: #b0b0b0;
+            border: 1px solid #444;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .note-pick-btn:hover, .note-pick-btn.selected {
+            background: #2d5016;
+            color: #90EE90;
+            border-color: #4CAF50;
+        }
+        .note-pick-btn.rest {
+            color: #666;
+        }
+        .note-pick-btn.rest:hover, .note-pick-btn.rest.selected {
+            background: #3a1a1a;
+            color: #ff9090;
+            border-color: #aa4444;
+        }
+        .duration-picker {
+            display: flex;
+            gap: 4px;
+            margin-top: 6px;
+            flex-wrap: wrap;
+        }
+        .dur-btn {
+            padding: 4px 8px;
+            font-size: 0.7em;
+            background: #2a2a2a;
+            color: #b0b0b0;
+            border: 1px solid #444;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .dur-btn.selected {
+            background: #1a2a3a;
+            color: #80ccff;
+            border-color: #4488cc;
+        }
+        .dur-btn:hover { border-color: #888; }
+        .step-number-row {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 2px;
+            padding: 0 0 2px;
+        }
+        .step-number {
+            font-size: 0.6em;
+            color: #555;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -237,6 +369,7 @@
             <button class="tab" onclick="showTab('actions')">Actions</button>
             <button class="tab" onclick="showTab('telemetry')">Telemetry</button>
             <button class="tab" onclick="showTab('pixelart')">Pixel Art Studio</button>
+            <button class="tab" onclick="showTab('audiostudio')">Audio Studio</button>
         </div>
 
         <div id="system" class="tab-content active">
@@ -392,6 +525,62 @@
                 </div>
             </div>
         </div>
+
+        <div id="audiostudio" class="tab-content">
+            <h2>🎵 Audio Studio</h2>
+            <p style="color: #b0b0b0; margin-bottom: 15px;">Compose a multi-channel chiptune sequence, preview it live on the device, then save as a <code>.jseq</code> file.</p>
+
+            <div class="audio-studio-layout">
+                <!-- Transport controls -->
+                <div class="audio-transport">
+                    <label>BPM:</label>
+                    <input type="number" id="audioBpm" value="120" min="20" max="300" style="width:70px;">
+                    <button onclick="audioPreview()">▶ Play Preview</button>
+                    <button class="secondary" onclick="audioStop()">■ Stop</button>
+                    <button class="secondary" onclick="audioClearAll()">Clear All</button>
+                </div>
+
+                <!-- Step number ruler -->
+                <div style="display:flex; align-items:center; gap:6px; padding: 0 8px;">
+                    <div style="width:164px; flex-shrink:0;"></div>
+                    <div class="step-number-row" style="flex:1;">
+                        <div class="step-number">1</div><div class="step-number">2</div>
+                        <div class="step-number">3</div><div class="step-number">4</div>
+                        <div class="step-number">5</div><div class="step-number">6</div>
+                        <div class="step-number">7</div><div class="step-number">8</div>
+                        <div class="step-number">9</div><div class="step-number">10</div>
+                        <div class="step-number">11</div><div class="step-number">12</div>
+                        <div class="step-number">13</div><div class="step-number">14</div>
+                        <div class="step-number">15</div><div class="step-number">16</div>
+                    </div>
+                </div>
+
+                <!-- Channel rows (3 channels) -->
+                <div id="channelRows"></div>
+
+                <!-- Note & Duration Picker -->
+                <div style="background:#1a1a1a; border:1px solid #333; border-radius:4px; padding:10px; margin-top:4px;">
+                    <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
+                        <div>
+                            <label style="color:#b0b0b0; font-size:0.85em;">Active Note: <strong id="activeNoteLabel" style="color:#4CAF50;">—</strong></label>
+                            <div class="note-picker" id="notePicker"></div>
+                        </div>
+                        <div>
+                            <label style="color:#b0b0b0; font-size:0.85em;">Duration: <strong id="activeDurLabel" style="color:#80ccff;">♩ Quarter (1 beat)</strong></label>
+                            <div class="duration-picker" id="durationPicker"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Save section -->
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px;">
+                    <label style="color:#b0b0b0;">Sequence Name:</label>
+                    <input type="text" id="audioSeqName" placeholder="my_sequence" maxlength="32" style="width:180px;">
+                    <button onclick="audioSave()">💾 Save .jseq</button>
+                </div>
+                <div id="audioStatus" class="status" style="display:none;"></div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -411,6 +600,7 @@
             if (tabName === 'modes') loadModeSettings();
             if (tabName === 'telemetry') startTelemetry();
             if (tabName === 'pixelart') initPixelArtStudio();
+            if (tabName === 'audiostudio') initAudioStudio();
         }
 
         async function loadSystemStatus() {
@@ -1083,6 +1273,306 @@
                 }
             } catch (e) {
                 showStatus('pixelArtStatus', 'Error: ' + e, 'error');
+            }
+        }
+
+        // =====================================================================
+        // Audio Studio
+        // =====================================================================
+        const AUDIO_NUM_CHANNELS = 3;
+        const AUDIO_NUM_STEPS    = 16;
+
+        // Patch names – must match JSEQ_PATCH_NAMES in synth_manager.py
+        const JSEQ_PATCH_NAMES = [
+            'RETRO_LEAD', 'RETRO_BASS', 'RETRO_NOISE',
+            'BEEP', 'BEEP_SQUARE', 'PAD', 'PUNCH',
+            'ALARM', 'SCANNER', 'CLICK', 'NOISE', 'SELECT',
+        ];
+
+        // Available note names for the picker
+        const AUDIO_OCTAVES = [2, 3, 4, 5, 6, 7];
+        const AUDIO_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+        // Duration options: [label, beats]
+        const DURATION_OPTIONS = [
+            ['1/32', 0.125], ['1/16', 0.25], ['1/8', 0.5],
+            ['1/4', 1.0], ['1/2', 2.0], ['1', 4.0],
+        ];
+
+        // Sequence data: audioSteps[ch][step] = {note, duration} or null (rest)
+        let audioSteps = [];
+        let audioChannelPatches = [];
+        let activeNote = null;       // e.g. 'C4'
+        let activeDuration = 1.0;    // in beats (quarter note default)
+        let audioStudioInitialized = false;
+
+        function initAudioStudio() {
+            if (audioStudioInitialized) return;
+            audioStudioInitialized = true;
+
+            // Initialize data
+            for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+                audioSteps.push(new Array(AUDIO_NUM_STEPS).fill(null));
+                audioChannelPatches.push(JSEQ_PATCH_NAMES[c] || 'SELECT');
+            }
+
+            _buildChannelRows();
+            _buildNotePicker();
+            _buildDurationPicker();
+        }
+
+        function _buildChannelRows() {
+            const container = document.getElementById('channelRows');
+            container.innerHTML = '';
+            for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+                const row = document.createElement('div');
+                row.className = 'channel-row';
+                row.id = `channelRow_${c}`;
+
+                // Label
+                const lbl = document.createElement('div');
+                lbl.className = 'channel-label';
+                lbl.textContent = `Ch${c + 1}`;
+                row.appendChild(lbl);
+
+                // Patch selector
+                const sel = document.createElement('select');
+                sel.className = 'channel-patch';
+                sel.id = `channelPatch_${c}`;
+                JSEQ_PATCH_NAMES.forEach(name => {
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = name;
+                    if (name === audioChannelPatches[c]) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                sel.onchange = () => { audioChannelPatches[c] = sel.value; };
+                row.appendChild(sel);
+
+                // Step grid
+                const grid = document.createElement('div');
+                grid.className = 'step-grid';
+                grid.id = `stepGrid_${c}`;
+                for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
+                    const btn = document.createElement('button');
+                    btn.className = 'step-btn';
+                    btn.id = `step_${c}_${s}`;
+                    btn.textContent = '—';
+                    btn.onclick = () => _toggleStep(c, s);
+                    grid.appendChild(btn);
+                }
+                row.appendChild(grid);
+                container.appendChild(row);
+            }
+        }
+
+        function _buildNotePicker() {
+            const picker = document.getElementById('notePicker');
+            picker.innerHTML = '';
+
+            // Rest button
+            const restBtn = document.createElement('button');
+            restBtn.className = 'note-pick-btn rest';
+            restBtn.textContent = '— Rest';
+            restBtn.onclick = () => _selectNote(null);
+            picker.appendChild(restBtn);
+
+            // Note buttons by octave
+            AUDIO_OCTAVES.forEach(oct => {
+                AUDIO_NOTE_NAMES.forEach(n => {
+                    const noteName = n + oct;
+                    const btn = document.createElement('button');
+                    btn.className = 'note-pick-btn';
+                    btn.textContent = noteName;
+                    btn.id = `notePick_${noteName}`;
+                    btn.onclick = () => _selectNote(noteName);
+                    picker.appendChild(btn);
+                });
+            });
+        }
+
+        function _buildDurationPicker() {
+            const picker = document.getElementById('durationPicker');
+            picker.innerHTML = '';
+            DURATION_OPTIONS.forEach(([label, beats]) => {
+                const btn = document.createElement('button');
+                btn.className = 'dur-btn' + (beats === activeDuration ? ' selected' : '');
+                btn.textContent = label;
+                btn.onclick = () => _selectDuration(beats, label, btn);
+                picker.appendChild(btn);
+            });
+        }
+
+        function _selectNote(noteName) {
+            activeNote = noteName;
+            document.getElementById('activeNoteLabel').textContent = noteName || '— Rest';
+            document.querySelectorAll('.note-pick-btn').forEach(b => b.classList.remove('selected'));
+            if (noteName) {
+                const btn = document.getElementById(`notePick_${noteName}`);
+                if (btn) btn.classList.add('selected');
+            } else {
+                const restBtns = document.querySelectorAll('.note-pick-btn.rest');
+                restBtns.forEach(b => b.classList.add('selected'));
+            }
+        }
+
+        function _selectDuration(beats, label, clickedBtn) {
+            activeDuration = beats;
+            document.getElementById('activeDurLabel').textContent = label + ' (' + beats + ' beat' + (beats === 1 ? '' : 's') + ')';
+            document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('selected'));
+            clickedBtn.classList.add('selected');
+        }
+
+        function _toggleStep(ch, step) {
+            const current = audioSteps[ch][step];
+            if (current !== null && activeNote === current.note) {
+                // Same note clicked again → clear (rest)
+                audioSteps[ch][step] = null;
+            } else if (activeNote === null) {
+                // Rest selected → clear
+                audioSteps[ch][step] = null;
+            } else {
+                // Place or replace note
+                audioSteps[ch][step] = { note: activeNote, duration: activeDuration };
+            }
+            _refreshStepButton(ch, step);
+        }
+
+        function _refreshStepButton(ch, step) {
+            const btn = document.getElementById(`step_${ch}_${step}`);
+            if (!btn) return;
+            const s = audioSteps[ch][step];
+            if (s) {
+                btn.textContent = s.note;
+                btn.classList.add('active');
+            } else {
+                btn.textContent = '—';
+                btn.classList.remove('active');
+            }
+        }
+
+        function audioClearAll() {
+            for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+                audioSteps[c] = new Array(AUDIO_NUM_STEPS).fill(null);
+                for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
+                    _refreshStepButton(c, s);
+                }
+            }
+        }
+
+        function _buildPreviewPayload() {
+            const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
+            const channels = [];
+            const REST_DURATION = 1.0; // Quarter note default for rest steps
+            for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+                const sequence = audioSteps[c].map(s => s ? [s.note, s.duration] : ['-', REST_DURATION]);
+                channels.push({ patch: audioChannelPatches[c], sequence });
+            }
+            return { bpm, channels };
+        }
+
+        async function audioPreview() {
+            const payload = _buildPreviewPayload();
+            try {
+                const resp = await fetch('/api/synth/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showStatus('audioStatus', '▶ Preview started on device', 'success');
+                } else if (data.status === 'no_synth') {
+                    showStatus('audioStatus', 'Synth manager not connected to web server', 'error');
+                } else {
+                    showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (e) {
+                showStatus('audioStatus', 'Error: ' + e, 'error');
+            }
+        }
+
+        async function audioStop() {
+            try {
+                const resp = await fetch('/api/synth/stop', { method: 'POST' });
+                const data = await resp.json();
+                if (resp.ok) {
+                    showStatus('audioStatus', '■ Playback stopped', 'success');
+                } else {
+                    showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (e) {
+                showStatus('audioStatus', 'Error: ' + e, 'error');
+            }
+        }
+
+        // Encode a note name to .jseq MIDI index (0 = rest, 1 = MIDI note 0)
+        // MIDI numbering: C-1=0, C0=12, C1=24, C2=36, C4=60, A4=69
+        // Formula: (octave + 1) * 12 + semitone gives standard MIDI note number
+        function _noteToJseqIndex(noteName) {
+            if (!noteName || noteName === '-') return 0;
+            const semitones = { 'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11 };
+            const m = noteName.match(/^([A-G]#?)(\d+)$/);
+            if (!m) return 0;
+            const midi = (parseInt(m[2]) + 1) * 12 + (semitones[m[1]] !== undefined ? semitones[m[1]] : 0);
+            return midi + 1; // +1: index 0 reserved for rest
+        }
+
+        function _durationToJseqUnits(beats) {
+            return Math.max(1, Math.min(255, Math.round(beats * 32)));
+        }
+
+        function _encodeJseq() {
+            const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
+            // Calculate buffer size: 8-byte header + per-channel data
+            let size = 8;
+            for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) size += 3 + AUDIO_NUM_STEPS * 2;
+
+            const buf = new ArrayBuffer(size);
+            const view = new DataView(buf);
+            let pos = 0;
+
+            // Magic "JSEQ"
+            view.setUint8(pos++, 0x4A); view.setUint8(pos++, 0x53);
+            view.setUint8(pos++, 0x45); view.setUint8(pos++, 0x51);
+            view.setUint8(pos++, 1); // version
+            view.setUint16(pos, bpm, true); pos += 2;
+            view.setUint8(pos++, AUDIO_NUM_CHANNELS);
+
+            for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+                const patchIdx = JSEQ_PATCH_NAMES.indexOf(audioChannelPatches[c]);
+                view.setUint8(pos++, patchIdx >= 0 ? patchIdx : 0);
+                view.setUint16(pos, AUDIO_NUM_STEPS, true); pos += 2;
+                for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
+                    const step = audioSteps[c][s];
+                    view.setUint8(pos++, step ? _noteToJseqIndex(step.note) : 0);
+                    view.setUint8(pos++, step ? _durationToJseqUnits(step.duration) : _durationToJseqUnits(activeDuration));
+                }
+            }
+            return buf;
+        }
+
+        async function audioSave() {
+            const name = document.getElementById('audioSeqName').value.trim();
+            if (!name) {
+                showStatus('audioStatus', 'Please enter a sequence name', 'error');
+                return;
+            }
+            try {
+                const buf = _encodeJseq();
+                const resp = await fetch(`/api/synth/save?name=${encodeURIComponent(name)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: buf,
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showStatus('audioStatus', `💾 Saved to ${data.path}`, 'success');
+                } else {
+                    showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (e) {
+                showStatus('audioStatus', 'Error: ' + e, 'error');
             }
         }
     </script>

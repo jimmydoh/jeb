@@ -1659,6 +1659,261 @@ def test_console_input_api_no_buffer():
     print("  ✓ /api/console/input (no buffer) test passed")
 
 
+# ---------------------------------------------------------------------------
+# Audio Studio / Synth API Tests
+# ---------------------------------------------------------------------------
+
+class MockSynthManager:
+    """Mock SynthManager for testing synth API endpoints."""
+    def __init__(self):
+        self.preview_called = False
+        self.preview_channels_arg = None
+        self.stop_called = False
+
+    def preview_channels(self, channels_data):
+        self.preview_called = True
+        self.preview_channels_arg = channels_data
+        return None
+
+    def stop_chiptune(self):
+        self.stop_called = True
+
+
+def _make_synth_manager(config=None):
+    if config is None:
+        config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_synth = MockSynthManager()
+    manager = WebServerManager(config, MockWiFiManager(), synth_manager=mock_synth, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+    return manager, mock_synth
+
+
+def _find_route(manager, path):
+    for rpath, _, func in manager.server.routes:
+        if rpath == path:
+            return func
+    return None
+
+
+def test_synth_manager_stored():
+    """Test that synth_manager is stored on WebServerManager when provided."""
+    print("\nTesting synth_manager parameter storage...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_synth = MockSynthManager()
+    manager = WebServerManager(config, MockWiFiManager(), synth_manager=mock_synth, testing=True)
+
+    assert manager.synth_manager is mock_synth
+    assert manager.synth_manager is not None
+
+    manager2 = WebServerManager(config, MockWiFiManager(), testing=True)
+    assert manager2.synth_manager is None
+
+    print("  ✓ synth_manager parameter test passed")
+
+
+def test_synth_preview_routes_registered():
+    """Test that all synth API routes are registered."""
+    print("\nTesting synth API route registration...")
+
+    manager, _ = _make_synth_manager()
+    registered = [p for p, _, _ in manager.server.routes]
+
+    assert "/api/synth/preview" in registered, "/api/synth/preview not registered"
+    assert "/api/synth/save" in registered, "/api/synth/save not registered"
+    assert "/api/synth/stop" in registered, "/api/synth/stop not registered"
+
+    print("  ✓ Synth API routes registered test passed")
+
+
+def test_synth_preview_no_synth():
+    """Test POST /api/synth/preview without a synth manager."""
+    print("\nTesting synth preview without synth manager...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/synth/preview")
+    assert handler is not None
+
+    request = MockRequest()
+    request.json = lambda: {
+        "bpm": 120,
+        "channels": [{"patch": "RETRO_LEAD", "sequence": [["C4", 0.25]]}]
+    }
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "no_synth"
+
+    print("  ✓ Synth preview (no synth) test passed")
+
+
+def test_synth_preview_with_synth():
+    """Test POST /api/synth/preview calls synth_manager.preview_channels."""
+    print("\nTesting synth preview with synth manager...")
+
+    manager, mock_synth = _make_synth_manager()
+    handler = _find_route(manager, "/api/synth/preview")
+    assert handler is not None
+
+    request = MockRequest()
+    request.json = lambda: {
+        "bpm": 140,
+        "channels": [
+            {"patch": "RETRO_LEAD", "sequence": [["C4", 0.25], ["-", 0.25]]},
+            {"patch": "RETRO_BASS", "sequence": [["C3", 1.0]]},
+        ]
+    }
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert mock_synth.preview_called is True
+    assert len(mock_synth.preview_channels_arg) == 2
+    assert mock_synth.preview_channels_arg[0]['bpm'] == 140
+    assert mock_synth.preview_channels_arg[0]['patch'] == 'RETRO_LEAD'
+
+    print("  ✓ Synth preview with synth manager test passed")
+
+
+def test_synth_preview_validation():
+    """Test POST /api/synth/preview validates input."""
+    print("\nTesting synth preview validation...")
+
+    manager, _ = _make_synth_manager()
+    handler = _find_route(manager, "/api/synth/preview")
+
+    # Missing channels
+    req = MockRequest()
+    req.json = lambda: {"bpm": 120}
+    assert handler(req).status == 400
+
+    # Empty channels list
+    req2 = MockRequest()
+    req2.json = lambda: {"bpm": 120, "channels": []}
+    assert handler(req2).status == 400
+
+    # Too many channels (>4)
+    req3 = MockRequest()
+    req3.json = lambda: {"bpm": 120, "channels": [{"patch": "SELECT", "sequence": [["C4", 1]]}] * 5}
+    assert handler(req3).status == 400
+
+    # Invalid BPM
+    req4 = MockRequest()
+    req4.json = lambda: {"bpm": 5, "channels": [{"patch": "SELECT", "sequence": [["C4", 1]]}]}
+    assert handler(req4).status == 400
+
+    # Channel missing sequence
+    req5 = MockRequest()
+    req5.json = lambda: {"bpm": 120, "channels": [{"patch": "SELECT"}]}
+    assert handler(req5).status == 400
+
+    print("  ✓ Synth preview validation test passed")
+
+
+def test_synth_save_route():
+    """Test POST /api/synth/save in testing mode (no file I/O)."""
+    print("\nTesting synth save route...")
+
+    manager, _ = _make_synth_manager()
+    handler = _find_route(manager, "/api/synth/save")
+    assert handler is not None
+
+    # Build a minimal valid .jseq binary
+    import struct
+    bpm = 120
+    body = b'JSEQ\x01' + struct.pack('<H', bpm) + b'\x01'
+    body += b'\x00' + struct.pack('<H', 1) + b'\x00\x20'  # 1 note: rest (index 0), 0x20=32 units = 1.0 beat (Q)
+
+    request = MockRequest()
+    request.query_params = {"name": "test_seq"}
+    request.body = body
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert data["path"] == "/sd/sequences/test_seq.jseq"
+
+    print("  ✓ Synth save route test passed")
+
+
+def test_synth_save_validation():
+    """Test POST /api/synth/save validates name and binary data."""
+    print("\nTesting synth save validation...")
+
+    manager, _ = _make_synth_manager()
+    handler = _find_route(manager, "/api/synth/save")
+
+    # Missing name
+    req = MockRequest()
+    req.query_params = {}
+    req.body = b'JSEQ\x01\x78\x00\x00'
+    assert handler(req).status == 400
+
+    # Invalid name characters
+    req2 = MockRequest()
+    req2.query_params = {"name": "bad/name!"}
+    req2.body = b'JSEQ\x01\x78\x00\x00'
+    assert handler(req2).status == 400
+
+    # Body too short
+    req3 = MockRequest()
+    req3.query_params = {"name": "ok_name"}
+    req3.body = b'JS'
+    assert handler(req3).status == 400
+
+    # Wrong magic bytes
+    req4 = MockRequest()
+    req4.query_params = {"name": "ok_name"}
+    req4.body = b'NOPE\x01\x78\x00\x01'
+    assert handler(req4).status == 400
+
+    print("  ✓ Synth save validation test passed")
+
+
+def test_synth_stop_route():
+    """Test POST /api/synth/stop calls stop_chiptune."""
+    print("\nTesting synth stop route...")
+
+    manager, mock_synth = _make_synth_manager()
+    handler = _find_route(manager, "/api/synth/stop")
+    assert handler is not None
+
+    request = MockRequest()
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "stopped"
+    assert mock_synth.stop_called is True
+
+    print("  ✓ Synth stop route test passed")
+
+
+def test_synth_stop_no_synth():
+    """Test POST /api/synth/stop without a synth manager."""
+    print("\nTesting synth stop without synth manager...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/synth/stop")
+    assert handler is not None
+
+    request = MockRequest()
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "no_synth"
+
+    print("  ✓ Synth stop (no synth) test passed")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -1706,6 +1961,15 @@ def run_all_tests():
         test_logs_clear_api,
         test_console_input_api,
         test_console_input_api_no_buffer,
+        test_synth_manager_stored,
+        test_synth_preview_routes_registered,
+        test_synth_preview_no_synth,
+        test_synth_preview_with_synth,
+        test_synth_preview_validation,
+        test_synth_save_route,
+        test_synth_save_validation,
+        test_synth_stop_route,
+        test_synth_stop_no_synth,
     ]
 
     try:

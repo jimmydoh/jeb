@@ -13,6 +13,7 @@ Features:
 - Debug mode toggle
 - Satellite reordering
 - Pixel Art Studio (live LED matrix drawing canvas)
+- Audio Studio (multi-channel chiptune sequence editor and .jseq export)
 
 Dependencies:
 - JEBLogger (for logging within the web server)
@@ -45,7 +46,7 @@ class WebServerManager:
     MAX_UPLOAD_SIZE_BYTES = 50 * 1024  # Maximum upload size (50KB)
     DEFAULT_MAX_LOGS = 1000  # Default maximum log entries to keep
 
-    def __init__(self, config, wifi_manager, console_buffer=None, power_manager=None, satellite_manager=None, matrix_manager=None, testing=False):
+    def __init__(self, config, wifi_manager, console_buffer=None, power_manager=None, satellite_manager=None, matrix_manager=None, synth_manager=None, testing=False):
         """
         Initialize the web server manager.
 
@@ -56,6 +57,7 @@ class WebServerManager:
             power_manager (PowerManager): Optional PowerManager for live telemetry
             satellite_manager (SatelliteNetworkManager): Optional SatelliteNetworkManager for link telemetry
             matrix_manager (MatrixManager): Optional MatrixManager for live pixel art preview
+            synth_manager (SynthManager): Optional SynthManager for Audio Studio live preview
         """
         if wifi_manager is None:
             JEBLogger.warning("WEBS", "No WiFiManager provided - WebServerManager cannot start")
@@ -73,6 +75,7 @@ class WebServerManager:
         self.power_manager = power_manager
         self.satellite_manager = satellite_manager
         self.matrix_manager = matrix_manager
+        self.synth_manager = synth_manager
 
         self.server = None
         self.pool = None
@@ -775,6 +778,116 @@ class WebServerManager:
 
                 self.log(f"Pixel art saved: {filepath}")
                 return Response(request, f'{{"status": "success", "path": "{filepath}"}}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Live preview of a multichannel synth sequence
+        @self.server.route("/api/synth/preview", POST)
+        def preview_synth(request: Request):
+            """Play a multichannel sequence on the synth engine for live preview."""
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                channels = data.get("channels")
+                if not channels or not isinstance(channels, list) or len(channels) == 0:
+                    return Response(request, '{"error": "channels array required"}',
+                                  content_type="application/json", status=400)
+
+                if len(channels) > 4:
+                    return Response(request, '{"error": "maximum 4 channels allowed"}',
+                                  content_type="application/json", status=400)
+
+                bpm = data.get("bpm", 120)
+                if not isinstance(bpm, int) or bpm < 20 or bpm > 300:
+                    return Response(request, '{"error": "bpm must be an integer between 20 and 300"}',
+                                  content_type="application/json", status=400)
+
+                channel_dicts = []
+                for ch in channels:
+                    if not isinstance(ch, dict):
+                        return Response(request, '{"error": "each channel must be an object"}',
+                                      content_type="application/json", status=400)
+                    sequence = ch.get("sequence")
+                    if not sequence or not isinstance(sequence, list):
+                        return Response(request, '{"error": "each channel must have a sequence array"}',
+                                      content_type="application/json", status=400)
+                    patch_name = ch.get("patch", "SELECT")
+                    channel_dicts.append({
+                        'bpm': bpm,
+                        'patch': patch_name,
+                        'sequence': sequence,
+                    })
+
+                if self.synth_manager is None:
+                    return Response(request, '{"status": "no_synth", "message": "Synth manager not available"}',
+                                  content_type="application/json")
+
+                self.synth_manager.preview_channels(channel_dicts)
+                self.log("Synth preview started")
+                return Response(request, '{"status": "success"}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Save a .jseq sequence file to /sd/sequences/
+        @self.server.route("/api/synth/save", POST)
+        def save_synth_sequence(request: Request):
+            """Save a .jseq binary sequence file to /sd/sequences/."""
+            try:
+                name = request.query_params.get("name", "").strip()
+                if not name:
+                    return Response(request, '{"error": "name query parameter required"}',
+                                  content_type="application/json", status=400)
+
+                valid_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+                if not all(c in valid_chars for c in name):
+                    return Response(request, '{"error": "name must contain only letters, numbers, and underscores"}',
+                                  content_type="application/json", status=400)
+
+                body = request.body
+                if not body or len(body) < 8:
+                    return Response(request, '{"error": "request body must contain .jseq binary data (minimum 8 bytes)"}',
+                                  content_type="application/json", status=400)
+
+                if body[:4] != b'JSEQ':
+                    return Response(request, '{"error": "invalid .jseq file: missing JSEQ magic bytes"}',
+                                  content_type="application/json", status=400)
+
+                filepath = f"/sd/sequences/{name.lower()}.jseq"
+
+                if not self._testing:
+                    try:
+                        os.mkdir("/sd/sequences")
+                    except OSError:
+                        pass  # Directory already exists
+
+                    with open(filepath, "wb") as f:
+                        f.write(body)
+
+                self.log(f"Synth sequence saved: {filepath}")
+                return Response(request, f'{{"status": "success", "path": "{filepath}"}}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Stop any currently playing synth sequence
+        @self.server.route("/api/synth/stop", POST)
+        def stop_synth(request: Request):
+            """Stop any currently playing synth sequence or preview."""
+            try:
+                if self.synth_manager is None:
+                    return Response(request, '{"status": "no_synth"}',
+                                  content_type="application/json")
+                self.synth_manager.stop_chiptune()
+                self.log("Synth playback stopped")
+                return Response(request, '{"status": "stopped"}',
                               content_type="application/json")
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',

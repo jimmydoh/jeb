@@ -466,8 +466,187 @@ async def test_start_generative_drone_calls_play_note_with_dict_patch():
 
 
 # ---------------------------------------------------------------------------
-# Test Runner
+# JSEQ and preview_channels Tests
 # ---------------------------------------------------------------------------
+
+def test_jseq_patch_names_list():
+    """Test that JSEQ_PATCH_NAMES is a non-empty list of valid Patches names."""
+    print("\nTesting JSEQ_PATCH_NAMES list...")
+
+    from utilities.synth_registry import Patches
+
+    assert isinstance(synth_manager_module.JSEQ_PATCH_NAMES, list), "JSEQ_PATCH_NAMES should be a list"
+    assert len(synth_manager_module.JSEQ_PATCH_NAMES) > 0, "JSEQ_PATCH_NAMES should not be empty"
+    for name in synth_manager_module.JSEQ_PATCH_NAMES:
+        assert hasattr(Patches, name), f"Patches should have attribute '{name}'"
+
+    print("✓ JSEQ_PATCH_NAMES test passed")
+
+
+def test_jseq_midi_to_freq():
+    """Test _jseq_midi_to_freq converts MIDI note 69 to A4=440Hz."""
+    print("\nTesting _jseq_midi_to_freq...")
+
+    freq = synth_manager_module._jseq_midi_to_freq(69)
+    assert abs(freq - 440.0) < 0.01, f"MIDI 69 should be 440 Hz, got {freq}"
+
+    # C4 = MIDI 60
+    freq_c4 = synth_manager_module._jseq_midi_to_freq(60)
+    assert abs(freq_c4 - 261.63) < 0.5, f"MIDI 60 should be ~261.63 Hz, got {freq_c4}"
+
+    print("✓ _jseq_midi_to_freq test passed")
+
+
+def test_load_jseq_invalid_magic():
+    """Test that load_jseq raises ValueError for invalid magic bytes."""
+    print("\nTesting load_jseq with invalid magic bytes...")
+
+    import io
+    import builtins
+
+    synth = SynthManager()
+
+    invalid_data = b'NOPE\x01\x78\x00\x01' + b'\x00\x01\x00' + b'\x00\x08'
+
+    original_open = builtins.open
+
+    def mock_open(path, mode='r', *args, **kwargs):
+        return io.BytesIO(invalid_data)
+
+    builtins.open = mock_open
+    try:
+        raised = False
+        try:
+            synth.load_jseq('/sd/sequences/test.jseq')
+        except ValueError:
+            raised = True
+        assert raised, "load_jseq should raise ValueError for invalid magic"
+    finally:
+        builtins.open = original_open
+
+    print("✓ load_jseq invalid magic test passed")
+
+
+def test_load_jseq_valid_file():
+    """Test that load_jseq correctly parses a valid .jseq binary file."""
+    print("\nTesting load_jseq with valid binary data...")
+
+    import io
+    import struct
+    import builtins
+
+    synth = SynthManager()
+
+    # Build a minimal valid .jseq: 1 channel, 2 notes, BPM=120
+    # Header: JSEQ + version + BPM LE + channel_count
+    bpm = 120
+    num_channels = 1
+    patch_idx = 0   # RETRO_LEAD
+    notes = [(62, 32), (0, 8)]  # note_idx 62 → MIDI 61 = C#4, quarter note; then rest, sixteenth
+
+    header = b'JSEQ'
+    header += bytes([1])               # version
+    header += struct.pack('<H', bpm)   # BPM little-endian
+    header += bytes([num_channels])
+
+    channel_data = bytes([patch_idx])
+    channel_data += struct.pack('<H', len(notes))
+    for note_idx, dur_units in notes:
+        channel_data += bytes([note_idx, dur_units])
+
+    data = header + channel_data
+
+    original_open = builtins.open
+
+    def mock_open(path, mode='r', *args, **kwargs):
+        return io.BytesIO(data)
+
+    builtins.open = mock_open
+    try:
+        channels = synth.load_jseq('/sd/sequences/test.jseq')
+    finally:
+        builtins.open = original_open
+
+    assert len(channels) == 1, f"Should have 1 channel, got {len(channels)}"
+    ch = channels[0]
+    assert ch['bpm'] == bpm, f"BPM should be {bpm}, got {ch['bpm']}"
+    assert len(ch['sequence']) == len(notes), "Sequence length mismatch"
+
+    # First note: note_idx 62 → MIDI note 61 (C#4) → freq = 440 * 2^((61-69)/12)
+    expected_freq = 440.0 * (2.0 ** ((61 - 69) / 12.0))
+    assert abs(ch['sequence'][0][0] - expected_freq) < 0.01, "Frequency mismatch for MIDI 61"
+
+    # Second note: rest -> freq = 0
+    assert ch['sequence'][1][0] == 0, "Rest should have frequency 0"
+
+    # Duration: 32 units / 32 = 1.0 beats (quarter note)
+    assert abs(ch['sequence'][0][1] - 1.0) < 0.01, "Duration of first note should be 1.0 beats"
+
+    print("✓ load_jseq valid file test passed")
+
+
+@pytest.mark.asyncio
+async def test_preview_channels_creates_task():
+    """Test that preview_channels creates and returns an asyncio Task."""
+    print("\nTesting preview_channels creates task...")
+
+    from utilities.synth_registry import Patches
+
+    synth = SynthManager()
+
+    channels_data = [
+        {'bpm': 120, 'patch': 'RETRO_LEAD', 'sequence': [('C4', 0.25)]},
+        {'bpm': 120, 'patch': Patches.BEEP, 'sequence': [('E4', 0.25)]},
+    ]
+
+    task = synth.preview_channels(channels_data)
+
+    assert task is not None, "preview_channels should return a task"
+    assert isinstance(task, asyncio.Task), "returned value should be an asyncio.Task"
+    assert synth._chiptune_task is task, "_chiptune_task should be set to the returned task"
+
+    synth.stop_chiptune()
+    await asyncio.sleep(0)
+
+    print("✓ preview_channels creates task test passed")
+
+
+@pytest.mark.asyncio
+async def test_preview_channels_resolves_string_patch():
+    """Test that preview_channels resolves string patch names to Patches dicts."""
+    print("\nTesting preview_channels resolves string patch names...")
+
+    from utilities.synth_registry import Patches
+
+    synth = SynthManager()
+    pressed_patches = []
+
+    original_play_sequence = synth.play_sequence
+
+    async def spy_play_sequence(sequence_data, patch=None):
+        pressed_patches.append(sequence_data.get('patch'))
+        # Don't await the real sequence (takes time); just return
+        return
+
+    synth.play_sequence = spy_play_sequence
+
+    channels_data = [
+        {'bpm': 120, 'patch': 'BEEP', 'sequence': [('C4', 0.25)]},
+    ]
+
+    task = synth.preview_channels(channels_data)
+    await asyncio.sleep(0.05)
+    synth.stop_chiptune()
+    await asyncio.sleep(0)
+
+    # The patch should have been resolved from string 'BEEP' to Patches.BEEP dict
+    assert len(pressed_patches) >= 1, "play_sequence should have been called"
+    for p in pressed_patches:
+        if p is not None:
+            assert isinstance(p, dict), f"Patch should be resolved to dict, got {type(p)}"
+            assert 'wave' in p, "Resolved patch should have 'wave' key"
+
+    print("✓ preview_channels resolves string patch test passed")
 
 def run_all_tests():
     """Run all SynthManager tests."""
@@ -485,6 +664,10 @@ def run_all_tests():
         test_play_note_presses_synth,
         test_stop_note,
         test_release_all,
+        test_jseq_patch_names_list,
+        test_jseq_midi_to_freq,
+        test_load_jseq_invalid_magic,
+        test_load_jseq_valid_file,
     ]
 
     async_tests = [
@@ -496,6 +679,8 @@ def run_all_tests():
         test_stop_chiptune_calls_release_all,
         test_stop_chiptune_when_no_task,
         test_start_generative_drone_calls_play_note_with_dict_patch,
+        test_preview_channels_creates_task,
+        test_preview_channels_resolves_string_patch,
     ]
 
     passed = 0
