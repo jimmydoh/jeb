@@ -1374,6 +1374,291 @@ def test_pixel_art_matrix_manager_stored():
     print("  ✓ matrix_manager parameter test passed")
 
 
+def test_jeblogger_buffer():
+    """Test JEBLogger ring buffer capture."""
+    print("\nTesting JEBLogger ring buffer...")
+
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location(
+        "logger_buf_test",
+        os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities', 'logger.py')
+    )
+    logger_mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(logger_mod)
+    JEBLogger = logger_mod.JEBLogger
+    LogLevel = logger_mod.LogLevel
+
+    JEBLogger.LOG_BUFFER_ENABLED = False
+    JEBLogger.LOG_BUFFER = []
+    JEBLogger.PRINT_TO_CONSOLE = False
+    JEBLogger.LEVEL = LogLevel.DEBUG
+
+    JEBLogger.enable_buffer(max_entries=10)
+    assert JEBLogger.LOG_BUFFER_ENABLED is True
+
+    JEBLogger.info("MOD1", "hello world")
+    JEBLogger.warning("MOD2", "watch out")
+
+    buf = JEBLogger.get_buffer()
+    assert len(buf) == 2
+    assert buf[0]["module"] == "MOD1"
+    assert buf[0]["message"] == "hello world"
+    assert buf[1]["level"] == LogLevel.WARNING
+
+    JEBLogger.PRINT_TO_CONSOLE = True
+    print("  ✓ JEBLogger buffer test passed")
+
+
+def test_jeblogger_buffer_level_filter():
+    """Test JEBLogger buffer level filtering."""
+    print("\nTesting JEBLogger buffer level filter...")
+
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location(
+        "logger_lvl_test",
+        os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities', 'logger.py')
+    )
+    logger_mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(logger_mod)
+    JEBLogger = logger_mod.JEBLogger
+    LogLevel = logger_mod.LogLevel
+
+    JEBLogger.LOG_BUFFER_ENABLED = False
+    JEBLogger.LOG_BUFFER = []
+    JEBLogger.PRINT_TO_CONSOLE = False
+    JEBLogger.LEVEL = LogLevel.DEBUG
+
+    JEBLogger.enable_buffer()
+    JEBLogger.debug("DBG", "debug msg")
+    JEBLogger.info("INF", "info msg")
+    JEBLogger.warning("WRN", "warn msg")
+
+    all_entries = JEBLogger.get_buffer()
+    assert len(all_entries) == 3
+
+    warn_and_above = JEBLogger.get_buffer(level=LogLevel.WARNING)
+    assert len(warn_and_above) == 1
+    assert warn_and_above[0]["module"] == "WRN"
+
+    JEBLogger.PRINT_TO_CONSOLE = True
+    print("  ✓ JEBLogger level filter test passed")
+
+
+def test_jeblogger_buffer_search_filter():
+    """Test JEBLogger buffer free-form search filter."""
+    print("\nTesting JEBLogger buffer search filter...")
+
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location(
+        "logger_srch_test",
+        os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities', 'logger.py')
+    )
+    logger_mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(logger_mod)
+    JEBLogger = logger_mod.JEBLogger
+    LogLevel = logger_mod.LogLevel
+
+    JEBLogger.LOG_BUFFER_ENABLED = False
+    JEBLogger.LOG_BUFFER = []
+    JEBLogger.PRINT_TO_CONSOLE = False
+    JEBLogger.LEVEL = LogLevel.DEBUG
+
+    JEBLogger.enable_buffer()
+    JEBLogger.info("UART", "handshake ok")
+    JEBLogger.info("WEBS", "server started")
+    JEBLogger.error("UART", "timeout error")
+
+    uart_entries = JEBLogger.get_buffer(search="uart")
+    assert len(uart_entries) == 2
+
+    error_entries = JEBLogger.get_buffer(search="error")
+    assert len(error_entries) == 1
+    assert error_entries[0]["message"] == "timeout error"
+
+    JEBLogger.PRINT_TO_CONSOLE = True
+    print("  ✓ JEBLogger search filter test passed")
+
+
+def test_jeblogger_clear_buffer():
+    """Test JEBLogger buffer clear."""
+    print("\nTesting JEBLogger buffer clear...")
+
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location(
+        "logger_clr_test",
+        os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities', 'logger.py')
+    )
+    logger_mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(logger_mod)
+    JEBLogger = logger_mod.JEBLogger
+
+    JEBLogger.LOG_BUFFER_ENABLED = False
+    JEBLogger.LOG_BUFFER = []
+    JEBLogger.PRINT_TO_CONSOLE = False
+
+    JEBLogger.enable_buffer()
+    JEBLogger.info("T", "msg")
+    assert len(JEBLogger.get_buffer()) == 1
+
+    JEBLogger.clear_buffer()
+    assert len(JEBLogger.get_buffer()) == 0
+
+    JEBLogger.PRINT_TO_CONSOLE = True
+    print("  ✓ JEBLogger clear buffer test passed")
+
+
+def test_logs_api_with_filters():
+    """Test /api/logs with level and search query params."""
+    print("\nTesting /api/logs API with filters...")
+
+    from utilities.logger import JEBLogger, LogLevel
+    JEBLogger.LOG_BUFFER_ENABLED = False
+    JEBLogger.LOG_BUFFER = []
+    JEBLogger.PRINT_TO_CONSOLE = False
+    JEBLogger.LEVEL = LogLevel.DEBUG
+
+    config = {"wifi_ssid": "T", "wifi_password": "P", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    JEBLogger.info("MOD1", "normal info")
+    JEBLogger.warning("MOD2", "something warned")
+    JEBLogger.error("MOD1", "critical error")
+
+    get_logs_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/logs" and "get" in func.__name__.lower():
+            get_logs_route = func
+            break
+    assert get_logs_route is not None, "get_logs route not found"
+
+    # No filter – all entries
+    req = MockRequest()
+    req.query_params = {}
+    resp = get_logs_route(req)
+    entries = json.loads(resp.body)
+    assert len(entries) >= 3, f"Expected ≥3 entries, got {len(entries)}"
+
+    # Level filter: WARNING+ (level=3)
+    req2 = MockRequest()
+    req2.query_params = {"level": "3"}
+    resp2 = get_logs_route(req2)
+    entries2 = json.loads(resp2.body)
+    assert all(e["level"] >= 3 for e in entries2), "All entries should be WARNING or above"
+    assert len(entries2) >= 1
+
+    # Search filter
+    req3 = MockRequest()
+    req3.query_params = {"search": "warned"}
+    resp3 = get_logs_route(req3)
+    entries3 = json.loads(resp3.body)
+    assert len(entries3) == 1
+    assert "warned" in entries3[0]["message"]
+
+    JEBLogger.PRINT_TO_CONSOLE = True
+    print("  ✓ /api/logs filter test passed")
+
+
+def test_logs_clear_api():
+    """Test /api/logs/clear endpoint."""
+    print("\nTesting /api/logs/clear API...")
+
+    from utilities.logger import JEBLogger
+    JEBLogger.LOG_BUFFER_ENABLED = False
+    JEBLogger.LOG_BUFFER = []
+    JEBLogger.PRINT_TO_CONSOLE = False
+
+    config = {"wifi_ssid": "T", "wifi_password": "P", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    JEBLogger.info("X", "some log")
+    assert len(JEBLogger.get_buffer()) >= 1
+
+    clear_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/logs/clear":
+            clear_route = func
+            break
+    assert clear_route is not None, "logs/clear route not found"
+
+    req = MockRequest()
+    resp = clear_route(req)
+    assert resp.status == 200
+    assert len(JEBLogger.get_buffer()) == 0
+
+    JEBLogger.PRINT_TO_CONSOLE = True
+    print("  ✓ /api/logs/clear test passed")
+
+
+class MockConsoleBuffer:
+    """Minimal console buffer mock that mimics ConsoleManager interface."""
+    def __init__(self):
+        self.output_buffer = ["line one", "line two"]
+        self.input_queue = []
+
+    def get_output(self):
+        return "\n".join(self.output_buffer)
+
+
+def test_console_input_api():
+    """Test /api/console/input endpoint injects into input_queue."""
+    print("\nTesting /api/console/input API...")
+
+    config = {"wifi_ssid": "T", "wifi_password": "P", "web_server_enabled": True}
+    console = MockConsoleBuffer()
+    manager = WebServerManager(config, MockWiFiManager(), console_buffer=console, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    input_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/console/input":
+            input_route = func
+            break
+    assert input_route is not None, "console/input route not found"
+
+    req = MockRequest()
+    req.json = lambda: {"input": "1"}
+    resp = input_route(req)
+    assert resp.status == 200
+    assert console.input_queue == ["1"]
+
+    # Missing/empty input field
+    req2 = MockRequest()
+    req2.json = lambda: {"input": ""}
+    resp2 = input_route(req2)
+    assert resp2.status == 400
+
+    print("  ✓ /api/console/input test passed")
+
+
+def test_console_input_api_no_buffer():
+    """Test /api/console/input returns 503 when no console buffer."""
+    print("\nTesting /api/console/input without buffer...")
+
+    config = {"wifi_ssid": "T", "wifi_password": "P", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    input_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/console/input":
+            input_route = func
+            break
+    assert input_route is not None, "console/input route not found"
+
+    req = MockRequest()
+    req.json = lambda: {"input": "hello"}
+    resp = input_route(req)
+    assert resp.status == 503
+
+    print("  ✓ /api/console/input (no buffer) test passed")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -1413,6 +1698,14 @@ def run_all_tests():
         test_pixel_art_save_route,
         test_pixel_art_save_validation,
         test_pixel_art_matrix_manager_stored,
+        test_jeblogger_buffer,
+        test_jeblogger_buffer_level_filter,
+        test_jeblogger_buffer_search_filter,
+        test_jeblogger_clear_buffer,
+        test_logs_api_with_filters,
+        test_logs_clear_api,
+        test_console_input_api,
+        test_console_input_api_no_buffer,
     ]
 
     try:
