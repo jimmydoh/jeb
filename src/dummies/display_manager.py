@@ -3,12 +3,32 @@
 
 import asyncio
 
+class DummyStatus:
+    """Simple class to mimic the status property of the real DisplayManager."""
+    def __init__(self):
+        self._value = "Dummy DisplayManager - no status available"
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, new_value):
+        self._value = new_value
+
+    @property
+    def y(self):
+        return 0
+    
+    @y.setter
+    def y(self, new_y):
+        pass
 
 class DisplayManager:
     """Drop-in dummy for DisplayManager. All methods are no-ops."""
 
     def __init__(self, *args, **kwargs):
-        pass
+        self.status = DummyStatus()
 
     def use_standard_layout(self):
         pass

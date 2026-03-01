@@ -48,6 +48,7 @@ class SatelliteNetworkManager:
                 ``{"offset_x": int, "offset_y": int}`` dicts used to
                 transmit the ``SETOFF`` command upon satellite connection.
         """
+        JEBLogger.info("NETM", "[INIT] SatelliteNetworkManager")
         self.transport = transport
         self.display = display
         self.audio = audio
@@ -486,11 +487,9 @@ class SatelliteNetworkManager:
                 message = await wait_for_ms(self.transport.receive(), 1000)
             except asyncio.TimeoutError:
                 continue
-
-            # Store message representation for debugging
-            if self._debug_mode:
-                # TODO: Fix this, message is not a string anymore
-                self.last_message_debug = str(message)
+            except Exception as e:
+                JEBLogger.error("NETM", f"Error receiving message: {e}")
+                continue
 
             # Process the message based on its command and destination
             try:
