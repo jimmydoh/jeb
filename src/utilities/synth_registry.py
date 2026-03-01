@@ -49,12 +49,11 @@ def _generate_pulse(sample_size=512, max_amp=32000, duty=0.25):
         b[i] = max_amp if i < cutoff else -max_amp
     return b
 
-def _generate_noise(sample_size=4096, max_amp=32767, seed=42):
+def _generate_noise(sample_size=4096, max_amp=32767):
     """Generate a pseudo-random noise waveform for percussion and SFX."""
-    rng = random.Random(seed)
     b = array.array("h", [0] * sample_size)
     for i in range(sample_size):
-        b[i] = rng.randint(-max_amp, max_amp)
+        b[i] = random.randint(-max_amp, max_amp)
     return b
 #endregion
 

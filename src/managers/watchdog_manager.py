@@ -47,7 +47,7 @@ class WatchdogManager:
     critical tasks to 'check-in' (set a flag) during their loop.
     The dog is only fed if ALL tasks have checked in since the last feed.
     """
-    def __init__(self, task_names, timeout=None, mode="RAISE"):
+    def __init__(self, task_names, timeout=None, mode="LOG_ONLY"):
         # Initialize flags for all tasks as False
         self._flags = {name: False for name in task_names}
         # Flag to indicate if a reboot is in progress
@@ -65,7 +65,8 @@ class WatchdogManager:
         if timeout and w and WatchDogMode:
             if self._mode != "LOG_ONLY":
                 w.timeout = timeout
-                w.mode = WatchDogMode.RAISE if self._mode == "RAISE" else WatchDogMode.RESET
+                w.mode = WatchDogMode.RESET
+                #TODO: Pico only supports RESET, consider alternative for RAISE mode (e.g., software exception)
                 w.feed()
             else:
                 JEBLogger.warning("WDOG", "Hardware watchdog disabled (LOG_ONLY mode active)")

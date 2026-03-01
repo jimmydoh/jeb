@@ -87,8 +87,10 @@ class DisplayManager:
 
         # Track which labels are eligible for scrolling
         self._scrollable_labels = {
-            "status": {"label": self.status, "base_x": 2, "width": 0},
-            "sub_status": {"label": self.sub_status, "base_x": 2, "width": 0}
+            "header": {"label": self.header_label, "base_x": 5, "width": 0},
+            "status": {"label": self.status, "base_x": 5, "width": 0},
+            "sub_status": {"label": self.sub_status, "base_x": 5, "width": 0},
+            "footer": {"label": self.footer_label, "base_x": 5, "width": 0}
         }
 
         # ===== SETTINGS MENU COMPONENTS =====
@@ -203,7 +205,7 @@ class DisplayManager:
         Args:
             text: String to display in header (e.g., "CPU: 45% | RAM: 120KB")
         """
-        self.header_label.text = text
+        self._set_text_and_scroll_limits("header", text)
         JEBLogger.debug("DISP", f"Updated header: '{text}'")
 
     def update_footer(self, text):
@@ -212,7 +214,7 @@ class DisplayManager:
         Args:
             text: String to display in footer (e.g., "Config saved")
         """
-        self.footer_label.text = text
+        self._set_text_and_scroll_limits("footer", text)
         JEBLogger.debug("DISP", f"Updated footer: '{text}'")
 
     # ===== LEGACY/COMMON METHODS =====
@@ -290,7 +292,7 @@ class DisplayManager:
                             s["label"].x = s["base_x"] + self._scroll_offset
 
             # ~30 FPS scroll speed
-            await asyncio.sleep(0.03)
+            await asyncio.sleep(0.015)
 
     # ===== AUDIO VISUALIZER METHODS =====
 
