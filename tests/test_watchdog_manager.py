@@ -393,8 +393,7 @@ def test_safe_feed_updates_last_fed_time_in_software_mode():
     task_names = ["task1", "task2"]
     manager = WatchdogManager(task_names, timeout=None)
 
-    # Manually enable software mode and set a non-LOG_ONLY mode so the
-    # _last_fed_time update path in safe_feed() is reached.
+    # Manually enable software mode with RAISE mode so _last_fed_time is updated in safe_feed().
     manager._software_mode = True
     manager._mode = "RAISE"
     before = time.monotonic()
