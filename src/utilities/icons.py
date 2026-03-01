@@ -523,6 +523,28 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # Orbital Strike: tactical fire-control reticle
+    # Dark background (0), red target dot (11), green crosshair arms (41),
+    # hollow centre (0), cyan outer ring marks (51), orange corner brackets (21).
+    ORBITAL_STRIKE = bytes([
+         0,  0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0,  0,
+         0, 21,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0, 21,  0,  0,
+         0,  0, 21,  0,  0,  0,  0, 41,  0,  0,  0,  0, 21,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0, 51,  0,  0,  0, 51,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        41, 41, 41, 41, 41,  0,  0,  0,  0,  0, 41, 41, 41, 41, 41, 41,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0, 51,  0,  0,  0, 51,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0, 21,  0,  0,  0,  0, 41,  0,  0,  0,  0, 21,  0,  0,  0,
+         0, 21,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0, 21,  0,  0,
+        11,  0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
     # Iron Canopy: tactical radar display
     # Dark navy background, green sweep line (NW diagonal), outer ring in cyan,
     # inner ring in teal, white base center, red bogey contacts.
@@ -599,6 +621,7 @@ class Icons:
         "FALLING_SAND": FALLING_SAND,
         "IRON_CANOPY": IRON_CANOPY,
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
+        "ORBITAL_STRIKE": ORBITAL_STRIKE,
         "0": DEFAULT,
         "1": DEFAULT,
         "2": DEFAULT,

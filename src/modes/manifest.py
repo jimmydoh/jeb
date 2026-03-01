@@ -395,6 +395,23 @@ MODE_REGISTRY = {
         "requires": ["CORE"],
         "settings": []
     },
+    "ORBITAL_STRIKE": {
+        "id": "ORBITAL_STRIKE",
+        "name": "ORBITAL STRIKE",
+        "module_path": "modes.orbital_strike",
+        "class_name": "OrbitalStrike",
+        "icon": "ORBITAL_STRIKE",
+        "menu": "MAIN",
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
     "IRON_CANOPY": {
         "id": "IRON_CANOPY",
         "name": "IRON CANOPY",
