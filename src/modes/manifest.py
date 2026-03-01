@@ -347,6 +347,23 @@ MODE_REGISTRY = {
                 "default": "1"
             }
         ]
+    },
+    "WOLFRAM_AUTOMATA": {
+        "id": "WOLFRAM_AUTOMATA",
+        "name": "WOLFRAM 1D",
+        "module_path": "modes.wolfram_automata",
+        "class_name": "WolframAutomata",
+        "icon": "WOLFRAM_AUTOMATA",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "rule",
+                "label": "RULE",
+                "options": ["30", "90", "110", "184"],
+                "default": "90"
+            }
+        ]
     }
 }
 
