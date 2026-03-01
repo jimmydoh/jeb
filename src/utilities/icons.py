@@ -432,6 +432,29 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # 16x16 icon for Wolfram 1D Cellular Automata mode.
+    # Shows the first seven rows of a Rule 90 Sierpiński triangle growing from
+    # a single center pixel at the top, on an indigo background.
+    # 70=INDIGO (background), 51=CYAN (alive cells).
+    WOLFRAM_AUTOMATA = bytes([
+        70,70,70,70,70,70,70,70,70,70,70,70,70,70,70,70,  # border
+        70, 0, 0, 0, 0, 0, 0, 0,51, 0, 0, 0, 0, 0, 0,70,  # step 0
+        70, 0, 0, 0, 0, 0, 0,51, 0,51, 0, 0, 0, 0, 0,70,  # step 1
+        70, 0, 0, 0, 0, 0,51, 0, 0, 0,51, 0, 0, 0, 0,70,  # step 2
+        70, 0, 0, 0, 0,51, 0,51, 0,51, 0,51, 0, 0, 0,70,  # step 3
+        70, 0, 0, 0,51, 0, 0, 0, 0, 0, 0, 0,51, 0, 0,70,  # step 4
+        70, 0, 0,51, 0,51, 0, 0, 0, 0, 0,51, 0,51, 0,70,  # step 5
+        70, 0,51, 0, 0, 0,51, 0, 0, 0,51, 0, 0, 0,51,70,  # step 6
+        70, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,70,
+        70, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,70,
+        70, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,70,
+        70, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,70,
+        70, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,70,
+        70, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,70,
+        70, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,70,
+        70,70,70,70,70,70,70,70,70,70,70,70,70,70,70,70,  # border
+    ])
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -457,6 +480,7 @@ class Icons:
         "ZERO_PLAYER": ZERO_PLAYER,
         "CONWAYS_LIFE": CONWAYS_LIFE,
         "LANGTONS_ANT": LANGTONS_ANT,
+        "WOLFRAM_AUTOMATA": WOLFRAM_AUTOMATA,
         "0": DEFAULT,
         "1": DEFAULT,
         "2": DEFAULT,
