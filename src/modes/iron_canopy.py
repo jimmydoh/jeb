@@ -320,15 +320,21 @@ class IronCanopy(GameMode):
     # ------------------------------------------------------------------
 
     def _update_reload(self, delta_s, power_mode):
-        """Advance reload timers for tubes in RELOADING state."""
+        """Advance reload timers for tubes in RELOADING state.
+
+        The initial total reload time is always _RELOAD_TIME_SLOW.  In
+        POWER_AUTO_LOADER mode the timer is ticked down at a proportionally
+        faster rate so that the effective reload duration equals
+        _RELOAD_TIME_FAST, without altering the starting value.
+        """
         if power_mode == POWER_ACTIVE_RADAR:
             return  # reload paused in ACTIVE_RADAR mode
 
-        reload_time = _RELOAD_TIME_FAST if power_mode == POWER_AUTO_LOADER else _RELOAD_TIME_SLOW
+        tick = delta_s * (_RELOAD_TIME_SLOW / _RELOAD_TIME_FAST) if power_mode == POWER_AUTO_LOADER else delta_s
 
         for i in range(8):
             if self.tube_states[i] == TUBE_RELOADING:
-                self.tube_reload_timers[i] -= delta_s
+                self.tube_reload_timers[i] -= tick
                 if self.tube_reload_timers[i] <= 0.0:
                     self.tube_states[i] = TUBE_READY
                     self.tube_reload_timers[i] = 0.0
