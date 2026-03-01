@@ -354,18 +354,17 @@ class MatrixManager(BasePixelManager):
                         else:
                             self.draw_pixel(bx1, by, border_color, brightness=brightness)
 
-    def show_frame(self, frame, alive_color, clear=True, dead_color=None):
-        """Renders a raw frame buffer directly to the matrix.
+    def show_frame(self, frame, clear=True):
+        """Renders a palette-encoded frame buffer directly to the matrix.
 
-        Designed for efficient zero-player game rendering (e.g., Conway's Game of Life).
-        Each byte in frame corresponds to one pixel in row-major order:
-        non-zero = alive cell, zero = dead cell.
+        Uses the same palette-index encoding as show_icon: each byte is
+        a palette index where 0 = off and non-zero = colour looked up
+        from self.palette.  This makes the method generic and reusable
+        for any mode that wants to push a full frame to the display.
 
         Args:
-            frame: bytearray or bytes of length width*height.
-            alive_color: RGB tuple for alive (non-zero) cells.
+            frame: bytearray or bytes of length width*height, palette indices.
             clear: If True, clears all animation slots first. Default True.
-            dead_color: Optional RGB tuple for dead (zero) cells. Default is off.
         """
         if clear:
             self.clear()
@@ -374,10 +373,9 @@ class MatrixManager(BasePixelManager):
             for x in range(self.width):
                 idx = y * self.width + x
                 if idx < len(frame):
-                    if frame[idx]:
-                        self.draw_pixel(x, y, alive_color)
-                    elif dead_color is not None:
-                        self.draw_pixel(x, y, dead_color)
+                    pixel_value = frame[idx]
+                    if pixel_value != 0:
+                        self.draw_pixel(x, y, self.palette[pixel_value])
 
     # TODO Refactor progress grid to use animations
     def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):

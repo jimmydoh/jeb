@@ -3,7 +3,7 @@
 Verifies:
 - ConwaysLife._count_neighbors() implements toroidal wrap-around neighbour counting
 - ConwaysLife._step() applies the standard Conway survival/birth rules
-- MatrixManager.show_frame() renders alive/dead cells with the correct colours
+- MatrixManager.show_frame() renders palette-indexed frames to the display
 - manifest.py contains valid ZERO_PLAYER_MENU and CONWAYS_LIFE entries
 - main_menu.py tracks last_rendered_zero_player and calls _build_menu_items("ZERO_PLAYER")
 - icons.py exposes ZERO_PLAYER and CONWAYS_LIFE icon data
@@ -222,7 +222,7 @@ def test_step_survival_two_neighbours():
     life._grid[(cy - 1) * 8 + (cx - 1)] = 1
     life._grid[(cy - 1) * 8 + cx] = 1
     life._step()
-    assert life._grid[cy * 8 + cx] == 1, \
+    assert life._grid[cy * 8 + cx] != 0, \
         "Cell with 2 neighbours should survive"
     print("✓ step: cell with 2 neighbours survives")
 
@@ -236,7 +236,7 @@ def test_step_survival_three_neighbours():
     life._grid[(cy - 1) * 8 + cx] = 1
     life._grid[(cy - 1) * 8 + (cx + 1)] = 1
     life._step()
-    assert life._grid[cy * 8 + cx] == 1, \
+    assert life._grid[cy * 8 + cx] != 0, \
         "Cell with 3 neighbours should survive"
     print("✓ step: cell with 3 neighbours survives")
 
@@ -266,7 +266,7 @@ def test_step_birth_with_three_neighbours():
     life._grid[(cy - 1) * 8 + cx] = 1
     life._grid[(cy - 1) * 8 + (cx + 1)] = 1
     life._step()
-    assert life._grid[cy * 8 + cx] == 1, \
+    assert life._grid[cy * 8 + cx] != 0, \
         "Dead cell with 3 alive neighbours should be born"
     print("✓ step: dead cell with 3 neighbours is born")
 
@@ -317,9 +317,9 @@ def test_step_blinker_oscillator():
     life._grid[4 * 8 + 5] = 1
     life._step()
     # After one step the blinker rotates 90°: cells (4,3), (4,4), (4,5)
-    assert life._grid[3 * 8 + 4] == 1, "Blinker top cell should be alive after step"
-    assert life._grid[4 * 8 + 4] == 1, "Blinker centre cell should survive"
-    assert life._grid[5 * 8 + 4] == 1, "Blinker bottom cell should be alive after step"
+    assert life._grid[3 * 8 + 4] != 0, "Blinker top cell should be alive after step"
+    assert life._grid[4 * 8 + 4] != 0, "Blinker centre cell should survive"
+    assert life._grid[5 * 8 + 4] != 0, "Blinker bottom cell should be alive after step"
     # Original left and right wings should now be dead
     assert life._grid[4 * 8 + 3] == 0, "Blinker left wing should die"
     assert life._grid[4 * 8 + 5] == 0, "Blinker right wing should die"
@@ -336,7 +336,7 @@ def test_step_still_life_block():
     life._step()
     for y in (3, 4):
         for x in (3, 4):
-            assert life._grid[y * 8 + x] == 1, \
+            assert life._grid[y * 8 + x] != 0, \
                 f"Block cell ({x},{y}) should still be alive"
     print("✓ step: 2×2 block still-life is unchanged after one generation")
 
@@ -352,102 +352,96 @@ def _slot_color(matrix, x, y):
     return slot.color if slot.active else None
 
 
-def test_show_frame_alive_cells_use_alive_color():
-    """show_frame registers alive cells (value=1) with the alive_color animation slot."""
-    matrix = _make_matrix(4, 4)
-    alive_color = (0, 255, 0)
-    frame = bytearray(16)
-    frame[0] = 1    # pixel (0, 0)
-    frame[5] = 1    # pixel (1, 1)
-    matrix.show_frame(frame, alive_color)
-    assert _slot_color(matrix, 0, 0) == alive_color, \
-        "Alive cell (0,0) animation slot should hold alive_color"
-    assert _slot_color(matrix, 1, 1) == alive_color, \
-        "Alive cell (1,1) animation slot should hold alive_color"
-    print("✓ show_frame: alive cells registered with alive_color")
+def _as_tuple(color):
+    """Normalise a Color object or plain RGB tuple to a plain (r, g, b) tuple.
+
+    AnimationSlot stores colors as whatever was passed to draw_pixel —
+    typically a Palette.Color object from self.palette[idx]. Color objects
+    support indexing, so (color[0], color[1], color[2]) extracts the RGB
+    components into a plain tuple for straightforward equality assertions.
+    """
+    if color is None:
+        return None
+    return (color[0], color[1], color[2])
 
 
-def test_show_frame_dead_cells_off_by_default():
-    """Dead cells leave animation slots inactive when dead_color is None (default)."""
+def test_show_frame_palette_index_maps_to_correct_rgb():
+    """show_frame maps a palette index byte to the corresponding RGB colour."""
+    from utilities.palette import Palette
     matrix = _make_matrix(4, 4)
-    alive_color = (255, 0, 0)
-    # All cells dead
     frame = bytearray(16)
-    matrix.show_frame(frame, alive_color, clear=True, dead_color=None)
-    # After a clear + all-dead frame (no dead_color), every slot should be inactive
+    frame[0] = 41   # GREEN palette index
+    frame[5] = 51   # CYAN palette index
+    matrix.show_frame(frame)
+    assert _as_tuple(_slot_color(matrix, 0, 0)) == (Palette.GREEN[0], Palette.GREEN[1], Palette.GREEN[2]), \
+        "Pixel (0,0) with index 41 should map to GREEN"
+    assert _as_tuple(_slot_color(matrix, 1, 1)) == (Palette.CYAN[0], Palette.CYAN[1], Palette.CYAN[2]), \
+        "Pixel (1,1) with index 51 should map to CYAN"
+    print("✓ show_frame: palette index bytes map to correct RGB colours")
+
+
+def test_show_frame_zero_bytes_leave_pixels_off():
+    """Bytes with value 0 (palette off) leave animation slots inactive."""
+    matrix = _make_matrix(4, 4)
+    frame = bytearray(16)   # all zeros
+    matrix.show_frame(frame)
     for y in range(4):
         for x in range(4):
             idx = matrix._get_idx(x, y)
             assert not matrix.active_animations[idx].active, \
-                f"Dead cell ({x},{y}) slot should be inactive when dead_color is None"
-    print("✓ show_frame: dead cells leave slots inactive when dead_color is None")
-
-
-def test_show_frame_dead_cells_painted_with_dead_color():
-    """Dead cells have their animation slot set to dead_color when it is provided."""
-    matrix = _make_matrix(4, 4)
-    alive_color = (0, 255, 0)
-    dead_color = (10, 0, 0)
-    frame = bytearray(16)   # all dead
-    matrix.show_frame(frame, alive_color, dead_color=dead_color)
-    for y in range(4):
-        for x in range(4):
-            assert _slot_color(matrix, x, y) == dead_color, \
-                f"Dead cell ({x},{y}) slot should hold dead_color"
-    print("✓ show_frame: dead cells registered with dead_color when supplied")
+                f"Pixel ({x},{y}) should be inactive for palette index 0"
+    print("✓ show_frame: zero palette index leaves pixels off")
 
 
 def test_show_frame_clear_true_removes_previous_content():
     """clear=True (default) clears all animation slots before rendering the frame."""
     matrix = _make_matrix(4, 4)
     stale_color = (99, 99, 99)
-    alive_color = (0, 0, 255)
     # Pre-activate every slot with a stale colour
     for i in range(matrix.num_pixels):
         matrix.set_animation(i, "SOLID", stale_color)
-    # Render an all-dead frame with clear=True (no dead_color)
+    # Render an all-zero frame with clear=True
     frame = bytearray(16)
-    matrix.show_frame(frame, alive_color, clear=True)
-    # All slots should now be inactive (stale colour cleared, nothing alive drawn)
+    matrix.show_frame(frame, clear=True)
     for i in range(matrix.num_pixels):
         assert not matrix.active_animations[i].active, \
-            f"Slot {i} should be inactive after clear=True with all-dead frame"
+            f"Slot {i} should be inactive after clear=True with all-zero frame"
     print("✓ show_frame: clear=True wipes stale animation slots before rendering")
 
 
-def test_show_frame_mixed_frame():
-    """show_frame correctly registers alive and dead cells for a mixed frame."""
+def test_show_frame_mixed_palette_frame():
+    """show_frame correctly draws different palette colours for different indices."""
+    from utilities.palette import Palette
     matrix = _make_matrix(4, 4)
-    alive_color = (0, 200, 0)
-    dead_color = (5, 5, 5)
     frame = bytearray(16)
-    alive_positions = {0, 3, 5, 10, 15}
-    for p in alive_positions:
-        frame[p] = 1
-    matrix.show_frame(frame, alive_color, dead_color=dead_color)
-    for pos in range(16):
-        x = pos % 4
-        y = pos // 4
-        expected = alive_color if pos in alive_positions else dead_color
-        assert _slot_color(matrix, x, y) == expected, \
-            f"Frame position {pos} ({x},{y}): expected slot color {expected}, " \
-            f"got {_slot_color(matrix, x, y)}"
-    print("✓ show_frame: mixed alive/dead frame registered correctly")
+    # Scatter three different palette colours
+    frame[0]  = 41   # GREEN
+    frame[5]  = 51   # CYAN
+    frame[10] = 71   # MAGENTA
+    # All others stay 0
+    matrix.show_frame(frame)
+    assert _as_tuple(_slot_color(matrix, 0, 0)) == (Palette.GREEN[0],   Palette.GREEN[1],   Palette.GREEN[2]),   "Position 0 should be GREEN"
+    assert _as_tuple(_slot_color(matrix, 1, 1)) == (Palette.CYAN[0],    Palette.CYAN[1],    Palette.CYAN[2]),    "Position 5 should be CYAN"
+    assert _as_tuple(_slot_color(matrix, 2, 2)) == (Palette.MAGENTA[0], Palette.MAGENTA[1], Palette.MAGENTA[2]), "Position 10 should be MAGENTA"
+    # A zero-index pixel should be off
+    assert _slot_color(matrix, 1, 0) is None, "Position 1 (palette 0) should be off"
+    print("✓ show_frame: mixed palette frame renders each index correctly")
 
 
 def test_show_frame_frame_length_larger_than_grid():
     """show_frame handles a frame buffer larger than the grid without error."""
+    from utilities.palette import Palette
     matrix = _make_matrix(4, 4)
-    alive_color = (255, 255, 0)
     # Frame is twice the grid size – extra bytes must be ignored
     frame = bytearray(32)
     for i in range(16):
-        frame[i] = 1    # all alive within the actual 4×4 grid
-    matrix.show_frame(frame, alive_color)
+        frame[i] = 41   # GREEN for all in-bounds cells
+    matrix.show_frame(frame)
+    expected = (Palette.GREEN[0], Palette.GREEN[1], Palette.GREEN[2])
     for y in range(4):
         for x in range(4):
-            assert _slot_color(matrix, x, y) == alive_color, \
-                f"Pixel ({x},{y}) should have alive_color even with oversized frame"
+            assert _as_tuple(_slot_color(matrix, x, y)) == expected, \
+                f"Pixel ({x},{y}) should be GREEN even with oversized frame"
     print("✓ show_frame: oversized frame buffer handled without error")
 
 
@@ -635,11 +629,10 @@ if __name__ == "__main__":
         test_step_blinker_oscillator,
         test_step_still_life_block,
         # show_frame
-        test_show_frame_alive_cells_use_alive_color,
-        test_show_frame_dead_cells_off_by_default,
-        test_show_frame_dead_cells_painted_with_dead_color,
+        test_show_frame_palette_index_maps_to_correct_rgb,
+        test_show_frame_zero_bytes_leave_pixels_off,
         test_show_frame_clear_true_removes_previous_content,
-        test_show_frame_mixed_frame,
+        test_show_frame_mixed_palette_frame,
         test_show_frame_frame_length_larger_than_grid,
         # manifest
         test_zero_player_menu_in_manifest,

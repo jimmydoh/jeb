@@ -5,22 +5,15 @@ import random
 
 from adafruit_ticks import ticks_ms, ticks_diff
 
-from utilities.palette import Palette
 from utilities import tones
 from utilities.logger import JEBLogger
 
 from .base import BaseMode
 
-# Alive cell colour cycle (button 1 steps through these)
-_ALIVE_COLORS = [
-    Palette.GREEN,
-    Palette.CYAN,
-    Palette.LIME,
-    Palette.GOLD,
-    Palette.MAGENTA,
-    Palette.ORANGE,
-    Palette.WHITE,
-]
+# Alive cell colour cycle as palette indices (button 1 steps through these).
+# Each value maps to a colour in Palette.LIBRARY (0 = off, so all values > 0).
+# Mapping: 41=GREEN, 51=CYAN, 42=LIME, 22=GOLD, 71=MAGENTA, 21=ORANGE, 4=WHITE
+_ALIVE_COLOR_INDICES = [41, 51, 42, 22, 71, 21, 4]
 
 # Generation speed levels in milliseconds (encoder selects index)
 _SPEED_LEVELS_MS = [800, 500, 300, 150, 80, 40]
@@ -30,9 +23,11 @@ _SPEED_NAMES = ["SLOW", "MED", "NORM", "FAST", "TURBO", "MAX"]
 class ConwaysLife(BaseMode):
     """Conway's Game of Life - a zero-player cellular automaton.
 
-    The game grid is stored as a flat bytearray (row-major order) where
-    each byte is 0 (dead) or 1 (alive).  Two buffers are kept so a full
-    generation can be computed without in-place aliasing.
+    The game grid is stored as a flat bytearray (row-major order) where each
+    byte is a palette index: 0 = dead cell, non-zero = alive cell with that
+    colour.  This doubles as the render frame passed to matrix.show_frame(),
+    eliminating the need for a separate render buffer.  A second scratch buffer
+    (_next) is kept for the generation-step computation.
 
     Controls:
         Encoder turn      : change generation speed (slow ↔ fast)
@@ -54,9 +49,10 @@ class ConwaysLife(BaseMode):
     def _randomize(self):
         """Fill the grid with random alive cells (~35 % density)."""
         self._generation = 0
+        color_val = _ALIVE_COLOR_INDICES[self._color_idx]
         size = self.width * self.height
         for i in range(size):
-            self._grid[i] = 1 if random.random() < 0.35 else 0
+            self._grid[i] = color_val if random.random() < 0.35 else 0
 
     def _count_neighbors(self, x, y):
         """Return the number of alive neighbours for cell (x, y).
@@ -72,25 +68,38 @@ class ConwaysLife(BaseMode):
                     continue
                 nx = (x + dx) % w
                 ny = (y + dy) % h
-                count += self._grid[ny * w + nx]
+                count += 1 if self._grid[ny * w + nx] else 0
         return count
 
     def _step(self):
         """Advance one generation using the standard Conway rules, then swap buffers."""
         w = self.width
         h = self.height
+        color_val = _ALIVE_COLOR_INDICES[self._color_idx]
         for y in range(h):
             for x in range(w):
                 n = self._count_neighbors(x, y)
                 alive = self._grid[y * w + x]
                 if alive:
                     # Survive with 2 or 3 neighbours
-                    self._next[y * w + x] = 1 if n in (2, 3) else 0
+                    self._next[y * w + x] = color_val if n in (2, 3) else 0
                 else:
                     # Born with exactly 3 neighbours
-                    self._next[y * w + x] = 1 if n == 3 else 0
+                    self._next[y * w + x] = color_val if n == 3 else 0
         self._grid, self._next = self._next, self._grid
         self._generation += 1
+
+    def _apply_color(self):
+        """Update all alive cells in the grid to the current colour index.
+
+        Called when the user cycles the alive colour (Button 1 tap) so that
+        existing cells immediately reflect the new palette selection without
+        waiting for the next generation step.
+        """
+        color_val = _ALIVE_COLOR_INDICES[self._color_idx]
+        for i in range(len(self._grid)):
+            if self._grid[i]:
+                self._grid[i] = color_val
 
     def _status_line(self):
         """Return the two-line status string for the current state."""
@@ -143,7 +152,8 @@ class ConwaysLife(BaseMode):
 
             # --- Button 1: cycle alive colour ---
             if self.core.hid.is_button_pressed(0, action="tap"):
-                self._color_idx = (self._color_idx + 1) % len(_ALIVE_COLORS)
+                self._color_idx = (self._color_idx + 1) % len(_ALIVE_COLOR_INDICES)
+                self._apply_color()
                 self.core.buzzer.play_sequence(tones.UI_TICK)
 
             # --- Button 2: reset / randomise ---
@@ -162,8 +172,8 @@ class ConwaysLife(BaseMode):
             interval = _SPEED_LEVELS_MS[self._speed_idx]
             if ticks_diff(now, last_gen_tick) >= interval:
                 self._step()
-                alive_color = _ALIVE_COLORS[self._color_idx]
-                self.core.matrix.show_frame(self._grid, alive_color)
+                self.core.matrix.show_frame(self._grid)
                 last_gen_tick = now
 
             await asyncio.sleep(0.01)
+
