@@ -5,6 +5,7 @@ These tests validate the new flexible layout system including standard
 and custom layout modes, as well as backward compatibility with legacy mode.
 """
 
+import asyncio
 import unittest
 from unittest.mock import Mock, MagicMock, patch
 import sys
@@ -221,6 +222,118 @@ class TestDisplayManagerZonePositions(unittest.TestCase):
         """Test footer label positioning."""
         # Footer should exist
         self.assertIsNotNone(self.display.footer_label)
+
+
+class TestDisplayManagerAnimations(unittest.TestCase):
+    """Test DisplayManager async animation methods."""
+
+    def setUp(self):
+        """Create a DisplayManager instance with properly isolated label mocks.
+
+        label.Label is given a side_effect so every call returns a *new*
+        independent MagicMock.  Without this, both self.display.status and
+        self.display.sub_status would resolve to the same mock object
+        (adafruit_display_text.label.Label.return_value), causing spurious
+        test failures when the tests inspect each label separately.
+
+        Note: display_manager.py uses ``from adafruit_display_text import label``,
+        so the relevant mock lives under ``sys.modules['adafruit_display_text'].label``,
+        NOT under ``sys.modules['adafruit_display_text.label']``.
+        """
+        self.mock_i2c = Mock()
+        # Resolve the Label mock that display_manager.py actually uses.
+        # The lambda ignores the constructor arguments intentionally so that
+        # each label.Label(...) call returns a plain, unconfigured MagicMock
+        # regardless of the mocked terminalio.FONT or other args passed in.
+        label_cls = sys.modules['adafruit_display_text'].label.Label
+        label_cls.side_effect = lambda *args, **kwargs: MagicMock()
+        self.display = DisplayManager(self.mock_i2c)
+        # Reset side_effect so that other test classes are not affected.
+        label_cls.side_effect = None
+
+    # ── animate_slide_in ────────────────────────────────────────────────────
+
+    def test_animate_slide_in_left_ends_at_base_x(self):
+        """animate_slide_in(direction='left') leaves status.x at base_x == 2."""
+        asyncio.run(
+            self.display.animate_slide_in("HELLO", direction="left", delay=0)
+        )
+        self.assertEqual(self.display.status.x, 2)
+
+    def test_animate_slide_in_right_ends_at_base_x(self):
+        """animate_slide_in(direction='right') leaves status.x at base_x == 2."""
+        asyncio.run(
+            self.display.animate_slide_in("HELLO", direction="right", delay=0)
+        )
+        self.assertEqual(self.display.status.x, 2)
+
+    def test_animate_slide_in_with_sub_text_ends_at_base_x(self):
+        """animate_slide_in with sub_text leaves sub_status.x at base_x == 2."""
+        asyncio.run(
+            self.display.animate_slide_in(
+                "HELLO", sub_text="world", direction="left", delay=0
+            )
+        )
+        self.assertEqual(self.display.sub_status.x, 2)
+
+    def test_animate_slide_in_right_with_sub_text_ends_at_base_x(self):
+        """animate_slide_in(direction='right') with sub_text leaves sub_status.x at 2."""
+        asyncio.run(
+            self.display.animate_slide_in(
+                "HELLO", sub_text="world", direction="right", delay=0
+            )
+        )
+        self.assertEqual(self.display.sub_status.x, 2)
+
+    # ── animate_typewriter ──────────────────────────────────────────────────
+
+    def test_animate_typewriter_sets_correct_main_text(self):
+        """animate_typewriter completes with status.text equal to main_text."""
+        main_text = "TYPING"
+        asyncio.run(
+            self.display.animate_typewriter(main_text, char_delay=0)
+        )
+        self.assertEqual(self.display.status.text, main_text)
+
+    def test_animate_typewriter_with_sub_text_sets_both_labels(self):
+        """animate_typewriter with sub_text sets both status and sub_status text."""
+        main_text = "MAIN"
+        sub_text = "sub"
+        asyncio.run(
+            self.display.animate_typewriter(main_text, sub_text=sub_text, char_delay=0)
+        )
+        self.assertEqual(self.display.status.text, main_text)
+        self.assertEqual(self.display.sub_status.text, sub_text)
+
+    def test_animate_typewriter_without_sub_text_clears_sub_status(self):
+        """animate_typewriter with no sub_text leaves sub_status.text as empty string."""
+        asyncio.run(
+            self.display.animate_typewriter("MAIN", char_delay=0)
+        )
+        self.assertEqual(self.display.sub_status.text, "")
+
+    # ── animate_blink ───────────────────────────────────────────────────────
+
+    def test_animate_blink_ends_with_main_group_visible(self):
+        """animate_blink ends with main_group.hidden == False."""
+        asyncio.run(
+            self.display.animate_blink(
+                "BLINK", times=3, on_duration=0, off_duration=0
+            )
+        )
+        self.assertFalse(self.display.main_group.hidden)
+
+    def test_animate_blink_runs_without_error(self):
+        """animate_blink completes without raising any exception."""
+        try:
+            asyncio.run(
+                self.display.animate_blink(
+                    "BLINK", sub_text="sub", times=2, on_duration=0, off_duration=0
+                )
+            )
+        except Exception as exc:
+            self.fail(f"animate_blink raised an unexpected exception: {exc}")
+
 
 if __name__ == '__main__':
     unittest.main()

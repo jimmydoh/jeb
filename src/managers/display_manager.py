@@ -292,6 +292,111 @@ class DisplayManager:
             # ~30 FPS scroll speed
             await asyncio.sleep(0.03)
 
+    # ===== ANIMATION TRANSITION METHODS =====
+
+    async def animate_slide_in(self, main_text, sub_text=None, direction="left", delay=0.02):
+        """Animate main zone text sliding in from a direction.
+
+        Sets the text via update_status (which also resets scroll state),
+        then overrides the x position to the off-screen start and smoothly
+        slides the labels to their final resting position.
+
+        Args:
+            main_text:  Primary status text to display.
+            sub_text:   Optional sub-status text to display.
+            direction:  "left"  – labels enter from the right edge (default).
+                        "right" – labels enter from the left edge.
+            delay:      Seconds between animation frames (default 0.02 ≈ 50 FPS).
+        """
+        # Set text and reset scroll limits to the final state first.
+        self.update_status(main_text, sub_text)
+
+        display_width = 128
+        base_x = 2
+        step = -6 if direction == "left" else 6
+        start_x = display_width if direction == "left" else -display_width
+
+        # Override x to the off-screen start position.
+        self.status.x = start_x
+        if sub_text is not None:
+            self.sub_status.x = start_x
+
+        x = start_x
+        while True:
+            x += step
+            if step < 0:
+                x = max(x, base_x)
+            else:
+                x = min(x, base_x)
+            self.status.x = x
+            if sub_text is not None:
+                self.sub_status.x = x
+            await asyncio.sleep(delay)
+            if x == base_x:
+                break
+
+    async def animate_typewriter(self, main_text, sub_text=None, char_delay=0.05):
+        """Animate text appearing one character at a time (typewriter effect).
+
+        Characters of main_text are appended one by one, then sub_text (if
+        supplied).  Scroll state is synchronised after the full text is shown.
+
+        Args:
+            main_text:   Primary status text to type in.
+            sub_text:    Optional sub-status text to type in after main_text.
+            char_delay:  Seconds between each character (default 0.05 s).
+        """
+        # Start from blank so the typing animation is visible.
+        self.status.text = ""
+        self.sub_status.text = ""
+        self._scroll_max_distance = 0
+        self._scroll_offset = 0
+        self._scroll_dir = -1
+        self._scroll_wait = 40
+
+        for i in range(1, len(main_text) + 1):
+            self.status.text = main_text[:i]
+            await asyncio.sleep(char_delay)
+
+        if sub_text is not None:
+            for i in range(1, len(sub_text) + 1):
+                self.sub_status.text = sub_text[:i]
+                await asyncio.sleep(char_delay)
+
+        # Sync scroll tracking for the completed text.
+        self._scrollable_labels["status"]["width"] = len(main_text) * 6
+        sub = sub_text if sub_text is not None else ""
+        self._scrollable_labels["sub_status"]["width"] = len(sub) * 6
+        max_width = max(s["width"] for s in self._scrollable_labels.values())
+        self._scroll_max_distance = max_width - 128 + 10 if max_width > 128 else 0
+        for s in self._scrollable_labels.values():
+            s["label"].x = s["base_x"]
+
+    async def animate_blink(self, main_text, sub_text=None, times=3,
+                             on_duration=0.3, off_duration=0.2):
+        """Animate text blinking to draw attention.
+
+        The main zone is shown and hidden *times* times, ending in the
+        visible state.
+
+        Args:
+            main_text:    Primary status text to blink.
+            sub_text:     Optional sub-status text.
+            times:        Number of blink cycles (default 3).
+            on_duration:  Seconds the text is visible per cycle (default 0.3).
+            off_duration: Seconds the text is hidden per cycle (default 0.2).
+        """
+        self.update_status(main_text, sub_text)
+
+        for _ in range(times):
+            self.main_group.hidden = False
+            await asyncio.sleep(on_duration)
+            self.main_group.hidden = True
+            await asyncio.sleep(off_duration)
+
+        # Always leave the main zone visible when done.
+        self.main_group.hidden = False
+
     # ===== AUDIO VISUALIZER METHODS =====
 
     def show_waveform(self, samples):
