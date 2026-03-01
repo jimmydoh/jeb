@@ -354,6 +354,29 @@ class MatrixManager(BasePixelManager):
                         else:
                             self.draw_pixel(bx1, by, border_color, brightness=brightness)
 
+    def show_frame(self, frame, clear=True):
+        """Renders a palette-encoded frame buffer directly to the matrix.
+
+        Uses the same palette-index encoding as show_icon: each byte is
+        a palette index where 0 = off and non-zero = colour looked up
+        from self.palette.  This makes the method generic and reusable
+        for any mode that wants to push a full frame to the display.
+
+        Args:
+            frame: bytearray or bytes of length width*height, palette indices.
+            clear: If True, clears all animation slots first. Default True.
+        """
+        if clear:
+            self.clear()
+
+        for y in range(self.height):
+            for x in range(self.width):
+                idx = y * self.width + x
+                if idx < len(frame):
+                    pixel_value = frame[idx]
+                    if pixel_value != 0:
+                        self.draw_pixel(x, y, self.palette[pixel_value])
+
     # TODO Refactor progress grid to use animations
     def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):
         """Fills the matrix like a rising 'tank' of fluid.
