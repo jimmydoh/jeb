@@ -189,7 +189,7 @@ def test_safe_feed_all_tasks_checked_in():
     MockMicrocontroller.watchdog.reset()
     
     task_names = ["task1", "task2", "task3"]
-    manager = WatchdogManager(task_names, timeout=5.0)
+    manager = WatchdogManager(task_names, timeout=5.0, mode="RESET")
     
     # Reset feed count after initialization
     initial_feed_count = MockMicrocontroller.watchdog.feed_count
@@ -290,7 +290,7 @@ def test_multiple_cycles():
     MockMicrocontroller.watchdog.reset()
     
     task_names = ["task1", "task2"]
-    manager = WatchdogManager(task_names, timeout=5.0)
+    manager = WatchdogManager(task_names, timeout=5.0, mode="RESET")
     
     # Reset feed count after initialization
     initial_feed_count = MockMicrocontroller.watchdog.feed_count
@@ -393,8 +393,10 @@ def test_safe_feed_updates_last_fed_time_in_software_mode():
     task_names = ["task1", "task2"]
     manager = WatchdogManager(task_names, timeout=None)
 
-    # Manually enable software mode
+    # Manually enable software mode and set a non-LOG_ONLY mode so the
+    # _last_fed_time update path in safe_feed() is reached.
     manager._software_mode = True
+    manager._mode = "RAISE"
     before = time.monotonic()
 
     manager.check_in("task1")

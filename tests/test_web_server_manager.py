@@ -711,7 +711,7 @@ def test_route_registration():
         '/api/actions/toggle-debug',
         '/api/actions/reorder-satellites',
         '/api/system/status',
-        '/api/telemetry/stream',
+        '/api/telemetry/status',
     ]
 
     registered_paths = [path for path, _, _ in manager.server.routes]
@@ -997,8 +997,8 @@ def test_telemetry_manager_params():
 
 
 def test_telemetry_route_registered():
-    """Test that /api/telemetry/stream route is registered."""
-    print("\nTesting telemetry SSE route registration...")
+    """Test that /api/telemetry/status route is registered."""
+    print("\nTesting telemetry status route registration...")
 
     config = {
         "wifi_ssid": "TestNetwork",
@@ -1011,14 +1011,14 @@ def test_telemetry_route_registered():
     manager.setup_routes()
 
     registered_paths = [path for path, _, _ in manager.server.routes]
-    assert "/api/telemetry/stream" in registered_paths, "SSE route not registered"
+    assert "/api/telemetry/status" in registered_paths, "Telemetry status route not registered"
 
-    print("  ✓ Telemetry SSE route registration test passed")
+    print("  ✓ Telemetry status route registration test passed")
 
 
 def test_telemetry_sse_generator_with_managers():
-    """Test the SSE generator yields data events when managers are available."""
-    print("\nTesting SSE generator with mock managers...")
+    """Test the telemetry status endpoint returns correct JSON when managers are available."""
+    print("\nTesting telemetry status handler with mock managers...")
 
     config = {
         "wifi_ssid": "TestNetwork",
@@ -1047,47 +1047,34 @@ def test_telemetry_sse_generator_with_managers():
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
-    # Locate the telemetry stream route handler
-    stream_handler = None
+    # Locate the telemetry status route handler
+    status_handler = None
     for path, _, func in manager.server.routes:
-        if path == "/api/telemetry/stream":
-            stream_handler = func
+        if path == "/api/telemetry/status":
+            status_handler = func
             break
-    assert stream_handler is not None, "Telemetry stream route not found"
+    assert status_handler is not None, "Telemetry status route not found"
 
     request = MockRequest()
-    response = stream_handler(request)
+    response = status_handler(request)
 
-    assert response.content_type == "text/event-stream", (
-        f"Expected text/event-stream, got {response.content_type}"
+    assert response.content_type == "application/json", (
+        f"Expected application/json, got {response.content_type}"
     )
 
-    # Advance the generator to collect up to 3 chunks, looking for a data event
-    gen = response.body
-    data_event = None
-    # The first event fires immediately (last_emit is pre-dated by 1s),
-    # so we only need a small number of iterations to find the data chunk.
-    for _ in range(5):
-        chunk = next(gen)
-        if chunk.startswith("data: "):
-            data_event = chunk
-            break
-
-    assert data_event is not None, "Generator never yielded a data event"
-    # Strip SSE framing and parse JSON
-    payload = json.loads(data_event[len("data: "):].strip())
+    payload = json.loads(response.body)
     assert "power" in payload
     assert "satellites" in payload
     assert "ts" in payload
     assert payload["power"]["input_20v"] == 20.0
     assert payload["satellites"]["0100"]["active"] is True
 
-    print("  ✓ SSE generator with managers test passed")
+    print("  ✓ Telemetry status handler with managers test passed")
 
 
 def test_telemetry_sse_generator_no_managers():
-    """Test that the SSE generator works gracefully without managers."""
-    print("\nTesting SSE generator without managers...")
+    """Test that the telemetry status endpoint works gracefully without managers."""
+    print("\nTesting telemetry status handler without managers...")
 
     config = {
         "wifi_ssid": "TestNetwork",
@@ -1099,36 +1086,27 @@ def test_telemetry_sse_generator_no_managers():
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
-    stream_handler = None
+    status_handler = None
     for path, _, func in manager.server.routes:
-        if path == "/api/telemetry/stream":
-            stream_handler = func
+        if path == "/api/telemetry/status":
+            status_handler = func
             break
-    assert stream_handler is not None
+    assert status_handler is not None
 
     request = MockRequest()
-    response = stream_handler(request)
+    response = status_handler(request)
 
-    gen = response.body
-    data_event = None
-    # First event fires immediately due to pre-dated last_emit.
-    for _ in range(5):
-        chunk = next(gen)
-        if chunk.startswith("data: "):
-            data_event = chunk
-            break
-
-    assert data_event is not None, "Generator never yielded a data event"
-    payload = json.loads(data_event[len("data: "):].strip())
+    assert response.content_type == "application/json"
+    payload = json.loads(response.body)
     assert payload["power"] == {}
     assert payload["satellites"] == {}
 
-    print("  ✓ SSE generator without managers test passed")
+    print("  ✓ Telemetry status handler without managers test passed")
 
 
 def test_telemetry_keepalive_chunks():
-    """Test that the SSE generator emits keepalive comment chunks between data events."""
-    print("\nTesting SSE keepalive chunks...")
+    """Test that the telemetry status endpoint returns a well-formed JSON response."""
+    print("\nTesting telemetry status response structure...")
 
     config = {
         "wifi_ssid": "TestNetwork",
@@ -1140,27 +1118,26 @@ def test_telemetry_keepalive_chunks():
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
-    stream_handler = None
+    status_handler = None
     for path, _, func in manager.server.routes:
-        if path == "/api/telemetry/stream":
-            stream_handler = func
+        if path == "/api/telemetry/status":
+            status_handler = func
             break
-    assert stream_handler is not None
+    assert status_handler is not None
 
     request = MockRequest()
-    response = stream_handler(request)
+    response = status_handler(request)
 
-    gen = response.body
-    # Collect enough chunks to capture the first data event (immediate) plus several
-    # keepalive comment chunks that follow. 5 chunks is sufficient: 1 data + 4 keepalives.
-    chunks = [next(gen) for _ in range(5)]
-    data_chunks = [c for c in chunks if c.startswith("data: ")]
-    keepalive_chunks = [c for c in chunks if c.startswith(": ")]
+    assert response.content_type == "application/json"
+    payload = json.loads(response.body)
 
-    assert len(data_chunks) >= 1, "Should have at least one data event"
-    assert len(keepalive_chunks) > 0, "Should have keepalive comment chunks between events"
+    # Verify all required top-level keys are present
+    assert "power" in payload, "Response should contain 'power' key"
+    assert "satellites" in payload, "Response should contain 'satellites' key"
+    assert "ts" in payload, "Response should contain 'ts' key"
+    assert isinstance(payload["ts"], (int, float)), "Timestamp should be numeric"
 
-    print("  ✓ SSE keepalive chunks test passed")
+    print("  ✓ Telemetry status response structure test passed")
 
 
 def test_pixel_art_palette_route():
