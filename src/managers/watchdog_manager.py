@@ -7,6 +7,7 @@ only fed if ALL tasks have checked in since the last feed. This ensures that
 if any task is hanging, the watchdog will not be fed and will eventually reset
 the system, providing a more robust and reliable way to manage the watchdog timer.
 """
+import asyncio
 import time
 from adafruit_ticks import ticks_ms, ticks_diff
 
@@ -39,6 +40,12 @@ except ImportError:
 
 from utilities.logger import JEBLogger
 
+
+class WatchDogTimeout(RuntimeError):
+    """Raised by the software watchdog monitor when the loop has been starved."""
+    pass
+
+
 class WatchdogManager:
     """
     Manages the Watchdog Timer using a 'Flag Pattern'.
@@ -60,14 +67,27 @@ class WatchdogManager:
         # Watchdog operation mode: "RESET", "RAISE", "LOG_ONLY"
         self._mode = mode.upper()
 
+        # Software watchdog fallback (used when hardware RAISE is not supported)
+        self._software_mode = False
+        self._last_fed_time = time.monotonic()
+        self.timeout = timeout
+
         JEBLogger.info("WDOG", f"[INIT] WatchdogManager - timeout: {timeout}s, mode: {self._mode}")
 
         if timeout and w and WatchDogMode:
             if self._mode != "LOG_ONLY":
                 w.timeout = timeout
-                w.mode = WatchDogMode.RESET
-                #TODO: Pico only supports RESET, consider alternative for RAISE mode (e.g., software exception)
-                w.feed()
+                if self._mode == "RAISE":
+                    try:
+                        w.mode = WatchDogMode.RAISE
+                    except NotImplementedError:
+                        JEBLogger.warning("WDOG", "Hardware RAISE not supported, falling back to software watchdog")
+                        self._software_mode = True
+                        asyncio.create_task(self._software_watchdog_monitor())
+                else:
+                    w.mode = WatchDogMode.RESET
+                if not self._software_mode:
+                    w.feed()
             else:
                 JEBLogger.warning("WDOG", "Hardware watchdog disabled (LOG_ONLY mode active)")
         elif timeout:
@@ -99,8 +119,11 @@ class WatchdogManager:
         (which will eventually cause a reset).
         """
         if all(self._flags.values()):
-            if not self._rebooting and w and self._mode != "LOG_ONLY":
-                w.feed()
+            if not self._rebooting and self._mode != "LOG_ONLY":
+                if self._software_mode:
+                    self._last_fed_time = time.monotonic()
+                elif w:
+                    w.feed()
 
             # Reset flags for the next cycle
             for name in self._flags:
@@ -128,6 +151,13 @@ class WatchdogManager:
                 self._starvation_start = now
 
             return False
+
+    async def _software_watchdog_monitor(self):
+        """Background task that raises WatchDogTimeout if safe_feed() is not called in time."""
+        while True:
+            if time.monotonic() - self._last_fed_time > self.timeout:
+                raise WatchDogTimeout("Software Watchdog Timeout: Loop starved!")
+            await asyncio.sleep(0.5)
 
     def force_reboot(self):
         """Force a reboot by not feeding the watchdog."""

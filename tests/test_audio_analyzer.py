@@ -71,6 +71,9 @@ class MockNumpyArray:
             return MockNumpyArray([a + b for a, b in zip(self._data, other._data)])
         return MockNumpyArray([v + other for v in self._data])
 
+    def __radd__(self, other):
+        return MockNumpyArray([other + v for v in self._data])
+
     def __mul__(self, other):
         if isinstance(other, MockNumpyArray):
             return MockNumpyArray([a * b for a, b in zip(self._data, other._data)])
@@ -82,10 +85,18 @@ class MockNumpyArray:
     def __truediv__(self, other):
         return MockNumpyArray([v / other for v in self._data])
 
+    def __eq__(self, other):
+        if len(self._data) == 1:
+            return self._data[0] == other
+        raise TypeError("cannot compare array of length > 1 with ==")
+
     def __float__(self):
         if len(self._data) == 1:
             return self._data[0]
         raise TypeError("only length-1 arrays can be converted to scalar")
+
+    def tolist(self):
+        return list(self._data)
 
 
 class MockNumpyModule:
@@ -111,6 +122,18 @@ class MockNumpyModule:
         if isinstance(data, MockNumpyArray):
             return MockNumpyArray([math.sqrt(abs(v)) for v in data])
         return math.sqrt(abs(data))
+
+    @staticmethod
+    def abs(data):
+        if isinstance(data, MockNumpyArray):
+            return MockNumpyArray([abs(v) for v in data])
+        return abs(data)
+
+    @staticmethod
+    def max(data):
+        if isinstance(data, MockNumpyArray):
+            return max(list(data))
+        return max(data)
 
     class fft:
         @staticmethod
@@ -170,11 +193,23 @@ def test_initialization():
     assert isinstance(analyzer.buffer, array.array)
     assert analyzer.buffer.typecode == 'H'
     assert len(analyzer.buffer) == 128
+    assert analyzer._prev_eq_floats == []
+
+
+def test_capture_fills_buffer():
+    """capture() performs a DMA read and populates the buffer."""
+    analyzer = _make_analyzer()
+    # Buffer starts with zeros
+    assert all(v == 0 for v in analyzer.buffer)
+    analyzer.capture()
+    # After capture, the mock fills it with a sine pattern (non-zero)
+    assert any(v != 0 for v in analyzer.buffer)
 
 
 def test_get_eq_bands_returns_correct_length():
     """get_eq_bands returns a list of length num_bands."""
     analyzer = _make_analyzer()
+    analyzer.capture()
 
     bands = analyzer.get_eq_bands(num_bands=16)
     assert len(bands) == 16
@@ -184,6 +219,7 @@ def test_get_eq_bands_values_clamped():
     """All returned band heights are within [0, max_height]."""
     analyzer = _make_analyzer()
     max_h = 16
+    analyzer.capture()
 
     bands = analyzer.get_eq_bands(num_bands=16, max_height=max_h)
     for i, h in enumerate(bands):
@@ -193,15 +229,53 @@ def test_get_eq_bands_values_clamped():
 def test_get_eq_bands_custom_num_bands():
     """num_bands parameter controls the output list length."""
     analyzer = _make_analyzer()
+    analyzer.capture()
 
     for nb in (4, 8, 16):
         bands = analyzer.get_eq_bands(num_bands=nb)
         assert len(bands) == nb, f"Expected {nb} bands, got {len(bands)}"
 
 
+def test_get_eq_bands_smoothing_state_initialized():
+    """_prev_eq_floats is initialized on first get_eq_bands call."""
+    analyzer = _make_analyzer()
+    analyzer.capture()
+
+    analyzer.get_eq_bands(num_bands=8)
+    assert len(analyzer._prev_eq_floats) == 8
+
+
+def test_get_eq_bands_smoothing_state_persists():
+    """_prev_eq_floats carries state across successive calls."""
+    analyzer = _make_analyzer()
+    analyzer.capture()
+    analyzer.get_eq_bands(num_bands=8)
+    first = list(analyzer._prev_eq_floats)
+
+    analyzer.capture()
+    analyzer.get_eq_bands(num_bands=8)
+    second = list(analyzer._prev_eq_floats)
+
+    # Values should differ because EMA accumulates state
+    assert first != second
+
+
+def test_get_eq_bands_smoothing_resets_on_num_bands_change():
+    """_prev_eq_floats resets when num_bands changes."""
+    analyzer = _make_analyzer()
+    analyzer.capture()
+    analyzer.get_eq_bands(num_bands=8)
+    assert len(analyzer._prev_eq_floats) == 8
+
+    analyzer.capture()
+    analyzer.get_eq_bands(num_bands=16)
+    assert len(analyzer._prev_eq_floats) == 16
+
+
 def test_get_waveform_returns_correct_length():
     """get_waveform returns a list of length num_points."""
     analyzer = _make_analyzer()
+    analyzer.capture()
 
     waveform = analyzer.get_waveform(num_points=128)
     assert len(waveform) == 128
@@ -210,6 +284,7 @@ def test_get_waveform_returns_correct_length():
 def test_get_waveform_values_normalized():
     """All waveform values are within [0.0, 1.0]."""
     analyzer = _make_analyzer()
+    analyzer.capture()
 
     waveform = analyzer.get_waveform(num_points=64)
     for i, v in enumerate(waveform):
@@ -219,6 +294,7 @@ def test_get_waveform_values_normalized():
 def test_get_waveform_custom_num_points():
     """num_points parameter controls the output list length."""
     analyzer = _make_analyzer()
+    analyzer.capture()
 
     for np_ in (32, 64, 128):
         waveform = analyzer.get_waveform(num_points=np_)
@@ -231,37 +307,53 @@ def test_deinit_does_not_raise():
     analyzer.deinit()  # Should not raise
 
 
+def test_capture_graceful_on_error():
+    """If capture() raises, it propagates the exception."""
+    analyzer = _make_analyzer()
+
+    class BrokenADC:
+        def readinto(self, buf):
+            raise RuntimeError("simulated hardware failure")
+        def deinit(self):
+            pass
+
+    analyzer.adc = BrokenADC()
+    try:
+        analyzer.capture()
+        assert False, "Expected RuntimeError"
+    except RuntimeError:
+        pass
+
+
 def test_get_eq_bands_graceful_on_error():
     """If an exception occurs during analysis, return a list of zeros."""
     analyzer = _make_analyzer()
 
-    # Break the ADC so readinto raises
-    class BrokenADC:
-        def readinto(self, buf):
-            raise RuntimeError("simulated hardware failure")
-        def deinit(self):
-            pass
+    # Force an error inside get_eq_bands by breaking the ulab mock
+    import sys
+    original = sys.modules['ulab.numpy']
+    sys.modules['ulab.numpy'] = None  # halts import inside get_eq_bands, causing an exception
 
-    analyzer.adc = BrokenADC()
-    bands = analyzer.get_eq_bands(num_bands=16)
-
-    assert bands == [0] * 16
+    try:
+        bands = analyzer.get_eq_bands(num_bands=16)
+        assert bands == [0] * 16
+    finally:
+        sys.modules['ulab.numpy'] = original
 
 
 def test_get_waveform_graceful_on_error():
-    """If an exception occurs during capture, return a list of 0.5 values."""
+    """If an exception occurs during analysis, return a list of 0.5 values."""
     analyzer = _make_analyzer()
 
-    class BrokenADC:
-        def readinto(self, buf):
-            raise RuntimeError("simulated hardware failure")
-        def deinit(self):
-            pass
+    import sys
+    original = sys.modules['ulab.numpy']
+    sys.modules['ulab.numpy'] = None  # halts import inside get_waveform, causing an exception
 
-    analyzer.adc = BrokenADC()
-    waveform = analyzer.get_waveform(num_points=32)
-
-    assert waveform == [0.5] * 32
+    try:
+        waveform = analyzer.get_waveform(num_points=32)
+        assert waveform == [0.5] * 32
+    finally:
+        sys.modules['ulab.numpy'] = original
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +368,9 @@ if __name__ == "__main__":
     test_initialization()
     print("✓ test_initialization")
 
+    test_capture_fills_buffer()
+    print("✓ test_capture_fills_buffer")
+
     test_get_eq_bands_returns_correct_length()
     print("✓ test_get_eq_bands_returns_correct_length")
 
@@ -284,6 +379,15 @@ if __name__ == "__main__":
 
     test_get_eq_bands_custom_num_bands()
     print("✓ test_get_eq_bands_custom_num_bands")
+
+    test_get_eq_bands_smoothing_state_initialized()
+    print("✓ test_get_eq_bands_smoothing_state_initialized")
+
+    test_get_eq_bands_smoothing_state_persists()
+    print("✓ test_get_eq_bands_smoothing_state_persists")
+
+    test_get_eq_bands_smoothing_resets_on_num_bands_change()
+    print("✓ test_get_eq_bands_smoothing_resets_on_num_bands_change")
 
     test_get_waveform_returns_correct_length()
     print("✓ test_get_waveform_returns_correct_length")
@@ -296,6 +400,9 @@ if __name__ == "__main__":
 
     test_deinit_does_not_raise()
     print("✓ test_deinit_does_not_raise")
+
+    test_capture_graceful_on_error()
+    print("✓ test_capture_graceful_on_error")
 
     test_get_eq_bands_graceful_on_error()
     print("✓ test_get_eq_bands_graceful_on_error")

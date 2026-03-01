@@ -52,6 +52,16 @@ class DisplayManager:
         while True:
             await asyncio.sleep(0.1)
 
+    async def animate_slide_in(self, main_text, sub_text=None, direction="left", delay=0.02):
+        pass
+
+    async def animate_typewriter(self, main_text, sub_text=None, char_delay=0.05):
+        pass
+
+    async def animate_blink(self, main_text, sub_text=None, times=3,
+                             on_duration=0.3, off_duration=0.2):
+        pass
+
     def show_waveform(self, samples):
         pass
 
@@ -62,4 +72,7 @@ class DisplayManager:
         pass
 
     def update_settings_menu(self, menu_items, selected_index):
+        pass
+
+    def cleanup(self):
         pass
