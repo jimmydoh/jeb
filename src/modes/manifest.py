@@ -394,6 +394,23 @@ MODE_REGISTRY = {
         "menu": "ZERO_PLAYER",
         "requires": ["CORE"],
         "settings": []
+    },
+    "IRON_CANOPY": {
+        "id": "IRON_CANOPY",
+        "name": "IRON CANOPY",
+        "module_path": "modes.iron_canopy",
+        "class_name": "IronCanopy",
+        "icon": "IRON_CANOPY",
+        "menu": "MAIN",
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
     }
 }
 

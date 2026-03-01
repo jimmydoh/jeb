@@ -173,6 +173,91 @@ async def animate_random_pixel_reveal(matrix_manager, icon_data, duration, color
         print(f"Error in RANDOM_PIXEL_REVEAL animation: {e}")
 
 
+def animate_radar_sweep(matrix_manager, sweep_angle, bogeys=None, interceptors=None, trail_steps=4):
+    """
+    Renders a single frame of a radial radar sweep on a square LED matrix.
+
+    Draws a rotating sweep line (like a radar dish) from the center outward, with
+    fading trail pixels behind the leading edge. Bogeys (threats) are drawn as red
+    pixels and interceptors (missiles in flight) as blue pixels.
+
+    Designed to be called once per game tick from a synchronous game loop. The caller
+    is responsible for scheduling display refreshes.
+
+    Args:
+        matrix_manager: Instance of MatrixManager (or compatible class) with:
+            - fill(color, show=False) method
+            - draw_pixel(x, y, color, brightness=float) method
+            - width, height: Matrix dimensions
+        sweep_angle: Current sweep angle in degrees (0 = top/north, clockwise).
+        bogeys: Optional list of dicts with 'x' and 'y' keys (float, 0.0–1.0 normalized).
+            Each bogey may also have an optional 'jammed' key (bool).
+        interceptors: Optional list of dicts with 'x' and 'y' keys (float, 0.0–1.0 normalized).
+        trail_steps: Number of trailing sweep steps to render (default 4, each dimmer).
+
+    Note:
+        Hardware writes are centralised in CoreManager.render_loop().
+        This function only updates the pixel buffer.
+    """
+    import math
+
+    try:
+        w = matrix_manager.width
+        h = matrix_manager.height
+        cx = (w - 1) / 2.0
+        cy = (h - 1) / 2.0
+        max_r = min(cx, cy)
+
+        matrix_manager.fill(Palette.OFF, show=False)
+
+        # Draw fading sweep trail (behind the leading edge)
+        trail_spread = 25.0  # degrees of trail arc
+        for step in range(trail_steps, 0, -1):
+            trail_angle_deg = sweep_angle - (step * (trail_spread / trail_steps))
+            trail_angle_rad = math.radians(trail_angle_deg)
+            brightness = 0.1 + 0.4 * (1.0 - step / trail_steps)
+            trail_color = (0, int(80 * brightness), 0)
+
+            # Draw pixels along the trail line from center outward
+            for r_step in range(1, int(max_r) + 1):
+                px = int(cx + r_step * math.sin(trail_angle_rad) + 0.5)
+                py = int(cy - r_step * math.cos(trail_angle_rad) + 0.5)
+                if 0 <= px < w and 0 <= py < h:
+                    matrix_manager.draw_pixel(px, py, trail_color, brightness=brightness)
+
+        # Draw the leading sweep line (bright green)
+        sweep_rad = math.radians(sweep_angle)
+        for r_step in range(1, int(max_r) + 1):
+            px = int(cx + r_step * math.sin(sweep_rad) + 0.5)
+            py = int(cy - r_step * math.cos(sweep_rad) + 0.5)
+            if 0 <= px < w and 0 <= py < h:
+                matrix_manager.draw_pixel(px, py, (0, 200, 0), brightness=1.0)
+
+        # Draw base (center pixel) in white
+        matrix_manager.draw_pixel(int(cx + 0.5), int(cy + 0.5), Palette.WHITE, brightness=0.8)
+
+        # Draw bogeys as red pixels
+        if bogeys:
+            for bogey in bogeys:
+                bx = int(bogey['x'] * (w - 1) + 0.5)
+                by = int(bogey['y'] * (h - 1) + 0.5)
+                if 0 <= bx < w and 0 <= by < h:
+                    # Jammed bogeys flicker at reduced brightness
+                    b = 0.5 if bogey.get('jammed', False) else 1.0
+                    matrix_manager.draw_pixel(bx, by, Palette.RED, brightness=b)
+
+        # Draw interceptors as blue pixels
+        if interceptors:
+            for interceptor in interceptors:
+                ix = int(interceptor['x'] * (w - 1) + 0.5)
+                iy = int(interceptor['y'] * (h - 1) + 0.5)
+                if 0 <= ix < w and 0 <= iy < h:
+                    matrix_manager.draw_pixel(ix, iy, Palette.BLUE, brightness=1.0)
+
+    except Exception as e:
+        print(f"Error in RADAR_SWEEP animation: {e}")
+
+
 def animate_static_resolve(matrix_manager, icon_data, clarity, color=None, brightness=1.0):
     """
     Renders a single frame that blends random static with a target icon.
