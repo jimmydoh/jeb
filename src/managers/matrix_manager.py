@@ -354,6 +354,31 @@ class MatrixManager(BasePixelManager):
                         else:
                             self.draw_pixel(bx1, by, border_color, brightness=brightness)
 
+    def show_frame(self, frame, alive_color, clear=True, dead_color=None):
+        """Renders a raw frame buffer directly to the matrix.
+
+        Designed for efficient zero-player game rendering (e.g., Conway's Game of Life).
+        Each byte in frame corresponds to one pixel in row-major order:
+        non-zero = alive cell, zero = dead cell.
+
+        Args:
+            frame: bytearray or bytes of length width*height.
+            alive_color: RGB tuple for alive (non-zero) cells.
+            clear: If True, clears all animation slots first. Default True.
+            dead_color: Optional RGB tuple for dead (zero) cells. Default is off.
+        """
+        if clear:
+            self.clear()
+
+        for y in range(self.height):
+            for x in range(self.width):
+                idx = y * self.width + x
+                if idx < len(frame):
+                    if frame[idx]:
+                        self.draw_pixel(x, y, alive_color)
+                    elif dead_color is not None:
+                        self.draw_pixel(x, y, dead_color)
+
     # TODO Refactor progress grid to use animations
     def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):
         """Fills the matrix like a rising 'tank' of fluid.

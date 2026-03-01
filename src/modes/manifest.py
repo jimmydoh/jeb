@@ -309,6 +309,27 @@ MODE_REGISTRY = {
                 "default": "60"
             }
         ]
+    },
+    "ZERO_PLAYER_MENU": {
+        "id": "ZERO_PLAYER_MENU",
+        "name": "ZERO PLAYER",
+        "module_path": "",
+        "class_name": "",
+        "icon": "ZERO_PLAYER",
+        "menu": "MAIN",
+        "submenu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "CONWAYS_LIFE": {
+        "id": "CONWAYS_LIFE",
+        "name": "GAME OF LIFE",
+        "module_path": "modes.conways_life",
+        "class_name": "ConwaysLife",
+        "icon": "CONWAYS_LIFE",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
     }
 }
 

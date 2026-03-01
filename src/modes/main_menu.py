@@ -87,6 +87,12 @@ class MainMenu(UtilityMode):
             self.core.matrix.show_icon("ADMIN")
             self.core.hid.reset_encoder(0)
 
+        elif new_state == "ZERO_PLAYER":
+            self.set_timeout(30)
+            self.core.display.update_status("ZERO PLAYER", "SELECT A SIMULATION")
+            self.core.matrix.show_icon("ZERO_PLAYER")
+            self.core.hid.reset_encoder(0)
+
     async def run(self):
         """Main Menu for selecting modes."""
         self.core.hid.flush() # Ensure no ghost inputs from previous modes
@@ -103,6 +109,7 @@ class MainMenu(UtilityMode):
         # Data Variables
         menu_items = self._build_menu_items()
         admin_items = self._build_menu_items("ADMIN")
+        zero_player_items = self._build_menu_items("ZERO_PLAYER")
         selected_game_idx = 0
         selected_setting_idx = 0
 
@@ -115,6 +122,7 @@ class MainMenu(UtilityMode):
         last_rendered_game = -1
         last_rendered_setting = -1
         last_rendered_admin = -1
+        last_rendered_zero_player = -1
         last_rendered_state = None
         last_rendered_focus = None
         slide_direction = "SLIDE_LEFT"
@@ -151,6 +159,7 @@ class MainMenu(UtilityMode):
                 last_sat_keys = curr_sat_keys
                 menu_items = self._build_menu_items()
                 admin_items = self._build_menu_items("ADMIN")
+                zero_player_items = self._build_menu_items("ZERO_PLAYER")
                 if menu_items and selected_game_idx >= len(menu_items):
                     selected_game_idx = len(menu_items) - 1
                 needs_render = True
@@ -199,6 +208,34 @@ class MainMenu(UtilityMode):
                     self._set_state("DASHBOARD")
                     self.core.leds.stop_cylon()
                     self.core.leds.off_led(-1)
+                    needs_render = True
+
+            # --- ZERO PLAYER STATE ---
+            elif self.state == "ZERO_PLAYER":
+                zero_player_idx = curr_pos % len(zero_player_items) if zero_player_items else 0
+
+                if encoder_diff != 0:
+                    JEBLogger.info("MENU", f"Encoder activity detected in ZERO_PLAYER: diff={encoder_diff}")
+                    self.touch()
+                    slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
+                    self.core.buzzer.play_sequence(tones.UI_TICK)
+                    needs_render = True
+
+                if encoder_pressed and zero_player_items:
+                    JEBLogger.info("MENU", f"Encoder button pressed in ZERO_PLAYER: selected_idx={zero_player_idx}, mode_id={zero_player_items[zero_player_idx]}")
+                    self.touch()
+                    self.core.buzzer.play_sequence(tones.MENU_LAUNCH)
+                    self.core.mode = zero_player_items[zero_player_idx]
+                    return "SUCCESS"
+
+                if btn_b_long:
+                    JEBLogger.info("MENU", "Long press detected on 'B' button in ZERO_PLAYER, returning to MENU")
+                    self.touch()
+                    self.core.buzzer.play_sequence(tones.MENU_CLOSE)
+                    self._set_state("MENU")
+                    self.core.hid.reset_encoder(selected_game_idx)
+                    curr_pos = selected_game_idx
+                    self.core.leds.set_led(3, color=Palette.CYAN, anim="BREATH", speed=0.5)
                     needs_render = True
 
             # --- MENU STATE ---
@@ -251,11 +288,19 @@ class MainMenu(UtilityMode):
                         needs_render = True
 
                     if encoder_pressed:
-                        JEBLogger.info("MENU", f"Encoder button pressed in GAME focus: selected_idx={selected_game_idx}, mode_id={menu_items[selected_game_idx]}")
+                        mode_id = menu_items[selected_game_idx]
+                        mode_meta = self.core.mode_registry[mode_id]
+                        JEBLogger.info("MENU", f"Encoder button pressed in GAME focus: selected_idx={selected_game_idx}, mode_id={mode_id}")
                         self.touch()
-                        self.core.buzzer.play_sequence(tones.MENU_LAUNCH)
-                        self.core.mode = menu_items[selected_game_idx]
-                        return "SUCCESS"
+                        if mode_meta.get("submenu") == "ZERO_PLAYER":
+                            JEBLogger.info("MENU", "Opening Zero Player submenu")
+                            self.core.buzzer.play_sequence(tones.MENU_OPEN)
+                            self._set_state("ZERO_PLAYER")
+                            needs_render = True
+                        else:
+                            self.core.buzzer.play_sequence(tones.MENU_LAUNCH)
+                            self.core.mode = mode_id
+                            return "SUCCESS"
 
                 # Handle SETTINGS Focus Logic
                 elif focus_mode == "SETTINGS":
@@ -326,17 +371,42 @@ class MainMenu(UtilityMode):
                         self.core.display.update_footer("WARNING: System Override")
                         self.core.matrix.show_icon("WARNING")
 
+                elif self.state == "ZERO_PLAYER":
+                    zero_player_idx = curr_pos % len(zero_player_items) if zero_player_items else 0
+
+                    self.core.display.use_standard_layout()
+                    self.core.display.update_header("- ZERO PLAYER -")
+
+                    if zero_player_items:
+                        mode_id = zero_player_items[zero_player_idx]
+                        mode_meta = self.core.mode_registry[mode_id]
+                        self.core.display.update_status(f"> {mode_meta['name']} <", "Push to Select")
+                        self.core.display.update_footer("Hold 'B' to Exit")
+
+                        # Only re-trigger the slide animation if the selection actually changed
+                        if zero_player_idx != last_rendered_zero_player:
+                            self.core.matrix.show_icon(mode_meta["icon"], anim_mode=slide_direction, speed=2.0)
+                        last_rendered_zero_player = zero_player_idx
+                    else:
+                        self.core.display.update_status("NO ZERO PLAYER MODES", "")
+                        self.core.display.update_footer("Hold 'B' to Exit")
+                        self.core.matrix.show_icon("DEFAULT")
+
                 elif self.state == "MENU":
                     mode_id = menu_items[selected_game_idx]
                     mode_meta = self.core.mode_registry[mode_id]
 
                     if focus_mode == "GAME":
                         self.core.display.update_header(f"-{mode_meta['name']}-")
-                        high_score = self.core.data.get_high_score(mode_id)
-                        self.core.display.update_status(f"HIGH SCORE: {high_score}", "Push to Select")
+                        if mode_meta.get("submenu"):
+                            self.core.display.update_status("> SUBMENU <", "Push to Open")
+                            self.core.display.update_footer("")
+                        else:
+                            high_score = self.core.data.get_high_score(mode_id)
+                            self.core.display.update_status(f"HIGH SCORE: {high_score}", "Push to Select")
+                            settings_hint = "Press 'D' for Settings" if len(mode_meta.get("settings", [])) > 0 else ""
+                            self.core.display.update_footer(settings_hint)
                         self.core.display.show_settings_menu(False)
-                        settings_hint = "Press 'D' for Settings" if len(mode_meta.get("settings", [])) > 0 else ""
-                        self.core.display.update_footer(settings_hint)
 
                         # Only re-trigger the slide animation if the game actually changed
                         if selected_game_idx != last_rendered_game:

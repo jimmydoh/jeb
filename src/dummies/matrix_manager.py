@@ -32,6 +32,9 @@ class MatrixManager(BasePixelManager):
     def show_icon(self, icon_name, clear=True, anim_mode=None, speed=1.0, color=None, brightness=1.0):
         pass
 
+    def show_frame(self, frame, alive_color, clear=True, dead_color=None):
+        pass
+
     def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):
         pass
 
