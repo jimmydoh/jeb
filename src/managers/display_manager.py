@@ -358,6 +358,20 @@ class DisplayManager:
             self.settings_group.hidden = True
             self.main_group.hidden = False
 
+    def cleanup(self):
+        """Release display hardware resources on application exit.
+
+        Call this when the application is exiting (e.g., Ctrl+C or Ctrl+D)
+        to prevent the display bus from remaining locked.  CircuitPython can
+        then reclaim the OLED for its console, and a soft-reboot (Ctrl+D)
+        will no longer error with "GP5 in use".
+        """
+        JEBLogger.info("DISP", "[CLEANUP] Releasing display hardware")
+        try:
+            displayio.release_displays()
+        except Exception as e:  # pylint: disable=broad-except
+            JEBLogger.warning("DISP", f"[CLEANUP] release_displays failed: {e}")
+
     def update_settings_menu(self, menu_items, selected_index):
         """Renders a scrollable list with color-inversion highlighting.
 

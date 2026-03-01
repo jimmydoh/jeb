@@ -43,3 +43,6 @@ class DisplayManager:
 
     def update_settings_menu(self, menu_items, selected_index):
         pass
+
+    def cleanup(self):
+        pass

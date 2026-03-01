@@ -318,4 +318,13 @@ async def main():
 
 # 3. Main Execution
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    finally:
+        # Release the display bus so CircuitPython's console can reclaim it
+        # on Ctrl+C, and so Ctrl+D (soft-reboot) won't error with "GP5 in use".
+        try:
+            if app and getattr(app, 'display', None):
+                app.display.cleanup()
+        except Exception:  # pylint: disable=broad-except
+            pass

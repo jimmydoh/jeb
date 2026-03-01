@@ -176,6 +176,26 @@ class TestDisplayManagerLayoutSystem(unittest.TestCase):
         self.assertIsNotNone(self.display.sub_status)
         self.assertIsNotNone(self.display.footer_label)
 
+    def test_cleanup_calls_release_displays(self):
+        """Test that cleanup() calls displayio.release_displays()."""
+        import sys
+        mock_displayio = sys.modules['displayio']
+        mock_displayio.release_displays.reset_mock()
+
+        self.display.cleanup()
+
+        mock_displayio.release_displays.assert_called_once()
+
+    def test_cleanup_handles_exception_gracefully(self):
+        """Test that cleanup() does not raise even if release_displays fails."""
+        import sys
+        mock_displayio = sys.modules['displayio']
+        mock_displayio.release_displays.side_effect = Exception("bus error")
+
+        self.display.cleanup()  # Should not raise
+
+        mock_displayio.release_displays.side_effect = None
+
 class TestDisplayManagerZonePositions(unittest.TestCase):
     """Test that display zones are positioned correctly."""
 
