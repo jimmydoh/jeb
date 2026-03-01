@@ -304,9 +304,9 @@ class DisplayManager:
         Args:
             main_text:  Primary status text to display.
             sub_text:   Optional sub-status text to display.
-            direction:  "left"  – labels enter from the right edge (default).
-                        "right" – labels enter from the left edge.
-            delay:      Seconds between animation frames (default 0.02 ≈ 50 FPS).
+            direction:  "left" to enter from the right edge (default),
+                        "right" to enter from the left edge.
+            delay:      Seconds between animation frames (default 0.02).
         """
         # Set text and reset scroll limits to the final state first.
         self.update_status(main_text, sub_text)
@@ -376,8 +376,8 @@ class DisplayManager:
                              on_duration=0.3, off_duration=0.2):
         """Animate text blinking to draw attention.
 
-        The main zone is shown and hidden *times* times, ending in the
-        visible state.
+        The main zone is shown and hidden for the specified number of cycles,
+        ending in the visible state.
 
         Args:
             main_text:    Primary status text to blink.
