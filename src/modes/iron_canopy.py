@@ -273,7 +273,7 @@ class IronCanopy(GameMode):
             if dist < 0.05:
                 # Bogey reached the base – deal damage
                 bogeys_to_remove.append(bogey)
-                self.base_health -= 10
+                self.base_health = max(0, self.base_health - 10)
                 asyncio.create_task(
                     self.core.synth.play_sequence(tones.DANGER, patch="ALARM")
                 )
