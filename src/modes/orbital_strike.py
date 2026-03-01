@@ -388,26 +388,31 @@ class OrbitalStrike(GameMode):
             self.core.synth.play_sequence(tones.UI_TICK, patch="CLICK")
         )
 
+        # Track last color sent per LED to avoid blasting the UART on every poll
+        last_led_states = [None] * _TOGGLE_COUNT
+
         while True:
             all_match = True
             for i in range(_TOGGLE_COUNT):
                 state = self._sat_latching(i)
                 expected = self._payload_pattern[i]
                 if state == expected:
-                    # LED green = matched
-                    if self.sat:
-                        try:
-                            self.sat.send("LED", f"{i},{Palette.GREEN.index},0.0,1.0,2")
-                        except Exception:
-                            pass
+                    if last_led_states[i] != "GREEN":
+                        if self.sat:
+                            try:
+                                self.sat.send("LED", f"{i},{Palette.GREEN.index},0.0,1.0,2")
+                            except Exception:
+                                pass
+                        last_led_states[i] = "GREEN"
                 else:
-                    # LED orange = needs to change
-                    if self.sat:
-                        try:
-                            self.sat.send("LED", f"{i},{Palette.ORANGE.index},0.0,1.0,2")
-                        except Exception:
-                            pass
                     all_match = False
+                    if last_led_states[i] != "ORANGE":
+                        if self.sat:
+                            try:
+                                self.sat.send("LED", f"{i},{Palette.ORANGE.index},0.0,1.0,2")
+                            except Exception:
+                                pass
+                        last_led_states[i] = "ORANGE"
 
             # Build pattern display for OLED
             pat = "".join(["X" if self._payload_pattern[i] else "_" for i in range(_TOGGLE_COUNT)])
@@ -521,6 +526,9 @@ class OrbitalStrike(GameMode):
         self.core.display.update_status("RESET HARDWARE", "CLEAR TOGGLES + ARM")
         self._send_segment("RESET   ")
 
+        # Track last color sent per LED to avoid blasting the UART on every poll
+        last_led_states = [None] * _TOGGLE_COUNT
+
         while True:
             all_clear = True
 
@@ -529,17 +537,21 @@ class OrbitalStrike(GameMode):
                 state = self._sat_latching(i)
                 if state:
                     all_clear = False
-                    if self.sat:
-                        try:
-                            self.sat.send("LED", f"{i},{Palette.RED.index},0.0,1.0,2")
-                        except Exception:
-                            pass
+                    if last_led_states[i] != "RED":
+                        if self.sat:
+                            try:
+                                self.sat.send("LED", f"{i},{Palette.RED.index},0.0,1.0,2")
+                            except Exception:
+                                pass
+                        last_led_states[i] = "RED"
                 else:
-                    if self.sat:
-                        try:
-                            self.sat.send("LED", f"{i},{Palette.GREEN.index},0.0,0.3,2")
-                        except Exception:
-                            pass
+                    if last_led_states[i] != "GREEN":
+                        if self.sat:
+                            try:
+                                self.sat.send("LED", f"{i},{Palette.GREEN.index},0.0,0.3,2")
+                            except Exception:
+                                pass
+                        last_led_states[i] = "GREEN"
 
             # Guarded toggle must be DOWN
             if self._sat_latching(_SW_ARM):
