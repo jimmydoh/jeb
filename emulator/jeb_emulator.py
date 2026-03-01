@@ -90,6 +90,29 @@ sys.modules['supervisor'] = MockSupervisor()
 
 #region --- Hardware Mocks ---
 
+# --- GC MOCK ---
+import gc as _real_gc
+
+class MockGC:
+    @staticmethod
+    def mem_free():
+        import random
+        return 320000 + random.randint(-1000, 1000) # Fake ~320KB free
+
+    @staticmethod
+    def mem_alloc():
+        import random
+        return 180000 + random.randint(-1000, 1000) # Fake ~180KB allocated
+
+    @staticmethod
+    def collect():
+        return _real_gc.collect()
+
+    def __getattr__(self, name):
+        return getattr(_real_gc, name)
+
+sys.modules['gc'] = MockGC()
+
 # adafruit_ticks
 class MockTicksModule:
     @staticmethod
@@ -276,10 +299,21 @@ class MockWatchdog:
 mock_watchdog = MockWatchdog()
 
 sys.modules['board'] = MockBoard()
+
+# --- CPU MOCK ---
+class MockCPU:
+    @property
+    def temperature(self):
+        import random
+        # Base of 42C with a little fluctuation to make the UI look alive
+        return 42.0 + random.uniform(-0.5, 0.5)
+
+sys.modules['board'] = MockBoard()
 sys.modules['microcontroller'] = type('MockMicrocontroller', (), {
     'pin': type('MockPin', (), {})(),
     'watchdog': mock_watchdog,
-    'WatchDogMode': MockWatchdog.WatchDogMode # Some versions use this path
+    'WatchDogMode': MockWatchdog.WatchDogMode, # Some versions use this path
+    'cpu': MockCPU()  # Inject the mock CPU here
 })
 
 # busio (UART and I2C)
