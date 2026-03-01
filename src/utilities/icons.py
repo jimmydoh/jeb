@@ -409,6 +409,29 @@ class Icons:
         40,40,40,40,40,40,40,40,40,40,40,40,40,40,40,40,
     ])
 
+    # 16x16 icon for Langton's Ant mode.
+    # Shows the characteristic early-stage diamond trail pattern with a
+    # white ant marker at the centre, on a black background.
+    # 51=CYAN (trail cells), 4=WHITE (ant marker), 0=black background.
+    LANGTONS_ANT = bytes([
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0, 51, 51, 51, 51, 51,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0, 51,  0,  0, 51,  0,  0, 51,  0,  0,  0,  0,  0,
+         0,  0,  0, 51,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0,  0,
+         0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0,
+         0, 51, 51,  0,  0,  0,  0,  4,  0,  0,  0,  0, 51, 51,  0,  0,
+         0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0,
+         0,  0,  0, 51,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0,  0,
+         0,  0,  0,  0, 51,  0,  0, 51,  0,  0, 51,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0, 51, 51, 51, 51, 51,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -433,6 +456,7 @@ class Icons:
         "FREQ_HUNTER": FREQ_HUNTER,
         "ZERO_PLAYER": ZERO_PLAYER,
         "CONWAYS_LIFE": CONWAYS_LIFE,
+        "LANGTONS_ANT": LANGTONS_ANT,
         "0": DEFAULT,
         "1": DEFAULT,
         "2": DEFAULT,
