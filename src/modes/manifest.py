@@ -364,6 +364,16 @@ MODE_REGISTRY = {
                 "default": "90"
             }
         ]
+    },
+    "LISSAJOUS": {
+        "id": "LISSAJOUS",
+        "name": "LISSAJOUS",
+        "module_path": "modes.lissajous",
+        "class_name": "LissajousMode",
+        "icon": "LISSAJOUS",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
     }
 }
 
