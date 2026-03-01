@@ -384,6 +384,16 @@ MODE_REGISTRY = {
         "menu": "ZERO_PLAYER",
         "requires": ["CORE"],
         "settings": []
+    },
+    "FALLING_SAND": {
+        "id": "FALLING_SAND",
+        "name": "FALLING SAND",
+        "module_path": "modes.falling_sand",
+        "class_name": "FallingSandMode",
+        "icon": "FALLING_SAND",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
     }
 }
 
