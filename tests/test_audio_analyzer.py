@@ -189,7 +189,7 @@ def _make_analyzer(num_samples=256):
 def restore_ulab_mocks():
     """Restore the correct ulab mocks before each test.
 
-    Other test files (e.g. test_display_manager_layout.py) overwrite
+    Other test files (e.g., test_display_manager_layout.py) overwrite
     sys.modules['ulab.numpy'] with a plain MagicMock during pytest
     collection.  Without this fixture the real MockNumpyModule installed at
     module level would already be gone by the time the tests execute,

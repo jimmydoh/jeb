@@ -239,9 +239,10 @@ class TestDisplayManagerAnimations(unittest.TestCase):
         self.mock_i2c = Mock()
         # Resolve the Label mock directly from the imported display_manager module.
         # Using sys.modules['adafruit_display_text'] is unreliable because other
-        # test files may overwrite that entry during pytest collection, causing
-        # sys.modules['adafruit_display_text'].label.Label to diverge from the
-        # label.Label that display_manager.py already has bound.
+        # test files (e.g. test_matrix_manager.py, test_pixel_manager.py) overwrite
+        # that sys.modules entry with a new MockModule during pytest collection,
+        # causing sys.modules['adafruit_display_text'].label.Label to diverge from
+        # the label.Label that display_manager.py has already bound at import time.
         # The lambda ignores the constructor arguments intentionally so that
         # each label.Label(...) call returns a plain, unconfigured MagicMock
         # regardless of the mocked terminalio.FONT or other args passed in.
