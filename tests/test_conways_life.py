@@ -671,4 +671,4 @@ if __name__ == "__main__":
             failed += 1
 
     print(f"\n{'✅' if failed == 0 else '❌'} {passed}/{passed + failed} tests passed")
-    sys.exit(0 if failed == 0 else 1)
+    sys.exit(min(failed, 1))

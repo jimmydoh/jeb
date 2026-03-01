@@ -132,8 +132,8 @@ class ConwaysLife(BaseMode):
             enc = self.core.hid.encoder_position()
             diff = enc - last_enc
             if diff != 0:
-                new_idx = max(0, min(len(_SPEED_LEVELS_MS) - 1,
-                                     self._speed_idx + (1 if diff > 0 else -1)))
+                delta = 1 if diff > 0 else -1
+                new_idx = max(0, min(len(_SPEED_LEVELS_MS) - 1, self._speed_idx + delta))
                 self._speed_idx = new_idx
                 self.core.hid.reset_encoder(self._speed_idx)
                 last_enc = self._speed_idx
