@@ -612,7 +612,7 @@ class CoreManager:
         """Background task to feed the watchdog if all systems are healthy."""
         while True:
             self.watchdog.safe_feed()
-            await asyncio.sleep(1)  # Feed the watchdog every second
+            await asyncio.sleep(1.5)  # Feed the watchdog every 1.5 seconds
 
     async def monitor_resources(self):
         """Background task to refresh system resource metrics and update the display footer.
@@ -653,7 +653,7 @@ class CoreManager:
                     "hw_hid"
                 ],
                 timeout=5.0,
-                mode="RAISE"
+                mode="LOG_ONLY" if self.debug_mode else "RESET"
             )
 
             # Start transport monitoring to handle satellite activation
@@ -719,6 +719,37 @@ class CoreManager:
         # Run the console power-on sequence: matrix curtain + OLED splash + synth swell + ping
         version_str = self._read_version()
         await BootSequence(self.matrix, self.display, self.synth, self.buzzer).play(version_str)
+
+        # If DEBUG_MODE, check PIO state machine count
+        if self.debug_mode:
+            import rp2pio
+            import array
+
+            def count_free_state_machines():
+                # A blank dummy PIO instruction (jmp 0)
+                dummy_program = array.array("H", [0x0000])
+                allocated_machines = []
+                
+                try:
+                    # RP2350 has a maximum of 12 state machines
+                    for _ in range(12):
+                        # Attempt to claim a state machine
+                        sm = rp2pio.StateMachine(dummy_program, frequency=100000)
+                        allocated_machines.append(sm)
+                except (ValueError, RuntimeError):
+                    # We hit the limit of available state machines or instruction memory
+                    pass 
+                    
+                free_count = len(allocated_machines)
+                
+                # Deinitialize to return them cleanly to CircuitPython's pool
+                for sm in allocated_machines:
+                    sm.deinit()
+                    
+                return free_count
+            
+            JEBLogger.debug("CORE", f"Free PIO State Machines at startup: {count_free_state_machines()}")
+
 
         while True:
             # Meltdown state pauses the menu selection

@@ -181,7 +181,8 @@ class ConsoleManager():
             print("1. Show Status Message")
             print("2. Show Header Text")
             print("3. Show Footer Text")
-            print("4. Clear Display")
+            print("4. Show Long Text (scrolling)")
+            print("5. Clear Display")
             print("0. Back to Main Menu")
 
             choice = await self.get_input(">> ")
@@ -198,6 +199,12 @@ class ConsoleManager():
                 display.update_footer("Footer test")
                 print("Footer updated.")
             elif choice == "4":
+                long_text = "This is a long text test to demonstrate scrolling on the OLED display. "
+                display.update_header(long_text)
+                display.update_status(long_text, long_text)
+                display.update_footer(long_text)
+                print("Long text updated. It should scroll if it exceeds display width.")
+            elif choice == "5":
                 display.update_status("", "")
                 display.update_header("")
                 display.update_footer("")

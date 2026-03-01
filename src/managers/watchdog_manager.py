@@ -54,7 +54,7 @@ class WatchdogManager:
     critical tasks to 'check-in' (set a flag) during their loop.
     The dog is only fed if ALL tasks have checked in since the last feed.
     """
-    def __init__(self, task_names, timeout=None, mode="RAISE"):
+    def __init__(self, task_names, timeout=None, mode="LOG_ONLY"):
         # Initialize flags for all tasks as False
         self._flags = {name: False for name in task_names}
         # Flag to indicate if a reboot is in progress
