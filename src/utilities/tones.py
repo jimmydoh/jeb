@@ -432,6 +432,32 @@ TETRIS_NOISE = {
     ]
 }
 
+# Heavy launch transient – rising burst
+LAUNCH = {
+    'bpm': 180,
+    'sequence': [
+        ('G3', S), ('C4', S), ('G4', S), ('C5', S), ('G5', E)
+    ]
+}
+
+# Urgent two-tone danger alarm
+DANGER = {
+    'bpm': 200,
+    'sequence': [
+        ('A5', E), ('-', S), ('D5', E), ('-', S),
+        ('A5', E), ('-', S), ('D5', E), ('-', S)
+    ]
+}
+
+# Charging synth whine (rising)
+CHARGING = {
+    'bpm': 240,
+    'sequence': [
+        ('C3', S), ('E3', S), ('G3', S), ('C4', S),
+        ('E4', S), ('G4', S), ('C5', S), ('E5', E)
+    ]
+}
+
 # --- TONE CALCULATOR ---
 def note(note_name):
     """Converts a note name (e.g., 'A4', 'C#5') to its frequency in Hz."""
