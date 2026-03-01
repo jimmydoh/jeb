@@ -477,6 +477,29 @@ class Icons:
         60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
     ])
 
+    # 16x16 icon for the Boids Flocking Simulation mode.
+    # Shows a loose flock of dots (cyan boids) in a natural cluster on a
+    # black background, suggesting emergent schooling behaviour.
+    # 0=black (background), 51=CYAN (boids).
+    BOIDS = bytes([
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0, 51,  0, 51,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0, 51,  0,  0,  0, 51,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0, 51,  0, 51,  0, 51,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0, 51,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0, 51,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0,  0, 51,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0, 51,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0, 51,  0,  0, 51,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0, 51,  0,  0, 51,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -504,6 +527,7 @@ class Icons:
         "LANGTONS_ANT": LANGTONS_ANT,
         "WOLFRAM_AUTOMATA": WOLFRAM_AUTOMATA,
         "LISSAJOUS": LISSAJOUS,
+        "BOIDS": BOIDS,
         "0": DEFAULT,
         "1": DEFAULT,
         "2": DEFAULT,

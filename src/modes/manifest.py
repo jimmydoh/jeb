@@ -374,6 +374,16 @@ MODE_REGISTRY = {
         "menu": "ZERO_PLAYER",
         "requires": ["CORE"],
         "settings": []
+    },
+    "BOIDS": {
+        "id": "BOIDS",
+        "name": "BOIDS",
+        "module_path": "modes.boids",
+        "class_name": "BoidsMode",
+        "icon": "BOIDS",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
     }
 }
 
