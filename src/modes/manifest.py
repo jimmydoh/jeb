@@ -330,6 +330,23 @@ MODE_REGISTRY = {
         "menu": "ZERO_PLAYER",
         "requires": ["CORE"],
         "settings": []
+    },
+    "LANGTONS_ANT": {
+        "id": "LANGTONS_ANT",
+        "name": "LANGTON'S ANT",
+        "module_path": "modes.langtons_ant",
+        "class_name": "LangtonsAnt",
+        "icon": "LANGTONS_ANT",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "ants",
+                "label": "ANTS",
+                "options": ["1", "2", "4"],
+                "default": "1"
+            }
+        ]
     }
 }
 
