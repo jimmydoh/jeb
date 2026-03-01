@@ -61,6 +61,14 @@ _COH_WEIGHT = 0.001
 _MARGIN = 2.0
 _TURN_FACTOR = 0.3
 
+# Threshold below which a boid is considered "nearly stopped" and receives a
+# random nudge to prevent it from stalling indefinitely.
+_VELOCITY_EPSILON_SQ = 1e-6
+
+# Small offset used to clamp positions strictly inside the matrix bounds,
+# preventing edge-pixel rendering artefacts.
+_POSITION_EPSILON = 0.001
+
 
 class BoidsMode(BaseMode):
     """Boids – Flocking Simulation.
@@ -185,7 +193,7 @@ class BoidsMode(BaseMode):
                 bvx *= inv_spd
                 bvy *= inv_spd
             elif speed_sq < _MIN_SPEED * _MIN_SPEED:
-                if speed_sq > 1e-6:
+                if speed_sq > _VELOCITY_EPSILON_SQ:
                     inv_spd = _MIN_SPEED / math.sqrt(speed_sq)
                     bvx *= inv_spd
                     bvy *= inv_spd
@@ -196,8 +204,8 @@ class BoidsMode(BaseMode):
                     bvy = math.sin(angle) * _MIN_SPEED
 
             # Update boid state.
-            boid[0] = max(0.0, min(w - 0.001, bx + bvx))
-            boid[1] = max(0.0, min(h - 0.001, by + bvy))
+            boid[0] = max(0.0, min(w - _POSITION_EPSILON, bx + bvx))
+            boid[1] = max(0.0, min(h - _POSITION_EPSILON, by + bvy))
             boid[2] = bvx
             boid[3] = bvy
 
