@@ -500,6 +500,29 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # 16x16 icon for the Falling Sand particle simulation mode.
+    # Shows sand (yellow=31) falling through a gap in a wood (brown=20)
+    # platform, water (blue=61) pooling on the right, and fire (red=14)
+    # flickering on the left – all on a black background.
+    FALLING_SAND = bytes([
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0, 31,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0, 31, 31,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0, 31, 31,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0, 20, 20,  0,  0, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20,  0,
+         0,  0,  0, 31,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0, 31, 31,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0, 31, 31, 31,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20,  0,
+         0, 14, 14,  0,  0,  0,  0,  0,  0, 61, 61, 61, 61, 61, 61,  0,
+         0, 14,  0,  0,  0,  0,  0,  0,  0, 61, 61, 61, 61, 61, 61,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0, 61, 61, 61, 61, 61, 61,  0,
+         0, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -528,6 +551,7 @@ class Icons:
         "WOLFRAM_AUTOMATA": WOLFRAM_AUTOMATA,
         "LISSAJOUS": LISSAJOUS,
         "BOIDS": BOIDS,
+        "FALLING_SAND": FALLING_SAND,
         "0": DEFAULT,
         "1": DEFAULT,
         "2": DEFAULT,
