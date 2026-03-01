@@ -235,17 +235,18 @@ class TestDisplayManagerAnimations(unittest.TestCase):
         self.display.sub_status would resolve to the same mock object
         (adafruit_display_text.label.Label.return_value), causing spurious
         test failures when the tests inspect each label separately.
-
-        Note: display_manager.py uses ``from adafruit_display_text import label``,
-        so the relevant mock lives under ``sys.modules['adafruit_display_text'].label``,
-        NOT under ``sys.modules['adafruit_display_text.label']``.
         """
         self.mock_i2c = Mock()
-        # Resolve the Label mock that display_manager.py actually uses.
+        # Resolve the Label mock directly from the imported display_manager module.
+        # Using sys.modules['adafruit_display_text'] is unreliable because other
+        # test files (e.g. test_matrix_manager.py, test_pixel_manager.py) overwrite
+        # that sys.modules entry with a new MockModule during pytest collection,
+        # causing sys.modules['adafruit_display_text'].label.Label to diverge from
+        # the label.Label that display_manager.py has already bound at import time.
         # The lambda ignores the constructor arguments intentionally so that
         # each label.Label(...) call returns a plain, unconfigured MagicMock
         # regardless of the mocked terminalio.FONT or other args passed in.
-        label_cls = sys.modules['adafruit_display_text'].label.Label
+        label_cls = display_manager.label.Label
         label_cls.side_effect = lambda *args, **kwargs: MagicMock()
         self.display = DisplayManager(self.mock_i2c)
         # Reset side_effect so that other test classes are not affected.
