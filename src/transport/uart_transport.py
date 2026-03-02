@@ -276,10 +276,10 @@ class UARTTransport(BaseTransport):
     - New: [DEST][CMD][PAYLOAD][CRC] + COBS (zero parsing, direct byte access)
     """
     # Ring buffer constants
-    RING_BUFFER_SIZE = 2048  # Fixed 2KB ring buffer
+    RING_BUFFER_SIZE = 4096  # Fixed 4KB ring buffer
     MAX_PACKET_SIZE = 256    # Maximum packet size for scanning and scratchpad
-    BATCH_LIMIT = 10         # Max messages to process per loop iteration
-    MAX_TX_CHUNK = 32        # Max bytes to transmit per iteration to prevent event loop blocking
+    BATCH_LIMIT = 32         # Max messages to process per loop iteration
+    MAX_TX_CHUNK = 256        # Max bytes to transmit per iteration to prevent event loop blocking
 
     def __init__(self, uart_hw, command_map=None, dest_map=None, max_index_value=100, payload_schemas=None):
         """Initialize UART transport.
