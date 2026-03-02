@@ -395,6 +395,23 @@ MODE_REGISTRY = {
         "requires": ["CORE"],
         "settings": []
     },
+    "ABYSSAL_PING": {
+        "id": "ABYSSAL_PING",
+        "name": "ABYSSAL PING",
+        "module_path": "modes.abyssal_ping",
+        "class_name": "AbyssalPing",
+        "icon": "ABYSSAL_PING",
+        "menu": "MAIN",
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
     "ORBITAL_STRIKE": {
         "id": "ORBITAL_STRIKE",
         "name": "ORBITAL STRIKE",
