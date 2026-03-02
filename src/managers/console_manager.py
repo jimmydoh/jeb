@@ -183,6 +183,9 @@ class ConsoleManager():
             print("3. Show Footer Text")
             print("4. Show Long Text (scrolling)")
             print("5. Clear Display")
+            print("6. Test Slide In Animation")
+            print("7. Test Typewriter Animation")
+            print("8. Test Blink Animation")
             print("0. Back to Main Menu")
 
             choice = await self.get_input(">> ")
@@ -209,6 +212,18 @@ class ConsoleManager():
                 display.update_header("")
                 display.update_footer("")
                 print("Display cleared.")
+            elif choice == "6":
+                display.update_status("", "")
+                display.update(display.status, "Slide In Animation", anim="slide_in", direction="left")
+                print("Slide in animation triggered.")
+            elif choice == "7":
+                display.update_status("", "")
+                display.update(display.status, "Typewriter Animation", anim="typewriter")
+                print("Typewriter animation triggered.")
+            elif choice == "8":
+                display.update_status("", "")
+                display.update(display.status, "Blink Animation", anim="blink")
+                print("Blink animation triggered.")
             else:
                 print("Invalid selection.")
 

@@ -79,19 +79,13 @@ class DisplayManager:
         self.footer_label = label.Label(terminalio.FONT, text="", x=2, y=60)
         self.footer_group.append(self.footer_label)
 
-        # Tracking for Synchronized Ping-Pong scrolling
+        # Tracking for Scrolling and Animations
         self._scroll_offset = 0
         self._scroll_dir = -1
         self._scroll_wait = 40
         self._scroll_max_distance = 0
-
-        # Track which labels are eligible for scrolling
-        self._scrollable_labels = {
-            "header": {"label": self.header_label, "base_x": 5, "width": 0},
-            "status": {"label": self.status, "base_x": 5, "width": 0},
-            "sub_status": {"label": self.sub_status, "base_x": 5, "width": 0},
-            "footer": {"label": self.footer_label, "base_x": 5, "width": 0}
-        }
+        self._scrolling_labels = {}
+        self._active_animations = {}
 
         # ===== SETTINGS MENU COMPONENTS =====
         # Swaps with main_group when in settings mode
@@ -197,56 +191,140 @@ class DisplayManager:
         if content_group is not None:
             self.custom_group.append(content_group)
 
+    # ===== UNIVERSAL UPDATE METHODS =====
+
+    def update(self, label_obj, text, scroll=False, base_x=5, anim=None, **kwargs):
+        """Universal method to update any label with optional animation.
+
+        Args:
+            label_obj: The label to update (e.g., self.status, self.header_label)
+            text: The new text to display
+            animation: Optional animation type ("slide_in", "typewriter", "blink")
+            kwargs: Additional parameters for the animation (e.g., direction, char_delay)
+        """
+        JEBLogger.debug("DISP", f"Update {self._get_label_name(label_obj)}: '{text}' ({scroll}|{anim})")
+
+        if label_obj in self._active_animations:
+            self._active_animations[label_obj].cancel()
+            del self._active_animations[label_obj]
+
+        if anim == "slide_in":
+            self._active_animations[label_obj] = asyncio.create_task(
+                self.animate_slide_in(
+                    label_obj, text, scroll, scroll_base_x=base_x, **kwargs
+                )
+            )
+        elif anim == "typewriter":
+            self._active_animations[label_obj] = asyncio.create_task(
+                self.animate_typewriter(
+                    label_obj, text, scroll, scroll_base_x=base_x, **kwargs
+                )
+            )
+        elif anim == "blink":
+            self._active_animations[label_obj] = asyncio.create_task(
+                self.animate_blink(
+                    label_obj, text, scroll, scroll_base_x=base_x, **kwargs
+                )
+            )
+        else:
+            if scroll:
+                self._set_text_and_scroll_limits(label_obj, text, base_x)
+            else:
+                label_obj.text = text
+                # Reset scroll if not scrolling
+                label_obj.x = base_x
+                # Remove from scrolling labels if it was previously scrollable
+                if label_obj in self._scrolling_labels:
+                    del self._scrolling_labels[label_obj]
+
+
     # ===== STANDARD LAYOUT UPDATE METHODS =====
 
-    def update_header(self, text):
+    def update_header(self, text, **kwargs):
         """Update the header zone text (system stats, mode indicator).
 
         Args:
             text: String to display in header (e.g., "CPU: 45% | RAM: 120KB")
         """
-        self._set_text_and_scroll_limits("header", text)
-        JEBLogger.debug("DISP", f"Updated header: '{text}'")
+        self.update(self.header_label, text, scroll=True, base_x=2, **kwargs)
 
-    def update_footer(self, text):
+    def update_footer(self, text, **kwargs):
         """Update the footer zone text (logs, console messages).
 
         Args:
             text: String to display in footer (e.g., "Config saved")
         """
-        self._set_text_and_scroll_limits("footer", text)
-        JEBLogger.debug("DISP", f"Updated footer: '{text}'")
+        self.update(self.footer_label, text, scroll=True, base_x=2, **kwargs)
 
-    # ===== LEGACY/COMMON METHODS =====
-
-    def update_status(self, main_text, sub_text=None):
+    def update_status(self, main_text, sub_text=None, **kwargs):
         """Primary method for updating game and system messages.
 
         Works in both legacy and standard layout modes.
         In standard mode, updates the main zone content.
         """
-        self._set_text_and_scroll_limits("status", main_text)
-        JEBLogger.debug("DISP", f"Status: '{main_text}' (scroll max: {self._scroll_max_distance})")
+        self.update(self.status, main_text, scroll=True, base_x=5, **kwargs)
 
         if sub_text is not None:
-            self._set_text_and_scroll_limits("sub_status", sub_text)
-            JEBLogger.debug("DISP", f"Sub-status: '{sub_text}' (scroll max: {self._scroll_max_distance})")
+            self.update(self.sub_status, sub_text, scroll=True, base_x=5, **kwargs)
 
-    def _set_text_and_scroll_limits(self, key, text):
-        """Helper to calculate widths and trigger global scroll sync."""
-        state = self._scrollable_labels[key]
-        label_obj = state["label"]
+    def _get_label_name(self, label_obj):
+        """Reverse-lookup the human-readable name of a label object."""
+        if label_obj is self.status:
+            return "MSTAT"
+        if label_obj is self.sub_status:
+            return "SSTAT"
+        if label_obj is self.header_label:
+            return "HEADR"
+        if label_obj is self.footer_label:
+            return "FOOTR"
+        if label_obj in self.settings_labels:
+            return f"SETTG {self.settings_labels.index(label_obj)}"
+        return "CUSTM"
 
+    def _add_scrolling_label(self, label_obj, base_x=5):
+        """Helper to add a label to the scrolling system if not already tracked."""
+        if label_obj not in self._scrolling_labels:
+            self._scrolling_labels[label_obj] = {"label": label_obj, "base_x": base_x, "width": len(label_obj.text) * 6}
+            # Recalculate the global maximum distance needed
+            max_width = max(s["width"] for s in self._scrolling_labels.values())
+            self._scroll_max_distance = max(0, max_width - 128 + 10)
+
+    def _remove_scrolling_label(self, label_obj):
+        """Helper to remove a label from the scrolling system."""
+        if label_obj in self._scrolling_labels:
+            del self._scrolling_labels[label_obj]
+            # Recalculate the global maximum distance needed
+            if self._scrolling_labels:
+                max_width = max(s["width"] for s in self._scrolling_labels.values())
+                self._scroll_max_distance = max(0, max_width - 128 + 10)
+            else:
+                self._scroll_max_distance = 0
+
+    def _set_text_and_scroll_limits(self, label_obj, text, base_x=5):
+        """
+        Helper to calculate widths and trigger global scroll sync.
+
+        Args:
+            label_obj: The label to update (e.g., self.status, self.header_label)
+            text: The new text to display
+            base_x: The base x position for the label
+            width: The width of the label
+        """
         # Guard clause: Do nothing if the text hasn't changed
         if label_obj.text == text:
             return
 
         # Update text and calculate its specific pixel width
         label_obj.text = text
-        state["width"] = len(text) * 6
+        # Check if already tracking this label for scrolling; if not, add it
+        if label_obj not in self._scrolling_labels:
+            self._scrolling_labels[label_obj] = {"label": label_obj, "base_x": base_x, "width": len(text) * 6}
+        else:
+            self._scrolling_labels[label_obj]["width"] = len(text) * 6
+            self._scrolling_labels[label_obj]["base_x"] = base_x
 
         # Recalculate the GLOBAL maximum distance needed
-        max_width = max(s["width"] for s in self._scrollable_labels.values())
+        max_width = max(s["width"] for s in self._scrolling_labels.values())
 
         if max_width > 128:
             # 128 screen width - max text width - 10px padding margin
@@ -260,12 +338,11 @@ class DisplayManager:
         self._scroll_wait = 40
 
         # Instantly snap all labels back to their default positions
-        for s in self._scrollable_labels.values():
+        for s in self._scrolling_labels.values():
             s["label"].x = s["base_x"]
 
     async def scroll_loop(self):
         """Background task to smoothly pan long text back and forth in sync."""
-        import asyncio
         while True:
             # Only animate if at least one line is longer than the screen
             if self._scroll_max_distance > 0:
@@ -287,7 +364,7 @@ class DisplayManager:
                         self._scroll_wait = 40   # Pause longer at the beginning
 
                     # Apply the global offset ONLY to lines that need it
-                    for s in self._scrollable_labels.values():
+                    for s in self._scrolling_labels.values():
                         if s["width"] > 128:
                             s["label"].x = s["base_x"] + self._scroll_offset
 
@@ -296,22 +373,22 @@ class DisplayManager:
 
     # ===== ANIMATION TRANSITION METHODS =====
 
-    async def animate_slide_in(self, main_text, sub_text=None, direction="left", delay=0.02):
+    async def animate_slide_in(self, label_obj, text, scroll=False, scroll_base_x=5, direction="left", delay=0.02):
         """Animate main zone text sliding in from a direction.
 
-        Sets the text via update_status (which also resets scroll state),
+        Sets the text of the label and calculates its width,
         then overrides the x position to the off-screen start and smoothly
         slides the labels to their final resting position.
 
         Args:
-            main_text:  Primary status text to display.
-            sub_text:   Optional sub-status text to display.
+            label_obj: The label to animate (e.g., self.status or self.sub_status).
+            text:       The new text to display.
             direction:  "left" to enter from the right edge (default),
                         "right" to enter from the left edge.
             delay:      Seconds between animation frames (default 0.02).
         """
         # Set text and reset scroll limits to the final state first.
-        self.update_status(main_text, sub_text)
+        label_obj.text = text
 
         display_width = 128
         base_x = 2
@@ -319,9 +396,7 @@ class DisplayManager:
         start_x = display_width if direction == "left" else -display_width
 
         # Override x to the off-screen start position.
-        self.status.x = start_x
-        if sub_text is not None:
-            self.sub_status.x = start_x
+        label_obj.x = start_x
 
         x = start_x
         while True:
@@ -330,74 +405,58 @@ class DisplayManager:
                 x = max(x, base_x)
             else:
                 x = min(x, base_x)
-            self.status.x = x
-            if sub_text is not None:
-                self.sub_status.x = x
+            label_obj.x = x
             await asyncio.sleep(delay)
             if x == base_x:
                 break
 
-    async def animate_typewriter(self, main_text, sub_text=None, char_delay=0.05):
+        self.update(label_obj, text, scroll=scroll, base_x=scroll_base_x)
+
+    async def animate_typewriter(self, label_obj, text, scroll=False, scroll_base_x=5, char_delay=0.05):
         """Animate text appearing one character at a time (typewriter effect).
 
-        Characters of main_text are appended one by one, then sub_text (if
-        supplied).  Scroll state is synchronised after the full text is shown.
-
         Args:
-            main_text:   Primary status text to type in.
-            sub_text:    Optional sub-status text to type in after main_text.
-            char_delay:  Seconds between each character (default 0.05 s).
+            label_obj: The label to animate (e.g., self.status or self.sub_status).
+            text:       The new text to display.
+            char_delay: Seconds between each character (default 0.05 s).
         """
         # Start from blank so the typing animation is visible.
-        self.status.text = ""
-        self.sub_status.text = ""
-        self._scroll_max_distance = 0
-        self._scroll_offset = 0
-        self._scroll_dir = -1
-        self._scroll_wait = 40
+        label_obj.text = ""
+        if label_obj in self._scrolling_labels:
+            del self._scrolling_labels[label_obj]  # Remove from scroll tracking during animation
 
-        for i in range(1, len(main_text) + 1):
-            self.status.text = main_text[:i]
+        for i in range(1, len(text) + 1):
+            label_obj.text = text[:i]
             await asyncio.sleep(char_delay)
 
-        if sub_text is not None:
-            for i in range(1, len(sub_text) + 1):
-                self.sub_status.text = sub_text[:i]
-                await asyncio.sleep(char_delay)
+        self.update(label_obj, text, scroll=scroll, base_x=scroll_base_x)
 
-        # Sync scroll tracking for the completed text.
-        self._scrollable_labels["status"]["width"] = len(main_text) * 6
-        sub = sub_text if sub_text is not None else ""
-        self._scrollable_labels["sub_status"]["width"] = len(sub) * 6
-        max_width = max(s["width"] for s in self._scrollable_labels.values())
-        self._scroll_max_distance = max_width - 128 + 10 if max_width > 128 else 0
-        for s in self._scrollable_labels.values():
-            s["label"].x = s["base_x"]
-
-    async def animate_blink(self, main_text, sub_text=None, times=3,
-                             on_duration=0.3, off_duration=0.2):
+    async def animate_blink(self, label_obj, text, scroll=False, scroll_base_x=5,
+                            times=3, on_duration=0.3, off_duration=0.2):
         """Animate text blinking to draw attention.
 
         The main zone is shown and hidden for the specified number of cycles,
         ending in the visible state.
 
         Args:
-            main_text:    Primary status text to blink.
-            sub_text:     Optional sub-status text.
+            label_obj: The label to animate (e.g., self.status or self.sub_status).
+            text:       The new text to display.
             times:        Number of blink cycles (default 3).
             on_duration:  Seconds the text is visible per cycle (default 0.3).
             off_duration: Seconds the text is hidden per cycle (default 0.2).
         """
-        self.update_status(main_text, sub_text)
+        label_obj.text = text
 
         for _ in range(times):
-            self.main_group.hidden = False
+            label_obj.hidden = False
             await asyncio.sleep(on_duration)
-            self.main_group.hidden = True
+            label_obj.hidden = True
             await asyncio.sleep(off_duration)
 
-        # Always leave the main zone visible when done.
-        self.main_group.hidden = False
+        # Always leave the label visible when done.
+        label_obj.hidden = False
+
+        self.update(label_obj, text, scroll=scroll, base_x=scroll_base_x)
 
     # ===== AUDIO VISUALIZER METHODS =====
 
