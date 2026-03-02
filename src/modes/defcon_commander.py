@@ -244,9 +244,12 @@ class DefconCommander(GameMode):
         self.silo_orders[target]     = True
 
         self.focused_silo = target
-        self.core.display.update_status(
-            f"ICBM LAUNCH ORDER | SILO {target + 1:02d}",
-            f"AUTH: {auth_code} | KEY+ARM+FIRE"
+        asyncio.create_task(
+            self.core.display.animate_typewriter(
+                f"ICBM LAUNCH ORDER | SILO {target + 1:02d}",
+                f"AUTH: {auth_code} | KEY+ARM+FIRE",
+                delay=0.02
+            )
         )
         asyncio.create_task(
             self.core.synth.play_sequence(tones.ALARM, patch="ALARM")

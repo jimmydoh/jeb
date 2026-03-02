@@ -211,7 +211,7 @@ def test_schematic_constants():
 
 def test_defcon_commander_icon_in_library():
     """Test that DEFCON_COMMANDER icon is in ICON_LIBRARY."""
-    with open(_ICONS_PATH, 'r') as f:
+    with open(_ICONS_PATH, 'r', encoding='utf-8') as f:
         icons_src = f.read()
     assert "DEFCON_COMMANDER" in icons_src, \
         "DEFCON_COMMANDER not registered in icons.py"
