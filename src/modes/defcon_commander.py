@@ -230,7 +230,7 @@ class DefconCommander(GameMode):
     # Order management
     # ------------------------------------------------------------------
 
-    def _issue_order(self):
+    async def _issue_order(self):
         """Issue a launch order for a random IDLE silo."""
         idle_silos = [i for i in range(_NUM_SILOS) if self.silo_states[i] == SILO_IDLE]
         if not idle_silos:
@@ -243,16 +243,47 @@ class DefconCommander(GameMode):
         self.silo_auth_codes[target] = auth_code
         self.silo_orders[target]     = True
 
-        self.focused_silo = target
-        asyncio.create_task(
-            self.core.display.animate_typewriter(
-                f"ICBM LAUNCH ORDER | SILO {target + 1:02d}",
-                f"AUTH: {auth_code} | KEY+ARM+FIRE",
-                delay=0.02
-            )
-        )
+        # Play alarm sound - TODO Replace placeholder with ~5 second crafted teletype sound for EAM
         asyncio.create_task(
             self.core.synth.play_sequence(tones.ALARM, patch="ALARM")
+        )
+        self.core.display.update(
+            self.core.display.header_label,
+            "EMERGENCY ACTION MESSAGE",
+            scroll=False,
+            anim="typewriter",
+            delay=0.02
+        )
+        await asyncio.sleep(0.5)
+        self.core.display.update(
+            self.core.display.status,
+            f"LAUNCH ORDER | SILO {target + 1:02d}",
+            scroll=False,
+            anim="typewriter",
+            delay=0.02
+        )
+        await asyncio.sleep(0.5)
+        self.core.display.update(
+            self.core.display.sub_status,
+            "AUTHORIZATION INCOMING...|",
+            scroll=False,
+            anim="typewriter",
+            delay=0.03
+        )
+        await asyncio.sleep(1)
+        self.core.display.update(
+            self.core.display.sub_status,
+            "AUTHORIZATION INCOMING...|",
+            scroll=False,
+            anim="blink"
+        )
+        await asyncio.sleep(2)
+        self.core.display.update(
+            self.core.display.sub_status,
+            f">{auth_code}",
+            scroll=False,
+            anim="typewriter",
+            delay=0.1
         )
 
     # ------------------------------------------------------------------
@@ -470,7 +501,7 @@ class DefconCommander(GameMode):
     # Order scheduler
     # ------------------------------------------------------------------
 
-    def _update_orders(self, delta_s):
+    async def _update_orders(self, delta_s):
         """Issue new orders on a timer when silos are idle."""
         if self._launched_count >= _NUM_SILOS:
             return   # all silos launched
@@ -482,16 +513,8 @@ class DefconCommander(GameMode):
 
         self._order_timer -= delta_s
         if self._order_timer <= 0.0:
-            self._issue_order()
+            asyncio.create_task(self._issue_order())
             self._order_timer = self._order_interval
-
-            # Auto-activate the silo that was just ordered
-            ordered_silos = [
-                i for i in range(_NUM_SILOS) if self.silo_states[i] == SILO_ORDERED
-            ]
-            if ordered_silos:
-                self.active_silo = ordered_silos[0]
-                self.focused_silo = self.active_silo
 
     # ------------------------------------------------------------------
     # Matrix rendering
@@ -743,7 +766,7 @@ class DefconCommander(GameMode):
                     continue
 
                 # Issue orders / update order timer
-                self._update_orders(delta_s)
+                await self._update_orders(delta_s)
 
                 # Encoder: browse silos
                 try:

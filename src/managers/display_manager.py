@@ -412,13 +412,13 @@ class DisplayManager:
 
         self.update(label_obj, text, scroll=scroll, base_x=scroll_base_x)
 
-    async def animate_typewriter(self, label_obj, text, scroll=False, scroll_base_x=5, char_delay=0.05):
+    async def animate_typewriter(self, label_obj, text, scroll=False, scroll_base_x=5, delay=0.05):
         """Animate text appearing one character at a time (typewriter effect).
 
         Args:
             label_obj: The label to animate (e.g., self.status or self.sub_status).
             text:       The new text to display.
-            char_delay: Seconds between each character (default 0.05 s).
+            delay: Seconds between each character (default 0.05 s).
         """
         # Start from blank so the typing animation is visible.
         label_obj.text = ""
@@ -427,7 +427,7 @@ class DisplayManager:
 
         for i in range(1, len(text) + 1):
             label_obj.text = text[:i]
-            await asyncio.sleep(char_delay)
+            await asyncio.sleep(delay)
 
         self.update(label_obj, text, scroll=scroll, base_x=scroll_base_x)
 
