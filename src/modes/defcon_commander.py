@@ -142,6 +142,9 @@ class DefconCommander(GameMode):
         self._total_time      = 0.0     # time elapsed (score = -total_time)
         self._reset_needed    = False   # player must reset key + arm before new op
 
+        # --- Satellite LED change-detection (avoid UART spam) ---
+        self._last_led_states = [None] * (_FAULT_TOGGLE_END - _FAULT_TOGGLE_START + 1)
+
         # --- Tick timing ---
         self._last_tick_ms = 0
 
@@ -631,22 +634,30 @@ class DefconCommander(GameMode):
     # ------------------------------------------------------------------
 
     def _update_sat_leds(self):
-        """Update satellite toggle LEDs to reflect fault and launch states."""
+        """Update satellite toggle LEDs to reflect fault state only.
+
+        Toggle LEDs are used exclusively for fault resolution (PREP phase).
+        A last-state cache prevents blasting the UART every ~33 ms tick.
+        """
         if not self.sat:
             return
 
         for i in range(_FAULT_TOGGLE_START, _FAULT_TOGGLE_END + 1):
             if self._fault_toggle_idx == i:
-                cmd_type = "LEDFLASH"
-                led_cmd  = f"{i},{Palette.RED.index},0.0,1.0,3,0.2,0.2"
-            elif i < _NUM_SILOS and self.silo_states[i] == SILO_LAUNCHED:
-                cmd_type = "LED"
-                led_cmd  = f"{i},{Palette.GREEN.index},0.0,1.0,2"
+                new_state = "FAULT"
+                cmd_type  = "LEDFLASH"
+                led_cmd   = f"{i},{Palette.RED.index},0.0,1.0,3,0.2,0.2"
             else:
-                cmd_type = "LED"
-                led_cmd  = f"{i},{Palette.OFF.index},0.0,0.0,2"
+                new_state = "OFF"
+                cmd_type  = "LED"
+                led_cmd   = f"{i},{Palette.OFF.index},0.0,0.0,2"
+
+            if self._last_led_states[i] == new_state:
+                continue   # no change – skip the UART send
+
             try:
                 self.sat.send(cmd_type, led_cmd)
+                self._last_led_states[i] = new_state
             except (AttributeError, OSError):
                 pass
 
@@ -702,6 +713,7 @@ class DefconCommander(GameMode):
         self._penalty_timer   = 0.0
         self._total_time      = 0.0
         self.score            = 0
+        self._last_led_states = [None] * (_FAULT_TOGGLE_END - _FAULT_TOGGLE_START + 1)
 
         self._clear_keypad_buf()
         self.core.hid.reset_encoder(_ENC_SILO)
