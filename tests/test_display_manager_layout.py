@@ -292,7 +292,7 @@ class TestDisplayManagerAnimations(unittest.TestCase):
         """animate_typewriter completes with status.text equal to main_text."""
         main_text = "TYPING"
         asyncio.run(
-            self.display.animate_typewriter(self.display.status, main_text, char_delay=0)
+            self.display.animate_typewriter(self.display.status, main_text, delay=0)
         )
         self.assertEqual(self.display.status.text, main_text)
 
@@ -301,10 +301,10 @@ class TestDisplayManagerAnimations(unittest.TestCase):
         main_text = "MAIN"
         sub_text = "sub"
         asyncio.run(
-            self.display.animate_typewriter(self.display.status, main_text, char_delay=0)
+            self.display.animate_typewriter(self.display.status, main_text, delay=0)
         )
         asyncio.run(
-            self.display.animate_typewriter(self.display.sub_status, sub_text, char_delay=0)
+            self.display.animate_typewriter(self.display.sub_status, sub_text, delay=0)
         )
         self.assertEqual(self.display.status.text, main_text)
         self.assertEqual(self.display.sub_status.text, sub_text)
@@ -312,10 +312,10 @@ class TestDisplayManagerAnimations(unittest.TestCase):
     def test_animate_typewriter_without_sub_text_clears_sub_status(self):
         """animate_typewriter with no sub_text leaves sub_status.text as empty string."""
         asyncio.run(
-            self.display.animate_typewriter(self.display.status, "MAIN", char_delay=0)
+            self.display.animate_typewriter(self.display.status, "MAIN", delay=0)
         )
         asyncio.run(
-            self.display.animate_typewriter(self.display.sub_status, "", char_delay=0)
+            self.display.animate_typewriter(self.display.sub_status, "", delay=0)
         )
         self.assertEqual(self.display.sub_status.text, "")
 
