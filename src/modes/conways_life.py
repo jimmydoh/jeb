@@ -173,6 +173,7 @@ class ConwaysLife(BaseMode):
             if ticks_diff(now, last_gen_tick) >= interval:
                 self._step()
                 self.core.matrix.show_frame(self._grid)
+                self.core.display.update_status(*self._status_line()) # Update GEN count
                 last_gen_tick = now
 
             await asyncio.sleep(0.01)

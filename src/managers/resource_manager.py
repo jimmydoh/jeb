@@ -96,7 +96,8 @@ class ResourceManager:
 
         if self.LOOP_BUDGET_S > 0:
             ratio = delta / self.LOOP_BUDGET_S
-            self._cpu_percent = min(ratio * 100.0, 100.0)
+            # Instead of CPU Percent use a load ratio, where 1.0 means the loop is taking 100% of the expected time
+            self._cpu_percent = ratio
 
     # ------------------------------------------------------------------
     # Properties
@@ -138,7 +139,7 @@ class ResourceManager:
         """
         return (
             f"M:{self._mem_percent:.0f}%"
-            f" C:{self._cpu_percent:.0f}%"
+            f" C:{self._cpu_percent:.2f}"
             f" T:{self._temperature_c:.0f}C"
         )
 

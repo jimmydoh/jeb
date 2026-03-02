@@ -424,8 +424,9 @@ class CoreManager:
 
         except Exception as e:
             JEBLogger.error("CORE", f"Error while running mode with safety monitoring: {e}")
+            import sys
             import traceback
-            traceback.print_exc()
+            traceback.print_exception(type(e), e, e.__traceback__)
             self.display.update_status("MODE ERROR", "CHECK LOGS")
             exit_reason = "MODE_ERROR"
 
@@ -440,12 +441,12 @@ class CoreManager:
         if exit_reason == "MODE_COMPLETE":
             # Propagate any exceptions from the mode task
             try:
-                result = sub_task.result()  # Get the result or exception
+                result = await sub_task  # Safely get result or raise exception
                 return result if result else "SUCCESS"
             except Exception as e:
                 JEBLogger.error("CORE", f"Error in mode execution: {e}")
                 import traceback
-                traceback.print_exc()
+                traceback.print_exception(type(e), e, e.__traceback__)
                 self.display.update_status("MODE ERROR", "CHECK LOGS")
                 return "MODE_ERROR"
 

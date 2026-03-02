@@ -1,6 +1,9 @@
 import sys
 import time
 import pygame
+import array
+import math
+import asyncio
 import os
 import builtins
 
@@ -680,24 +683,125 @@ sys.modules['audiomixer'] = type('MockAudioMixer', (), {'Mixer': MockMixer})
 # --- SYNTHIO MOCK ---
 class MockEnvelope:
     def __init__(self, attack_time=0.0, decay_time=0.0, release_time=0.0, attack_level=1.0, sustain_level=1.0):
-        pass
+        self.attack_time = attack_time
+        self.decay_time = decay_time
+        self.release_time = release_time
+        self.attack_level = attack_level
+        self.sustain_level = sustain_level
 
 class MockNote:
     def __init__(self, frequency=440.0, waveform=None, envelope=None):
         self.frequency = frequency
+        self.waveform = waveform
+        self.envelope = envelope or MockEnvelope()
 
 class MockSynthesizer:
     def __init__(self, sample_rate=22050, channel_count=1):
-        self.active_notes = set()
+        self.active_notes = {}  # Maps MockNote to {"sound": sound_obj, "task": asyncio_task}
+        self._master_volume = 0.3 # Global mix volume to prevent clipping chords
+
+    def _generate_tone(self, frequency, wavetable=None):
+        """Generates a seamless looping buffer using the actual synth_registry waveform."""
+        if frequency <= 0 or not pygame.mixer.get_init():
+            return None
+            
+        sample_rate = pygame.mixer.get_init()[0]
+        
+        # Calculate buffer length for seamless looping
+        wavelength_samples = sample_rate / frequency
+        num_waves = max(1, int((sample_rate * 0.1) // wavelength_samples))
+        buffer_length = int(num_waves * wavelength_samples)
+        
+        buf = array.array('h', [0] * (buffer_length * 2))
+        table_len = len(wavetable) if wavetable else 0
+        
+        for i in range(buffer_length):
+            if wavetable:
+                # Phase Accumulator: Steps through the pre-generated waveform array
+                # at exactly the right speed to produce the requested frequency!
+                phase = (i * frequency / sample_rate) % 1.0
+                table_index = int(phase * table_len)
+                sample = wavetable[table_index]
+            else:
+                # Fallback to square wave if no waveform provided
+                t = float(i) / sample_rate
+                val = math.sin(2.0 * math.pi * frequency * t)
+                sample = 32000 if val > 0 else -32000
+                
+            # Apply global mix volume to prevent Pygame distortion on chords
+            sample = int(sample * self._master_volume)
+            
+            buf[i*2]     = sample
+            buf[i*2 + 1] = sample
+            
+        return pygame.mixer.Sound(buffer=buf)
+
+    async def _run_adsr(self, sound, env):
+        """Background task that automates Pygame volume to simulate ADSR envelopes."""
+        fps = 60
+        sleep_time = 1.0 / fps
+
+        # --- ATTACK PHASE ---
+        steps = int(env.attack_time * fps)
+        if steps > 0:
+            for i in range(steps):
+                vol = (i / steps) * env.attack_level
+                sound.set_volume(vol)
+                await asyncio.sleep(sleep_time)
+        sound.set_volume(env.attack_level)
+
+        # --- DECAY PHASE ---
+        steps = int(env.decay_time * fps)
+        if steps > 0:
+            start_vol = env.attack_level
+            end_vol = env.sustain_level
+            for i in range(steps):
+                vol = start_vol + (end_vol - start_vol) * (i / steps)
+                sound.set_volume(vol)
+                await asyncio.sleep(sleep_time)
+        sound.set_volume(env.sustain_level)
+
     def press(self, note):
-        self.active_notes.add(note)
-        JEBLogger.emulator("MOCK", f"[SYNTH] Pressed Note:  {note.frequency:>6.1f} Hz")
+        if note in self.active_notes:
+            return
+            
+        sound = self._generate_tone(note.frequency, note.waveform)
+        if sound:
+            # Start the sound at 0 volume and let the ADSR task fade it in
+            sound.set_volume(0.0)
+            sound.play(loops=-1)
+            
+            adsr_task = asyncio.create_task(self._run_adsr(sound, note.envelope))
+            self.active_notes[note] = {"sound": sound, "task": adsr_task}
+            
+        JEBLogger.emulator("MOCK", f"[SYNTH] Pressed:  {note.frequency:>6.1f} Hz")
+
     def release(self, note):
         if note in self.active_notes:
-            self.active_notes.remove(note)
-            JEBLogger.emulator("MOCK", f"[SYNTH] Released Note: {note.frequency:>6.1f} Hz")
+            data = self.active_notes.pop(note)
+            sound = data["sound"]
+            task = data["task"]
+            
+            # Stop the Attack/Decay automation if it's still running
+            if task:
+                task.cancel()
+                
+            if sound:
+                # --- RELEASE PHASE ---
+                # Convert envelope seconds to Pygame fadeout milliseconds
+                fade_ms = max(50, int(note.envelope.release_time * 1000))
+                sound.fadeout(fade_ms)
+                
+            JEBLogger.emulator("MOCK", f"[SYNTH] Released: {note.frequency:>6.1f} Hz")
+
     def release_all(self):
+        for data in self.active_notes.values():
+            if data["task"]:
+                data["task"].cancel()
+            if data["sound"]:
+                data["sound"].fadeout(50)
         self.active_notes.clear()
+        JEBLogger.emulator("MOCK", "[SYNTH] Released All Notes")
 
 class MockSynthioModule:
     Envelope = MockEnvelope

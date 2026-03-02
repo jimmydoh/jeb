@@ -219,6 +219,7 @@ class ConsoleManager():
             elif choice == "7":
                 display.update_status("", "")
                 display.update(display.status, "Typewriter Animation", anim="typewriter")
+                display.update(display.sub_status, "Typewriter Animation", anim="typewriter", direction="right")
                 print("Typewriter animation triggered.")
             elif choice == "8":
                 display.update_status("", "")
