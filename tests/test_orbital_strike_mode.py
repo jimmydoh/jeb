@@ -286,7 +286,7 @@ def test_reset_phase_checks_all_toggles():
 
 def test_orbital_strike_icon_in_icons_py():
     """Test that ORBITAL_STRIKE icon is defined in icons.py."""
-    with open(_ICONS_PATH, 'r') as f:
+    with open(_ICONS_PATH, 'r', encoding='utf-8') as f:
         src = f.read()
     assert "ORBITAL_STRIKE" in src, "ORBITAL_STRIKE icon not in icons.py"
     print("✓ ORBITAL_STRIKE icon defined in icons.py")
@@ -294,7 +294,7 @@ def test_orbital_strike_icon_in_icons_py():
 
 def test_orbital_strike_icon_in_icon_library():
     """Test that ORBITAL_STRIKE is registered in ICON_LIBRARY."""
-    with open(_ICONS_PATH, 'r') as f:
+    with open(_ICONS_PATH, 'r', encoding='utf-8') as f:
         src = f.read()
     # Find ICON_LIBRARY dict
     lib_start = src.find("ICON_LIBRARY")
@@ -307,7 +307,7 @@ def test_orbital_strike_icon_in_icon_library():
 
 def test_orbital_strike_icon_is_256_bytes():
     """Test that ORBITAL_STRIKE icon data is exactly 256 bytes (16x16)."""
-    with open(_ICONS_PATH, 'r') as f:
+    with open(_ICONS_PATH, 'r', encoding='utf-8') as f:
         src = f.read()
 
     import re

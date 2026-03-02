@@ -428,6 +428,23 @@ MODE_REGISTRY = {
                 "default": "NORMAL"
             }
         ]
+    },
+    "DEFCON_COMMANDER": {
+        "id": "DEFCON_COMMANDER",
+        "name": "DEFCON CMDR",
+        "module_path": "modes.defcon_commander",
+        "class_name": "DefconCommander",
+        "icon": "DEFCON_COMMANDER",
+        "menu": "MAIN",
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
     }
 }
 
