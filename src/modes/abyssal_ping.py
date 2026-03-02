@@ -184,9 +184,18 @@ class AbyssalPing(GameMode):
             return 0
 
     def _send_segment(self, text):
-        """Send a string to the satellite 14-segment display."""
-        if self.sat:
-            self.sat.send("DSP", text[:8])
+        """Send a string to the satellite 14-segment display.
+
+        Caches the last value sent so the UART bus is only written when
+        the displayed text actually changes.
+        """
+        if not hasattr(self, "_last_segment_text"):
+            self._last_segment_text = ""
+
+        safe_text = text[:8]
+        if self.sat and self._last_segment_text != safe_text:
+            self.sat.send("DSP", safe_text)
+            self._last_segment_text = safe_text
 
     # ------------------------------------------------------------------
     # Matrix rendering
@@ -194,17 +203,17 @@ class AbyssalPing(GameMode):
 
     def _render_sweep(self, sweep_col):
         """Draw a dim green sweep line at *sweep_col*; rest of the matrix black."""
-        self.core.matrix.clear()
+        self.core.matrix.fill(Palette.OFF, show=False)
         h = self.core.matrix.height
         for y in range(h):
-            self.core.matrix.draw_pixel(sweep_col, y, Palette.GREEN, brightness=0.1)
+            self.core.matrix.draw_pixel(sweep_col, y, Palette.GREEN, brightness=0.1, show=False)
 
     def _render_lock_flash(self):
         """Flash a single red pixel at the matrix centre for acoustic lock."""
-        self.core.matrix.clear()
+        self.core.matrix.fill(Palette.OFF, show=False)
         cx = self.core.matrix.width  // 2
         cy = self.core.matrix.height // 2
-        self.core.matrix.draw_pixel(cx, cy, Palette.RED, brightness=1.0)
+        self.core.matrix.draw_pixel(cx, cy, Palette.RED, brightness=1.0, show=False)
 
     def _render_explosion(self):
         """Fill the matrix white to indicate depth-charge detonation."""
