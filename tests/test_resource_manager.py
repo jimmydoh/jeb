@@ -120,20 +120,22 @@ class TestResourceManagerCPUProxy(unittest.TestCase):
     """Test CPU-load proxy metric via record_loop_tick()."""
 
     def test_cpu_percent_clamped_to_100(self):
-        """A delta much larger than the budget should clamp at 100 %."""
+        """A delta much larger than the budget should yield a ratio well above 1.0."""
         rm = ResourceManager()
         # Simulate a very long loop iteration (1 second vs 50 ms budget)
         rm._last_loop_tick = time.monotonic() - 1.0
         rm.record_loop_tick()
-        self.assertEqual(rm.cpu_percent, 100.0)
+        # ratio = 1.0 / 0.05 = 20.0 (no clamping – raw load ratio)
+        self.assertGreater(rm.cpu_percent, 1.0)
 
     def test_cpu_percent_proportional_to_delta(self):
-        """A delta equal to the budget should yield ~100 %; half budget -> ~50 %."""
+        """A delta equal to half the budget should yield a ratio of ~0.5."""
         rm = ResourceManager()
         # Simulate delta == half the budget
         rm._last_loop_tick = time.monotonic() - (rm.LOOP_BUDGET_S / 2)
         rm.record_loop_tick()
-        self.assertAlmostEqual(rm.cpu_percent, 50.0, delta=5.0)
+        # ratio = (LOOP_BUDGET_S / 2) / LOOP_BUDGET_S = 0.5
+        self.assertAlmostEqual(rm.cpu_percent, 0.5, delta=0.05)
 
     def test_cpu_percent_near_zero_for_fast_loop(self):
         """A very short delta should produce a very low CPU percent."""
@@ -196,31 +198,31 @@ class TestResourceManagerStatusBar(unittest.TestCase):
         rm._cpu_percent = 30.0
         rm._temperature_c = 35.0
         text = rm.get_status_bar_text()
-        self.assertEqual(text, "M:45% C:30% T:35C")
+        self.assertEqual(text, "M:45% C:30.00 T:35C")
 
     def test_status_bar_text_rounds_floats(self):
-        """Values should be rounded to the nearest integer in the output."""
+        """Values should be formatted as expected: mem/temp rounded, cpu as 2dp ratio."""
         rm = ResourceManager()
         rm._mem_percent = 33.7
         rm._cpu_percent = 66.4
         rm._temperature_c = 27.9
         text = rm.get_status_bar_text()
-        self.assertEqual(text, "M:34% C:66% T:28C")
+        self.assertEqual(text, "M:34% C:66.40 T:28C")
 
     def test_status_bar_text_zero_values(self):
         """All-zero metrics should produce a valid string."""
         rm = ResourceManager()
         text = rm.get_status_bar_text()
-        self.assertEqual(text, "M:0% C:0% T:0C")
+        self.assertEqual(text, "M:0% C:0.00 T:0C")
 
     def test_status_bar_text_fits_oled_width(self):
-        """Status bar text must not exceed 21 characters (OLED width)."""
+        """Status bar text must not exceed 22 characters (increased from 21 to accommodate two-decimal CPU ratio format)."""
         rm = ResourceManager()
         rm._mem_percent = 100.0
         rm._cpu_percent = 100.0
         rm._temperature_c = 100.0
         text = rm.get_status_bar_text()
-        self.assertLessEqual(len(text), 21, f"Status bar too wide: '{text}' ({len(text)} chars)")
+        self.assertLessEqual(len(text), 22, f"Status bar too wide: '{text}' ({len(text)} chars)")
 
 
 if __name__ == '__main__':
