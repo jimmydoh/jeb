@@ -234,8 +234,7 @@ class DisplayManager:
                 # Reset scroll if not scrolling
                 label_obj.x = base_x
                 # Remove from scrolling labels if it was previously scrollable
-                if label_obj in self._scrolling_labels:
-                    del self._scrolling_labels[label_obj]
+                self._remove_scrolling_label(label_obj)
 
 
     # ===== STANDARD LAYOUT UPDATE METHODS =====
@@ -283,16 +282,26 @@ class DisplayManager:
 
     def _add_scrolling_label(self, label_obj, base_x=5):
         """Helper to add a label to the scrolling system if not already tracked."""
-        if label_obj not in self._scrolling_labels:
-            self._scrolling_labels[label_obj] = {"label": label_obj, "base_x": base_x, "width": len(label_obj.text) * 6}
-            # Recalculate the global maximum distance needed
-            max_width = max(s["width"] for s in self._scrolling_labels.values())
-            self._scroll_max_distance = max(0, max_width - 128 + 10)
+        label_id = id(label_obj)
+        if label_id not in self._scrolling_labels:
+            self._scrolling_labels[label_id] = {
+                "label": label_obj, 
+                "base_x": base_x, 
+                "width": len(label_obj.text) * 6
+            }
+        else:
+            self._scrolling_labels[label_id]["width"] = len(label_obj.text) * 6
+            self._scrolling_labels[label_id]["base_x"] = base_x
+
+        # Recalculate the global maximum distance needed
+        max_width = max(s["width"] for s in self._scrolling_labels.values())
+        self._scroll_max_distance = max(0, max_width - 128 + 10)
 
     def _remove_scrolling_label(self, label_obj):
         """Helper to remove a label from the scrolling system."""
-        if label_obj in self._scrolling_labels:
-            del self._scrolling_labels[label_obj]
+        label_id = id(label_obj)
+        if label_id in self._scrolling_labels:
+            del self._scrolling_labels[label_id]
             # Recalculate the global maximum distance needed
             if self._scrolling_labels:
                 max_width = max(s["width"] for s in self._scrolling_labels.values())
@@ -316,29 +325,14 @@ class DisplayManager:
 
         # Update text and calculate its specific pixel width
         label_obj.text = text
-        # Check if already tracking this label for scrolling; if not, add it
-        if label_obj not in self._scrolling_labels:
-            self._scrolling_labels[label_obj] = {"label": label_obj, "base_x": base_x, "width": len(text) * 6}
+        self._add_scrolling_label(label_obj, base_x)
+
+        label_id = id(label_obj)
+        s = self._scrolling_labels[label_id]
+        
+        if s["width"] > 128:
+            s["label"].x = s["base_x"] + self._scroll_offset
         else:
-            self._scrolling_labels[label_obj]["width"] = len(text) * 6
-            self._scrolling_labels[label_obj]["base_x"] = base_x
-
-        # Recalculate the GLOBAL maximum distance needed
-        max_width = max(s["width"] for s in self._scrolling_labels.values())
-
-        if max_width > 128:
-            # 128 screen width - max text width - 10px padding margin
-            self._scroll_max_distance = max_width - 128 + 10
-        else:
-            self._scroll_max_distance = 0
-
-        # Reset the global camera so the new text is readable from the start
-        self._scroll_offset = 0
-        self._scroll_dir = -1
-        self._scroll_wait = 40
-
-        # Instantly snap all labels back to their default positions
-        for s in self._scrolling_labels.values():
             s["label"].x = s["base_x"]
 
     async def scroll_loop(self):
@@ -369,7 +363,7 @@ class DisplayManager:
                             s["label"].x = s["base_x"] + self._scroll_offset
 
             # ~30 FPS scroll speed
-            await asyncio.sleep(0.015)
+            await asyncio.sleep(0.033)
 
     # ===== ANIMATION TRANSITION METHODS =====
 
@@ -412,23 +406,43 @@ class DisplayManager:
 
         self.update(label_obj, text, scroll=scroll, base_x=scroll_base_x)
 
-    async def animate_typewriter(self, label_obj, text, scroll=False, scroll_base_x=5, delay=0.05):
+    async def animate_typewriter(self, label_obj, text, scroll=False, scroll_base_x=5, delay=0.05, direction="left"):
         """Animate text appearing one character at a time (typewriter effect).
 
         Args:
             label_obj: The label to animate (e.g., self.status or self.sub_status).
             text:       The new text to display.
-            delay: Seconds between each character (default 0.05 s).
+            delay:      Seconds between each character (default 0.05 s).
+            direction:  "left" (default) types normally. 
+                        "right" types from the right edge, pushing text left (telegraph style).
         """
         # Start from blank so the typing animation is visible.
         label_obj.text = ""
-        if label_obj in self._scrolling_labels:
-            del self._scrolling_labels[label_obj]  # Remove from scroll tracking during animation
+        self._remove_scrolling_label(label_obj)  # Ensure it's not treated as scrollable during animation
+
+        char_width = 6
+        right_margin = 126  # 128 screen width - 2px padding
 
         for i in range(1, len(text) + 1):
             label_obj.text = text[:i]
+            
+            if direction == "right":
+                # Pin the 'cursor' to the right edge and push the text leftwards
+                label_obj.x = right_margin - (i * char_width)
+            else:
+                label_obj.x = scroll_base_x
+                
             await asyncio.sleep(delay)
 
+        # --- SEAMLESS TRANSITION ---
+        # If it typed from the right, the text might be floating in the middle of the screen.
+        # We rapidly slide it left to its final base_x position so it doesn't abruptly teleport.
+        if direction == "right":
+            while label_obj.x > scroll_base_x:
+                label_obj.x = max(scroll_base_x, label_obj.x - 6)
+                await asyncio.sleep(0.015)
+
+        # Let the universal update take over for final state/scrolling
         self.update(label_obj, text, scroll=scroll, base_x=scroll_base_x)
 
     async def animate_blink(self, label_obj, text, scroll=False, scroll_base_x=5,

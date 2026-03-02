@@ -195,7 +195,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                             if HardwareMocks.get("CORE", "encoder_btn"):
                                 JEBLogger.emulator("INPT", f"Encoder Button {'Pressed' if is_pressed else 'Released'}")
                                 HardwareMocks.get("CORE", "encoder_btn").events.queue.append(
-                                    MockKeypadEvent(key_number=0, pressed=is_pressed, released=not is_pressed)
+                                    MockKeypadEvent(key_number=0, pressed=is_pressed)
                                 )
 
                         # ==================================================
@@ -228,7 +228,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                                         key_idx = r * 3 + c
                                         JEBLogger.emulator("INPT", f"Keypad Button {key_idx} {'Pressed' if is_pressed else 'Released'}")
                                         sat_keypad.events.queue.append(
-                                            MockKeypadEvent(key_number=key_idx, pressed=is_pressed, released=not is_pressed)
+                                            MockKeypadEvent(key_number=key_idx, pressed=is_pressed)
                                         )
 
                         # --- QUADRANT 3 (Bottom Left): Specials, Momentary, Big Button ---
@@ -283,7 +283,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                             if sat_encoder_btn:
                                 JEBLogger.emulator("INPT", f"Rotary Encoder Button {'Pressed' if is_pressed else 'Released'}")
                                 sat_encoder_btn.events.queue.append(
-                                    MockKeypadEvent(key_number=0, pressed=is_pressed, released=not is_pressed)
+                                    MockKeypadEvent(key_number=0, pressed=is_pressed)
                                 )
 
                 # --- MOUSE WHEEL (Interactive Encoder) ---
@@ -309,7 +309,7 @@ async def run_hardware_spy_loop(core, satellite, screen):
                     # Encoder Push
                     if event.key == pygame.K_RETURN and HardwareMocks.get("CORE", "encoder_btn"):
                         HardwareMocks.get("CORE", "encoder_btn").events.queue.append(
-                            MockKeypadEvent(key_number=0, pressed=is_pressed, released=not is_pressed)
+                            MockKeypadEvent(key_number=0, pressed=is_pressed)
                         )
                     # Main Buttons
                     key_map = {pygame.K_q: 0, pygame.K_w: 1, pygame.K_e: 2, pygame.K_r: 3}
