@@ -63,6 +63,7 @@ class BaseMode:
 
     async def execute(self):
         """The wrapper called by JEBManager."""
+        monitor_task = None
         try:
             await self.enter()
             run_task = asyncio.create_task(self.run())
@@ -74,11 +75,13 @@ class BaseMode:
             except asyncio.CancelledError:
                 # Handle _monitor_exit cancelling the run task
                 result = "EXIT"
-            finally:
-                # Ensure the monitor task is also cancelled
-                await self.exit()
-                if self.exitable:
-                    monitor_task.cancel()
             return result
         finally:
+            # Cancel the monitor task and await it to ensure proper cleanup
+            if monitor_task is not None and not monitor_task.done():
+                monitor_task.cancel()
+                try:
+                    await monitor_task
+                except asyncio.CancelledError:
+                    pass
             await self.exit()
