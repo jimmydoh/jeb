@@ -385,6 +385,16 @@ MODE_REGISTRY = {
         "requires": ["CORE"],
         "settings": []
     },
+    "PLASMA": {
+        "id": "PLASMA",
+        "name": "PLASMA",
+        "module_path": "modes.plasma",
+        "class_name": "PlasmaMode",
+        "icon": "PLASMA",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
     "FALLING_SAND": {
         "id": "FALLING_SAND",
         "name": "FALLING SAND",
