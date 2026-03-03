@@ -523,6 +523,27 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # Wireworld: copper loop (21=ORANGE) with electron head (61=BLUE) and
+    # electron tail (51=CYAN) on a black background.  Mirrors Pattern 1.
+    WIREWORLD = bytes([
+          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+          0, 51, 61, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21,  0,
+          0, 21,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 21,  0,
+          0, 21,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 21,  0,
+          0, 21,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 21,  0,
+          0, 21,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 21,  0,
+          0, 21,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 21,  0,
+          0, 21,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 21,  0,
+          0, 21,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 21,  0,
+          0, 21,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 21,  0,
+          0, 21,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 21,  0,
+          0, 21,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 21,  0,
+          0, 21,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 21,  0,
+          0, 21,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 21,  0,
+          0, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21,  0,
+          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
     # Orbital Strike: tactical fire-control reticle
     # Dark background (0), red target dot (11), green crosshair arms (41),
     # hollow centre (0), cyan outer ring marks (51), orange corner brackets (21).
@@ -644,6 +665,7 @@ class Icons:
         "LISSAJOUS": LISSAJOUS,
         "BOIDS": BOIDS,
         "FALLING_SAND": FALLING_SAND,
+        "WIREWORLD": WIREWORLD,
         "IRON_CANOPY": IRON_CANOPY,
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,
