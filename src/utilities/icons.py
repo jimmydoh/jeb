@@ -615,6 +615,28 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # Starfield / Warp Core – stars radiating from a bright centre point.
+    # Black background (0), dim distant stars (1=CHARCOAL), medium stars
+    # (3=SILVER), and bright close stars / warp-core centre (4=WHITE).
+    STARFIELD = bytes([
+         0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  3,  0,  0,  0,  0,  3,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  1,  0,  0,  0,  0,  0,  3,  3,  0,  0,  0,  0,  0,  1,  0,
+         0,  0,  0,  0,  0,  0,  3,  4,  4,  3,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  3,  4,  4,  3,  0,  0,  0,  0,  0,  0,
+         0,  1,  0,  0,  0,  0,  0,  3,  3,  0,  0,  0,  0,  0,  1,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  3,  0,  0,  0,  0,  3,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -644,6 +666,7 @@ class Icons:
         "LISSAJOUS": LISSAJOUS,
         "BOIDS": BOIDS,
         "FALLING_SAND": FALLING_SAND,
+        "STARFIELD": STARFIELD,
         "IRON_CANOPY": IRON_CANOPY,
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,
