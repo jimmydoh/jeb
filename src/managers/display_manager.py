@@ -239,6 +239,15 @@ class DisplayManager:
 
     # ===== STANDARD LAYOUT UPDATE METHODS =====
 
+    def clear(self):
+        """Clear all text from the standard layout zones."""
+        self.update(self.header_label, "", scroll=False)
+        self.update(self.status, "", scroll=False)
+        self.update(self.sub_status, "", scroll=False)
+        self.update(self.footer_label, "", scroll=False)
+        self.use_standard_layout()
+        self.set_custom_content(None)  # Clear any custom content
+
     def update_header(self, text, **kwargs):
         """Update the header zone text (system stats, mode indicator).
 
@@ -285,8 +294,8 @@ class DisplayManager:
         label_id = id(label_obj)
         if label_id not in self._scrolling_labels:
             self._scrolling_labels[label_id] = {
-                "label": label_obj, 
-                "base_x": base_x, 
+                "label": label_obj,
+                "base_x": base_x,
                 "width": len(label_obj.text) * 6
             }
         else:
@@ -329,7 +338,7 @@ class DisplayManager:
 
         label_id = id(label_obj)
         s = self._scrolling_labels[label_id]
-        
+
         if s["width"] > 128:
             s["label"].x = s["base_x"] + self._scroll_offset
         else:
@@ -413,7 +422,7 @@ class DisplayManager:
             label_obj: The label to animate (e.g., self.status or self.sub_status).
             text:       The new text to display.
             delay:      Seconds between each character (default 0.05 s).
-            direction:  "left" (default) types normally. 
+            direction:  "left" (default) types normally.
                         "right" types from the right edge, pushing text left (telegraph style).
         """
         # Start from blank so the typing animation is visible.
@@ -425,13 +434,13 @@ class DisplayManager:
 
         for i in range(1, len(text) + 1):
             label_obj.text = text[:i]
-            
+
             if direction == "right":
                 # Pin the 'cursor' to the right edge and push the text leftwards
                 label_obj.x = right_margin - (i * char_width)
             else:
                 label_obj.x = scroll_base_x
-                
+
             await asyncio.sleep(delay)
 
         # --- SEAMLESS TRANSITION ---

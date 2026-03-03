@@ -44,11 +44,11 @@ class JEBris(GameMode):
         # Get matrix dimensions from hardware
         self.matrix_width = self.core.matrix.width
         self.matrix_height = self.core.matrix.height
-        
+
         # Playfield is 10 columns wide (left side), rest is for next piece preview
         self.playfield_width = 10
         self.playfield_height = self.matrix_height  # Use full height
-        
+
         # Preview area on the right side
         self.preview_x_offset = self.playfield_width + 1  # Leave 1 column gap
 
@@ -83,7 +83,7 @@ class JEBris(GameMode):
         self.piece_x = 0
         self.piece_y = 0
         self.piece_color = Palette.OFF
-        
+
         # Next Piece Preview
         self.next_piece = None
         self.next_piece_color = Palette.OFF
@@ -106,17 +106,16 @@ class JEBris(GameMode):
 
     async def run(self):
         """Main Game Loop"""
-        print(f"Starting {self.name}")
-        self.reset_game()
+        await self.reset_game()
 
         last_tick = ticks_ms()
 
         if self.music_on:
-            #self.core.synth.start_chiptune_sequencer({
-            #    'melody': tones.TETRIS_THEME,
-            #    'bass': tones.TETRIS_BASS,
-            #    'noise': tones.TETRIS_NOISE,
-            #})
+            self.core.synth.start_chiptune_sequencer({
+                'melody': tones.TETRIS_THEME,
+                'bass': tones.TETRIS_BASS,
+                'noise': tones.TETRIS_NOISE,
+            })
             pass
 
         while True:
@@ -165,11 +164,12 @@ class JEBris(GameMode):
             # Yield control for async background tasks (like HID updates)
             await asyncio.sleep(0.01)  # Reduced from 0.05 for more responsive gameplay
 
-    def reset_game(self):
+    async def reset_game(self):
         """Resets the game state."""
         self.grid = [[Palette.OFF for _ in range(self.playfield_width)] for _ in range(self.playfield_height)]
         self.score = 0
         self.is_game_over = False
+        await self.core.clean_slate()  # Clear any existing state
         self.spawn_piece()
 
     def spawn_piece(self):
@@ -182,7 +182,7 @@ class JEBris(GameMode):
             shape_idx = int(random.randrange(len(self.shapes)))
             self.current_piece = self.shapes[shape_idx]
             self.piece_color = self.colors[shape_idx]
-        
+
         # Generate next piece for preview
         next_shape_idx = int(random.randrange(len(self.shapes)))
         self.next_piece = self.shapes[next_shape_idx]
@@ -316,17 +316,17 @@ class JEBris(GameMode):
         # Clear the lines set
         self.lines_to_clear = set()
         self._dirty = True
-    
+
     def draw_next_piece_preview(self):
         """Draws the next piece preview in the right side of the matrix."""
         if not self.next_piece:
             return
-        
+
         # Calculate center position for preview (in the right area)
         # Preview starts at column 11 (playfield_width=10, gap=1)
         preview_center_x = self.preview_x_offset + 2
         preview_center_y = 3  # Near top of screen
-        
+
         # Draw the next piece centered in preview area
         for x, y in self.next_piece:
             px = preview_center_x + x
@@ -359,7 +359,7 @@ class JEBris(GameMode):
                 ny = self.piece_y + y
                 if 0 <= nx < self.playfield_width and 0 <= ny < self.playfield_height:
                     self.core.matrix.draw_pixel(nx, ny, self.piece_color, show=False)
-        
+
         # 4. Draw Next Piece Preview (on right side)
         self.draw_next_piece_preview()
 

@@ -1,44 +1,11 @@
 """Base class for all modes."""
 import asyncio
 
+from utilities.logger import JEBLogger
+
 class BaseMode:
     """
     Base class for all modes.
-
-    All mode subclasses must define a METADATA class attribute that describes
-    the mode's properties and requirements. This metadata is used by the
-    CoreManager for mode registration and by the main menu for displaying
-    available modes and checking hardware requirements.
-
-    METADATA Structure:
-        id (str): Unique identifier for the mode (e.g., "MAIN_MENU", "SIMON")
-        name (str): Human-readable display name shown in the menu
-        icon (str): Icon key from the icon library for visual representation
-        requires (List[str]): Hardware dependencies required to run this mode
-            - "CORE": Always available (built-in hardware)
-            - Other values match satellite types (e.g., "INDUSTRIAL", "AUDIO")
-        settings (List[dict]): Optional configuration settings for the mode
-            Each setting dict must have:
-                - key (str): Internal identifier for the setting
-                - label (str): Short display label
-                - options (List): Available values for the setting
-                - default: Default value (must be in options)
-
-    Example METADATA:
-        METADATA = {
-            "id": "SIMON",
-            "name": "Simon Says",
-            "icon": "GAME",
-            "requires": ["CORE"],
-            "settings": [
-                {
-                    "key": "difficulty",
-                    "label": "DIFF",
-                    "options": ["EASY", "NORMAL", "HARD"],
-                    "default": "NORMAL"
-                }
-            ]
-        }
 
     Access Pattern:
         Modes are registered in CoreManager.modes as:
@@ -50,41 +17,68 @@ class BaseMode:
             requirements = meta["requires"]
     """
 
-    def __init__(self, core, name="MODE", description=""):
+    def __init__(self, core, name="MODE", description="", exitable=True):
         self.core = core
         self.name = name
         self.description = description
         self.variant = "DEFAULT"
+        self.exitable = exitable
 
     async def enter(self):
         """Standard setup routine."""
-        # 1. Hardware Reset
-        self.core.matrix.clear()
-        self.core.audio.stop_all()
-
-        # 2. Input Flush (Prevent accidental clicks carrying over)
-        self.core.hid.flush()
-
-        # 3. UI Setup
+        JEBLogger.info("MODE", f"Entering mode: {self.name}")
+        await self.core.clean_slate()  # Reset state before starting the mode
         self.core.display.update_status(self.name, "LOADING...")
         await asyncio.sleep(0.1)
 
     async def exit(self):
         """Standard cleanup routine."""
-        self.core.matrix.clear()
-        self.core.audio.stop_all()
-        # Reset any temporary state in the manager
+        JEBLogger.info("MODE", f"Exiting mode: {self.name}")
+        await self.core.clean_slate()  # Reset state and cancel tasks
         self.core.current_mode_step = 0
 
     async def run(self):
         """Override this method in subclasses."""
         raise NotImplementedError("Subclasses must implement the run() method.")
 
+    async def _monitor_exit(self, main_task):
+        """
+        Monitors for a global exit command (long press Button 3)
+        to gracefully abort the mode.
+        """
+        try:
+            # Continue checking as long as the main mode task is running
+            while not main_task.done():
+                # Check if Button 3 has been held for 3 seconds
+                if self.core.hid.is_button_pressed(3, long=True, duration=3000):
+                    # Cancel the main running task
+                    main_task.cancel()
+                    break
+
+                # Yield control back to the event loop
+                await asyncio.sleep(0.1)
+        except asyncio.CancelledError:
+            # It's expected that this task gets cancelled when run() finishes normally
+            pass
+
     async def execute(self):
         """The wrapper called by JEBManager."""
         try:
             await self.enter()
-            result = await self.run()
+            run_task = asyncio.create_task(self.run())
+            if self.exitable:
+                monitor_task = asyncio.create_task(self._monitor_exit(run_task))
+            try:
+                # Await the main mode task
+                result = await run_task
+            except asyncio.CancelledError:
+                # Handle _monitor_exit cancelling the run task
+                result = "EXIT"
+            finally:
+                # Ensure the monitor task is also cancelled
+                await self.exit()
+                if self.exitable:
+                    monitor_task.cancel()
             return result
         finally:
             await self.exit()

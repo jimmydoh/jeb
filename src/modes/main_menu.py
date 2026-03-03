@@ -14,7 +14,7 @@ class MainMenu(UtilityMode):
     def __init__(self, core):
         """Initialize Main Menu mode."""
         JEBLogger.info("MENU", "[INIT] MainMenu")
-        super().__init__(core, name="MAIN MENU", description="Select a mode to begin", timeout=10)
+        super().__init__(core, name="MAIN MENU", description="Select a mode to begin", exitable=False, timeout=10)
         self.state = "DASHBOARD"
 
     async def enter(self):
@@ -103,14 +103,21 @@ class MainMenu(UtilityMode):
             sat.send("MODE", "IDLE")
 
         # UI State Variables
-        self._set_state("DASHBOARD")
+        start_state = getattr(self.core, "_menu_return_state", "DASHBOARD")
+        self._set_state(start_state)
+
         focus_mode = "GAME" # "GAME" or "SETTINGS"
 
         # Data Variables
         menu_items = self._build_menu_items()
         admin_items = self._build_menu_items("ADMIN")
         zero_player_items = self._build_menu_items("ZERO_PLAYER")
-        selected_game_idx = 0
+
+        selected_game_idx = getattr(self.core, "_last_menu_idx", 0)
+
+        if menu_items and selected_game_idx >= len(menu_items):
+            selected_game_idx = len(menu_items) - 1
+
         selected_setting_idx = 0
 
         # Satellite topology tracking for hot-plug detection
@@ -130,7 +137,14 @@ class MainMenu(UtilityMode):
         # Turn off all button LEDs
         self.core.leds.off_led(-1)
 
-        last_pos = 0
+        # Configure hardware encoder based on our restored starting state
+        if self.state == "MENU":
+            self.core.hid.reset_encoder(selected_game_idx)
+            self.core.leds.set_led(3, color=Palette.CYAN, anim="BREATH", speed=0.5)
+        else:
+            self.core.hid.reset_encoder(0)
+
+        last_pos = self.core.hid.encoder_position()
 
         while True:
             # =========================================
@@ -140,8 +154,7 @@ class MainMenu(UtilityMode):
             encoder_diff = curr_pos - last_pos
             encoder_pressed = self.core.hid.is_encoder_button_pressed(action="tap")
             btn_d_pressed = self.core.hid.is_button_pressed(3, action="tap")
-            btn_a_long = self.core.hid.is_button_pressed(0, long=True)
-            btn_d_long = self.core.hid.is_button_pressed(3, long=True)
+            btn_a_long = self.core.hid.is_button_pressed(0, long=True, duration=2000)
             btn_b_long = self.core.hid.is_button_pressed(1, long=True, duration=2000)
 
             # --- GLOBAL TIMEOUT CHECK ---
@@ -198,8 +211,9 @@ class MainMenu(UtilityMode):
                     JEBLogger.info("MENU", f"Encoder button pressed in ADMIN: selected_idx={admin_idx}, mode_id={admin_items[admin_idx]}")
                     self.touch()
                     self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+                    self.core._menu_return_state = "ADMIN"
                     self.core.mode = admin_items[admin_idx]
-                    return "SUCCESS"
+                    return "ADMIN_CHOICE"
 
                 if btn_b_long:
                     JEBLogger.info("MENU", "Long press detected on 'B' button in ADMIN, returning to DASHBOARD")
@@ -225,8 +239,9 @@ class MainMenu(UtilityMode):
                     JEBLogger.info("MENU", f"Encoder button pressed in ZERO_PLAYER: selected_idx={zero_player_idx}, mode_id={zero_player_items[zero_player_idx]}")
                     self.touch()
                     self.core.buzzer.play_sequence(tones.MENU_LAUNCH)
+                    self.core._menu_return_state = "ZERO_PLAYER"
                     self.core.mode = zero_player_items[zero_player_idx]
-                    return "SUCCESS"
+                    return "ZERO_CHOICE"
 
                 if btn_b_long:
                     JEBLogger.info("MENU", "Long press detected on 'B' button in ZERO_PLAYER, returning to MENU")
@@ -241,7 +256,7 @@ class MainMenu(UtilityMode):
             # --- MENU STATE ---
             elif self.state == "MENU":
                 # Check for Admin transition
-                if focus_mode == "GAME" and btn_a_long and btn_d_long:
+                if focus_mode == "GAME" and btn_a_long and btn_b_long:
                     JEBLogger.info("MENU", "Admin access granted via long press on 'A' and 'D' buttons")
                     self.touch()
                     self.core.buzzer.play_sequence(tones.SECRET_FOUND)
@@ -299,8 +314,12 @@ class MainMenu(UtilityMode):
                             needs_render = True
                         else:
                             self.core.buzzer.play_sequence(tones.MENU_LAUNCH)
+
+                            self.core._menu_return_state = "MENU"
+                            self.core._last_menu_idx = selected_game_idx
+
                             self.core.mode = mode_id
-                            return "SUCCESS"
+                            return "MENU_CHOICE"
 
                 # Handle SETTINGS Focus Logic
                 elif focus_mode == "SETTINGS":
