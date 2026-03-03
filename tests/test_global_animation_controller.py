@@ -580,6 +580,73 @@ def test_canvas_dimensions_matrix_and_offset_led():
     assert ctrl.canvas_height == 9   # max_y = 8, so height=9
 
 
+# ---------------------------------------------------------------------------
+# _pixel_list flat-list optimization tests
+# ---------------------------------------------------------------------------
+
+def test_pixel_list_length_matches_pixel_map():
+    """_pixel_list has the same number of entries as _pixel_map after registration."""
+    ctrl = GlobalAnimationController()
+    matrix = MatrixManager(MockJEBPixel(64), width=8, height=8)
+    led = LEDManager(MockJEBPixel(8))
+    ctrl.register_matrix(matrix, offset_x=0, offset_y=0)
+    ctrl.register_led_strip(led, offset_x=0, offset_y=8, orientation='horizontal')
+
+    assert len(ctrl._pixel_list) == len(ctrl._pixel_map)
+    assert len(ctrl._pixel_list) == 72
+
+
+def test_pixel_list_entries_consistent_with_pixel_map():
+    """Every entry in _pixel_list matches the corresponding _pixel_map entry."""
+    ctrl = GlobalAnimationController()
+    led = LEDManager(MockJEBPixel(6))
+    ctrl.register_led_strip(led, offset_x=2, offset_y=3, orientation='horizontal')
+
+    for gx, gy, manager, idx in ctrl._pixel_list:
+        assert (gx, gy) in ctrl._pixel_map
+        map_manager, map_idx = ctrl._pixel_map[(gx, gy)]
+        assert manager is map_manager
+        assert idx == map_idx
+
+
+def test_pixel_list_rebuilt_on_each_registration():
+    """_pixel_list is updated each time a new component is registered."""
+    ctrl = GlobalAnimationController()
+    led1 = LEDManager(MockJEBPixel(4))
+    ctrl.register_led_strip(led1, offset_x=0, offset_y=0, orientation='horizontal')
+    assert len(ctrl._pixel_list) == 4
+
+    led2 = LEDManager(MockJEBPixel(4))
+    ctrl.register_led_strip(led2, offset_x=4, offset_y=0, orientation='horizontal')
+    assert len(ctrl._pixel_list) == 8
+
+
+def test_pixel_list_discrete_leds_consistent():
+    """_pixel_list entries for discrete LEDs match _pixel_map entries."""
+    ctrl = GlobalAnimationController()
+    led = LEDManager(MockJEBPixel(4))
+    coords = [(0, 0), (5, 3), (2, 9), (7, 1)]
+    ctrl.register_discrete_leds(led, coords)
+
+    assert len(ctrl._pixel_list) == 4
+    for gx, gy, manager, idx in ctrl._pixel_list:
+        assert (gx, gy) in ctrl._pixel_map
+        map_manager, map_idx = ctrl._pixel_map[(gx, gy)]
+        assert manager is map_manager
+        assert idx == map_idx
+
+
+def test_pixel_count_uses_pixel_list():
+    """pixel_count reflects the length of the flat list."""
+    ctrl = GlobalAnimationController()
+    assert ctrl.pixel_count == 0
+
+    matrix = MatrixManager(MockJEBPixel(64), width=8, height=8)
+    ctrl.register_matrix(matrix, offset_x=0, offset_y=0)
+    assert ctrl.pixel_count == len(ctrl._pixel_list)
+    assert ctrl.pixel_count == 64
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("GlobalAnimationController Test Suite")
@@ -621,6 +688,11 @@ if __name__ == "__main__":
         test_register_discrete_leds_with_matrix_combined,
         test_register_discrete_leds_rainbow_wave,
         test_register_discrete_leds_rain,
+        test_pixel_list_length_matches_pixel_map,
+        test_pixel_list_entries_consistent_with_pixel_map,
+        test_pixel_list_rebuilt_on_each_registration,
+        test_pixel_list_discrete_leds_consistent,
+        test_pixel_count_uses_pixel_list,
     ]
 
     passed = 0
