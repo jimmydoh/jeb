@@ -223,9 +223,9 @@ def test_satellite_network_manager_no_abort_on_link_lost(satellite_network_manag
     assert monitor_method_body, "monitor_satellites method should exist"
     
     # Find the link-lost section (from ticks_diff check through display update)
-    # Captures the entire link-lost handling block
+    # Captures the entire link-lost handling block (timeout value may be a literal or variable)
     link_lost_match = re.search(
-        r'if ticks_diff.*?>.*?5000:.*?self\.display\.update_status\([^)]*LINK[^)]*\)',
+        r'if ticks_diff.*?>.*?\S+.*?:.*?self\.display\.update_status\([^)]*LINK[^)]*\)',
         monitor_method_body,
         re.DOTALL
     )
@@ -509,6 +509,318 @@ def test_main_menu_needs_render_flag(main_menu_content):
 
 
 # ============================================================================
+# TEST 3: HOTPLUG CALLBACK REGISTRATION
+# ============================================================================
+
+def test_register_hotplug_callback_method_exists(satellite_network_manager_content):
+    """Test that register_hotplug_callback method exists in SatelliteNetworkManager."""
+    print("\nTesting register_hotplug_callback method exists...")
+
+    assert 'def register_hotplug_callback(self' in satellite_network_manager_content, \
+        "register_hotplug_callback method should exist in SatelliteNetworkManager"
+
+    print("  ✓ register_hotplug_callback method is present")
+    print("✓ Test passed: Hotplug callback registration method exists")
+
+
+def test_hotplug_callbacks_list_initialized(satellite_network_manager_content):
+    """Test that _hotplug_callbacks is initialized as an empty list in __init__."""
+    print("\nTesting _hotplug_callbacks list initialization...")
+
+    init_method_match = re.search(
+        r'def __init__\(self.*?\n(?=\s*async def|\s*def)',
+        satellite_network_manager_content,
+        re.DOTALL
+    )
+    assert init_method_match, "__init__ method should exist"
+    init_body = init_method_match.group(0)
+
+    assert 'self._hotplug_callbacks = []' in init_body, \
+        "_hotplug_callbacks should be initialized as empty list in __init__"
+
+    print("  ✓ self._hotplug_callbacks = [] present in __init__")
+    print("✓ Test passed: _hotplug_callbacks list initialized")
+
+
+def test_fire_hotplug_event_method_exists(satellite_network_manager_content):
+    """Test that _fire_hotplug_event async method exists."""
+    print("\nTesting _fire_hotplug_event method exists...")
+
+    assert 'async def _fire_hotplug_event(self' in satellite_network_manager_content, \
+        "_fire_hotplug_event async method should exist"
+
+    print("  ✓ async _fire_hotplug_event method is present")
+    print("✓ Test passed: _fire_hotplug_event method exists")
+
+
+def test_fire_hotplug_event_logs_note(satellite_network_manager_content):
+    """Test that _fire_hotplug_event logs at NOTE level."""
+    print("\nTesting _fire_hotplug_event uses NOTE log level...")
+
+    fire_method_body = extract_method(
+        satellite_network_manager_content,
+        '_fire_hotplug_event',
+        is_async=True
+    )
+    assert fire_method_body, "_fire_hotplug_event method should exist"
+
+    assert 'JEBLogger.note' in fire_method_body, \
+        "_fire_hotplug_event should log at NOTE level for visibility"
+
+    assert '[HOTPLUG]' in fire_method_body, \
+        "_fire_hotplug_event log message should contain '[HOTPLUG]' tag"
+
+    print("  ✓ JEBLogger.note used in _fire_hotplug_event")
+    print("  ✓ [HOTPLUG] tag present in log message")
+    print("✓ Test passed: _fire_hotplug_event logs NOTE with [HOTPLUG] tag")
+
+
+def test_fire_hotplug_event_invokes_callbacks(satellite_network_manager_content):
+    """Test that _fire_hotplug_event iterates and invokes registered callbacks."""
+    print("\nTesting _fire_hotplug_event invokes callbacks...")
+
+    fire_method_body = extract_method(
+        satellite_network_manager_content,
+        '_fire_hotplug_event',
+        is_async=True
+    )
+    assert fire_method_body, "_fire_hotplug_event method should exist"
+
+    assert '_hotplug_callbacks' in fire_method_body, \
+        "_fire_hotplug_event should iterate self._hotplug_callbacks"
+
+    assert 'for cb in self._hotplug_callbacks' in fire_method_body, \
+        "_fire_hotplug_event should loop over _hotplug_callbacks"
+
+    print("  ✓ _fire_hotplug_event loops over _hotplug_callbacks")
+    print("✓ Test passed: Callbacks are iterated and invoked")
+
+
+def test_hotplug_event_fired_on_new_satellite(satellite_network_manager_content):
+    """Test that _fire_hotplug_event is called when a new satellite sends HELLO."""
+    print("\nTesting hotplug event fired on new satellite HELLO...")
+
+    hello_method_body = extract_method(
+        satellite_network_manager_content,
+        '_handle_hello_command',
+        is_async=True
+    )
+    assert hello_method_body, "_handle_hello_command method should exist"
+
+    assert '_fire_hotplug_event' in hello_method_body, \
+        "_handle_hello_command should call _fire_hotplug_event for new satellites"
+
+    assert '"connected"' in hello_method_body or "'connected'" in hello_method_body, \
+        "_handle_hello_command should fire 'connected' event"
+
+    print("  ✓ _fire_hotplug_event called in _handle_hello_command")
+    print("  ✓ 'connected' event string present")
+    print("✓ Test passed: Hotplug connected event fired on new satellite")
+
+
+def test_hotplug_event_fired_on_link_lost(satellite_network_manager_content):
+    """Test that _fire_hotplug_event is called in the link-lost block."""
+    print("\nTesting hotplug event fired on link lost...")
+
+    monitor_method_body = extract_method(
+        satellite_network_manager_content,
+        'monitor_satellites',
+        is_async=True
+    )
+    assert monitor_method_body, "monitor_satellites method should exist"
+
+    # Find the link-lost section
+    link_lost_match = re.search(
+        r'if ticks_diff.*?>.*?:.*?_fire_hotplug_event',
+        monitor_method_body,
+        re.DOTALL
+    )
+    assert link_lost_match, \
+        "monitor_satellites link-lost block should call _fire_hotplug_event"
+
+    assert '"disconnected"' in monitor_method_body or "'disconnected'" in monitor_method_body, \
+        "monitor_satellites should fire 'disconnected' event on link lost"
+
+    print("  ✓ _fire_hotplug_event called in link-lost block")
+    print("  ✓ 'disconnected' event string present")
+    print("✓ Test passed: Hotplug disconnected event fired on link lost")
+
+
+def test_hotplug_event_fired_on_link_restored(satellite_network_manager_content):
+    """Test that _fire_hotplug_event is called in the link-restored block."""
+    print("\nTesting hotplug event fired on link restored...")
+
+    monitor_method_body = extract_method(
+        satellite_network_manager_content,
+        'monitor_satellites',
+        is_async=True
+    )
+    assert monitor_method_body, "monitor_satellites method should exist"
+
+    # Find the link-restored section (was_offline → False)
+    link_restored_match = re.search(
+        r'if sat\.was_offline:.*?_fire_hotplug_event',
+        monitor_method_body,
+        re.DOTALL
+    )
+    assert link_restored_match, \
+        "monitor_satellites link-restored block should call _fire_hotplug_event"
+
+    print("  ✓ _fire_hotplug_event called in link-restored block")
+    print("✓ Test passed: Hotplug connected event fired on link restored")
+
+
+# ============================================================================
+# TEST 4: CONFIGURABLE WATCHDOG TIMEOUT
+# ============================================================================
+
+def test_watchdog_timeout_configurable(satellite_network_manager_content):
+    """Test that watchdog timeout is configurable via config, not hardcoded."""
+    print("\nTesting watchdog timeout is configurable...")
+
+    init_method_match = re.search(
+        r'def __init__\(self.*?\n(?=\s*async def|\s*def)',
+        satellite_network_manager_content,
+        re.DOTALL
+    )
+    assert init_method_match, "__init__ method should exist"
+    init_body = init_method_match.group(0)
+
+    assert '_watchdog_timeout_ms' in init_body, \
+        "_watchdog_timeout_ms should be set in __init__"
+
+    assert 'watchdog_timeout_ms' in init_body, \
+        "watchdog_timeout_ms config key should be read in __init__"
+
+    print("  ✓ _watchdog_timeout_ms attribute initialized from config")
+
+    monitor_method_body = extract_method(
+        satellite_network_manager_content,
+        'monitor_satellites',
+        is_async=True
+    )
+    assert monitor_method_body, "monitor_satellites method should exist"
+
+    assert 'self._watchdog_timeout_ms' in monitor_method_body, \
+        "monitor_satellites should use self._watchdog_timeout_ms for timeout check"
+
+    print("  ✓ monitor_satellites uses self._watchdog_timeout_ms (not hardcoded)")
+    print("✓ Test passed: Watchdog timeout is configurable")
+
+
+def test_watchdog_default_timeout(satellite_network_manager_content):
+    """Test that watchdog default timeout is 5000ms for backward compatibility."""
+    print("\nTesting watchdog default timeout is 5000ms...")
+
+    init_method_match = re.search(
+        r'def __init__\(self.*?\n(?=\s*async def|\s*def)',
+        satellite_network_manager_content,
+        re.DOTALL
+    )
+    assert init_method_match, "__init__ method should exist"
+    init_body = init_method_match.group(0)
+
+    # Default value of 5000 should be present
+    assert '5000' in init_body, \
+        "Default watchdog timeout should be 5000ms for backward compatibility"
+
+    print("  ✓ Default watchdog timeout of 5000ms preserved")
+    print("✓ Test passed: Default watchdog timeout is 5000ms")
+
+
+# ============================================================================
+# TEST 5: SETOFF RE-SENT ON RECONNECT
+# ============================================================================
+
+def test_setoff_resent_on_link_restored(satellite_network_manager_content):
+    """Test that SETOFF command is re-sent when a satellite link is restored."""
+    print("\nTesting SETOFF re-sent on link restoration...")
+
+    monitor_method_body = extract_method(
+        satellite_network_manager_content,
+        'monitor_satellites',
+        is_async=True
+    )
+    assert monitor_method_body, "monitor_satellites method should exist"
+
+    # Find the link-restored section (was_offline block → through to _fire_hotplug_event)
+    link_restored_match = re.search(
+        r'if sat\.was_offline:.*?_fire_hotplug_event',
+        monitor_method_body,
+        re.DOTALL
+    )
+    assert link_restored_match, "Link-restored logic should exist in monitor_satellites"
+    link_restored_section = link_restored_match.group(0)
+
+    assert 'CMD_SET_OFFSET' in link_restored_section or '_satellite_offsets' in link_restored_section, \
+        "Link-restored section should re-send SETOFF using satellite offsets"
+
+    print("  ✓ SETOFF offset command is re-sent in link-restored block")
+    print("✓ Test passed: SETOFF re-sent on satellite link restoration")
+
+
+def test_setoff_resent_on_hello_reconnect(satellite_network_manager_content):
+    """Test that SETOFF is re-sent when an offline satellite sends HELLO."""
+    print("\nTesting SETOFF re-sent when offline satellite sends HELLO...")
+
+    hello_method_body = extract_method(
+        satellite_network_manager_content,
+        '_handle_hello_command',
+        is_async=True
+    )
+    assert hello_method_body, "_handle_hello_command method should exist"
+
+    # The reconnect path (sid already in satellites, was_inactive) should re-send SETOFF
+    reconnect_match = re.search(
+        r'was_inactive.*?CMD_SET_OFFSET',
+        hello_method_body,
+        re.DOTALL
+    )
+    assert reconnect_match, \
+        "_handle_hello_command should re-send CMD_SET_OFFSET when was_inactive is True"
+
+    print("  ✓ SETOFF re-sent in _handle_hello_command for reconnecting satellites")
+    print("✓ Test passed: SETOFF re-sent when offline satellite sends HELLO")
+
+
+# ============================================================================
+# TEST 6: HOTPLUG LOG PATH CONFIG
+# ============================================================================
+
+def test_hotplug_log_path_configurable(satellite_network_manager_content):
+    """Test that a dedicated hotplug log path can be configured."""
+    print("\nTesting hotplug_log_path config support...")
+
+    init_method_match = re.search(
+        r'def __init__\(self.*?\n(?=\s*async def|\s*def)',
+        satellite_network_manager_content,
+        re.DOTALL
+    )
+    assert init_method_match, "__init__ method should exist"
+    init_body = init_method_match.group(0)
+
+    assert '_hotplug_log_path' in init_body, \
+        "_hotplug_log_path should be initialized from config"
+
+    assert 'hotplug_log_path' in init_body, \
+        "hotplug_log_path config key should be read in __init__"
+
+    fire_method_body = extract_method(
+        satellite_network_manager_content,
+        '_fire_hotplug_event',
+        is_async=True
+    )
+    assert fire_method_body, "_fire_hotplug_event should exist"
+
+    assert '_hotplug_log_path' in fire_method_body, \
+        "_fire_hotplug_event should use _hotplug_log_path for dedicated file logging"
+
+    print("  ✓ _hotplug_log_path config key supported")
+    print("  ✓ _fire_hotplug_event uses _hotplug_log_path for file logging")
+    print("✓ Test passed: Dedicated hotplug log path is configurable")
+
+
+# ============================================================================
 # MAIN RUNNER
 # ============================================================================
 
@@ -518,15 +830,15 @@ if __name__ == "__main__":
     print("=" * 70)
     print("\nValidating that satellite topology changes no longer abort modes")
     print("and that main menu detects topology changes in real-time.\n")
-    
+
     # Run tests with pytest when executed as a script
     result = pytest.main([__file__, "-v", "--tb=short"])
-    
+
     print("\n" + "=" * 70)
     if result == 0:
         print("✓ ALL TESTS PASSED")
     else:
         print("✗ SOME TESTS FAILED")
     print("=" * 70)
-    
+
     sys.exit(result)

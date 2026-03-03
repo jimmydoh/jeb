@@ -80,6 +80,18 @@ class SatelliteNetworkManager:
         # Callback invoked when a satellite sends CMD_MODE ACTIVE (remote wake)
         self._wake_callback = None
 
+        # Hotplug event callbacks: list of callables invoked with (sid, event)
+        # where event is "connected" or "disconnected".
+        self._hotplug_callbacks = []
+
+        # Watchdog timeout in milliseconds (configurable via config["watchdog_timeout_ms"])
+        self._watchdog_timeout_ms = int(_cfg.get("watchdog_timeout_ms", 5000))
+
+        # Optional path for a dedicated hotplug event log file.
+        # When set, connect/disconnect events are always written here regardless
+        # of the global JEBLogger.WRITE_TO_FILE setting.
+        self._hotplug_log_path = _cfg.get("hotplug_log_path", None)
+
         # System command handlers (can be extended for common commands across satellites)
         self._system_handlers = {
             "STATUS": self._handle_status_command,
@@ -137,6 +149,41 @@ class SatelliteNetworkManager:
             callback: An async callable (coroutine function) to call on remote wake.
         """
         self._wake_callback = callback
+
+    def register_hotplug_callback(self, callback):
+        """Register a callback invoked on satellite connect/disconnect events.
+
+        The callback is called with two positional arguments:
+            sid (str): The satellite ID involved in the event.
+            event (str): ``"connected"`` when a satellite joins the network,
+                ``"disconnected"`` when a satellite is detected as offline.
+
+        The callback may be a regular function or an async coroutine function.
+
+        Args:
+            callback: Callable (sync or async) accepting ``(sid, event)`` args.
+        """
+        self._hotplug_callbacks.append(callback)
+
+    async def _fire_hotplug_event(self, sid, event):
+        """Invoke registered hotplug callbacks and write a persistent log entry.
+
+        Args:
+            sid (str): Satellite ID involved in the event.
+            event (str): ``"connected"`` or ``"disconnected"``.
+        """
+        msg = f"[HOTPLUG] {event.upper()} sat={sid}"
+        JEBLogger.note("NETM", msg)
+        if self._hotplug_log_path:
+            JEBLogger.note("NETM", msg, file=self._hotplug_log_path)
+        for cb in self._hotplug_callbacks:
+            try:
+                result = cb(sid, event)
+                # Support both sync and async callbacks
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as e:
+                JEBLogger.error("NETM", f"Hotplug callback error: {e}")
 
     def _spawn_status_task(self, coro_func, *args, **kwargs):
         """Spawn a status update task with throttling to prevent unbounded task creation.
@@ -301,7 +348,24 @@ class SatelliteNetworkManager:
         which indicates a new satellite has come online and is announcing itself.
         """
         if sid in self.satellites:
-            self.satellites[sid].update_heartbeat()
+            sat = self.satellites[sid]
+            was_inactive = not sat.is_active
+            sat.update_heartbeat()
+
+            # Re-send spatial offset when a previously offline satellite reconnects
+            # so it can re-register its LEDs on the global animation canvas.
+            if was_inactive:
+                offset = self._satellite_offsets.get(sid)
+                if offset is not None:
+                    offset_x = int(offset.get("offset_x", 0))
+                    offset_y = int(offset.get("offset_y", 0))
+                    self.transport.send(
+                        Message("CORE", sid, CMD_SET_OFFSET, [offset_x, offset_y])
+                    )
+                    JEBLogger.info(
+                        "NETM",
+                        f"Re-sent SETOFF ({offset_x},{offset_y}) to reconnected {sid}."
+                    )
         else:
             # Identify type from the first 2 characters of the SID (e.g., "0100" -> "01" type)
             sat_type_id = sid[:2]
@@ -328,6 +392,8 @@ class SatelliteNetworkManager:
                     "NETM",
                     f"Sent SETOFF ({offset_x},{offset_y}) to {sid}."
                 )
+
+            await self._fire_hotplug_event(sid, "connected")
 
     async def _handle_new_sat_command(self, sid, val):
         """
@@ -580,8 +646,24 @@ class SatelliteNetworkManager:
                         )
                         sat.was_offline = False
 
-                    if ticks_diff(now, sat.last_seen) > 5000:
-                        # Satellite has not been seen for over 5 seconds, mark as offline
+                        # Re-send spatial offset so the satellite can re-register its
+                        # LEDs on the global animation canvas after reconnection.
+                        offset = self._satellite_offsets.get(sid)
+                        if offset is not None:
+                            offset_x = int(offset.get("offset_x", 0))
+                            offset_y = int(offset.get("offset_y", 0))
+                            self.transport.send(
+                                Message("CORE", sid, CMD_SET_OFFSET, [offset_x, offset_y])
+                            )
+                            JEBLogger.info(
+                                "NETM",
+                                f"Re-sent SETOFF ({offset_x},{offset_y}) to restored {sid}."
+                            )
+
+                        await self._fire_hotplug_event(sid, "connected")
+
+                    if ticks_diff(now, sat.last_seen) > self._watchdog_timeout_ms:
+                        # Satellite has not been seen for over the watchdog timeout, mark as offline
                         JEBLogger.warning("NETM", f"Link lost with {sid}. Marking as offline.")
                         sat.is_active = False
                         sat.was_offline = True
@@ -592,5 +674,7 @@ class SatelliteNetworkManager:
                             "link_lost.wav",
                             bus_id=self.audio.CH_SFX
                         )
+
+                        await self._fire_hotplug_event(sid, "disconnected")
 
             await asyncio.sleep(0.5)
