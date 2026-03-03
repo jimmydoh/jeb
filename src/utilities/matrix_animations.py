@@ -16,6 +16,8 @@ added to this module rather than as methods in MatrixManager. This promotes:
 import asyncio
 import math
 from utilities.palette import Palette
+from adafruit_ticks import ticks_ms, ticks_diff
+
 
 
 async def animate_slide(matrix_manager, icon_data, direction, color=None, brightness=1.0):
@@ -64,20 +66,20 @@ async def animate_slide(matrix_manager, icon_data, direction, color=None, bright
         # The end parameter in range() is exclusive, so we add the step to include end_x
         for current_x in range(start_x, end_x + step, step):
             matrix_manager.fill(Palette.OFF, show=False)
-            
+
             for y in range(icon_dim):
                 for x in range(icon_dim):
                     target_x = x + current_x
                     target_y = y + y_offset_center
-                    
+
                     if 0 <= target_x < matrix_manager.width and 0 <= target_y < matrix_manager.height:
                         pixel_value = icon_data[y * icon_dim + x]
                         if pixel_value != 0:
                             base = color if color else matrix_manager.palette.get(pixel_value, (255, 255, 255))
                             matrix_manager.draw_pixel(target_x, target_y, base, brightness=brightness)
-            
+
             await asyncio.sleep(0.01)
-            
+
     except asyncio.CancelledError:
         # Task was cancelled - clean up and exit gracefully
         raise
@@ -258,7 +260,7 @@ def animate_radar_sweep(matrix_manager, sweep_angle, bogeys=None, interceptors=N
         print(f"Error in RADAR_SWEEP animation: {e}")
 
 
-async def animate_sprite_sheet(matrix_manager, icon_data, fps=8, loop=True, color=None, brightness=1.0):
+async def animate_sprite_sheet(matrix_manager, icon_data, timing_data=(1000,), loop=True, color=None, brightness=1.0):
     """
     Plays a multi-frame sprite animation from a 1D sprite-sheet bytearray.
 
@@ -279,11 +281,12 @@ async def animate_sprite_sheet(matrix_manager, icon_data, fps=8, loop=True, colo
         matrix_manager: MatrixManager instance (needs draw_pixel, fill, palette,
                         width, height).
         icon_data: bytes or bytearray containing all animation frames concatenated.
-        fps: Target playback rate in frames per second (default 8).
+        timing_data: Tuple of frame durations in milliseconds or a
+                        single duration for all frames.
         loop: When True (default) the animation repeats indefinitely; when False
               it plays once and exits.
-        color: Optional RGB tuple to override palette colours for all pixels.
-        brightness: Brightness multiplier 0.0-1.0 (default 1.0).
+        color: Optional RGB tuple to override palette colors. If None, uses palette.
+        brightness: Float from 0.0 to 1.0 for brightness adjustment.
 
     Raises:
         asyncio.CancelledError: propagated to the caller for clean task teardown.
@@ -296,31 +299,39 @@ async def animate_sprite_sheet(matrix_manager, icon_data, fps=8, loop=True, colo
     if frame_count < 1:
         return
 
-    frame_delay = 1.0 / max(fps, 1)
-
     try:
         frame_idx = 0
+        last_frame_time = ticks_ms()
+        dirty = True  # Force initial frame render
         while True:
-            start = frame_idx * frame_size
-            frame = icon_data[start : start + frame_size]
+            now = ticks_ms()
 
-            matrix_manager.fill(Palette.OFF, show=False)
-            for y in range(matrix_manager.height):
-                row_base = y * matrix_manager.width
-                for x in range(matrix_manager.width):
-                    pixel_value = frame[row_base + x]
-                    if pixel_value != 0:
-                        base = color if color else matrix_manager.palette.get(pixel_value, (255, 255, 255))
-                        matrix_manager.draw_pixel(x, y, base, brightness=brightness)
+            # 1. Determine how long the current frame should stay on screen
+            if isinstance(timing_data, tuple):
+                # Use the specific duration for this frame (safely modulo the length just in case)
+                current_duration = timing_data[frame_idx % len(timing_data)]
+            else:
+                # If timing_data is a single number, use it as a fixed frame delay
+                current_duration = timing_data
 
-            await asyncio.sleep(frame_delay)
+            # 2. Check if it's time to advance to the next frame
+            if ticks_diff(now, last_frame_time) >= current_duration:
+                dirty = True
+                last_frame_time = now
+                frame_idx += 1
+                if frame_idx >= frame_count:
+                    if loop:
+                        frame_idx = 0
+                    else:
+                        break
 
-            frame_idx += 1
-            if frame_idx >= frame_count:
-                if loop:
-                    frame_idx = 0
-                else:
-                    break
+            if dirty:
+                start = frame_idx * frame_size
+                frame = icon_data[start : start + frame_size]
+                matrix_manager.show_frame(frame, clear=True, color=color, brightness=brightness)
+                dirty = False
+
+            await asyncio.sleep(0.01)  # Small sleep to yield control and allow cancellation
 
     except asyncio.CancelledError:
         raise

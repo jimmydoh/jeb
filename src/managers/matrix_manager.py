@@ -283,25 +283,27 @@ class MatrixManager(BasePixelManager):
         if clear:
             self.clear()
 
+        # Handle ANIMATED (sprite sheet) - Spawn as background task
+        if anim_mode == "ANIMATED":
+            icon_data, timing_data = Icons.get_anim(icon_name)
+            task = asyncio.create_task(
+                matrix_animations.animate_sprite_sheet(self, icon_data, timing_data=timing_data, loop=True, color=color, brightness=brightness)
+            )
+            self._bg_tasks.append(task)  # Track the task for potential cancellation
+            return
+
         icon_data = Icons.get(icon_name)
 
         # Handle SLIDE_LEFT Animation - Spawn as background task
         if anim_mode == "SLIDE_LEFT":
-            asyncio.create_task(matrix_animations.animate_slide_left(self, icon_data, color, brightness))
+            task = asyncio.create_task(matrix_animations.animate_slide_left(self, icon_data, color, brightness))
+            self._bg_tasks.append(task)  # Track the task for potential cancellation
             return
 
         # Handle SLIDE_RIGHT Animation - Spawn as background task
         if anim_mode == "SLIDE_RIGHT":
-            asyncio.create_task(matrix_animations.animate_slide_right(self, icon_data, color, brightness))
-            return
-
-        # Handle ANIMATED (sprite sheet) - Spawn as background task
-        if anim_mode == "ANIMATED":
-            # Use speed as FPS; fall back to 8 FPS (matches animate_sprite_sheet default)
-            fps = speed if speed > 1.0 else 8
-            asyncio.create_task(
-                matrix_animations.animate_sprite_sheet(self, icon_data, fps=fps, loop=True, color=color, brightness=brightness)
-            )
+            task = asyncio.create_task(matrix_animations.animate_slide_right(self, icon_data, color, brightness))
+            self._bg_tasks.append(task)  # Track the task for potential cancellation
             return
 
         data_len = len(icon_data)
@@ -368,7 +370,7 @@ class MatrixManager(BasePixelManager):
                         else:
                             self.draw_pixel(bx1, by, border_color, brightness=brightness)
 
-    def show_frame(self, frame, clear=True):
+    def show_frame(self, frame, clear=True, color=None, brightness=1.0):
         """Renders a palette-encoded frame buffer directly to the matrix.
 
         Uses the same palette-index encoding as show_icon: each byte is
@@ -389,7 +391,8 @@ class MatrixManager(BasePixelManager):
                 if idx < len(frame):
                     pixel_value = frame[idx]
                     if pixel_value != 0:
-                        self.draw_pixel(x, y, self.palette[pixel_value])
+                        base = color if color else self.palette[pixel_value]
+                        self.draw_pixel(x, y, base, brightness=brightness)
 
     # TODO Refactor progress grid to use animations
     def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):
