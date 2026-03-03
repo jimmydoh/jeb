@@ -140,8 +140,7 @@ class MainMenu(UtilityMode):
             encoder_diff = curr_pos - last_pos
             encoder_pressed = self.core.hid.is_encoder_button_pressed(action="tap")
             btn_d_pressed = self.core.hid.is_button_pressed(3, action="tap")
-            btn_a_long = self.core.hid.is_button_pressed(0, long=True)
-            btn_d_long = self.core.hid.is_button_pressed(3, long=True)
+            btn_a_long = self.core.hid.is_button_pressed(0, long=True, duration=2000)
             btn_b_long = self.core.hid.is_button_pressed(1, long=True, duration=2000)
 
             # --- GLOBAL TIMEOUT CHECK ---
@@ -241,7 +240,7 @@ class MainMenu(UtilityMode):
             # --- MENU STATE ---
             elif self.state == "MENU":
                 # Check for Admin transition
-                if focus_mode == "GAME" and btn_a_long and btn_d_long:
+                if focus_mode == "GAME" and btn_a_long and btn_b_long:
                     JEBLogger.info("MENU", "Admin access granted via long press on 'A' and 'D' buttons")
                     self.touch()
                     self.core.buzzer.play_sequence(tones.SECRET_FOUND)

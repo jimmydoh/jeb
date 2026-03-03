@@ -370,12 +370,33 @@ class CoreManager:
         """Access last debug message from SatelliteNetworkManager."""
         return self.sat_network.last_message_debug
 
+    # --- Task Management ---
     async def cleanup_task(self, task):
         """Gracefully awaits the cancellation of a task."""
         try:
             await task
         except asyncio.CancelledError:
             pass
+
+    async def clean_slate(self):
+        """Reset state before starting a new mode."""
+        # Reset safety events
+        self.estop_event.clear()
+        self.abort_event.clear()
+        self.target_sat_event.clear()
+
+        if self.display:            # Clear OLED
+            self.display.clear()
+        if self.leds:               # Turn off all LEDs
+            self.leds.off_led(-1)
+        if self.matrix:             # Clear LED matrix
+            self.matrix.clear()
+        if self.hid:                # Flush input buffers
+            self.hid.flush()
+        if self.audio:              # Stop all audio
+            self.audio.stop_all()
+        if self.buzzer:             # Stop buzzer
+            asyncio.create_task(self.buzzer.stop())
 
     async def run_mode_with_safety(self, mode_instance, target_sat=None):
         """Execute a task while monitoring for interrupts.
@@ -389,10 +410,6 @@ class CoreManager:
 
         if target_sat:
             target_sat_monitor_task = asyncio.create_task(self.monitor_satellite(target_sat))
-
-        # Clear events before starting
-        self.abort_event.clear()
-        self.target_sat_event.clear()
 
         exit_reason = "UNKNOWN_EXIT"
 
@@ -582,9 +599,7 @@ class CoreManager:
             self.watchdog.check_in("hw_hid")
             changed = self.hid.hw_update()
 
-            if self.hid.is_button_pressed(3, long=True, duration=5000):
-                # Long-press Button D to trigger manual abort
-                self.abort_event.set()
+            # TODO: Do we still need a global abort?
 
             if self._sleeping:
                 if changed:
@@ -730,7 +745,7 @@ class CoreManager:
                 # A blank dummy PIO instruction (jmp 0)
                 dummy_program = array.array("H", [0x0000])
                 allocated_machines = []
-                
+
                 try:
                     # RP2350 has a maximum of 12 state machines
                     for _ in range(12):
@@ -739,16 +754,16 @@ class CoreManager:
                         allocated_machines.append(sm)
                 except (ValueError, RuntimeError):
                     # We hit the limit of available state machines or instruction memory
-                    pass 
-                    
+                    pass
+
                 free_count = len(allocated_machines)
-                
+
                 # Deinitialize to return them cleanly to CircuitPython's pool
                 for sm in allocated_machines:
                     sm.deinit()
-                    
+
                 return free_count
-            
+
             JEBLogger.debug("CORE", f"Free PIO State Machines at startup: {count_free_state_machines()}")
 
 
