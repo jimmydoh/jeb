@@ -569,6 +569,31 @@ class Icons:
         60, 60, 60, 60, 60, 51, 51, 51, 51, 51, 51, 60, 60, 60, 60, 60,
     ])
 
+    # Abyssal Ping – sonar display with submarine silhouette.
+    # Top half (rows 0-7): navy water (60) background with a side-profile
+    # submarine: conning tower (2/GRAY), hull body (3/SILVER outline 2/GRAY).
+    # Bottom half (rows 8-15): black background showing a V-shaped sonar
+    # sweep cone (41/GREEN) expanding from below the hull, outer sonar rings
+    # (51/CYAN), and a detected target ping (11/RED) at the centre-bottom.
+    ABYSSAL_PING = bytes([
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+        60, 60, 60, 60, 60, 60, 60,  2, 60, 60, 60, 60, 60, 60, 60, 60,
+        60, 60, 60, 60, 60, 60,  2,  2,  2, 60, 60, 60, 60, 60, 60, 60,
+        60, 60, 60,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2, 60, 60, 60,
+        60, 60,  2,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  2, 60,
+        60, 60,  2,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  2, 60,
+        60, 60, 60,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2, 60, 60, 60,
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+         0,  0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0, 41,  0, 41,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0, 41,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0, 41,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,
+         0,  0,  0, 51,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0,  0,
+         0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0, 11,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
     # DEFCON Commander – 10-silo missile complex viewed from above
     # Dark background with 10 small silo dots (Yellow) and a key symbol
     DEFCON_COMMANDER = bytes([
@@ -621,6 +646,7 @@ class Icons:
         "FALLING_SAND": FALLING_SAND,
         "IRON_CANOPY": IRON_CANOPY,
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
+        "ABYSSAL_PING": ABYSSAL_PING,
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
         "0": DEFAULT,
         "1": DEFAULT,
