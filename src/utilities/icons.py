@@ -658,6 +658,28 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # 16x16 icon for the Bouncing Sprite (DVD-logo style) screensaver mode.
+    # Shows a tiny retro arcade spaceship (red=11, white cockpit=4) centred
+    # inside a silver (3) border that represents the bouncing arena walls.
+    BOUNCING_SPRITE = bytes([
+         3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0, 11,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0, 11,  4, 11,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0, 11,  0, 11,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
+    ])
+    
     # Starfield / Warp Core – stars radiating from a bright centre point.
     # Black background (0), dim distant stars (1=CHARCOAL), medium stars
     # (3=SILVER), and bright close stars / warp-core centre (4=WHITE).
@@ -709,6 +731,7 @@ class Icons:
         "LISSAJOUS": LISSAJOUS,
         "BOIDS": BOIDS,
         "FALLING_SAND": FALLING_SAND,
+        "BOUNCING_SPRITE": BOUNCING_SPRITE,
         "PLASMA": PLASMA,
         "WIREWORLD": WIREWORLD,
         "STARFIELD": STARFIELD,
