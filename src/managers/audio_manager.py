@@ -14,6 +14,11 @@ from utilities.logger import JEBLogger
 # Files larger than this will be streamed from disk to prevent MemoryError
 MAX_PRELOAD_SIZE_BYTES = 20 * 1024  # 20KB
 
+# Per-voice stream buffer size in bytes.
+# Each streaming voice gets its own dedicated buffer to prevent buffer contention
+# during polyphonic playback.  4KB provides smooth streaming at 22kHz/16-bit mono.
+STREAM_BUFFER_SIZE = 4096  # 4KB per voice
+
 class AudioManager:
     """Manages audio playback and mixing."""
     def __init__(self, sck, ws, sd, root_data_dir="/"):
@@ -57,8 +62,10 @@ class AudioManager:
         # Format: {"filename": RawSampleObject}
         self._cache = {}
 
-        # Stream buffer for files played from SD
-        self._stream_buffer = bytearray(1024)
+        # Per-voice stream buffers for files played from SD.
+        # Each physical voice gets its own dedicated buffer to eliminate contention
+        # when multiple voices stream simultaneously (polyphonic playback).
+        self._stream_buffers = {i: bytearray(STREAM_BUFFER_SIZE) for i in range(self.voice_count)}
 
         # Track open file handles for streaming audio (by channel)
         # Format: {channel_number: file_handle}
@@ -191,7 +198,7 @@ class AudioManager:
                 JEBLogger.error("AUDI", f"File not found: {full_path} - {e}")
             else:
                 try:
-                    wav = audiocore.WaveFile(f, self._stream_buffer)
+                    wav = audiocore.WaveFile(f, self._stream_buffers[voice_idx])
                     JEBLogger.info("AUDI", f"Streaming '{file}' on voice {voice_idx} (Bus {bus_id})")
                     voice.play(wav, loop=loop)
                 except Exception:
