@@ -74,7 +74,7 @@ class JEBris(GameMode):
         ]
 
         # --- STATE ---
-        self.grid = [[Palette.OFF for _ in range(self.playfield_width)] for _ in range(self.playfield_height)]
+        self.grid = None # 1D bytearray representing the playfield grid (10x16), initialized in reset_game
         self.score = 0
         self.is_game_over = False
 
@@ -166,7 +166,7 @@ class JEBris(GameMode):
 
     async def reset_game(self):
         """Resets the game state."""
-        self.grid = [[Palette.OFF for _ in range(self.playfield_width)] for _ in range(self.playfield_height)]
+        self.grid = bytearray(self.playfield_width * self.playfield_height)
         self.score = 0
         self.is_game_over = False
         await self.core.clean_slate()  # Clear any existing state
@@ -261,7 +261,7 @@ class JEBris(GameMode):
 
             # Stack Collision (ignore if above board, e.g. spawning)
             if ny >= 0:
-                if self.grid[ny][nx] != Palette.OFF:
+                if self.grid[ny * self.playfield_width + nx] != Palette.OFF:
                     return True
         return False
 
@@ -271,7 +271,7 @@ class JEBris(GameMode):
             nx = self.piece_x + x
             ny = self.piece_y + y
             if 0 <= nx < self.playfield_width and 0 <= ny < self.playfield_height:
-                self.grid[ny][nx] = self.piece_color
+                self.grid[ny * self.playfield_width + nx] = self.piece_color
         self._dirty = True
 
     def start_clear_lines(self):
@@ -280,7 +280,15 @@ class JEBris(GameMode):
 
         # Find all full rows
         for y in range(self.playfield_height):
-            if Palette.OFF not in self.grid[y]:
+            row_is_full = True
+            row_offset = y * self.playfield_width
+
+            for x in range(self.playfield_width):
+                if self.grid[row_offset + x] == Palette.OFF:
+                    row_is_full = False
+                    break  # Stop checking this row as soon as we find an empty space
+
+            if row_is_full:
                 self.lines_to_clear.add(y)
 
         if self.lines_to_clear:
@@ -292,11 +300,6 @@ class JEBris(GameMode):
             self.core.buzzer.play_sequence(tones.COIN)
             self._dirty = True
 
-            # Flash lines white immediately (visual feedback)
-            for y in self.lines_to_clear:
-                for x in range(self.playfield_width):
-                    self.core.matrix.draw_pixel(x, y, Palette.WHITE, show=False)
-
     def finish_clear_lines(self):
         """Completes line clearing after animation finishes."""
         if not self.lines_to_clear:
@@ -306,9 +309,11 @@ class JEBris(GameMode):
 
         # Remove cleared rows (sort in reverse order to avoid index shifting issues)
         for y in sorted(self.lines_to_clear, reverse=True):
-            del self.grid[y]
-            # Add new empty row at top
-            self.grid.insert(0, [Palette.OFF for _ in range(self.playfield_width)])
+            # Shift all rows above 'y' down by one row
+            # Shift all rows above 'y' down by one row
+            self.grid[self.playfield_width : (y + 1) * self.playfield_width] = self.grid[0 : y * self.playfield_width]
+            # Clear the top row
+            self.grid[0 : self.playfield_width] = bytearray([Palette.OFF] * self.playfield_width)
 
         # Update score
         self.score += lines_cleared
@@ -349,8 +354,8 @@ class JEBris(GameMode):
                 # If we're in clearing state, show white for lines being cleared
                 if self.game_state == self.STATE_CLEARING_LINES and y in self.lines_to_clear:
                     self.core.matrix.draw_pixel(x, y, Palette.WHITE, show=False)
-                elif self.grid[y][x] != Palette.OFF:
-                    self.core.matrix.draw_pixel(x, y, self.grid[y][x], show=False)
+                elif self.grid[y * self.playfield_width + x] != Palette.OFF:
+                    self.core.matrix.draw_pixel(x, y, self.grid[y * self.playfield_width + x], show=False)
 
         # 3. Draw Active Piece (only in PLAYING state)
         if self.game_state == self.STATE_PLAYING and self.current_piece:
