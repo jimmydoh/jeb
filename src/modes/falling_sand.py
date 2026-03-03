@@ -24,6 +24,7 @@ Controls:
 """
 
 import asyncio
+import gc
 import random
 
 from adafruit_ticks import ticks_ms, ticks_diff
@@ -87,6 +88,7 @@ class FallingSandMode(BaseMode):
         self.width  = 0
         self.height = 0
         self._grid      = None   # bytearray: current particle state
+        self._next_grid = None   # bytearray: pre-allocated swap buffer (avoids per-step allocs)
         self._speed_idx = 2      # default NORM (100 ms)
         self._tick      = 0
 
@@ -138,6 +140,13 @@ class FallingSandMode(BaseMode):
                     grid[y * w + x] = _FIRE
 
         self._grid = grid
+        # Ensure the double-buffer partner is allocated at the same size.
+        # This avoids allocating a new bytearray on every _step() call.
+        if self._next_grid is None or len(self._next_grid) != w * h:
+            self._next_grid = bytearray(w * h)
+        # Collect garbage at this safe, infrequent moment so the render loop
+        # runs without GC interruptions.
+        gc.collect()
 
     def _step(self):
         """Advance the simulation by one step using a double-buffer strategy.
@@ -154,7 +163,13 @@ class FallingSandMode(BaseMode):
         """
         w, h = self.width, self.height
         src  = self._grid
-        new  = bytearray(src)   # start with a copy; wood stays in place
+        # Reuse the pre-allocated swap buffer instead of allocating a new
+        # bytearray on every step.  Lazily initialize on the first call so
+        # that the test helper (which bypasses _randomize) still works.
+        if self._next_grid is None or len(self._next_grid) != len(src):
+            self._next_grid = bytearray(len(src))
+        new = self._next_grid
+        new[:] = src
 
         # --- Sand and water (bottom-to-top) ------------------------------
         for y in range(h - 2, -1, -1):
@@ -223,7 +238,7 @@ class FallingSandMode(BaseMode):
                     new[above]     = _FIRE
                     new[y * w + x] = _EMPTY
 
-        self._grid = new
+        self._grid, self._next_grid = new, src
         self._tick += 1
 
     def _count_particles(self):
@@ -307,6 +322,7 @@ class FallingSandMode(BaseMode):
             # --- Encoder long press (2 s): exit to Zero Player menu ---
             if self.core.hid.is_encoder_button_pressed(long=True, duration=2000):
                 JEBLogger.info("SAND", "[EXIT] Returning to Zero Player menu")
+                gc.collect()
                 return "SUCCESS"
 
             # --- Simulation step on interval ---

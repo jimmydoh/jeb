@@ -19,6 +19,7 @@ Controls:
 """
 
 import asyncio
+import gc
 import math
 import random
 
@@ -92,7 +93,9 @@ class BoidsMode(BaseMode):
         super().__init__(core, "BOIDS", "Flocking Simulation")
         self.width = 0
         self.height = 0
-        self._boids = []         # list of [x, y, vx, vy] mutable lists
+        # Pre-allocate a fixed-size pool of boid state vectors [x, y, vx, vy].
+        # _reset() updates these in-place to avoid GC pressure during the loop.
+        self._boids = [[0.0, 0.0, 0.0, 0.0] for _ in range(_BOID_COUNT)]
         self._frame = None       # bytearray: palette-indexed render buffer
         self._color_idx = 0      # index into _BOID_COLOR_INDICES
         self._speed_idx = 2      # default NORM (50 ms)
@@ -103,19 +106,22 @@ class BoidsMode(BaseMode):
     # ------------------------------------------------------------------
 
     def _reset(self):
-        """Scatter all boids to random positions with random initial velocities."""
+        """Scatter all boids to random positions with random initial velocities.
+
+        Reuses the pre-allocated boid pool to avoid heap allocations.
+        A gc.collect() is triggered here (a safe, low-frequency moment) so that
+        GC pressure is relieved before the main render loop begins.
+        """
         self._tick = 0
         w, h = self.width, self.height
-        self._boids = []
-        for _ in range(_BOID_COUNT):
+        for boid in self._boids:
             angle = random.uniform(0, 2 * math.pi)
             speed = random.uniform(_MIN_SPEED, _MAX_SPEED)
-            self._boids.append([
-                random.uniform(1.0, w - 1.0),
-                random.uniform(1.0, h - 1.0),
-                math.cos(angle) * speed,
-                math.sin(angle) * speed,
-            ])
+            boid[0] = random.uniform(1.0, w - 1.0)
+            boid[1] = random.uniform(1.0, h - 1.0)
+            boid[2] = math.cos(angle) * speed
+            boid[3] = math.sin(angle) * speed
+        gc.collect()
 
     def _step(self):
         """Advance the flock by one simulation step.
@@ -291,6 +297,7 @@ class BoidsMode(BaseMode):
             # --- Encoder long press (2 s): exit to Zero Player menu ---
             if self.core.hid.is_encoder_button_pressed(long=True, duration=2000):
                 JEBLogger.info("BOIDS", "[EXIT] Returning to Zero Player menu")
+                gc.collect()
                 return "SUCCESS"
 
             # --- Simulation step on interval ---
