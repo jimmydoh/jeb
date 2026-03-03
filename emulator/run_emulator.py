@@ -747,7 +747,12 @@ async def main():
         JEBLogger.emulator("EMUL", " --- BOOTING SECONDARY SAT_01 FIRMWARE --- ")
         HardwareMocks.set_context("SAT_01")
         from satellites.sat_01_firmware import IndustrialSatelliteFirmware
-        satellite = IndustrialSatelliteFirmware()
+        satellite = IndustrialSatelliteFirmware(
+            config={
+                "type_id": "01",
+                "type_name": "INDUSTRIAL"
+            }
+        )
         tag_managers(satellite, '0101')
         tasks.append(satellite.start())
     elif role == "SAT":

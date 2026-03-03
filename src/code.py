@@ -59,8 +59,8 @@ def load_config():
         "wifi_ssid": "",  # Wi-Fi SSID (empty by default)
         "wifi_password": "",  # Wi-Fi password (empty by default)
         "update_url": "",  # OTA update URL (empty by default)
-        "uart_baudrate": 115200,  # Default UART baudrate
-        "uart_buffer_size": 512,  # Default UART buffer size
+        "uart_baudrate": 921600,  # Default UART baudrate
+        "uart_buffer_size": 4096,  # Default UART buffer size
         "mount_sd_card": False,  # Whether to initialize SD card
         "debug_mode": False,  # Debug mode off by default
         "test_mode": True,  # Test mode on by default (real hardware should set to False)
@@ -193,7 +193,7 @@ if role == "CORE" and type_id == "00":
 
 elif role == "SAT" and type_id == "01":
     from satellites.sat_01_firmware import IndustrialSatelliteFirmware
-    app = IndustrialSatelliteFirmware()
+    app = IndustrialSatelliteFirmware(config=config)
 
 else:
     JEBLogger.error("CODE", "❗Unknown role/type_id combination. No application loaded.❗")
