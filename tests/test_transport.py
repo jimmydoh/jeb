@@ -535,8 +535,11 @@ def test_receive_buffer_overflow_protection():
     mock_uart = MockUARTManager()
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
-    # Simulate flooding with 2000 bytes of garbage (no null terminator)
-    garbage_data = bytes(range(1, 256)) * 8  # 2040 bytes of non-zero data
+    # Simulate flooding with enough garbage to exceed the overflow threshold
+    # Overflow triggers when bytes_available > RING_BUFFER_SIZE - MAX_PACKET_SIZE
+    overflow_threshold = transport.RING_BUFFER_SIZE - transport.MAX_PACKET_SIZE
+    garbage_data = bytes(range(1, 256)) * ((overflow_threshold // 255) + 2)
+    garbage_data = garbage_data[:overflow_threshold + 100]  # Exceed threshold by 100 bytes
     mock_uart.receive_buffer.extend(garbage_data)
     mock_uart._in_waiting = len(garbage_data)
 
@@ -763,13 +766,14 @@ def test_ring_buffer_end_of_array_deadlock():
     mock_uart = MockUARTManager()
     transport = UARTTransport(mock_uart, COMMAND_MAP, DEST_MAP, MAX_INDEX_VALUE, PAYLOAD_SCHEMAS)
 
-    # 1. Force pointers to the very last byte (2047)
+    # 1. Force pointers to the very last byte (RING_BUFFER_SIZE - 1)
     # Simulates a scenario where we just read everything up to the end
-    transport._rx_head = 2047
-    transport._rx_tail = 2047
+    last_idx = transport.RING_BUFFER_SIZE - 1
+    transport._rx_head = last_idx
+    transport._rx_tail = last_idx
 
     # 2. Add 1 byte of data to UART
-    # This should be writable! (Write at 2047, head wraps to 0)
+    # This should be writable! (Write at last index, head wraps to 0)
     mock_uart.receive_buffer.extend(b'\x00')  # A delimiter
     mock_uart._in_waiting = 1
 
@@ -777,7 +781,7 @@ def test_ring_buffer_end_of_array_deadlock():
     transport._read_hw()
 
     # 4. Check if head moved
-    # If buggy, head stays 2047 (space calculated as 0)
+    # If buggy, head stays at last_idx (space calculated as 0)
     # If fixed, head wraps to 0
     assert transport._rx_head == 0, f"Deadlock! Head stuck at {transport._rx_head} instead of wrapping to 0"
 
