@@ -395,6 +395,16 @@ MODE_REGISTRY = {
         "requires": ["CORE"],
         "settings": []
     },
+    "WIREWORLD": {
+        "id": "WIREWORLD",
+        "name": "WIREWORLD",
+        "module_path": "modes.wireworld",
+        "class_name": "Wireworld",
+        "icon": "WIREWORLD",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
     "STARFIELD": {
         "id": "STARFIELD",
         "name": "STARFIELD",
