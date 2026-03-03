@@ -258,6 +258,76 @@ def animate_radar_sweep(matrix_manager, sweep_angle, bogeys=None, interceptors=N
         print(f"Error in RADAR_SWEEP animation: {e}")
 
 
+async def animate_sprite_sheet(matrix_manager, icon_data, fps=8, loop=True, color=None, brightness=1.0):
+    """
+    Plays a multi-frame sprite animation from a 1D sprite-sheet bytearray.
+
+    The sprite sheet is a single contiguous bytes/bytearray where frames are
+    concatenated sequentially.  Each frame occupies exactly
+    ``matrix_manager.width * matrix_manager.height`` bytes (palette indices,
+    same encoding as show_icon).  Frame count is derived automatically::
+
+        frame_count = len(icon_data) // (width * height)
+
+    This approach avoids Python-list fragmentation and GC pauses on the Pico 2:
+    the entire animation lives in one contiguous heap allocation.  Frame slicing
+    is performed in C-level bytearray code, so there is no per-frame allocation.
+
+    Designed to run as a background asyncio task.  Cancel the task to stop.
+
+    Args:
+        matrix_manager: MatrixManager instance (needs draw_pixel, fill, palette,
+                        width, height).
+        icon_data: bytes or bytearray containing all animation frames concatenated.
+        fps: Target playback rate in frames per second (default 8).
+        loop: When True (default) the animation repeats indefinitely; when False
+              it plays once and exits.
+        color: Optional RGB tuple to override palette colours for all pixels.
+        brightness: Brightness multiplier 0.0-1.0 (default 1.0).
+
+    Raises:
+        asyncio.CancelledError: propagated to the caller for clean task teardown.
+    """
+    frame_size = matrix_manager.width * matrix_manager.height
+    if frame_size == 0:
+        return
+
+    frame_count = len(icon_data) // frame_size
+    if frame_count < 1:
+        return
+
+    frame_delay = 1.0 / max(fps, 1)
+
+    try:
+        frame_idx = 0
+        while True:
+            start = frame_idx * frame_size
+            frame = icon_data[start : start + frame_size]
+
+            matrix_manager.fill(Palette.OFF, show=False)
+            for y in range(matrix_manager.height):
+                row_base = y * matrix_manager.width
+                for x in range(matrix_manager.width):
+                    pixel_value = frame[row_base + x]
+                    if pixel_value != 0:
+                        base = color if color else matrix_manager.palette.get(pixel_value, (255, 255, 255))
+                        matrix_manager.draw_pixel(x, y, base, brightness=brightness)
+
+            await asyncio.sleep(frame_delay)
+
+            frame_idx += 1
+            if frame_idx >= frame_count:
+                if loop:
+                    frame_idx = 0
+                else:
+                    break
+
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        print(f"Error in ANIMATED sprite sheet: {e}")
+
+
 def animate_static_resolve(matrix_manager, icon_data, clarity, color=None, brightness=1.0):
     """
     Renders a single frame that blends random static with a target icon.

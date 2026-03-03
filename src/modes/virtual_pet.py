@@ -233,7 +233,7 @@ class VirtualPet(BaseMode):
         elif self.state == self.STATE_HUNGRY:
             self.core.matrix.show_icon("CAT_IDLE", anim_mode="BLINK", speed=1.0)
         elif self.state == self.STATE_PLAYING:
-            self.core.matrix.show_icon("CAT_IDLE", anim_mode="PULSE", speed=2.0)
+            self.core.matrix.show_icon("CAT_WALK", anim_mode="ANIMATED", speed=8)
 
     def _update_display(self):
         """Refresh OLED display when stats view is active."""

@@ -733,6 +733,88 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # =========================================================================
+    # Multi-frame sprite sheet: CAT_WALK  (2 frames × 256 bytes = 512 bytes)
+    # =========================================================================
+    # A simple 2-frame walking cycle for the virtual pet PLAYING state.
+    # Colour key (same as cat face sprites above):
+    #   0=OFF  1=CHARCOAL  2=GRAY  3=SILVER  4=WHITE
+    #  11=RED  13=PINK     22=GOLD 31=YELLOW 61=BLUE 41=GREEN
+    #
+    # Frame layout (each frame is 16 rows × 16 cols = 256 bytes, row-major):
+    #   Frame 0 (bytes   0–255): Right paw forward
+    #   Frame 1 (bytes 256–511): Left  paw forward
+    # =========================================================================
+    CAT_WALK = bytes([
+        # ---- Frame 0: right paw forward ----
+        # Row  0
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  1 – ear tips
+         0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+        # Row  2 – ears
+         0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+        # Row  3 – inner ear / top head
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+        # Row  4 – upper face
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row  5 – eyes
+         0,  0,  3,  4,  4, 61, 61,  4,  4, 61, 61,  4,  4,  3,  0,  0,
+        # Row  6 – pupils
+         0,  0,  3,  4,  4,  1,  1,  4,  4,  1,  1,  4,  4,  3,  0,  0,
+        # Row  7 – lower eye area
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row  8 – nose + whiskers
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+        # Row  9 – smile
+         0,  0,  3,  4,  4,  4, 11,  4,  4, 11,  4,  4,  4,  3,  0,  0,
+        # Row 10 – body
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row 11 – body mid
+         0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,
+        # Row 12 – belly
+         0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,
+        # Row 13 – legs: right paw forward (green tip), left paw straight
+         0,  3,  4,  4,  3,  4,  4,  4,  4,  4,  4,  3,  4,  4,  3,  0,
+        # Row 14 – paw tips
+         0,  3, 41,  3,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,  0,
+        # Row 15
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+
+        # ---- Frame 1: left paw forward ----
+        # Row  0
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  1 – ear tips
+         0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+        # Row  2 – ears
+         0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+        # Row  3 – inner ear / top head
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+        # Row  4 – upper face
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row  5 – eyes
+         0,  0,  3,  4,  4, 61, 61,  4,  4, 61, 61,  4,  4,  3,  0,  0,
+        # Row  6 – pupils
+         0,  0,  3,  4,  4,  1,  1,  4,  4,  1,  1,  4,  4,  3,  0,  0,
+        # Row  7 – lower eye area
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row  8 – nose + whiskers
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+        # Row  9 – smile
+         0,  0,  3,  4,  4,  4, 11,  4,  4, 11,  4,  4,  4,  3,  0,  0,
+        # Row 10 – body
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row 11 – body mid
+         0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,
+        # Row 12 – belly
+         0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,
+        # Row 13 – legs: left paw forward (green tip), right paw straight
+         0,  3,  4,  4,  3,  4,  4,  4,  4,  4,  4,  3,  4,  4,  3,  0,
+        # Row 14 – paw tips
+         0,  0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  3, 41,  3,  0,  0,
+        # Row 15
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -770,6 +852,7 @@ class Icons:
         "CAT_IDLE": CAT_IDLE,
         "CAT_EAT": CAT_EAT,
         "CAT_SLEEP": CAT_SLEEP,
+        "CAT_WALK": CAT_WALK,
         "0": DEFAULT,
         "1": DEFAULT,
         "2": DEFAULT,

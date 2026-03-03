@@ -269,6 +269,11 @@ class MatrixManager(BasePixelManager):
         Displays a predefined icon on the matrix with optional animation.
         anim_mode: None, "PULSE", "BLINK" are non-blocking via the animate_loop.
         anim_mode: "SLIDE_LEFT", "SLIDE_RIGHT" are non-blocking (spawned as background tasks).
+        anim_mode: "ANIMATED" - plays a multi-frame sprite sheet as a looping background task.
+            The icon data must be a contiguous bytes/bytearray where each frame is
+            width*height bytes.  Frame count is derived automatically.
+            ``speed`` is used as the target FPS (default 1.0 → 8 FPS via the
+            animation function default; pass e.g. speed=12 for 12 FPS).
 
         border_color: Optional RGB tuple. When provided, a 1-pixel border is drawn
         around the icon footprint using the specified colour. Intended for 14x14
@@ -288,6 +293,15 @@ class MatrixManager(BasePixelManager):
         # Handle SLIDE_RIGHT Animation - Spawn as background task
         if anim_mode == "SLIDE_RIGHT":
             asyncio.create_task(matrix_animations.animate_slide_right(self, icon_data, color, brightness))
+            return
+
+        # Handle ANIMATED (sprite sheet) - Spawn as background task
+        if anim_mode == "ANIMATED":
+            # Use speed as FPS; fall back to 8 FPS (matches animate_sprite_sheet default)
+            fps = speed if speed > 1.0 else 8
+            asyncio.create_task(
+                matrix_animations.animate_sprite_sheet(self, icon_data, fps=fps, loop=True, color=color, brightness=brightness)
+            )
             return
 
         data_len = len(icon_data)

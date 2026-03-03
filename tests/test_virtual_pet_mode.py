@@ -229,12 +229,14 @@ class _MockCore:
 def _make_pet():
     """Import VirtualPet with hardware stubs patched."""
     import types
-    # Stub out adafruit_ticks
-    if 'adafruit_ticks' not in sys.modules:
-        ticks_stub = types.ModuleType('adafruit_ticks')
-        ticks_stub.ticks_ms   = lambda: 0
-        ticks_stub.ticks_diff = lambda a, b: a - b
-        sys.modules['adafruit_ticks'] = ticks_stub
+    # Stub out adafruit_ticks (always override to ensure correct ticks_diff behaviour)
+    # Note: this stub uses simple subtraction (a - b).  The real CircuitPython
+    # ticks_diff handles 32-bit millisecond wraparound, but that edge case is
+    # not exercised by these tests, so the simplified stub is adequate here.
+    ticks_stub = types.ModuleType('adafruit_ticks')
+    ticks_stub.ticks_ms   = lambda: 0
+    ticks_stub.ticks_diff = lambda a, b: a - b
+    sys.modules['adafruit_ticks'] = ticks_stub
 
     # Stub out utilities.logger
     if 'utilities.logger' not in sys.modules:
@@ -350,6 +352,122 @@ def test_stats_display_toggle():
 
 
 # ---------------------------------------------------------------------------
+# Sprite sheet (CAT_WALK) icon tests
+# ---------------------------------------------------------------------------
+
+def test_cat_walk_icon_exists():
+    """CAT_WALK sprite sheet must be in ICON_LIBRARY with 512 bytes (2 × 16x16)."""
+    from utilities.icons import Icons
+    assert "CAT_WALK" in Icons.ICON_LIBRARY, "CAT_WALK not found in ICON_LIBRARY"
+    icon = Icons.ICON_LIBRARY["CAT_WALK"]
+    assert len(icon) == 512, f"CAT_WALK must be 512 bytes (2 frames × 256), got {len(icon)}"
+    print(f"✓ CAT_WALK sprite sheet exists ({len(icon)} bytes, 2 frames)")
+
+
+def test_cat_walk_frame_count():
+    """CAT_WALK must contain exactly 2 animation frames."""
+    from utilities.icons import Icons
+    icon = Icons.ICON_LIBRARY["CAT_WALK"]
+    frame_size = 16 * 16
+    frame_count = len(icon) // frame_size
+    assert frame_count == 2, f"Expected 2 frames in CAT_WALK, got {frame_count}"
+    print("✓ CAT_WALK has exactly 2 frames")
+
+
+def test_cat_walk_frames_differ():
+    """The two CAT_WALK frames must not be identical (different paw positions)."""
+    from utilities.icons import Icons
+    icon = Icons.ICON_LIBRARY["CAT_WALK"]
+    frame0 = icon[0:256]
+    frame1 = icon[256:512]
+    assert frame0 != frame1, "CAT_WALK frame 0 and frame 1 must differ"
+    print("✓ CAT_WALK frames are distinct")
+
+
+# ---------------------------------------------------------------------------
+# animate_sprite_sheet unit tests
+# ---------------------------------------------------------------------------
+
+import asyncio as _asyncio
+
+class _MockMatrixForAnim:
+    """Minimal matrix mock for testing animate_sprite_sheet."""
+    def __init__(self, w=16, h=16):
+        self.width  = w
+        self.height = h
+        self.palette = {v: (v, v, v) for v in range(256)}
+        self.pixels_drawn = []
+        self.fills = 0
+
+    def fill(self, color, show=False, **kwargs):
+        self.fills += 1
+
+    def draw_pixel(self, x, y, color, brightness=1.0, **kwargs):
+        self.pixels_drawn.append((x, y, color))
+
+
+def test_animate_sprite_sheet_renders_frames():
+    """animate_sprite_sheet must render the correct number of frames."""
+    import sys, os, types
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+    from utilities import matrix_animations
+
+    # 2-frame sprite: frame0 = all 1s, frame1 = all 2s
+    frame0 = bytes([1] * 256)
+    frame1 = bytes([2] * 256)
+    sprite = frame0 + frame1
+
+    matrix = _MockMatrixForAnim()
+
+    async def run():
+        task = _asyncio.create_task(
+            matrix_animations.animate_sprite_sheet(matrix, sprite, fps=100, loop=False)
+        )
+        await task
+
+    _asyncio.run(run())
+
+    # Should have called fill once per frame (2 times) and drawn pixels
+    assert matrix.fills == 2, f"Expected 2 fill() calls (one per frame), got {matrix.fills}"
+    print(f"✓ animate_sprite_sheet rendered 2 frames ({matrix.fills} fill calls)")
+
+
+def test_animate_sprite_sheet_cancellable():
+    """animate_sprite_sheet must stop cleanly when cancelled."""
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+    from utilities import matrix_animations
+
+    sprite = bytes([1] * 256 + [2] * 256)
+    matrix = _MockMatrixForAnim()
+
+    async def run():
+        task = _asyncio.create_task(
+            matrix_animations.animate_sprite_sheet(matrix, sprite, fps=1, loop=True)
+        )
+        await _asyncio.sleep(0.05)  # let it start
+        task.cancel()
+        try:
+            await task
+        except _asyncio.CancelledError:
+            pass
+
+    _asyncio.run(run())
+    # Task should have drawn at least one frame before being cancelled
+    assert matrix.fills >= 1, "Should have rendered at least one frame before cancel"
+    print("✓ animate_sprite_sheet cancels cleanly")
+
+
+def test_playing_state_uses_animated_mode():
+    """VirtualPet PLAYING state must request CAT_WALK with anim_mode='ANIMATED'."""
+    pet = _make_pet()
+    pet._play(0)
+    assert pet.core.matrix.last_icon == "CAT_WALK",  "PLAYING must use CAT_WALK icon"
+    assert pet.core.matrix.last_anim == "ANIMATED",  "PLAYING must use anim_mode='ANIMATED'"
+    print("✓ PLAYING state uses CAT_WALK with ANIMATED mode")
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
@@ -367,6 +485,9 @@ if __name__ == "__main__":
         test_cat_idle_icon_exists,
         test_cat_eat_icon_exists,
         test_cat_sleep_icon_exists,
+        test_cat_walk_icon_exists,
+        test_cat_walk_frame_count,
+        test_cat_walk_frames_differ,
         test_initial_stats,
         test_feed_reduces_hunger_and_triggers_eating,
         test_play_increases_happiness_and_triggers_playing,
@@ -375,6 +496,9 @@ if __name__ == "__main__":
         test_sleeping_state_after_idle_timeout,
         test_hungry_state_clears_when_fed,
         test_stats_display_toggle,
+        test_animate_sprite_sheet_renders_frames,
+        test_animate_sprite_sheet_cancellable,
+        test_playing_state_uses_animated_mode,
     ]
     passed = 0
     failed = 0

@@ -44,7 +44,7 @@ def find_closest_palette_color(rgb):
 
     return closest_id
 
-def generate_icon(image_path, icon_name="NEW_EMOJI", pad=False, pad_color=0, autocrop=False, export_bin=False):
+def generate_icon(image_path, icon_name="NEW_EMOJI", pad=False, pad_color=0, autocrop=False, export_bin=False, frames=1):
     try:
         img = Image.open(image_path).convert("RGBA")
     except Exception as e:
@@ -57,27 +57,51 @@ def generate_icon(image_path, icon_name="NEW_EMOJI", pad=False, pad_color=0, aut
         if bbox:
             img = img.crop(bbox)
 
-    img_size = 14 if pad else 16
-    img = img.resize((img_size, img_size), Image.Resampling.LANCZOS)
-    pixels = img.load()
+    if frames > 1:
+        # Horizontal sprite sheet: N side-by-side 16x16 frames
+        frame_w = img.width // frames
+        all_frames_data = []
+        for f in range(frames):
+            left = f * frame_w
+            frame_img = img.crop((left, 0, left + frame_w, img.height))
+            img_size = 14 if pad else 16
+            frame_img = frame_img.resize((img_size, img_size), Image.Resampling.LANCZOS)
+            pixels = frame_img.load()
+            for y in range(16):
+                for x in range(16):
+                    if pad and (x == 0 or x == 15 or y == 0 or y == 15):
+                        all_frames_data.append(pad_color)
+                    else:
+                        sample_x = x - 1 if pad else x
+                        sample_y = y - 1 if pad else y
+                        r, g, b, a = pixels[sample_x, sample_y]
+                        if a < 128:
+                            all_frames_data.append(0)
+                        else:
+                            all_frames_data.append(find_closest_palette_color((r, g, b)))
+        flat_data = all_frames_data
+    else:
+        img_size = 14 if pad else 16
+        img = img.resize((img_size, img_size), Image.Resampling.LANCZOS)
+        pixels = img.load()
 
-    # Collect flat data regardless of export method
-    flat_data = []
+        # Collect flat data regardless of export method
+        flat_data = []
 
-    for y in range(16):
-        for x in range(16):
-            if pad and (x == 0 or x == 15 or y == 0 or y == 15):
-                flat_data.append(pad_color)
-            else:
-                sample_x = x - 1 if pad else x
-                sample_y = y - 1 if pad else y
-
-                r, g, b, a = pixels[sample_x, sample_y]
-
-                if a < 128:
-                    flat_data.append(0)
+        for y in range(16):
+            for x in range(16):
+                if pad and (x == 0 or x == 15 or y == 0 or y == 15):
+                    flat_data.append(pad_color)
                 else:
-                    flat_data.append(find_closest_palette_color((r, g, b)))
+                    sample_x = x - 1 if pad else x
+                    sample_y = y - 1 if pad else y
+
+                    r, g, b, a = pixels[sample_x, sample_y]
+
+                    if a < 128:
+                        flat_data.append(0)
+                    else:
+                        flat_data.append(find_closest_palette_color((r, g, b)))
 
     # Output routing
     if export_bin:
@@ -86,14 +110,19 @@ def generate_icon(image_path, icon_name="NEW_EMOJI", pad=False, pad_color=0, aut
 
         with open(out_file, "wb") as f:
             f.write(bytes(flat_data))
-        print(f"✅ Generated binary asset: {out_file} ({len(flat_data)} bytes)")
+        print(f"✅ Generated binary asset: {out_file} ({len(flat_data)} bytes, {len(flat_data) // 256} frame(s))")
     else:
         print(f"    {icon_name} = bytes([")
-        for i in range(16):
-            # Slice the flat array into rows of 16 for readable formatting
-            row = flat_data[i*16 : (i+1)*16]
-            formatted_row = ", ".join(f"{val:>2}" for val in row) + ","
-            print(f"        {formatted_row}")
+        # Each 256-byte chunk is one 16x16 frame; add a comment header per frame
+        total_frames = len(flat_data) // 256
+        for frame_idx in range(total_frames):
+            if total_frames > 1:
+                print(f"        # ---- Frame {frame_idx} ----")
+            frame_offset = frame_idx * 256
+            for i in range(16):
+                row = flat_data[frame_offset + i * 16 : frame_offset + (i + 1) * 16]
+                formatted_row = ", ".join(f"{val:>2}" for val in row) + ","
+                print(f"        {formatted_row}")
         print("    ])")
 
 
@@ -105,6 +134,14 @@ if __name__ == "__main__":
     parser.add_argument("--pad-color", type=int, default=0, help="The Palette ID to use for the border (default: 0/OFF).")
     parser.add_argument("--autocrop", action="store_true", help="Automatically crop out transparent margins before scaling.")
     parser.add_argument("--bin", action="store_true", help="Export to a .bin file next to the source image instead of printing Python code.")
+    parser.add_argument(
+        "--frames", type=int, default=1, metavar="N",
+        help=(
+            "Treat the input as a horizontal sprite sheet with N side-by-side "
+            "16x16 frames. The output bytes array will be N×256 bytes with all "
+            "frames concatenated (use with anim_mode='ANIMATED' in show_icon)."
+        )
+    )
 
     args = parser.parse_args()
 
@@ -114,5 +151,6 @@ if __name__ == "__main__":
         args.pad,
         args.pad_color,
         args.autocrop,
-        args.bin
+        args.bin,
+        args.frames,
     )
