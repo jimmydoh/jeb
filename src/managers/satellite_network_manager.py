@@ -23,7 +23,7 @@ from transport.protocol import (
 )
 
 from utilities.logger import JEBLogger
-from utilities.payload_parser import parse_values
+from utilities.payload_parser import parse_values, get_float
 
 class SatelliteNetworkManager:
     """Manages satellite discovery, health monitoring, and message handling.
@@ -75,6 +75,7 @@ class SatelliteNetworkManager:
         # Task throttling: Single slot for status updates to prevent unbounded task spawning
         self._current_status_task = None
         self._current_audio_task = None
+        self._update_task = None
 
         # Callback invoked when a satellite sends CMD_MODE ACTIVE (remote wake)
         self._wake_callback = None
@@ -170,6 +171,21 @@ class SatelliteNetworkManager:
         if self._current_audio_task is None or self._current_audio_task.done():
             self._current_audio_task = asyncio.create_task(coro_func(*args, **kwargs))
 
+    def _spawn_update_task(self, coro_func, *args, **kwargs):
+        """Spawn a firmware update task, storing its reference for lifecycle management.
+
+        Stores the task in ``self._update_task`` so its status can be inspected
+        and it can be cancelled if needed.  The ``_update_in_progress`` guard in
+        :meth:`_handle_version_check_command` already serialises updates, so
+        only one update task is ever live at a time.
+
+        Args:
+            coro_func: Coroutine function to execute for the firmware update
+            *args: Positional arguments to pass to the coroutine function
+            **kwargs: Keyword arguments to pass to the coroutine function
+        """
+        self._update_task = asyncio.create_task(coro_func(*args, **kwargs))
+
     async def discover_satellites(self, sat_type_id="01"):
         """Triggers the ID assignment chain to discover satellites."""
         self.display.update_status("SCANNING BUS...", "ASSIGNING IDs")
@@ -238,16 +254,46 @@ class SatelliteNetworkManager:
             self.display.update_status("UNKNOWN SAT", f"{sid} sent STATUS.")
             JEBLogger.warning("NETM", f"STATUS from unknown sat {sid} | DATA: {val}")
 
+    # Minimum input voltage before a UVLO (Under-Voltage Lock-Out) alert is raised.
+    SAT_UVLO_THRESHOLD = 18.0
+
     async def _handle_power_command(self, sid, val):
         """
         Handle POWER command from satellite,
         which may indicate power state changes or alerts.
+
+        The payload contains three float values:
+            index 0 – input bus voltage (v_in)
+            index 1 – satellite bus voltage (v_bus)
+            index 2 – logic/main bus voltage (v_logic)
         """
         data = parse_values(val)
-        # TODO: Do something with this
-        i = 0
-        formatted_data = ", ".join(f"{v:5.2f}" for v in data)
-        #JEBLogger.debug("NETM", f"POWER update | DATA: {formatted_data}", src=sid)
+        v_in    = get_float(data, 0)
+        v_bus   = get_float(data, 1)
+        v_logic = get_float(data, 2)
+
+        # Store telemetry for external consumers (e.g. POWER_TELEMETRY mode)
+        self.sat_telemetry[sid] = {"in": v_in, "bus": v_bus, "logic": v_logic}
+
+        JEBLogger.debug(
+            "NETM",
+            f"POWER | in={v_in:.2f}V bus={v_bus:.2f}V logic={v_logic:.2f}V",
+            src=sid
+        )
+
+        # UVLO alert: raise alarm if input voltage drops below safe threshold
+        if v_in > 0 and v_in < self.SAT_UVLO_THRESHOLD:
+            self.display.update_status("SAT UVLO ALERT", f"ID:{sid} Vin={v_in:.1f}V")
+            JEBLogger.warning(
+                "NETM",
+                f"UVLO: Vin={v_in:.2f}V below {self.SAT_UVLO_THRESHOLD}V threshold",
+                src=sid
+            )
+            self._spawn_audio_task(
+                self.audio.play,
+                "alarm_klaxon.wav",
+                bus_id=self.audio.CH_SFX
+            )
 
     async def _handle_hello_command(self, sid, val):
         """
@@ -387,7 +433,7 @@ class SatelliteNetworkManager:
                 f"Starting update for {sid}"
             )
             self._update_in_progress = sid
-            asyncio.create_task(self._initiate_satellite_update(sid, sat_type_id))
+            self._spawn_update_task(self._initiate_satellite_update, sid, sat_type_id)
 
     def _get_satellite_expected_version(self, sat_type_id):
         """Return the expected firmware version for a satellite type.

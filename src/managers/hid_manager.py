@@ -2,7 +2,7 @@
 
 from adafruit_ticks import ticks_ms, ticks_diff
 import keypad
-from utilities.logger import JEBLogger
+from utilities.logger import JEBLogger, LogLevel
 
 class HIDManager:
     """
@@ -873,7 +873,11 @@ class HIDManager:
         if self.monitor_only:
             return False
 
-        temp_original = self.get_status_string()
+        # Only capture the pre-update snapshot when debug logging is active to
+        # avoid a bytes + string allocation on every 50 Hz poll in production.
+        _debug = JEBLogger.LEVEL <= LogLevel.DEBUG
+        if _debug:
+            temp_original = self.get_status_string()
 
         dirty = False
         dirty |= self._hw_poll_buttons()
@@ -903,8 +907,9 @@ class HIDManager:
 
         if dirty:
             self.last_interaction_time = ticks_ms()
-            JEBLogger.debug("HIDM", f"Was: {temp_original}")
-            JEBLogger.debug("HIDM", f"Now: {self.get_status_string()}")
+            if _debug:
+                JEBLogger.debug("HIDM", f"Was: {temp_original}")
+                JEBLogger.debug("HIDM", f"Now: {self.get_status_string()}")
 
         return dirty
 
