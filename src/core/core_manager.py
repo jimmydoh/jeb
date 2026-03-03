@@ -125,13 +125,12 @@ class CoreManager:
     """
     def __init__(self, config=None):
         # Load config or use defaults
-        if config is None:
-            config = {}
+        self.config = config or {}
 
-        self.debug_mode = config.get("debug_mode", False)
-        self.root_data_dir = config.get("root_data_dir", "/")
-        self.resource_monitor_enabled = config.get("resource_monitor", {}).get("enabled", False)
-        self.resource_monitor_interval = config.get("resource_monitor", {}).get("interval_seconds", 5)
+        self.debug_mode = self.config.get("debug_mode", False)
+        self.root_data_dir = self.config.get("root_data_dir", "/")
+        self.resource_monitor_enabled = self.config.get("resource_monitor", {}).get("enabled", False)
+        self.resource_monitor_interval = self.config.get("resource_monitor", {}).get("interval_seconds", 5)
 
         # --- SAFETY EVENTS ---
         self.estop_event = asyncio.Event()
@@ -171,8 +170,8 @@ class CoreManager:
         uart_hw = busio.UART(
             Pins.UART_TX,
             Pins.UART_RX,
-            baudrate=config.get("uart_baudrate", 115200),
-            receiver_buffer_size=config.get("uart_buffer_size", 1024),
+            baudrate=config.get("uart_baudrate", 921600),
+            receiver_buffer_size=config.get("uart_buffer_size", 4096),
             timeout=0.01,
         )
 
@@ -223,7 +222,7 @@ class CoreManager:
 
         # Init LEDs
         self.root_pixels = neopixel.NeoPixel(
-            Pins.LED_CONTROL, 260, brightness=0.3, auto_write=False
+            Pins.LED_CONTROL, 260, brightness=self.config.get("led_brightness", 0.3), auto_write=False
         )
 
         # Button LED Manager (first 4 pixels)
@@ -730,7 +729,7 @@ class CoreManager:
                 # A blank dummy PIO instruction (jmp 0)
                 dummy_program = array.array("H", [0x0000])
                 allocated_machines = []
-                
+
                 try:
                     # RP2350 has a maximum of 12 state machines
                     for _ in range(12):
@@ -739,16 +738,16 @@ class CoreManager:
                         allocated_machines.append(sm)
                 except (ValueError, RuntimeError):
                     # We hit the limit of available state machines or instruction memory
-                    pass 
-                    
+                    pass
+
                 free_count = len(allocated_machines)
-                
+
                 # Deinitialize to return them cleanly to CircuitPython's pool
                 for sm in allocated_machines:
                     sm.deinit()
-                    
+
                 return free_count
-            
+
             JEBLogger.debug("CORE", f"Free PIO State Machines at startup: {count_free_state_machines()}")
 
 
