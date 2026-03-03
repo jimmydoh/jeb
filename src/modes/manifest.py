@@ -405,6 +405,23 @@ MODE_REGISTRY = {
         "requires": ["CORE"],
         "settings": []
     },
+    "STARFIELD": {
+        "id": "STARFIELD",
+        "name": "STARFIELD",
+        "module_path": "modes.starfield",
+        "class_name": "StarfieldMode",
+        "icon": "STARFIELD",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "warp",
+                "label": "WARP",
+                "options": ["1", "2", "3", "4", "5", "MAX"],
+                "default": "3"
+            }
+        ]
+    },
     "ABYSSAL_PING": {
         "id": "ABYSSAL_PING",
         "name": "ABYSSAL PING",
