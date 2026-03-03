@@ -60,6 +60,7 @@ class DataManager:
                 for var_data in self.data[mode_name].values():
                     if "high_score" in var_data:
                         return var_data["high_score"]
+        return 0
 
     def save_high_score(self, mode_name, variant, score):
         """Set high score if higher than current."""
