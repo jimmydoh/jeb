@@ -23,7 +23,7 @@ from transport.protocol import (
 )
 
 from utilities.logger import JEBLogger
-from utilities.payload_parser import parse_values
+from utilities.payload_parser import parse_values, get_float
 
 class SatelliteNetworkManager:
     """Manages satellite discovery, health monitoring, and message handling.
@@ -238,16 +238,46 @@ class SatelliteNetworkManager:
             self.display.update_status("UNKNOWN SAT", f"{sid} sent STATUS.")
             JEBLogger.warning("NETM", f"STATUS from unknown sat {sid} | DATA: {val}")
 
+    # Minimum input voltage before a UVLO (Under-Voltage Lock-Out) alert is raised.
+    SAT_UVLO_THRESHOLD = 18.0
+
     async def _handle_power_command(self, sid, val):
         """
         Handle POWER command from satellite,
         which may indicate power state changes or alerts.
+
+        The payload contains three float values:
+            index 0 – input bus voltage (v_in)
+            index 1 – satellite bus voltage (v_bus)
+            index 2 – logic/main bus voltage (v_logic)
         """
         data = parse_values(val)
-        # TODO: Do something with this
-        i = 0
-        formatted_data = ", ".join(f"{v:5.2f}" for v in data)
-        #JEBLogger.debug("NETM", f"POWER update | DATA: {formatted_data}", src=sid)
+        v_in    = get_float(data, 0)
+        v_bus   = get_float(data, 1)
+        v_logic = get_float(data, 2)
+
+        # Store telemetry for external consumers (e.g. POWER_TELEMETRY mode)
+        self.sat_telemetry[sid] = {"in": v_in, "bus": v_bus, "logic": v_logic}
+
+        JEBLogger.debug(
+            "NETM",
+            f"POWER | in={v_in:.2f}V bus={v_bus:.2f}V logic={v_logic:.2f}V",
+            src=sid
+        )
+
+        # UVLO alert: raise alarm if input voltage drops below safe threshold
+        if v_in > 0 and v_in < self.SAT_UVLO_THRESHOLD:
+            self.display.update_status("SAT UVLO ALERT", f"ID:{sid} Vin={v_in:.1f}V")
+            JEBLogger.warning(
+                "NETM",
+                f"UVLO: Vin={v_in:.2f}V below {self.SAT_UVLO_THRESHOLD}V threshold",
+                src=sid
+            )
+            self._spawn_audio_task(
+                self.audio.play,
+                "alarm_klaxon.wav",
+                bus_id=self.audio.CH_SFX
+            )
 
     async def _handle_hello_command(self, sid, val):
         """

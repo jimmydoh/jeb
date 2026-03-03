@@ -191,6 +191,112 @@ def test_core_manager_integration():
     print("✓ CoreManager integration test passed")
 
 
+_POWER_CMD_BODY_PATTERN = re.compile(
+    r'async def _handle_power_command\(.*?(?=\n    (?:async )?def |\Z)',
+    re.DOTALL,
+)
+"""Pre-compiled regex that extracts the _handle_power_command method body."""
+
+
+@pytest.fixture
+def power_cmd_body(content):
+    """Fixture that extracts the _handle_power_command method body from the source file."""
+    method_match = _POWER_CMD_BODY_PATTERN.search(content)
+    assert method_match, "_handle_power_command method body should be extractable"
+    return method_match.group(0)
+
+
+def test_handle_power_command_is_async(content):
+    """Test that _handle_power_command is defined as an async method."""
+    print("\nTesting _handle_power_command is an async method...")
+
+    assert re.search(r'async def _handle_power_command\(', content), \
+        "_handle_power_command should be defined as an async method"
+    print("  ✓ _handle_power_command is defined as async")
+
+    print("✓ _handle_power_command async method test passed")
+
+
+def test_handle_power_command_stores_telemetry(content, power_cmd_body):
+    """Test that _handle_power_command stores parsed voltages in sat_telemetry."""
+    print("\nTesting _handle_power_command telemetry storage...")
+
+    # Verify the assignment target is keyed by satellite ID
+    assert 'self.sat_telemetry[sid]' in content, \
+        "_handle_power_command should store telemetry in self.sat_telemetry[sid]"
+    print("  ✓ self.sat_telemetry[sid] assignment is present")
+
+    # All three telemetry keys must appear in the dict literal inside the method.
+    # Accept both single- and double-quoted forms (Python allows either).
+    for key in ('in', 'bus', 'logic'):
+        pattern = rf'''["']{re.escape(key)}["']'''
+        assert re.search(pattern, power_cmd_body), \
+            f"Telemetry dict should contain key '{key}' in _handle_power_command"
+    print("  ✓ Telemetry dict contains 'in', 'bus', and 'logic' keys")
+
+    print("✓ _handle_power_command telemetry storage test passed")
+
+
+def test_handle_power_command_uses_get_float(content, power_cmd_body):
+    """Test that get_float is imported from payload_parser and called in _handle_power_command."""
+    print("\nTesting _handle_power_command uses get_float...")
+
+    # Verify the import at module level
+    assert re.search(
+        r'from utilities\.payload_parser import.*get_float',
+        content,
+    ), "get_float should be imported from utilities.payload_parser"
+    print("  ✓ get_float is imported from utilities.payload_parser")
+
+    # Verify get_float is actually called inside the method body
+    assert re.search(r'get_float\(', power_cmd_body), \
+        "get_float should be called inside _handle_power_command"
+    print("  ✓ get_float is called inside _handle_power_command")
+
+    print("✓ _handle_power_command get_float usage test passed")
+
+
+def test_handle_power_command_uvlo_threshold(content, power_cmd_body):
+    """Test that SAT_UVLO_THRESHOLD constant is defined and used in the UVLO guard."""
+    print("\nTesting _handle_power_command UVLO threshold constant and condition...")
+
+    # Constant must be declared on the class with the expected value
+    assert re.search(r'SAT_UVLO_THRESHOLD\s*=\s*18\.0', content), \
+        "SAT_UVLO_THRESHOLD should be defined as 18.0"
+    print("  ✓ SAT_UVLO_THRESHOLD = 18.0 constant is defined")
+
+    # Condition must reference the constant (not a bare literal)
+    assert re.search(r'v_in\s*<\s*self\.SAT_UVLO_THRESHOLD', power_cmd_body), \
+        "UVLO check should compare v_in against self.SAT_UVLO_THRESHOLD"
+    print("  ✓ UVLO condition uses self.SAT_UVLO_THRESHOLD")
+
+    # Guard against zero/negative v_in must also be present
+    assert re.search(r'v_in\s*>\s*0', power_cmd_body), \
+        "UVLO check should also guard with v_in > 0"
+    print("  ✓ UVLO guard includes v_in > 0")
+
+    print("✓ _handle_power_command UVLO threshold test passed")
+
+
+def test_handle_power_command_uvlo_triggers_display_and_audio(power_cmd_body):
+    """Test that a UVLO condition triggers a display status update and an audio alarm task."""
+    print("\nTesting _handle_power_command UVLO display and audio response...")
+
+    # Display alert must be raised with the SAT UVLO ALERT message
+    assert re.search(r'self\.display\.update_status\(', power_cmd_body), \
+        "_handle_power_command should call self.display.update_status"
+    assert 'SAT UVLO ALERT' in power_cmd_body, \
+        "_handle_power_command should pass 'SAT UVLO ALERT' to update_status"
+    print("  ✓ self.display.update_status called with 'SAT UVLO ALERT'")
+
+    # Audio alarm task must be spawned inside the method
+    assert re.search(r'self\._spawn_audio_task\(', power_cmd_body), \
+        "_handle_power_command should spawn an audio task via self._spawn_audio_task"
+    print("  ✓ self._spawn_audio_task is called inside _handle_power_command")
+
+    print("✓ _handle_power_command UVLO display and audio trigger test passed")
+
+
 if __name__ == "__main__":
     # Run tests with pytest when executed as a script
     import subprocess
