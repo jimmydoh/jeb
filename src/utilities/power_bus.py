@@ -1,6 +1,20 @@
 # File: src/utilities/power_bus.py
 """PowerBus abstraction for mixed INA260/ADC power telemetry."""
 
+try:
+    from adafruit_ticks import ticks_ms as _hw_ticks_ms
+    from adafruit_ticks import ticks_diff as _hw_ticks_diff
+    # Guard against mock objects injected during test runs: verify that the
+    # imported functions return integers before committing to them.
+    if not isinstance(_hw_ticks_ms(), int):
+        raise TypeError("adafruit_ticks.ticks_ms() returned a non-integer value")
+    ticks_ms = _hw_ticks_ms
+    ticks_diff = _hw_ticks_diff
+except (ImportError, TypeError, AttributeError):
+    import time as _time
+    def ticks_ms(): return int(_time.monotonic() * 1000)  # noqa: E704
+    def ticks_diff(new, old): return new - old  # noqa: E704
+
 
 class ADCSensorWrapper:
     """Wraps an ADCManager channel to expose the standard sensor interface.
@@ -70,7 +84,17 @@ class PowerBus:
 
     Each bus holds a sensor wrapper and maintains running voltage/current
     stats.  Call :meth:`update` to refresh the readings from hardware.
+
+    Convenience methods :meth:`is_healthy`, :meth:`get_telemetry`, and
+    :meth:`__str__` use :meth:`_update_if_stale` internally to avoid
+    redundant hardware reads when multiple callers invoke them within the
+    same event-loop tick.  :meth:`update` always performs a hardware read
+    and is used by explicit callers that need fresh data.
     """
+
+    #: Minimum milliseconds between hardware sensor reads when using
+    #: :meth:`_update_if_stale` (100 reads/s max).
+    POLL_INTERVAL_MS = 10
 
     def __init__(self, name, sensor, min_threshold, max_threshold=None, critical=False):
         """
@@ -108,7 +132,7 @@ class PowerBus:
         return self._critical
 
     def __str__(self):
-        self.update()  # Ensure we have the latest readings for the string representation
+        self._update_if_stale()  # Share a single read if called within the same tick
         result = f"{self.name}: {self.v_now:.2f} V"
         if self.has_current and self.i_now is not None:
             result += f", {self.i_now:.2f} mA"
@@ -118,7 +142,7 @@ class PowerBus:
 
     def get_telemetry(self):
         """Return a dict of current telemetry values for this bus."""
-        self.update()  # Ensure we have the latest readings for telemetry
+        self._update_if_stale()  # Share a single read if called within the same tick
         telemetry = {
             "name": self.name,
             "v": self.v_now,
@@ -143,13 +167,38 @@ class PowerBus:
         Returns True if the current voltage is within
         thresholds (if set), False otherwise.
         """
-        status = self.update()  # Ensure we have the latest reading
+        status = self._update_if_stale()  # Share a single read if called within the same tick
         if status != BusStatus.HEALTHY:
             return False
         return True
 
+    def _update_if_stale(self):
+        """Read hardware only when the cached reading is older than :attr:`POLL_INTERVAL_MS`.
+
+        Called by :meth:`is_healthy`, :meth:`get_telemetry`, and :meth:`__str__`
+        to avoid redundant I2C/ADC transactions when multiple callers invoke these
+        methods within the same event-loop tick (e.g. when both ``monitor_power``
+        and ``PowerTelemetryMode`` run in the same asyncio iteration).
+
+        Returns the current :attr:`status` value so callers can act on it without
+        an extra attribute access.
+        """
+        now = ticks_ms()
+        if ticks_diff(now, self._last_read_time) < self.POLL_INTERVAL_MS:
+            return self.status  # Return cached status; hardware read not due yet
+        return self.update()
+
     def update(self):
-        """Poll the sensor and update all tracked state."""
+        """Poll the sensor and update all tracked state.
+
+        Always performs a hardware read and records the timestamp so subsequent
+        calls to :meth:`_update_if_stale` within the same tick are skipped.
+        Use this when fresh data is required (e.g. direct callers, periodic
+        sampling loops).  Prefer :meth:`is_healthy` and :meth:`get_telemetry`
+        for read paths that can tolerate the :attr:`POLL_INTERVAL_MS` cache.
+        """
+        self._last_read_time = ticks_ms()
+
         v = self._sensor.read_voltage()
 
         if v is None:

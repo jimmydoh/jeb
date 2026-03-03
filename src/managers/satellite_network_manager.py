@@ -75,6 +75,7 @@ class SatelliteNetworkManager:
         # Task throttling: Single slot for status updates to prevent unbounded task spawning
         self._current_status_task = None
         self._current_audio_task = None
+        self._update_task = None
 
         # Callback invoked when a satellite sends CMD_MODE ACTIVE (remote wake)
         self._wake_callback = None
@@ -169,6 +170,21 @@ class SatelliteNetworkManager:
         """
         if self._current_audio_task is None or self._current_audio_task.done():
             self._current_audio_task = asyncio.create_task(coro_func(*args, **kwargs))
+
+    def _spawn_update_task(self, coro_func, *args, **kwargs):
+        """Spawn a firmware update task, storing its reference for lifecycle management.
+
+        Stores the task in ``self._update_task`` so its status can be inspected
+        and it can be cancelled if needed.  The ``_update_in_progress`` guard in
+        :meth:`_handle_version_check_command` already serialises updates, so
+        only one update task is ever live at a time.
+
+        Args:
+            coro_func: Coroutine function to execute for the firmware update
+            *args: Positional arguments to pass to the coroutine function
+            **kwargs: Keyword arguments to pass to the coroutine function
+        """
+        self._update_task = asyncio.create_task(coro_func(*args, **kwargs))
 
     async def discover_satellites(self, sat_type_id="01"):
         """Triggers the ID assignment chain to discover satellites."""
@@ -417,7 +433,7 @@ class SatelliteNetworkManager:
                 f"Starting update for {sid}"
             )
             self._update_in_progress = sid
-            asyncio.create_task(self._initiate_satellite_update(sid, sat_type_id))
+            self._spawn_update_task(self._initiate_satellite_update, sid, sat_type_id)
 
     def _get_satellite_expected_version(self, sat_type_id):
         """Return the expected firmware version for a satellite type.
