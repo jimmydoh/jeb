@@ -135,7 +135,7 @@ sys.modules['audiomixer'] = MockAudioMixer
 # Now import the AudioManager
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'managers'))
-from audio_manager import AudioManager
+from audio_manager import AudioManager, STREAM_BUFFER_SIZE
 
 
 def create_test_file(directory, filename, size):
@@ -383,6 +383,78 @@ def test_multiple_channels():
     print("✓ Multiple buses test passed")
 
 
+def test_per_voice_buffer_allocation():
+    """Test that each physical voice has its own dedicated stream buffer."""
+    print("\nTesting per-voice stream buffer allocation...")
+
+    manager = AudioManager(None, None, None)
+
+    # Every physical voice index should have a buffer
+    assert hasattr(manager, '_stream_buffers'), "Manager should have _stream_buffers dict"
+    assert isinstance(manager._stream_buffers, dict), "_stream_buffers should be a dict"
+
+    for voice_idx in range(manager.voice_count):
+        assert voice_idx in manager._stream_buffers, f"Voice {voice_idx} should have its own buffer"
+        buf = manager._stream_buffers[voice_idx]
+        assert isinstance(buf, bytearray), f"Voice {voice_idx} buffer should be a bytearray"
+        assert len(buf) == STREAM_BUFFER_SIZE, (
+            f"Voice {voice_idx} buffer should be {STREAM_BUFFER_SIZE} bytes, got {len(buf)}"
+        )
+
+    print(f"  ✓ All {manager.voice_count} voices have dedicated {STREAM_BUFFER_SIZE}-byte buffers")
+    print("✓ Per-voice buffer allocation test passed")
+
+
+def test_per_voice_buffers_are_independent():
+    """Test that per-voice buffers are distinct objects (no shared memory)."""
+    print("\nTesting per-voice buffer independence...")
+
+    manager = AudioManager(None, None, None)
+
+    # Collect buffer ids – they must all be unique objects
+    buffer_ids = [id(manager._stream_buffers[i]) for i in range(manager.voice_count)]
+    assert len(buffer_ids) == len(set(buffer_ids)), (
+        "All per-voice buffers must be distinct objects (no shared memory)"
+    )
+
+    print(f"  ✓ All {manager.voice_count} voice buffers are distinct bytearray objects")
+    print("✓ Per-voice buffer independence test passed")
+
+
+def test_polyphonic_streaming_uses_dedicated_buffers():
+    """Test that simultaneous streams on different voices each use their own buffer."""
+    print("\nTesting polyphonic streaming uses dedicated per-voice buffers...")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        create_test_file(tmpdir, "sfx1.wav", 30720)
+        create_test_file(tmpdir, "sfx2.wav", 30720)
+        create_test_file(tmpdir, "sfx3.wav", 30720)
+
+        manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
+
+        # Start three simultaneous streams on CH_SFX (pool [4, 5, 6])
+        asyncio.run(manager.play("sfx1.wav", bus_id=1))
+        asyncio.run(manager.play("sfx2.wav", bus_id=1))
+        asyncio.run(manager.play("sfx3.wav", bus_id=1))
+
+        # All three SFX voices should be streaming
+        for voice_idx in [4, 5, 6]:
+            assert voice_idx in manager._stream_files, (
+                f"Voice {voice_idx} should have an active stream"
+            )
+
+        # Each streaming voice should be using its own unique buffer
+        buffers_in_use = [id(manager._stream_buffers[v]) for v in [4, 5, 6]]
+        assert len(buffers_in_use) == len(set(buffers_in_use)), (
+            "Each polyphonic voice must stream with its own buffer, not a shared one"
+        )
+
+        print("  ✓ Three simultaneous SFX voices each have dedicated stream buffers")
+        manager.stop_all()
+
+    print("✓ Polyphonic streaming per-voice buffer test passed")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("AudioManager File Handle Management Test Suite")
@@ -396,6 +468,9 @@ if __name__ == "__main__":
         test_cached_vs_streamed()
         test_close_stream_when_playing_cached()
         test_multiple_channels()
+        test_per_voice_buffer_allocation()
+        test_per_voice_buffers_are_independent()
+        test_polyphonic_streaming_uses_dedicated_buffers()
 
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")
