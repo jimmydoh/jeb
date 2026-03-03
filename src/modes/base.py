@@ -1,6 +1,8 @@
 """Base class for all modes."""
 import asyncio
 
+from utilities.logger import JEBLogger
+
 class BaseMode:
     """
     Base class for all modes.
@@ -15,21 +17,24 @@ class BaseMode:
             requirements = meta["requires"]
     """
 
-    def __init__(self, core, name="MODE", description=""):
+    def __init__(self, core, name="MODE", description="", exitable=True):
         self.core = core
         self.name = name
         self.description = description
         self.variant = "DEFAULT"
+        self.exitable = exitable
 
     async def enter(self):
         """Standard setup routine."""
-        self.core.clean_slate()  # Reset state before starting the mode
+        JEBLogger.info("MODE", f"Entering mode: {self.name}")
+        await self.core.clean_slate()  # Reset state before starting the mode
         self.core.display.update_status(self.name, "LOADING...")
         await asyncio.sleep(0.1)
 
     async def exit(self):
         """Standard cleanup routine."""
-        self.core.clean_slate()  # Reset state and cancel tasks
+        JEBLogger.info("MODE", f"Exiting mode: {self.name}")
+        await self.core.clean_slate()  # Reset state and cancel tasks
         self.core.current_mode_step = 0
 
     async def run(self):
@@ -61,7 +66,8 @@ class BaseMode:
         try:
             await self.enter()
             run_task = asyncio.create_task(self.run())
-            monitor_task = asyncio.create_task(self._monitor_exit(run_task))
+            if self.exitable:
+                monitor_task = asyncio.create_task(self._monitor_exit(run_task))
             try:
                 # Await the main mode task
                 result = await run_task
@@ -70,7 +76,9 @@ class BaseMode:
                 result = "EXIT"
             finally:
                 # Ensure the monitor task is also cancelled
-                monitor_task.cancel()
+                await self.exit()
+                if self.exitable:
+                    monitor_task.cancel()
             return result
         finally:
             await self.exit()

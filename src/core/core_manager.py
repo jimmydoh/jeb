@@ -417,22 +417,26 @@ class CoreManager:
             while True:
                 # 1. Check if the mode task finished naturally
                 if sub_task.done():
+                    JEBLogger.info("CORE", f"Mode '{mode_instance.name}' completed with result: {sub_task.result()}")
                     exit_reason = "MODE_COMPLETE"
                     break
 
                 # 2. Check for safety events directly (no need to spawn wait tasks!)
                 if self.estop_event.is_set():
+                    JEBLogger.warning("CORE", "E-Stop engaged during mode execution!")
                     exit_reason = "ESTOP_ABORT"
                     self.display.update_status("ESTOP ENGAGED", "EXITING MODE...")
                     break
 
                 if self.abort_event.is_set():
+                    JEBLogger.warning("CORE", "Global abort triggered during mode execution!")
                     exit_reason = "SYSTEM_ABORT"
                     self.display.update_status("SYSTEM ABORT", "RESETTING CORE...")
                     self.abort_event.clear()  # Reset for future use
                     break
 
                 if target_sat and self.target_sat_event.is_set():
+                    JEBLogger.warning("CORE", f"Target satellite '{target_sat.sat_type_name}' disconnected during mode execution!")
                     exit_reason = "LINK_LOST"
                     self.display.update_status("LINK LOST", "EXITING MODE...")
                     break
@@ -459,7 +463,9 @@ class CoreManager:
         if exit_reason == "MODE_COMPLETE":
             # Propagate any exceptions from the mode task
             try:
+                JEBLogger.info("CORE", f"Awaiting mode task completion for result retrieval...")
                 result = await sub_task  # Safely get result or raise exception
+                JEBLogger.info("CORE", f"Mode task completed with result: {result}")
                 return result if result else "SUCCESS"
             except Exception as e:
                 JEBLogger.error("CORE", f"Error in mode execution: {e}")
@@ -841,48 +847,67 @@ class CoreManager:
 
                     mode_instance = mode_class(self)
 
-                    if target_sat:
-                        run_robust = True
-                        while run_robust:
+                    run_robust = True
+                    while run_robust:
+                        if target_sat:
                             result = await self.run_mode_with_safety(
                                 mode_instance, target_sat=target_sat
                             )
-                            if result == "LINK_LOST":
+                        else:
+                            result = await self.run_mode_with_safety(mode_instance)
+
+                        if result == "LINK_LOST":
+                            self.display.update_status(
+                                "LINK LOST", "RECONNECT IN 60s"
+                            )
+                            asyncio.create_task(
+                                self.audio.play(
+                                    "link_lost.wav", bus_id=self.audio.CH_SFX
+                                )
+                            )
+                            await asyncio.sleep(1)
+                            # 60 second countdown
+                            disconnect_time = ticks_ms()
+                            while not target_sat.is_active and run_robust:
+                                elapsed = ticks_diff(ticks_ms(), disconnect_time)
+                                if elapsed > 60000:
+                                    run_robust = False
+                                    continue
+                                secs_left = 60 - (elapsed // 1000)
                                 self.display.update_status(
-                                    "LINK LOST", "RECONNECT IN 60s"
+                                    "LINK LOST", f"ABORT IN: {secs_left}s"
+                                )
+                                await asyncio.sleep(0.1)
+                            if target_sat.is_active and run_robust:
+                                self.display.update_status(
+                                    "LINK RESTORED", "RESUMING..."
                                 )
                                 asyncio.create_task(
                                     self.audio.play(
-                                        "link_lost.wav", bus_id=self.audio.CH_SFX
+                                        "link_restored.wav", bus_id=self.audio.CH_SFX
                                     )
                                 )
                                 await asyncio.sleep(1)
-                                # 60 second countdown
-                                disconnect_time = ticks_ms()
-                                while not target_sat.is_active and run_robust:
-                                    elapsed = ticks_diff(ticks_ms(), disconnect_time)
-                                    if elapsed > 60000:
-                                        run_robust = False
-                                        continue
-                                    secs_left = 60 - (elapsed // 1000)
-                                    self.display.update_status(
-                                        "LINK LOST", f"ABORT IN: {secs_left}s"
-                                    )
-                                    await asyncio.sleep(0.1)
-                                if target_sat.is_active and run_robust:
-                                    self.display.update_status(
-                                        "LINK RESTORED", "RESUMING..."
-                                    )
-                                    asyncio.create_task(
-                                        self.audio.play(
-                                            "link_restored.wav", bus_id=self.audio.CH_SFX
-                                        )
-                                    )
-                                    await asyncio.sleep(1)
-                            else:
-                                run_robust = False
-                    else:
-                        await self.run_mode_with_safety(mode_instance)
+                        elif result == "MODE_ERROR":
+                            JEBLogger.error("CORE", f"An error occurred during mode execution: {mode_instance.name}. Returning to DASHBOARD.")
+                            run_robust = False
+                        elif result in ["ESTOP_ABORT", "SYSTEM_ABORT"]:
+                            JEBLogger.warning("CORE", f"Mode '{mode_instance.name}' aborted due to safety event: {result}. Returning to DASHBOARD.")
+                            run_robust = False
+                        elif result == "SUCCESS":
+                            JEBLogger.info("CORE", f"Mode '{mode_instance.name}' completed successfully. Returning to DASHBOARD.")
+                            run_robust = False
+                        elif result == "EXIT":
+                            JEBLogger.info("CORE", f"Mode '{mode_instance.name}' exited by user command. Returning to DASHBOARD.")
+                            run_robust = False
+                        elif result in ["MENU_CHOICE", "ADMIN_CHOICE", "ZERO_CHOICE"]:
+                            JEBLogger.info("CORE", f"Mode '{mode_instance.name}' returned with choice result: {result}")
+                            run_robust = False
+                            break
+                        else:
+                            run_robust = False
+
+                        self.mode = "DASHBOARD"  # Return to dashboard after mode exit or error
                 else:
                     JEBLogger.warning("CORE", f"Cannot start {self.mode}: Missing Dependency")
 
