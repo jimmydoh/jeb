@@ -523,6 +523,28 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # Plasma: demoscene plasma visualizer – concentric colour rings radiating
+    # from the centre using cyan (51), plasma-blue (64), magenta (71),
+    # periwinkle (63) and blue (61) on a black (0) background.
+    PLASMA = bytes([
+        63, 63, 63, 63, 71, 71, 71, 71, 71, 71, 71, 71, 63, 63, 63, 63,
+        63, 63, 63, 71, 64, 64, 51, 51, 51, 51, 64, 64, 71, 63, 63, 63,
+        63, 63, 71, 64, 51, 51, 51, 51, 51, 51, 51, 51, 64, 71, 63, 63,
+        63, 71, 64, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 64, 71, 63,
+        71, 64, 51, 51, 51, 51, 64, 71, 71, 64, 51, 51, 51, 51, 64, 71,
+        71, 64, 51, 51, 51, 71, 63, 63, 63, 63, 71, 51, 51, 51, 64, 71,
+        71, 51, 51, 51, 64, 63, 61, 61, 61, 61, 63, 64, 51, 51, 51, 71,
+        71, 51, 51, 51, 71, 63, 61, 61, 61, 61, 63, 71, 51, 51, 51, 71,
+        71, 51, 51, 51, 71, 63, 61, 61, 61, 61, 63, 71, 51, 51, 51, 71,
+        71, 51, 51, 51, 64, 63, 61, 61, 61, 61, 63, 64, 51, 51, 51, 71,
+        71, 64, 51, 51, 51, 71, 63, 63, 63, 63, 71, 51, 51, 51, 64, 71,
+        71, 64, 51, 51, 51, 51, 64, 71, 71, 64, 51, 51, 51, 51, 64, 71,
+        63, 71, 64, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 64, 71, 63,
+        63, 63, 71, 64, 51, 51, 51, 51, 51, 51, 51, 51, 64, 71, 63, 63,
+        63, 63, 63, 71, 64, 64, 51, 51, 51, 51, 64, 64, 71, 63, 63, 63,
+        63, 63, 63, 63, 71, 71, 71, 71, 71, 71, 71, 71, 63, 63, 63, 63,
+    ])
+
     # Orbital Strike: tactical fire-control reticle
     # Dark background (0), red target dot (11), green crosshair arms (41),
     # hollow centre (0), cyan outer ring marks (51), orange corner brackets (21).
@@ -644,6 +666,7 @@ class Icons:
         "LISSAJOUS": LISSAJOUS,
         "BOIDS": BOIDS,
         "FALLING_SAND": FALLING_SAND,
+        "PLASMA": PLASMA,
         "IRON_CANOPY": IRON_CANOPY,
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,
