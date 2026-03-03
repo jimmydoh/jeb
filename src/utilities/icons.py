@@ -615,6 +615,28 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # 16x16 icon for the Bouncing Sprite (DVD-logo style) screensaver mode.
+    # Shows a tiny retro arcade spaceship (red=11, white cockpit=4) centred
+    # inside a silver (3) border that represents the bouncing arena walls.
+    BOUNCING_SPRITE = bytes([
+         3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0, 11,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0, 11,  4, 11,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0, 11,  0, 11,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
+         3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
+    ])
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -644,6 +666,7 @@ class Icons:
         "LISSAJOUS": LISSAJOUS,
         "BOIDS": BOIDS,
         "FALLING_SAND": FALLING_SAND,
+        "BOUNCING_SPRITE": BOUNCING_SPRITE,
         "IRON_CANOPY": IRON_CANOPY,
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,

@@ -395,6 +395,16 @@ MODE_REGISTRY = {
         "requires": ["CORE"],
         "settings": []
     },
+    "BOUNCING_SPRITE": {
+        "id": "BOUNCING_SPRITE",
+        "name": "BOUNCING SPRITE",
+        "module_path": "modes.bouncing_sprite",
+        "class_name": "BouncingSprite",
+        "icon": "BOUNCING_SPRITE",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
     "ABYSSAL_PING": {
         "id": "ABYSSAL_PING",
         "name": "ABYSSAL PING",
