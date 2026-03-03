@@ -353,6 +353,9 @@ class UARTTransport(BaseTransport):
         # Relay task
         self._relay_task = None
 
+        # Error tracking
+        self._rx_error_count = 0
+
 #region --- Harware / IO Methods ---
     def _write_to_tx_buffer(self, data):
         """Write data to the TX ring buffer.
@@ -460,8 +463,9 @@ class UARTTransport(BaseTransport):
             count = self.uart.readinto(self._rx_mv[self._rx_head : self._rx_head + space])
             if count and count > 0:
                 self._rx_head = (self._rx_head + count) % self._rx_buf_size
-        except Exception:
-            pass  # Ignore read errors
+        except Exception as e:
+            self._rx_error_count += 1
+            print(f"RX Hardware Error (count={self._rx_error_count}): {e}")
 
     def _try_decode_one(self):
         """Receive a message from UART if available.
