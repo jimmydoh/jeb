@@ -615,6 +615,124 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # -------------------------------------------------------------------------
+    # Virtual Pet cat sprites (16x16)
+    # Colour key:
+    #   0=OFF  1=CHARCOAL  2=GRAY  3=SILVER  4=WHITE
+    #  11=RED  13=PINK     22=GOLD 31=YELLOW 61=BLUE
+    # -------------------------------------------------------------------------
+
+    # VIRTUAL_PET – mode menu / idle face: cute cat with happy open eyes
+    VIRTUAL_PET = bytes([
+        # Row  0
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  1 – ear tips
+         0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+        # Row  2 – ears
+         0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+        # Row  3 – inner ear / top head
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+        # Row  4 – upper face
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row  5 – eyes (blue)
+         0,  0,  3,  4,  4, 61, 61,  4,  4, 61, 61,  4,  4,  3,  0,  0,
+        # Row  6 – pupils (charcoal)
+         0,  0,  3,  4,  4,  1,  1,  4,  4,  1,  1,  4,  4,  3,  0,  0,
+        # Row  7 – lower eye area
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row  8 – nose (pink) + whisker roots (gray)
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+        # Row  9 – whiskers
+         0,  0,  3,  4,  2,  4,  4,  4,  4,  4,  4,  2,  4,  3,  0,  0,
+        # Row 10 – mouth corners (red)
+         0,  0,  3,  4,  4,  4, 11,  4,  4, 11,  4,  4,  4,  3,  0,  0,
+        # Row 11 – mouth centre
+         0,  0,  3,  4,  4,  4,  4, 11, 11,  4,  4,  4,  4,  3,  0,  0,
+        # Row 12 – chin
+         0,  0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,  0,
+        # Row 13 – neck
+         0,  0,  0,  0,  3,  3,  3,  4,  4,  3,  3,  3,  0,  0,  0,  0,
+        # Row 14
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 15
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
+    # CAT_IDLE – same as VIRTUAL_PET (used with PULSE animation for idle state)
+    CAT_IDLE = VIRTUAL_PET
+
+    # CAT_EAT – wide eyes + open mouth + gold food dot at chin
+    CAT_EAT = bytes([
+        # Row  0
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  1 – ear tips
+         0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+        # Row  2 – ears
+         0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+        # Row  3 – inner ear / top head
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+        # Row  4 – upper face
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row  5 – eyes wide open (excited)
+         0,  0,  3,  4, 61, 61, 61,  4,  4, 61, 61, 61,  4,  3,  0,  0,
+        # Row  6 – pupils wide
+         0,  0,  3,  4,  1,  1,  1,  4,  4,  1,  1,  1,  4,  3,  0,  0,
+        # Row  7 – lower eye area
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row  8 – nose + whiskers
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+        # Row  9 – mouth open top edge
+         0,  0,  3,  4,  4, 11,  4,  4,  4,  4, 11,  4,  4,  3,  0,  0,
+        # Row 10 – open mouth interior
+         0,  0,  3,  4,  4,  4, 11,  1,  1, 11,  4,  4,  4,  3,  0,  0,
+        # Row 11 – mouth bottom edge
+         0,  0,  3,  4,  4,  4,  4, 11, 11,  4,  4,  4,  4,  3,  0,  0,
+        # Row 12 – chin with gold food dot
+         0,  0,  0,  3,  4,  4,  4, 22, 22,  4,  4,  4,  3,  0,  0,  0,
+        # Row 13 – neck
+         0,  0,  0,  0,  3,  3,  3,  4,  4,  3,  3,  3,  0,  0,  0,  0,
+        # Row 14
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 15
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
+    # CAT_SLEEP – closed eyes + flat mouth + yellow ZZZ in top-left
+    CAT_SLEEP = bytes([
+        # Row  0 – Z (top bar)
+        31, 31, 31,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  1 – Z (diagonal) + right ear tip
+         0,  0, 31,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+        # Row  2 – Z (bottom bar) + ears
+        31, 31, 31,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+        # Row  3 – top head
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+        # Row  4 – upper face
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row  5 – above closed eyes
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row  6 – closed eyes (horizontal charcoal lines)
+         0,  0,  3,  4,  4,  1,  1,  1,  4,  1,  1,  1,  4,  3,  0,  0,
+        # Row  7 – below closed eyes
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row  8 – nose + whiskers
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+        # Row  9 – whiskers
+         0,  0,  3,  4,  2,  4,  4,  4,  4,  4,  4,  2,  4,  3,  0,  0,
+        # Row 10 – relaxed flat mouth
+         0,  0,  3,  4,  4,  4,  4, 11, 11,  4,  4,  4,  4,  3,  0,  0,
+        # Row 11 – no lower mouth detail
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row 12 – chin
+         0,  0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,  0,
+        # Row 13 – neck
+         0,  0,  0,  0,  3,  3,  3,  4,  4,  3,  3,  3,  0,  0,  0,  0,
+        # Row 14
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 15
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -648,6 +766,10 @@ class Icons:
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
+        "VIRTUAL_PET": VIRTUAL_PET,
+        "CAT_IDLE": CAT_IDLE,
+        "CAT_EAT": CAT_EAT,
+        "CAT_SLEEP": CAT_SLEEP,
         "0": DEFAULT,
         "1": DEFAULT,
         "2": DEFAULT,
