@@ -86,6 +86,8 @@ class BasePixelManager:
         # Track active animation count to avoid O(n) checks
         self._active_count = 0
 
+        self._bg_tasks = []  # List to track background tasks for clean shutdown
+
     def get_layout_type(self):
         """Returns the layout type (PixelLayout enum)."""
         return self._layout_type
@@ -106,14 +108,17 @@ class BasePixelManager:
             'dimensions': self._dimensions
         }
 
-    def clear(self):
+    def clear(self, cancel_tasks=True):
         """Stops all animations and clears LEDs."""
+        if cancel_tasks and hasattr(self, '_bg_tasks'):
+            for task in self._bg_tasks:
+                task.cancel()
+            self._bg_tasks.clear()
         for slot in self.active_animations:
             slot.clear()
         self._active_count = 0
         self._active_indices.clear()
         self.pixels.fill((0, 0, 0))
-        # Note: Hardware write is now handled by CoreManager.render_loop()
 
     def clear_animation(self, idx, priority=0):
         """

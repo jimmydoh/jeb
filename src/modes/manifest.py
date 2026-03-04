@@ -509,6 +509,16 @@ MODE_REGISTRY = {
                 "default": "NORMAL"
             }
         ]
+    },
+    "VIRTUAL_PET": {
+        "id": "VIRTUAL_PET",
+        "name": "VIRTUAL PET",
+        "module_path": "modes.virtual_pet",
+        "class_name": "VirtualPet",
+        "icon": "VIRTUAL_PET",
+        "menu": "MAIN",
+        "requires": ["CORE"],
+        "settings": []
     }
 }
 

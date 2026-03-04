@@ -175,7 +175,7 @@ class MatrixManager(BasePixelManager):
 
         # Note: 'show' parameter is ignored - render loop handles hardware writes
 
-    def fill(self, color, show=True, anim_mode=None, speed=1.0, duration=None):
+    def fill(self, color, show=True, anim_mode=None, speed=1.0, duration=None, cancel_tasks=True):
         """Fills the entire matrix with a single color or simple animation.
 
         Note: The 'show' parameter is deprecated and ignored.
@@ -184,7 +184,7 @@ class MatrixManager(BasePixelManager):
         if anim_mode:
             self.fill_animation(anim_mode, color, speed, duration)
         else:
-            self.clear()
+            self.clear(cancel_tasks=cancel_tasks)
             self.pixels.fill(color)
         # Note: 'show' parameter is ignored - render loop handles hardware writes
 
@@ -269,6 +269,11 @@ class MatrixManager(BasePixelManager):
         Displays a predefined icon on the matrix with optional animation.
         anim_mode: None, "PULSE", "BLINK" are non-blocking via the animate_loop.
         anim_mode: "SLIDE_LEFT", "SLIDE_RIGHT" are non-blocking (spawned as background tasks).
+        anim_mode: "ANIMATED" - plays a multi-frame sprite sheet as a looping background task.
+            The icon data must be a contiguous bytes/bytearray where each frame is
+            width*height bytes.  Frame count is derived automatically.
+            ``speed`` is used as the target FPS (default 1.0 → 8 FPS via the
+            animation function default; pass e.g. speed=12 for 12 FPS).
 
         border_color: Optional RGB tuple. When provided, a 1-pixel border is drawn
         around the icon footprint using the specified colour. Intended for 14x14
@@ -278,16 +283,27 @@ class MatrixManager(BasePixelManager):
         if clear:
             self.clear()
 
+        # Handle ANIMATED (sprite sheet) - Spawn as background task
+        if anim_mode == "ANIMATED":
+            icon_data, timing_data = Icons.get_anim(icon_name)
+            task = asyncio.create_task(
+                matrix_animations.animate_sprite_sheet(self, icon_data, timing_data=timing_data, loop=True, color=color, brightness=brightness)
+            )
+            self._bg_tasks.append(task)  # Track the task for potential cancellation
+            return
+
         icon_data = Icons.get(icon_name)
 
         # Handle SLIDE_LEFT Animation - Spawn as background task
         if anim_mode == "SLIDE_LEFT":
-            asyncio.create_task(matrix_animations.animate_slide_left(self, icon_data, color, brightness))
+            task = asyncio.create_task(matrix_animations.animate_slide_left(self, icon_data, color, brightness))
+            self._bg_tasks.append(task)  # Track the task for potential cancellation
             return
 
         # Handle SLIDE_RIGHT Animation - Spawn as background task
         if anim_mode == "SLIDE_RIGHT":
-            asyncio.create_task(matrix_animations.animate_slide_right(self, icon_data, color, brightness))
+            task = asyncio.create_task(matrix_animations.animate_slide_right(self, icon_data, color, brightness))
+            self._bg_tasks.append(task)  # Track the task for potential cancellation
             return
 
         data_len = len(icon_data)
@@ -354,7 +370,7 @@ class MatrixManager(BasePixelManager):
                         else:
                             self.draw_pixel(bx1, by, border_color, brightness=brightness)
 
-    def show_frame(self, frame, clear=True):
+    def show_frame(self, frame, clear=True, color=None, brightness=1.0):
         """Renders a palette-encoded frame buffer directly to the matrix.
 
         Uses the same palette-index encoding as show_icon: each byte is

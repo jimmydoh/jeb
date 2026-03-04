@@ -658,6 +658,296 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # -------------------------------------------------------------------------
+    # Virtual Pet cat sprites (16x16)
+    # Colour key:
+    #   0=OFF  1=CHARCOAL  2=GRAY  3=SILVER  4=WHITE
+    #  11=RED  13=PINK     22=GOLD 31=YELLOW 61=BLUE
+    # -------------------------------------------------------------------------
+
+    # VIRTUAL_PET – mode menu / idle face: cute cat with happy open eyes
+    VIRTUAL_PET = bytes([
+        # Row  0
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  1 – ear tips
+         0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+        # Row  2 – ears
+         0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+        # Row  3 – inner ear / top head
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+        # Row  4 – upper face
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row  5 – eyes (blue)
+         0,  0,  3,  4,  4, 61, 61,  4,  4, 61, 61,  4,  4,  3,  0,  0,
+        # Row  6 – pupils (charcoal)
+         0,  0,  3,  4,  4,  1,  1,  4,  4,  1,  1,  4,  4,  3,  0,  0,
+        # Row  7 – lower eye area
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row  8 – nose (pink) + whisker roots (gray)
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+        # Row  9 – whiskers
+         0,  0,  3,  4,  2,  4,  4,  4,  4,  4,  4,  2,  4,  3,  0,  0,
+        # Row 10 – mouth corners (red)
+         0,  0,  3,  4,  4,  4, 11,  4,  4, 11,  4,  4,  4,  3,  0,  0,
+        # Row 11 – mouth centre
+         0,  0,  3,  4,  4,  4,  4, 11, 11,  4,  4,  4,  4,  3,  0,  0,
+        # Row 12 – chin
+         0,  0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,  0,
+        # Row 13 – neck
+         0,  0,  0,  0,  3,  3,  3,  4,  4,  3,  3,  3,  0,  0,  0,  0,
+        # Row 14
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 15
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
+    # CAT_IDLE – same as VIRTUAL_PET (used with PULSE animation for idle state)
+    CAT_IDLE = VIRTUAL_PET
+
+    # CAT_EAT – wide eyes + open mouth + gold food dot at chin
+    CAT_EAT = bytes([
+        # Row  0
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  1 – ear tips
+         0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+        # Row  2 – ears
+         0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+        # Row  3 – inner ear / top head
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+        # Row  4 – upper face
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row  5 – eyes wide open (excited)
+         0,  0,  3,  4, 61, 61, 61,  4,  4, 61, 61, 61,  4,  3,  0,  0,
+        # Row  6 – pupils wide
+         0,  0,  3,  4,  1,  1,  1,  4,  4,  1,  1,  1,  4,  3,  0,  0,
+        # Row  7 – lower eye area
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row  8 – nose + whiskers
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+        # Row  9 – mouth open top edge
+         0,  0,  3,  4,  4, 11,  4,  4,  4,  4, 11,  4,  4,  3,  0,  0,
+        # Row 10 – open mouth interior
+         0,  0,  3,  4,  4,  4, 11,  1,  1, 11,  4,  4,  4,  3,  0,  0,
+        # Row 11 – mouth bottom edge
+         0,  0,  3,  4,  4,  4,  4, 11, 11,  4,  4,  4,  4,  3,  0,  0,
+        # Row 12 – chin with gold food dot
+         0,  0,  0,  3,  4,  4,  4, 22, 22,  4,  4,  4,  3,  0,  0,  0,
+        # Row 13 – neck
+         0,  0,  0,  0,  3,  3,  3,  4,  4,  3,  3,  3,  0,  0,  0,  0,
+        # Row 14
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 15
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
+    # CAT_SLEEP – closed eyes + flat mouth + yellow ZZZ in top-left
+    CAT_SLEEP = bytes([
+        # Row  0 – Z (top bar)
+        31, 31, 31,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  1 – Z (diagonal) + right ear tip
+         0,  0, 31,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+        # Row  2 – Z (bottom bar) + ears
+        31, 31, 31,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+        # Row  3 – top head
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+        # Row  4 – upper face
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row  5 – above closed eyes
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row  6 – closed eyes (horizontal charcoal lines)
+         0,  0,  3,  4,  4,  1,  1,  1,  4,  1,  1,  1,  4,  3,  0,  0,
+        # Row  7 – below closed eyes
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row  8 – nose + whiskers
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+        # Row  9 – whiskers
+         0,  0,  3,  4,  2,  4,  4,  4,  4,  4,  4,  2,  4,  3,  0,  0,
+        # Row 10 – relaxed flat mouth
+         0,  0,  3,  4,  4,  4,  4, 11, 11,  4,  4,  4,  4,  3,  0,  0,
+        # Row 11 – no lower mouth detail
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row 12 – chin
+         0,  0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,  0,
+        # Row 13 – neck
+         0,  0,  0,  0,  3,  3,  3,  4,  4,  3,  3,  3,  0,  0,  0,  0,
+        # Row 14
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row 15
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
+    # -------------------------------------------------------------------------
+    # CAT_IDLE_ANIMATED - 4 Frames (1024 bytes)
+    # A subtle tail flick loop: Frame 0 (Rest) -> 1 (Lift) -> 2 (Peak) -> 3 (Lower)
+    # -------------------------------------------------------------------------
+    CAT_IDLE_ANIMATED = bytes([
+        # ==========================================
+        # FRAME 0: Tail Curled Under (Resting)
+        # ==========================================
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, # Row 0
+         0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0, # Row 1
+         0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0, # Row 2
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0, # Row 3
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0, # Row 4
+         0,  0,  3,  4,  4, 61, 61,  4,  4, 61, 61,  4,  4,  3,  0,  0, # Row 5
+         0,  0,  3,  4,  4,  1,  1,  4,  4,  1,  1,  4,  4,  3,  0,  0, # Row 6
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0, # Row 7
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0, # Row 8
+         0,  0,  3,  4,  2,  4,  4,  4,  4,  4,  4,  2,  4,  3,  0,  0, # Row 9
+         0,  0,  3,  4,  4,  4, 11,  4,  4, 11,  4,  4,  4,  3,  0,  0, # Row 10
+         0,  0,  3,  4,  4,  4,  4, 11, 11,  4,  4,  4,  4,  3,  0,  0, # Row 11
+         0,  0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,  0, # Row 12 (Chin)
+         0,  0,  0,  0,  3,  3,  3,  4,  4,  3,  3,  3,  3,  0,  0,  0, # Row 13 (Neck + Tail Base)
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  4,  3,  0,  0, # Row 14 (Tail Curve)
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  4,  3,  0,  0,  0, # Row 15 (Tail Tip Under)
+
+        # ==========================================
+        # FRAME 1: Tail Lifting
+        # ==========================================
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+         0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+         0,  0,  3,  4,  4, 61, 61,  4,  4, 61, 61,  4,  4,  3,  0,  0,
+         0,  0,  3,  4,  4,  1,  1,  4,  4,  1,  1,  4,  4,  3,  0,  0,
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+         0,  0,  3,  4,  2,  4,  4,  4,  4,  4,  4,  2,  4,  3,  0,  0,
+         0,  0,  3,  4,  4,  4, 11,  4,  4, 11,  4,  4,  4,  3,  0,  0,
+         0,  0,  3,  4,  4,  4,  4, 11, 11,  4,  4,  4,  4,  3,  0,  0,
+         0,  0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,  0,
+         0,  0,  0,  0,  3,  3,  3,  4,  4,  3,  3,  3,  3,  3,  0,  0, # Tail lifts right
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  4,  3,  0, # Tail straightens
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  0,  0, # Tip lifts off ground
+
+        # ==========================================
+        # FRAME 2: Peak Flick (Tail swoops up)
+        # ==========================================
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+         0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+         0,  0,  3,  4,  4, 61, 61,  4,  4, 61, 61,  4,  4,  3,  0,  0,
+         0,  0,  3,  4,  4,  1,  1,  4,  4,  1,  1,  4,  4,  3,  0,  0,
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+         0,  0,  3,  4,  2,  4,  4,  4,  4,  4,  4,  2,  4,  3,  0,  0,
+         0,  0,  3,  4,  4,  4, 11,  4,  4, 11,  4,  4,  4,  3,  0,  0,
+         0,  0,  3,  4,  4,  4,  4, 11, 11,  4,  4,  4,  4,  3,  3,  0, # Tail tip reaches mouth height
+         0,  0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  4,  3,  0, # Tail body moves up
+         0,  0,  0,  0,  3,  3,  3,  4,  4,  3,  3,  3,  3,  4,  3,  0, # Base pulls up
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  0,  0, # Bottom rounded off
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+
+        # ==========================================
+        # FRAME 3: Tail Lowering (Same as Frame 1)
+        # ==========================================
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+         0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+         0,  0,  3,  4,  4, 61, 61,  4,  4, 61, 61,  4,  4,  3,  0,  0,
+         0,  0,  3,  4,  4,  1,  1,  4,  4,  1,  1,  4,  4,  3,  0,  0,
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+         0,  0,  3,  4,  2,  4,  4,  4,  4,  4,  4,  2,  4,  3,  0,  0,
+         0,  0,  3,  4,  4,  4, 11,  4,  4, 11,  4,  4,  4,  3,  0,  0,
+         0,  0,  3,  4,  4,  4,  4, 11, 11,  4,  4,  4,  4,  3,  0,  0,
+         0,  0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,  0,
+         0,  0,  0,  0,  3,  3,  3,  4,  4,  3,  3,  3,  3,  3,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  4,  3,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  0,  0,
+    ])
+
+    CAT_IDLE_TIMING = (2000, 150, 150, 150)
+
+    # =========================================================================
+    # Multi-frame sprite sheet: CAT_WALK  (2 frames × 256 bytes = 512 bytes)
+    # =========================================================================
+    # A simple 2-frame walking cycle for the virtual pet PLAYING state.
+    # Colour key (same as cat face sprites above):
+    #   0=OFF  1=CHARCOAL  2=GRAY  3=SILVER  4=WHITE
+    #  11=RED  13=PINK     22=GOLD 31=YELLOW 61=BLUE 41=GREEN
+    #
+    # Frame layout (each frame is 16 rows × 16 cols = 256 bytes, row-major):
+    #   Frame 0 (bytes   0–255): Right paw forward
+    #   Frame 1 (bytes 256–511): Left  paw forward
+    # =========================================================================
+    CAT_WALK = bytes([
+        # ---- Frame 0: right paw forward ----
+        # Row  0
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  1 – ear tips
+         0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+        # Row  2 – ears
+         0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+        # Row  3 – inner ear / top head
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+        # Row  4 – upper face
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row  5 – eyes
+         0,  0,  3,  4,  4, 61, 61,  4,  4, 61, 61,  4,  4,  3,  0,  0,
+        # Row  6 – pupils
+         0,  0,  3,  4,  4,  1,  1,  4,  4,  1,  1,  4,  4,  3,  0,  0,
+        # Row  7 – lower eye area
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row  8 – nose + whiskers
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+        # Row  9 – smile
+         0,  0,  3,  4,  4,  4, 11,  4,  4, 11,  4,  4,  4,  3,  0,  0,
+        # Row 10 – body
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row 11 – body mid
+         0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,
+        # Row 12 – belly
+         0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,
+        # Row 13 – legs: right paw forward (green tip), left paw straight
+         0,  3,  4,  4,  3,  4,  4,  4,  4,  4,  4,  3,  4,  4,  3,  0,
+        # Row 14 – paw tips
+         0,  3, 41,  3,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,  0,
+        # Row 15
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+
+        # ---- Frame 1: left paw forward ----
+        # Row  0
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  1 – ear tips
+         0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  0,  0,
+        # Row  2 – ears
+         0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  0,
+        # Row  3 – inner ear / top head
+         0,  3, 13,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3, 13,  3,  0,
+        # Row  4 – upper face
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row  5 – eyes
+         0,  0,  3,  4,  4, 61, 61,  4,  4, 61, 61,  4,  4,  3,  0,  0,
+        # Row  6 – pupils
+         0,  0,  3,  4,  4,  1,  1,  4,  4,  1,  1,  4,  4,  3,  0,  0,
+        # Row  7 – lower eye area
+         0,  0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,  0,
+        # Row  8 – nose + whiskers
+         0,  0,  3,  4,  2,  4,  4, 13, 13,  4,  4,  2,  4,  3,  0,  0,
+        # Row  9 – smile
+         0,  0,  3,  4,  4,  4, 11,  4,  4, 11,  4,  4,  4,  3,  0,  0,
+        # Row 10 – body
+         0,  0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,  0,
+        # Row 11 – body mid
+         0,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  3,  0,
+        # Row 12 – belly
+         0,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  3,  0,
+        # Row 13 – legs: left paw forward (green tip), right paw straight
+         0,  3,  4,  4,  3,  4,  4,  4,  4,  4,  4,  3,  4,  4,  3,  0,
+        # Row 14 – paw tips
+         0,  0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  3, 41,  3,  0,  0,
+        # Row 15
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
+    CAT_WALK_TIMING = (300, 300)  # Equal time for each frame
+
     # 16x16 icon for the Bouncing Sprite (DVD-logo style) screensaver mode.
     # Shows a tiny retro arcade spaceship (red=11, white cockpit=4) centred
     # inside a silver (3) border that represents the bouncing arena walls.
@@ -739,6 +1029,11 @@ class Icons:
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
+        "VIRTUAL_PET": VIRTUAL_PET,
+        "CAT_IDLE": CAT_IDLE,
+        "CAT_EAT": CAT_EAT,
+        "CAT_SLEEP": CAT_SLEEP,
+        "CAT_WALK": CAT_WALK,
         "0": DEFAULT,
         "1": DEFAULT,
         "2": DEFAULT,
@@ -749,6 +1044,11 @@ class Icons:
         "7": DEFAULT,
         "8": DEFAULT,
         "9": DEFAULT
+    }
+
+    ANIM_LIBRARY = {
+        "CAT_IDLE": (CAT_IDLE_ANIMATED, CAT_IDLE_TIMING),
+        "CAT_WALK": (CAT_WALK, CAT_WALK_TIMING),
     }
 
     @classmethod
@@ -774,3 +1074,37 @@ class Icons:
             # File doesn't exist or couldn't be read
             JEBLogger.warning("ICON",f"⚠️ Icon Asset Missing: {icon_name}")
             return cls.DEFAULT
+
+    @classmethod
+    def get_anim(cls, anim_name, default_frame_ms=150):
+        """
+        Intelligently fetches an animated icon and its timing data.
+        Returns a tuple: (bytearray_data, timing_tuple_or_int)
+        """
+        # 1. Check RAM (Fast path)
+        if anim_name in cls.ANIM_LIBRARY:
+            return cls.ANIM_LIBRARY[anim_name]
+
+        # 2. Check Flash Storage (On-Demand path)
+        # For .bin files, we assume it's a flat concatenated bytearray.
+        # Timing data can be stored in a separate file with a "_timing" suffix,
+        # or we can default to a fixed frame duration.
+        filepath = f"/SD/icons/{anim_name.lower()}.bin"
+        timingpath = f"/SD/icons/{anim_name.lower()}_timing.bin"
+        try:
+            with open(filepath, "rb") as f:
+                data = f.read()
+                # Attempt to read timing data
+                try:
+                    with open(timingpath, "rb") as tf:
+                        timing_data = tf.read()
+                        # Convert bytes to tuple of ints
+                        timing_tuple = tuple(timing_data)
+                        return data, timing_tuple
+                except OSError:
+                    # Timing file not found, use default
+                    return data, (default_frame_ms,)
+        except OSError:
+            JEBLogger.warning("ICON", f"⚠️ Animation Asset Missing: {anim_name}")
+            # Fallback to a static default icon and an endless frame duration
+            return cls.DEFAULT, (1000,)
