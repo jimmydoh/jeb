@@ -22,22 +22,30 @@ class JEBPixel:
 
     def __setitem__(self, index, color):
         """Sets a specific pixel in the segment."""
-        # Maps slice index [0] to parent index [start + 0]
-        if index < 0 or index >= self.n:
-            return
-        if self.custom_order:
-            self.parent[self.start + index] = self._reorder_color(color)
-        else:
-            self.parent[self.start + index] = color
-
+        if 0 <= index < self.n:
+            if self.custom_order:
+                # Direct tuple unpacking avoids generator overhead
+                self.parent[self.start + index] = (
+                    color[self.color_order[0]],
+                    color[self.color_order[1]],
+                    color[self.color_order[2]]
+                )
+            else:
+                self.parent[self.start + index] = color
 
     def __getitem__(self, index):
         """Gets a specific pixel from the segment."""
         if index < 0 or index >= self.n:
-            return (0,0,0)
+            return (0, 0, 0)
+
+        raw_color = self.parent[self.start + index]
         if self.custom_order:
-            return self._reorder_color(self.parent[self.start + index])
-        return self.parent[self.start + index]
+            return (
+                raw_color[self.color_order[0]],
+                raw_color[self.color_order[1]],
+                raw_color[self.color_order[2]]
+            )
+        return raw_color
 
     def __len__(self):
         """Returns the number of pixels in this segment."""
@@ -45,11 +53,18 @@ class JEBPixel:
 
     def fill(self, color):
         """Fills the entire segment with a single color."""
+        # Calculate the color once to save time in the loop
+        if self.custom_order:
+            fill_color = (
+                color[self.color_order[0]],
+                color[self.color_order[1]],
+                color[self.color_order[2]]
+            )
+        else:
+            fill_color = color
+
         for i in range(self.start, self.start + self.n):
-            if self.custom_order:
-                self.parent[i] = self._reorder_color(color)
-            else:
-                self.parent[i] = color
+            self.parent[i] = fill_color
 
     def show(self):
         """Updates the segment's buffer memory only.
