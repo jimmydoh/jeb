@@ -107,9 +107,9 @@ class BasePixelManager:
             'dimensions': self._dimensions
         }
 
-    def clear(self):
+    def clear(self, cancel_tasks=True):
         """Stops all animations and clears LEDs."""
-        if hasattr(self, '_bg_tasks'):
+        if cancel_tasks and hasattr(self, '_bg_tasks'):
             for task in self._bg_tasks:
                 task.cancel()
             self._bg_tasks.clear()

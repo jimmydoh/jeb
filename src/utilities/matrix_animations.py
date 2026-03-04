@@ -65,7 +65,7 @@ async def animate_slide(matrix_manager, icon_data, direction, color=None, bright
 
         # The end parameter in range() is exclusive, so we add the step to include end_x
         for current_x in range(start_x, end_x + step, step):
-            matrix_manager.fill(Palette.OFF, show=False)
+            matrix_manager.fill(Palette.OFF, show=False, cancel_tasks=False)
 
             for y in range(icon_dim):
                 for x in range(icon_dim):
@@ -210,7 +210,7 @@ def animate_radar_sweep(matrix_manager, sweep_angle, bogeys=None, interceptors=N
         cy = (h - 1) / 2.0
         max_r = min(cx, cy)
 
-        matrix_manager.fill(Palette.OFF, show=False)
+        matrix_manager.fill(Palette.OFF, show=False, cancel_tasks=False)
 
         # Draw fading sweep trail (behind the leading edge)
         trail_spread = 25.0  # degrees of trail arc
@@ -328,7 +328,7 @@ async def animate_sprite_sheet(matrix_manager, icon_data, timing_data=(1000,), l
             if dirty:
                 start = frame_idx * frame_size
                 frame = icon_data[start : start + frame_size]
-                matrix_manager.show_frame(frame, clear=True, color=color, brightness=brightness)
+                matrix_manager.show_frame(frame, clear=False, color=color, brightness=brightness)
                 dirty = False
 
             await asyncio.sleep(0.01)  # Small sleep to yield control and allow cancellation
@@ -379,7 +379,7 @@ def animate_static_resolve(matrix_manager, icon_data, clarity, color=None, brigh
 
         clarity = max(0.0, min(1.0, clarity))
 
-        matrix_manager.fill(Palette.OFF, show=False)
+        matrix_manager.fill(Palette.OFF, show=False, cancel_tasks=False)
 
         for y in range(icon_dim):
             for x in range(icon_dim):

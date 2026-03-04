@@ -175,7 +175,7 @@ class MatrixManager(BasePixelManager):
 
         # Note: 'show' parameter is ignored - render loop handles hardware writes
 
-    def fill(self, color, show=True, anim_mode=None, speed=1.0, duration=None):
+    def fill(self, color, show=True, anim_mode=None, speed=1.0, duration=None, cancel_tasks=True):
         """Fills the entire matrix with a single color or simple animation.
 
         Note: The 'show' parameter is deprecated and ignored.
@@ -184,7 +184,7 @@ class MatrixManager(BasePixelManager):
         if anim_mode:
             self.fill_animation(anim_mode, color, speed, duration)
         else:
-            self.clear()
+            self.clear(cancel_tasks=cancel_tasks)
             self.pixels.fill(color)
         # Note: 'show' parameter is ignored - render loop handles hardware writes
 
@@ -390,9 +390,8 @@ class MatrixManager(BasePixelManager):
                 idx = y * self.width + x
                 if idx < len(frame):
                     pixel_value = frame[idx]
-                    if pixel_value != 0:
-                        base = color if color else self.palette[pixel_value]
-                        self.draw_pixel(x, y, base, brightness=brightness)
+                    base = color if color else self.palette[pixel_value]
+                    self.draw_pixel(x, y, base, brightness=brightness)
 
     # TODO Refactor progress grid to use animations
     def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):
