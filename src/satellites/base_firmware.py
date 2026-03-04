@@ -799,6 +799,8 @@ class SatelliteFirmware:
                 "rx_upstream"
             ]
         )
+        # Start software watchdog monitor task (if applicable) now that loop is running
+        await self.watchdog.start()
 
         # Start the transport tasks
         self.transport_up.start()

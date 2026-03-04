@@ -83,7 +83,7 @@ class WatchdogManager:
                     except NotImplementedError:
                         JEBLogger.warning("WDOG", "Hardware RAISE not supported, falling back to software watchdog")
                         self._software_mode = True
-                        asyncio.create_task(self._software_watchdog_monitor())
+                        # Task is deferred to start() so it runs inside a live event loop
                 else:
                     w.mode = WatchDogMode.RESET
                 if not self._software_mode:
@@ -92,6 +92,11 @@ class WatchdogManager:
                 JEBLogger.warning("WDOG", "Hardware watchdog disabled (LOG_ONLY mode active)")
         elif timeout:
             JEBLogger.warning("WDOG", "Watchdog hardware not available (Emulator)")
+
+    async def start(self):
+        """Start background monitoring tasks.  Call once the asyncio event loop is running."""
+        if self._software_mode:
+            asyncio.create_task(self._software_watchdog_monitor())
 
     def register_flags(self, task_names):
         """Register additional tasks to monitor."""
@@ -153,10 +158,12 @@ class WatchdogManager:
             return False
 
     async def _software_watchdog_monitor(self):
-        """Background task that raises WatchDogTimeout if safe_feed() is not called in time."""
+        """Background task that triggers recovery if safe_feed() is not called in time."""
         while True:
             if time.monotonic() - self._last_fed_time > self.timeout:
-                raise WatchDogTimeout("Software Watchdog Timeout: Loop starved!")
+                JEBLogger.critical("WDOG", "Software Watchdog Timeout: Loop starved!")
+                self.force_reboot()
+                return
             await asyncio.sleep(0.5)
 
     def force_reboot(self):

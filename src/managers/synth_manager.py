@@ -174,7 +174,7 @@ class SynthManager:
         if 'bass' in channels:
             tasks.append(self._run_chiptune_channel(channels['bass'], Patches.RETRO_BASS))
         if 'noise' in channels:
-            tasks.append(self._run_chiptune_channel(channels['noise'], Patches.RETRO_NOISE))
+            tasks.append(self._run_chiptune_channel(channels['noise'], Patches.get_retro_noise_patch()))
         try:
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:

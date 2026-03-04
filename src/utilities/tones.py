@@ -422,7 +422,7 @@ TETRIS_BASS = {
 # Tetris theme noise/percussion channel (quarter-note hi-hat pattern)
 TETRIS_NOISE = {
     'bpm': 140,
-    'patch': Patches.RETRO_NOISE,
+    'patch': Patches.get_retro_noise_patch(),
     'sequence': [
         (220, E), ('-', E), (220, E), ('-', E),
         (220, E), ('-', E), (220, E), ('-', E),

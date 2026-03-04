@@ -5,8 +5,8 @@
     "mount_sd_card": false,
     "debug_mode": false,
     "test_mode": true,
-    "wifi_ssid": "emulator_network",
-    "wifi_password": "emulator_pass",
+    "wifi_ssid": "",
+    "wifi_password": "",
     "update_url": "",
     "resource_monitor": {
         "enabled": false,

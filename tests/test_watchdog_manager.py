@@ -365,21 +365,28 @@ def test_empty_task_list():
 
 
 def test_software_fallback_on_not_implemented_error():
-    """Test that NotImplementedError on RAISE mode activates software fallback."""
+    """Test that NotImplementedError on RAISE mode activates software fallback.
+
+    The asyncio.create_task() call is now deferred to start() so that it runs
+    inside a live event loop. This test verifies that _software_mode is set
+    and that create_task is NOT called during __init__, but IS called by start().
+    """
     print("\nTesting software fallback when RAISE mode raises NotImplementedError...")
 
     raise_watchdog = MockWatchdogRaisesOnRAISE()
     raise_watchdog._mode_value = None
 
-    with patch.object(wdm, 'w', raise_watchdog), \
-         patch('asyncio.create_task') as mock_create_task:
-
+    with patch.object(wdm, 'w', raise_watchdog):
         manager = WatchdogManager(["task1"], timeout=5.0, mode="RAISE")
 
         assert manager._software_mode is True, "_software_mode should be True"
-        assert mock_create_task.called, "asyncio.create_task should be called"
         # Hardware feed should NOT be called when in software fallback mode
         assert raise_watchdog.feed_count == 0, "Hardware feed should not be called in software mode"
+
+        # create_task is deferred to start(), not called during __init__
+        with patch('asyncio.create_task', side_effect=lambda coro: coro.close()) as mock_create_task:
+            asyncio.run(manager.start())
+            assert mock_create_task.called, "asyncio.create_task should be called by start()"
 
     print("✓ Software fallback on NotImplementedError test passed")
 
@@ -426,9 +433,13 @@ def test_watchdog_timeout_exception_exists():
     print("✓ WatchDogTimeout exception test passed")
 
 
-def test_software_watchdog_monitor_raises_on_timeout():
-    """Test that _software_watchdog_monitor raises WatchDogTimeout when feed is late."""
-    print("\nTesting _software_watchdog_monitor raises WatchDogTimeout on timeout...")
+def test_software_watchdog_monitor_triggers_reboot_on_timeout():
+    """Test that _software_watchdog_monitor calls force_reboot() when feed is late.
+
+    The monitor no longer raises WatchDogTimeout (which would become an unhandled
+    task exception). Instead it calls force_reboot() for a controlled recovery.
+    """
+    print("\nTesting _software_watchdog_monitor calls force_reboot() on timeout...")
 
     MockMicrocontroller.watchdog.reset()
 
@@ -437,18 +448,20 @@ def test_software_watchdog_monitor_raises_on_timeout():
     # Set last_fed_time in the past (simulate timeout)
     manager._last_fed_time = time.monotonic() - 1.0
 
+    reboot_called = []
+
     async def run_monitor_once():
         """Run the monitor briefly to trigger the timeout."""
-        try:
-            await asyncio.wait_for(manager._software_watchdog_monitor(), timeout=1.0)
-        except WatchDogTimeout:
-            return True  # Expected
-        return False
+        with patch.object(manager, 'force_reboot', side_effect=lambda: reboot_called.append(True)):
+            try:
+                await asyncio.wait_for(manager._software_watchdog_monitor(), timeout=1.0)
+            except asyncio.TimeoutError:
+                pass  # Monitor ran but didn't call force_reboot within timeout
 
-    raised = asyncio.run(run_monitor_once())
-    assert raised is True, "_software_watchdog_monitor should raise WatchDogTimeout"
+    asyncio.run(run_monitor_once())
+    assert reboot_called, "_software_watchdog_monitor should call force_reboot() on timeout"
 
-    print("✓ Software watchdog monitor raises WatchDogTimeout on timeout test passed")
+    print("✓ Software watchdog monitor calls force_reboot() on timeout test passed")
 
 
 def test_software_watchdog_monitor_does_not_raise_when_fed():
@@ -498,7 +511,7 @@ def run_all_tests():
         test_software_fallback_on_not_implemented_error,
         test_safe_feed_updates_last_fed_time_in_software_mode,
         test_watchdog_timeout_exception_exists,
-        test_software_watchdog_monitor_raises_on_timeout,
+        test_software_watchdog_monitor_triggers_reboot_on_timeout,
         test_software_watchdog_monitor_does_not_raise_when_fed,
     ]
     
@@ -531,7 +544,7 @@ def run_all_tests():
         print("  • Handles invalid task names gracefully")
         print("  • Supports multiple check-in/feed cycles")
         print("  • Falls back to software watchdog when RAISE mode is unsupported")
-        print("  • Raises WatchDogTimeout when loop is starved in software mode")
+        print("  • Calls force_reboot() when loop is starved in software mode")
     else:
         print("\n✗ SOME TESTS FAILED")
     print("=" * 60)
