@@ -385,6 +385,16 @@ MODE_REGISTRY = {
         "requires": ["CORE"],
         "settings": []
     },
+    "PLASMA": {
+        "id": "PLASMA",
+        "name": "PLASMA",
+        "module_path": "modes.plasma",
+        "class_name": "PlasmaMode",
+        "icon": "PLASMA",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
     "FALLING_SAND": {
         "id": "FALLING_SAND",
         "name": "FALLING SAND",
@@ -394,6 +404,43 @@ MODE_REGISTRY = {
         "menu": "ZERO_PLAYER",
         "requires": ["CORE"],
         "settings": []
+    },
+    "BOUNCING_SPRITE": {
+        "id": "BOUNCING_SPRITE",
+        "name": "BOUNCING SPRITE",
+        "module_path": "modes.bouncing_sprite",
+        "class_name": "BouncingSprite",
+        "icon": "BOUNCING_SPRITE",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "WIREWORLD": {
+        "id": "WIREWORLD",
+        "name": "WIREWORLD",
+        "module_path": "modes.wireworld",
+        "class_name": "Wireworld",
+        "icon": "WIREWORLD",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "STARFIELD": {
+        "id": "STARFIELD",
+        "name": "STARFIELD",
+        "module_path": "modes.starfield",
+        "class_name": "StarfieldMode",
+        "icon": "STARFIELD",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "warp",
+                "label": "WARP",
+                "options": ["1", "2", "3", "4", "5", "MAX"],
+                "default": "3"
+            }
+        ]
     },
     "ABYSSAL_PING": {
         "id": "ABYSSAL_PING",
