@@ -346,7 +346,7 @@ def test_step_still_life_block():
 # ===========================================================================
 
 def _slot_color(matrix, x, y):
-    """Return the colour written to the hardware pixel for (x, y), or None if off.
+    """Return the color written to the hardware pixel for (x, y), or None if off.
 
     show_frame now writes directly to matrix.pixels bypassing animation slots,
     so we read the hardware buffer here.  A pixel initialised to (0, 0, 0)
