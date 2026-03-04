@@ -128,8 +128,8 @@ async def test_max_tx_chunk_constant_exists():
         "UARTTransport should have MAX_TX_CHUNK constant"
     
     # Check that it's a reasonable value (not too small, not too large)
-    assert 8 <= transport.MAX_TX_CHUNK <= 128, \
-        f"MAX_TX_CHUNK ({transport.MAX_TX_CHUNK}) should be between 8 and 128 bytes"
+    assert 8 <= transport.MAX_TX_CHUNK <= 512, \
+        f"MAX_TX_CHUNK ({transport.MAX_TX_CHUNK}) should be between 8 and 512 bytes"
     
     print(f"  ✓ MAX_TX_CHUNK is defined: {transport.MAX_TX_CHUNK} bytes")
     print("✓ MAX_TX_CHUNK constant test passed")

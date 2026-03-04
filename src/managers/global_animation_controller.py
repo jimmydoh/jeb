@@ -36,6 +36,7 @@ class GlobalAnimationController:
         JEBLogger.info("GANC", "[INIT] GlobalAnimationController")
         self._components = []   # list of component dicts
         self._pixel_map = {}    # (global_x, global_y) -> (manager, pixel_idx)
+        self._pixel_list = []   # flat list of (gx, gy, manager, pixel_idx) for efficient iteration
         self._canvas_width = 0
         self._canvas_height = 0
         self._frame_counter = 0  # Synchronized frame counter (updated via sync_frame())
@@ -53,7 +54,7 @@ class GlobalAnimationController:
     @property
     def pixel_count(self):
         """Total number of mapped pixels across all registered components."""
-        return len(self._pixel_map)
+        return len(self._pixel_list)
 
     def sync_frame(self, frame):
         """Update the synchronized frame counter used by deterministic animations.
@@ -203,6 +204,7 @@ class GlobalAnimationController:
 
         self._canvas_width = max_x + 1 if self._pixel_map else 0
         self._canvas_height = max_y + 1 if self._pixel_map else 0
+        self._pixel_list = [(gx, gy, mgr, idx) for (gx, gy), (mgr, idx) in self._pixel_map.items()]
 
     def set_pixel(self, global_x, global_y, color):
         """
@@ -253,7 +255,7 @@ class GlobalAnimationController:
             duration: Optional duration in seconds. Runs indefinitely if None.
             priority: Animation priority level passed to set_animation().
         """
-        if not self._pixel_map:
+        if not self._pixel_list:
             return
 
         canvas_w = max(self._canvas_width, 1)
@@ -274,7 +276,7 @@ class GlobalAnimationController:
             else:
                 t = elapsed
 
-            for (gx, gy), (manager, idx) in self._pixel_map.items():
+            for gx, gy, manager, idx in self._pixel_list:
                 # Hue = time-driven offset + spatial offset based on global X.
                 # Produces a rainbow band that sweeps left → right across the canvas.
                 hue = (t * speed + gx * (360.0 / canvas_w)) % 360.0
@@ -306,7 +308,7 @@ class GlobalAnimationController:
             density: Probability [0.0, 1.0] of a new drop spawning per column
                      per tick (default: 0.3).
         """
-        if not self._pixel_map:
+        if not self._pixel_list:
             return
 
         if color is None:
@@ -314,7 +316,7 @@ class GlobalAnimationController:
 
         # Build column structures: gx -> sorted list of gy values present in map
         columns = {}
-        for (gx, gy) in self._pixel_map:
+        for gx, gy, _, _ in self._pixel_list:
             if gx not in columns:
                 columns[gx] = []
             columns[gx].append(gy)
@@ -358,7 +360,7 @@ class GlobalAnimationController:
                     last_step_t = now
 
                 # Clear all pixels for this frame
-                for (gx, gy), (manager, idx) in self._pixel_map.items():
+                for gx, gy, manager, idx in self._pixel_list:
                     manager.pixels[idx] = (0, 0, 0)
 
                 # Advance existing drops one row down

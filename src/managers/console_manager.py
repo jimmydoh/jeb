@@ -30,6 +30,12 @@ class ConsoleManager():
         self.type_id = type_id
         self.app = app
 
+        # Ring buffer for web console output
+        self.output_buffer = []
+        self._output_buffer_max = 500
+        # Queue for commands injected from the web interface
+        self.input_queue = []
+
         JEBLogger.info("CONS",f"[INIT] ConsoleManager - role: {self.role} type_id: {self.type_id}")
 
         if app is None:
@@ -41,6 +47,17 @@ class ConsoleManager():
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _print(self, msg=""):
+        """Print a line to the serial console and append it to the output buffer."""
+        print(msg)
+        self.output_buffer.append(str(msg))
+        if len(self.output_buffer) > self._output_buffer_max:
+            self.output_buffer = self.output_buffer[-self._output_buffer_max:]
+
+    def get_output(self):
+        """Return the buffered console output as a newline-joined string."""
+        return "\n".join(self.output_buffer)
+
     def _get_manager(self, name):
         """Return a named manager from the running app, or ``None``."""
         if self.app is not None:
@@ -48,9 +65,23 @@ class ConsoleManager():
         return None
 
     async def get_input(self, prompt):
-        """Safe non-blocking serial input wrapper."""
+        """Safe non-blocking serial input wrapper.
+
+        Checks the web-injected ``input_queue`` before blocking on the real
+        serial port so that the web console can send commands even when no
+        physical terminal is connected.
+        """
         print(prompt, end="")
         while True:
+            if self.input_queue:
+                line = self.input_queue.pop(0)
+                # Echo the injected line so the output buffer looks like a terminal
+                echoed_line = f"{prompt}{line}"
+                self.output_buffer.append(echoed_line)
+                if len(self.output_buffer) > self._output_buffer_max:
+                    self.output_buffer = self.output_buffer[-self._output_buffer_max:]
+                print(line)
+                return line
             if supervisor.runtime.serial_bytes_available:
                 return sys.stdin.readline().strip()
             await asyncio.sleep(0.05)
@@ -150,7 +181,11 @@ class ConsoleManager():
             print("1. Show Status Message")
             print("2. Show Header Text")
             print("3. Show Footer Text")
-            print("4. Clear Display")
+            print("4. Show Long Text (scrolling)")
+            print("5. Clear Display")
+            print("6. Test Slide In Animation")
+            print("7. Test Typewriter Animation")
+            print("8. Test Blink Animation")
             print("0. Back to Main Menu")
 
             choice = await self.get_input(">> ")
@@ -167,10 +202,29 @@ class ConsoleManager():
                 display.update_footer("Footer test")
                 print("Footer updated.")
             elif choice == "4":
+                long_text = "This is a long text test to demonstrate scrolling on the OLED display. "
+                display.update_header(long_text)
+                display.update_status(long_text, long_text)
+                display.update_footer(long_text)
+                print("Long text updated. It should scroll if it exceeds display width.")
+            elif choice == "5":
                 display.update_status("", "")
                 display.update_header("")
                 display.update_footer("")
                 print("Display cleared.")
+            elif choice == "6":
+                display.update_status("", "")
+                display.update(display.status, "Slide In Animation", anim="slide_in", direction="left")
+                print("Slide in animation triggered.")
+            elif choice == "7":
+                display.update_status("", "")
+                display.update(display.status, "Typewriter Animation", anim="typewriter")
+                display.update(display.sub_status, "Typewriter Animation", anim="typewriter", direction="right")
+                print("Typewriter animation triggered.")
+            elif choice == "8":
+                display.update_status("", "")
+                display.update(display.status, "Blink Animation", anim="blink")
+                print("Blink animation triggered.")
             else:
                 print("Invalid selection.")
 

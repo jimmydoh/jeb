@@ -21,6 +21,7 @@ class PowerManager:
     def __init__(self, *args, **kwargs):
         self.sat_pwr = type('sat_pwr', (), {'value': False})()
         self.sat_detect = type('sat_detect', (), {'value': False})()
+        self.buses = {}
         pass
 
     @property

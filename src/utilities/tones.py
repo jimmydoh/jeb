@@ -40,6 +40,13 @@ T = 0.33 # Triplet
 # =================================
 
 # --- User Interface Tones ---
+# Console power-on boot swell: warm, building 3-note pad arpeggio (C4 -> G4 -> E5)
+CONSOLE_BOOT_SWELL = {
+    'bpm': 120,
+    'patch': Patches.PAD,  # Slow attack (0.5s) for a warm, swelling texture
+    'sequence': [('C4', E), ('G4', E), ('E5', Q)]
+}
+
 # A quick, optimistic ascending major triad (C-E-G)
 SYSTEM_BOOT = {
     'bpm': 120,
@@ -375,6 +382,79 @@ WARP_ENGAGE = {
         ('C4', S), ('E4', S), ('G4', S),
         ('C5', S), ('E5', S), ('G5', S),
         ('C6', W) # End on high drone
+    ]
+}
+
+# --- UI BUZZER TONES ---
+# Short 2-note ascending ding for opening a menu (BuzzerManager)
+MENU_OPEN = {
+    'bpm': 240,
+    'sequence': [('C5', S), ('G5', S)]
+}
+
+# Short 2-note descending ding for closing a menu (BuzzerManager)
+MENU_CLOSE = {
+    'bpm': 240,
+    'sequence': [('G5', S), ('C5', S)]
+}
+
+# Quick confirmation tone for launching a mode (BuzzerManager)
+MENU_LAUNCH = {
+    'bpm': 240,
+    'sequence': [('C5', S), ('E5', S), ('G5', S)]
+}
+
+# --- CHIPTUNE 3-CHANNEL SCORES ---
+
+# Tetris theme bass line (A minor, follows chord changes)
+TETRIS_BASS = {
+    'bpm': 140,
+    'patch': Patches.RETRO_BASS,
+    'sequence': [
+        ('A3', H), ('E3', H),
+        ('A3', H), ('E3', H),
+        ('F3', H), ('C4', H),
+        ('G3', H), ('D4', H),
+        ('A3', H),
+    ]
+}
+
+# Tetris theme noise/percussion channel (quarter-note hi-hat pattern)
+TETRIS_NOISE = {
+    'bpm': 140,
+    'patch': Patches.get_retro_noise_patch(),
+    'sequence': [
+        (220, E), ('-', E), (220, E), ('-', E),
+        (220, E), ('-', E), (220, E), ('-', E),
+        (220, E), ('-', E), (220, E), ('-', E),
+        (220, E), ('-', E), (220, E), ('-', E),
+        (220, E),
+    ]
+}
+
+# Heavy launch transient – rising burst
+LAUNCH = {
+    'bpm': 180,
+    'sequence': [
+        ('G3', S), ('C4', S), ('G4', S), ('C5', S), ('G5', E)
+    ]
+}
+
+# Urgent two-tone danger alarm
+DANGER = {
+    'bpm': 200,
+    'sequence': [
+        ('A5', E), ('-', S), ('D5', E), ('-', S),
+        ('A5', E), ('-', S), ('D5', E), ('-', S)
+    ]
+}
+
+# Charging synth whine (rising)
+CHARGING = {
+    'bpm': 240,
+    'sequence': [
+        ('C3', S), ('E3', S), ('G3', S), ('C4', S),
+        ('E4', S), ('G4', S), ('C5', S), ('E5', E)
     ]
 }
 

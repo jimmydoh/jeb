@@ -102,6 +102,19 @@ class MockWiFiManager:
     def create_http_session(self):
         return None
 
+class MockMatrixManager:
+    """Mock MatrixManager for testing pixel art preview."""
+    def __init__(self):
+        self.pixels = {}
+        self.cleared = False
+
+    def clear(self):
+        self.cleared = True
+        self.pixels = {}
+
+    def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None, brightness=1.0):
+        self.pixels[(x, y)] = color
+
 # Mock gc module for CircuitPython compatibility
 import gc as _gc
 if not hasattr(_gc, 'mem_free'):
@@ -698,7 +711,7 @@ def test_route_registration():
         '/api/actions/toggle-debug',
         '/api/actions/reorder-satellites',
         '/api/system/status',
-        '/api/telemetry/stream',
+        '/api/telemetry/status',
     ]
 
     registered_paths = [path for path, _, _ in manager.server.routes]
@@ -984,8 +997,8 @@ def test_telemetry_manager_params():
 
 
 def test_telemetry_route_registered():
-    """Test that /api/telemetry/stream route is registered."""
-    print("\nTesting telemetry SSE route registration...")
+    """Test that /api/telemetry/status route is registered."""
+    print("\nTesting telemetry status route registration...")
 
     config = {
         "wifi_ssid": "TestNetwork",
@@ -998,14 +1011,14 @@ def test_telemetry_route_registered():
     manager.setup_routes()
 
     registered_paths = [path for path, _, _ in manager.server.routes]
-    assert "/api/telemetry/stream" in registered_paths, "SSE route not registered"
+    assert "/api/telemetry/status" in registered_paths, "Telemetry status route not registered"
 
-    print("  ✓ Telemetry SSE route registration test passed")
+    print("  ✓ Telemetry status route registration test passed")
 
 
 def test_telemetry_sse_generator_with_managers():
-    """Test the SSE generator yields data events when managers are available."""
-    print("\nTesting SSE generator with mock managers...")
+    """Test the telemetry status endpoint returns correct JSON when managers are available."""
+    print("\nTesting telemetry status handler with mock managers...")
 
     config = {
         "wifi_ssid": "TestNetwork",
@@ -1034,47 +1047,34 @@ def test_telemetry_sse_generator_with_managers():
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
-    # Locate the telemetry stream route handler
-    stream_handler = None
+    # Locate the telemetry status route handler
+    status_handler = None
     for path, _, func in manager.server.routes:
-        if path == "/api/telemetry/stream":
-            stream_handler = func
+        if path == "/api/telemetry/status":
+            status_handler = func
             break
-    assert stream_handler is not None, "Telemetry stream route not found"
+    assert status_handler is not None, "Telemetry status route not found"
 
     request = MockRequest()
-    response = stream_handler(request)
+    response = status_handler(request)
 
-    assert response.content_type == "text/event-stream", (
-        f"Expected text/event-stream, got {response.content_type}"
+    assert response.content_type == "application/json", (
+        f"Expected application/json, got {response.content_type}"
     )
 
-    # Advance the generator to collect up to 3 chunks, looking for a data event
-    gen = response.body
-    data_event = None
-    # The first event fires immediately (last_emit is pre-dated by 1s),
-    # so we only need a small number of iterations to find the data chunk.
-    for _ in range(5):
-        chunk = next(gen)
-        if chunk.startswith("data: "):
-            data_event = chunk
-            break
-
-    assert data_event is not None, "Generator never yielded a data event"
-    # Strip SSE framing and parse JSON
-    payload = json.loads(data_event[len("data: "):].strip())
+    payload = json.loads(response.body)
     assert "power" in payload
     assert "satellites" in payload
     assert "ts" in payload
     assert payload["power"]["input_20v"] == 20.0
     assert payload["satellites"]["0100"]["active"] is True
 
-    print("  ✓ SSE generator with managers test passed")
+    print("  ✓ Telemetry status handler with managers test passed")
 
 
 def test_telemetry_sse_generator_no_managers():
-    """Test that the SSE generator works gracefully without managers."""
-    print("\nTesting SSE generator without managers...")
+    """Test that the telemetry status endpoint works gracefully without managers."""
+    print("\nTesting telemetry status handler without managers...")
 
     config = {
         "wifi_ssid": "TestNetwork",
@@ -1086,36 +1086,27 @@ def test_telemetry_sse_generator_no_managers():
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
-    stream_handler = None
+    status_handler = None
     for path, _, func in manager.server.routes:
-        if path == "/api/telemetry/stream":
-            stream_handler = func
+        if path == "/api/telemetry/status":
+            status_handler = func
             break
-    assert stream_handler is not None
+    assert status_handler is not None
 
     request = MockRequest()
-    response = stream_handler(request)
+    response = status_handler(request)
 
-    gen = response.body
-    data_event = None
-    # First event fires immediately due to pre-dated last_emit.
-    for _ in range(5):
-        chunk = next(gen)
-        if chunk.startswith("data: "):
-            data_event = chunk
-            break
-
-    assert data_event is not None, "Generator never yielded a data event"
-    payload = json.loads(data_event[len("data: "):].strip())
+    assert response.content_type == "application/json"
+    payload = json.loads(response.body)
     assert payload["power"] == {}
     assert payload["satellites"] == {}
 
-    print("  ✓ SSE generator without managers test passed")
+    print("  ✓ Telemetry status handler without managers test passed")
 
 
 def test_telemetry_keepalive_chunks():
-    """Test that the SSE generator emits keepalive comment chunks between data events."""
-    print("\nTesting SSE keepalive chunks...")
+    """Test that the telemetry status endpoint returns a well-formed JSON response."""
+    print("\nTesting telemetry status response structure...")
 
     config = {
         "wifi_ssid": "TestNetwork",
@@ -1127,27 +1118,777 @@ def test_telemetry_keepalive_chunks():
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
-    stream_handler = None
+    status_handler = None
     for path, _, func in manager.server.routes:
-        if path == "/api/telemetry/stream":
-            stream_handler = func
+        if path == "/api/telemetry/status":
+            status_handler = func
             break
-    assert stream_handler is not None
+    assert status_handler is not None
 
     request = MockRequest()
-    response = stream_handler(request)
+    response = status_handler(request)
 
-    gen = response.body
-    # Collect enough chunks to capture the first data event (immediate) plus several
-    # keepalive comment chunks that follow. 5 chunks is sufficient: 1 data + 4 keepalives.
-    chunks = [next(gen) for _ in range(5)]
-    data_chunks = [c for c in chunks if c.startswith("data: ")]
-    keepalive_chunks = [c for c in chunks if c.startswith(": ")]
+    assert response.content_type == "application/json"
+    payload = json.loads(response.body)
 
-    assert len(data_chunks) >= 1, "Should have at least one data event"
-    assert len(keepalive_chunks) > 0, "Should have keepalive comment chunks between events"
+    # Verify all required top-level keys are present
+    assert "power" in payload, "Response should contain 'power' key"
+    assert "satellites" in payload, "Response should contain 'satellites' key"
+    assert "ts" in payload, "Response should contain 'ts' key"
+    assert isinstance(payload["ts"], (int, float)), "Timestamp should be numeric"
 
-    print("  ✓ SSE keepalive chunks test passed")
+    print("  ✓ Telemetry status response structure test passed")
+
+
+def test_pixel_art_palette_route():
+    """Test GET /api/pixel-art/palette returns all palette colors."""
+    print("\nTesting pixel art palette route...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/pixel-art/palette":
+            handler = func
+            break
+    assert handler is not None, "/api/pixel-art/palette route not registered"
+
+    request = MockRequest()
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    # Palette index 0 (OFF) must be present
+    assert "0" in data
+    assert data["0"]["name"] == "OFF"
+    assert data["0"]["r"] == 0
+    # A few other well-known colors should exist
+    assert "11" in data  # RED
+    assert "41" in data  # GREEN
+    assert "61" in data  # BLUE
+
+    print("  ✓ Pixel art palette route test passed")
+
+
+def test_pixel_art_preview_no_matrix():
+    """Test POST /api/pixel-art/preview without a matrix manager."""
+    print("\nTesting pixel art preview without matrix...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/pixel-art/preview":
+            handler = func
+            break
+    assert handler is not None, "/api/pixel-art/preview route not registered"
+
+    request = MockRequest()
+    request.json = lambda: {"pixels": [0] * 256}
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "no_matrix"
+
+    print("  ✓ Pixel art preview (no matrix) test passed")
+
+
+def test_pixel_art_preview_with_matrix():
+    """Test POST /api/pixel-art/preview draws pixels on the matrix."""
+    print("\nTesting pixel art preview with matrix...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    mock_matrix = MockMatrixManager()
+    manager = WebServerManager(config, MockWiFiManager(), matrix_manager=mock_matrix, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/pixel-art/preview":
+            handler = func
+            break
+    assert handler is not None
+
+    # Draw a single red pixel at (0,0) using palette index 11 (RED)
+    pixels = [0] * 256
+    pixels[0] = 11  # Top-left pixel = RED
+    request = MockRequest()
+    request.json = lambda: {"pixels": pixels}
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert mock_matrix.cleared is True
+    assert (0, 0) in mock_matrix.pixels  # Pixel (0,0) was drawn
+
+    print("  ✓ Pixel art preview with matrix test passed")
+
+
+def test_pixel_art_preview_validation():
+    """Test POST /api/pixel-art/preview validates input correctly."""
+    print("\nTesting pixel art preview validation...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/pixel-art/preview":
+            handler = func
+            break
+
+    # Missing pixels
+    request = MockRequest()
+    request.json = lambda: {}
+    response = handler(request)
+    assert response.status == 400
+
+    # Wrong length
+    request2 = MockRequest()
+    request2.json = lambda: {"pixels": [0] * 64}
+    response2 = handler(request2)
+    assert response2.status == 400
+
+    # Invalid pixel value
+    request3 = MockRequest()
+    bad_pixels = [0] * 256
+    bad_pixels[0] = 999
+    request3.json = lambda: {"pixels": bad_pixels}
+    response3 = handler(request3)
+    assert response3.status == 400
+
+    print("  ✓ Pixel art preview validation test passed")
+
+
+def test_pixel_art_save_route():
+    """Test POST /api/pixel-art/save in testing mode (no file I/O)."""
+    print("\nTesting pixel art save route...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/pixel-art/save":
+            handler = func
+            break
+    assert handler is not None, "/api/pixel-art/save route not registered"
+
+    pixels = [0] * 256
+    pixels[5] = 11  # Some red pixels
+    request = MockRequest()
+    request.json = lambda: {"name": "test_icon", "pixels": pixels}
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert data["path"] == "/sd/icons/test_icon.bin"
+
+    print("  ✓ Pixel art save route test passed")
+
+
+def test_pixel_art_save_validation():
+    """Test POST /api/pixel-art/save validates name and pixels."""
+    print("\nTesting pixel art save validation...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/pixel-art/save":
+            handler = func
+            break
+
+    # Missing name
+    request = MockRequest()
+    request.json = lambda: {"pixels": [0] * 256}
+    response = handler(request)
+    assert response.status == 400
+
+    # Invalid name with special chars
+    request2 = MockRequest()
+    request2.json = lambda: {"name": "bad/name!", "pixels": [0] * 256}
+    response2 = handler(request2)
+    assert response2.status == 400
+
+    # Wrong pixel count
+    request3 = MockRequest()
+    request3.json = lambda: {"name": "ok_name", "pixels": [0] * 64}
+    response3 = handler(request3)
+    assert response3.status == 400
+
+    print("  ✓ Pixel art save validation test passed")
+
+
+def test_pixel_art_matrix_manager_stored():
+    """Test that matrix_manager is stored on WebServerManager when provided."""
+    print("\nTesting matrix_manager parameter storage...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    mock_matrix = MockMatrixManager()
+    manager = WebServerManager(config, MockWiFiManager(), matrix_manager=mock_matrix, testing=True)
+
+    assert manager.matrix_manager is mock_matrix
+    assert manager.matrix_manager is not None
+
+    # Without matrix_manager, defaults to None
+    manager2 = WebServerManager(config, MockWiFiManager(), testing=True)
+    assert manager2.matrix_manager is None
+
+    print("  ✓ matrix_manager parameter test passed")
+
+
+def test_jeblogger_buffer():
+    """Test JEBLogger ring buffer capture."""
+    print("\nTesting JEBLogger ring buffer...")
+
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location(
+        "logger_buf_test",
+        os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities', 'logger.py')
+    )
+    logger_mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(logger_mod)
+    JEBLogger = logger_mod.JEBLogger
+    LogLevel = logger_mod.LogLevel
+
+    JEBLogger.LOG_BUFFER_ENABLED = False
+    JEBLogger.LOG_BUFFER = []
+    JEBLogger.PRINT_TO_CONSOLE = False
+    JEBLogger.LEVEL = LogLevel.DEBUG
+
+    JEBLogger.enable_buffer(max_entries=10)
+    assert JEBLogger.LOG_BUFFER_ENABLED is True
+
+    JEBLogger.info("MOD1", "hello world")
+    JEBLogger.warning("MOD2", "watch out")
+
+    buf = JEBLogger.get_buffer()
+    assert len(buf) == 2
+    assert buf[0]["module"] == "MOD1"
+    assert buf[0]["message"] == "hello world"
+    assert buf[1]["level"] == LogLevel.WARNING
+
+    JEBLogger.PRINT_TO_CONSOLE = True
+    print("  ✓ JEBLogger buffer test passed")
+
+
+def test_jeblogger_buffer_level_filter():
+    """Test JEBLogger buffer level filtering."""
+    print("\nTesting JEBLogger buffer level filter...")
+
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location(
+        "logger_lvl_test",
+        os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities', 'logger.py')
+    )
+    logger_mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(logger_mod)
+    JEBLogger = logger_mod.JEBLogger
+    LogLevel = logger_mod.LogLevel
+
+    JEBLogger.LOG_BUFFER_ENABLED = False
+    JEBLogger.LOG_BUFFER = []
+    JEBLogger.PRINT_TO_CONSOLE = False
+    JEBLogger.LEVEL = LogLevel.DEBUG
+
+    JEBLogger.enable_buffer()
+    JEBLogger.debug("DBG", "debug msg")
+    JEBLogger.info("INF", "info msg")
+    JEBLogger.warning("WRN", "warn msg")
+
+    all_entries = JEBLogger.get_buffer()
+    assert len(all_entries) == 3
+
+    warn_and_above = JEBLogger.get_buffer(level=LogLevel.WARNING)
+    assert len(warn_and_above) == 1
+    assert warn_and_above[0]["module"] == "WRN"
+
+    JEBLogger.PRINT_TO_CONSOLE = True
+    print("  ✓ JEBLogger level filter test passed")
+
+
+def test_jeblogger_buffer_search_filter():
+    """Test JEBLogger buffer free-form search filter."""
+    print("\nTesting JEBLogger buffer search filter...")
+
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location(
+        "logger_srch_test",
+        os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities', 'logger.py')
+    )
+    logger_mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(logger_mod)
+    JEBLogger = logger_mod.JEBLogger
+    LogLevel = logger_mod.LogLevel
+
+    JEBLogger.LOG_BUFFER_ENABLED = False
+    JEBLogger.LOG_BUFFER = []
+    JEBLogger.PRINT_TO_CONSOLE = False
+    JEBLogger.LEVEL = LogLevel.DEBUG
+
+    JEBLogger.enable_buffer()
+    JEBLogger.info("UART", "handshake ok")
+    JEBLogger.info("WEBS", "server started")
+    JEBLogger.error("UART", "timeout error")
+
+    uart_entries = JEBLogger.get_buffer(search="uart")
+    assert len(uart_entries) == 2
+
+    error_entries = JEBLogger.get_buffer(search="error")
+    assert len(error_entries) == 1
+    assert error_entries[0]["message"] == "timeout error"
+
+    JEBLogger.PRINT_TO_CONSOLE = True
+    print("  ✓ JEBLogger search filter test passed")
+
+
+def test_jeblogger_clear_buffer():
+    """Test JEBLogger buffer clear."""
+    print("\nTesting JEBLogger buffer clear...")
+
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location(
+        "logger_clr_test",
+        os.path.join(os.path.dirname(__file__), '..', 'src', 'utilities', 'logger.py')
+    )
+    logger_mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(logger_mod)
+    JEBLogger = logger_mod.JEBLogger
+
+    JEBLogger.LOG_BUFFER_ENABLED = False
+    JEBLogger.LOG_BUFFER = []
+    JEBLogger.PRINT_TO_CONSOLE = False
+
+    JEBLogger.enable_buffer()
+    JEBLogger.info("T", "msg")
+    assert len(JEBLogger.get_buffer()) == 1
+
+    JEBLogger.clear_buffer()
+    assert len(JEBLogger.get_buffer()) == 0
+
+    JEBLogger.PRINT_TO_CONSOLE = True
+    print("  ✓ JEBLogger clear buffer test passed")
+
+
+def test_logs_api_with_filters():
+    """Test /api/logs with level and search query params."""
+    print("\nTesting /api/logs API with filters...")
+
+    from utilities.logger import JEBLogger, LogLevel
+    JEBLogger.LOG_BUFFER_ENABLED = False
+    JEBLogger.LOG_BUFFER = []
+    JEBLogger.PRINT_TO_CONSOLE = False
+    JEBLogger.LEVEL = LogLevel.DEBUG
+
+    config = {"wifi_ssid": "T", "wifi_password": "P", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    JEBLogger.info("MOD1", "normal info")
+    JEBLogger.warning("MOD2", "something warned")
+    JEBLogger.error("MOD1", "critical error")
+
+    get_logs_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/logs" and "get" in func.__name__.lower():
+            get_logs_route = func
+            break
+    assert get_logs_route is not None, "get_logs route not found"
+
+    # No filter – all entries
+    req = MockRequest()
+    req.query_params = {}
+    resp = get_logs_route(req)
+    entries = json.loads(resp.body)
+    assert len(entries) >= 3, f"Expected ≥3 entries, got {len(entries)}"
+
+    # Level filter: WARNING+ (level=3)
+    req2 = MockRequest()
+    req2.query_params = {"level": "3"}
+    resp2 = get_logs_route(req2)
+    entries2 = json.loads(resp2.body)
+    assert all(e["level"] >= 3 for e in entries2), "All entries should be WARNING or above"
+    assert len(entries2) >= 1
+
+    # Search filter
+    req3 = MockRequest()
+    req3.query_params = {"search": "warned"}
+    resp3 = get_logs_route(req3)
+    entries3 = json.loads(resp3.body)
+    assert len(entries3) == 1
+    assert "warned" in entries3[0]["message"]
+
+    JEBLogger.PRINT_TO_CONSOLE = True
+    print("  ✓ /api/logs filter test passed")
+
+
+def test_logs_clear_api():
+    """Test /api/logs/clear endpoint."""
+    print("\nTesting /api/logs/clear API...")
+
+    from utilities.logger import JEBLogger
+    JEBLogger.LOG_BUFFER_ENABLED = False
+    JEBLogger.LOG_BUFFER = []
+    JEBLogger.PRINT_TO_CONSOLE = False
+
+    config = {"wifi_ssid": "T", "wifi_password": "P", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    JEBLogger.info("X", "some log")
+    assert len(JEBLogger.get_buffer()) >= 1
+
+    clear_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/logs/clear":
+            clear_route = func
+            break
+    assert clear_route is not None, "logs/clear route not found"
+
+    req = MockRequest()
+    resp = clear_route(req)
+    assert resp.status == 200
+    assert len(JEBLogger.get_buffer()) == 0
+
+    JEBLogger.PRINT_TO_CONSOLE = True
+    print("  ✓ /api/logs/clear test passed")
+
+
+class MockConsoleBuffer:
+    """Minimal console buffer mock that mimics ConsoleManager interface."""
+    def __init__(self):
+        self.output_buffer = ["line one", "line two"]
+        self.input_queue = []
+
+    def get_output(self):
+        return "\n".join(self.output_buffer)
+
+
+def test_console_input_api():
+    """Test /api/console/input endpoint injects into input_queue."""
+    print("\nTesting /api/console/input API...")
+
+    config = {"wifi_ssid": "T", "wifi_password": "P", "web_server_enabled": True}
+    console = MockConsoleBuffer()
+    manager = WebServerManager(config, MockWiFiManager(), console_buffer=console, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    input_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/console/input":
+            input_route = func
+            break
+    assert input_route is not None, "console/input route not found"
+
+    req = MockRequest()
+    req.json = lambda: {"input": "1"}
+    resp = input_route(req)
+    assert resp.status == 200
+    assert console.input_queue == ["1"]
+
+    # Missing/empty input field
+    req2 = MockRequest()
+    req2.json = lambda: {"input": ""}
+    resp2 = input_route(req2)
+    assert resp2.status == 400
+
+    print("  ✓ /api/console/input test passed")
+
+
+def test_console_input_api_no_buffer():
+    """Test /api/console/input returns 503 when no console buffer."""
+    print("\nTesting /api/console/input without buffer...")
+
+    config = {"wifi_ssid": "T", "wifi_password": "P", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    input_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/console/input":
+            input_route = func
+            break
+    assert input_route is not None, "console/input route not found"
+
+    req = MockRequest()
+    req.json = lambda: {"input": "hello"}
+    resp = input_route(req)
+    assert resp.status == 503
+
+    print("  ✓ /api/console/input (no buffer) test passed")
+
+
+# ---------------------------------------------------------------------------
+# Audio Studio / Synth API Tests
+# ---------------------------------------------------------------------------
+
+class MockSynthManager:
+    """Mock SynthManager for testing synth API endpoints."""
+    def __init__(self):
+        self.preview_called = False
+        self.preview_channels_arg = None
+        self.stop_called = False
+
+    def preview_channels(self, channels_data):
+        self.preview_called = True
+        self.preview_channels_arg = channels_data
+        return None
+
+    def stop_chiptune(self):
+        self.stop_called = True
+
+
+def _make_synth_manager(config=None):
+    if config is None:
+        config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_synth = MockSynthManager()
+    manager = WebServerManager(config, MockWiFiManager(), synth_manager=mock_synth, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+    return manager, mock_synth
+
+
+def _find_route(manager, path):
+    for rpath, _, func in manager.server.routes:
+        if rpath == path:
+            return func
+    return None
+
+
+def test_synth_manager_stored():
+    """Test that synth_manager is stored on WebServerManager when provided."""
+    print("\nTesting synth_manager parameter storage...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_synth = MockSynthManager()
+    manager = WebServerManager(config, MockWiFiManager(), synth_manager=mock_synth, testing=True)
+
+    assert manager.synth_manager is mock_synth
+    assert manager.synth_manager is not None
+
+    manager2 = WebServerManager(config, MockWiFiManager(), testing=True)
+    assert manager2.synth_manager is None
+
+    print("  ✓ synth_manager parameter test passed")
+
+
+def test_synth_preview_routes_registered():
+    """Test that all synth API routes are registered."""
+    print("\nTesting synth API route registration...")
+
+    manager, _ = _make_synth_manager()
+    registered = [p for p, _, _ in manager.server.routes]
+
+    assert "/api/synth/preview" in registered, "/api/synth/preview not registered"
+    assert "/api/synth/save" in registered, "/api/synth/save not registered"
+    assert "/api/synth/stop" in registered, "/api/synth/stop not registered"
+
+    print("  ✓ Synth API routes registered test passed")
+
+
+def test_synth_preview_no_synth():
+    """Test POST /api/synth/preview without a synth manager."""
+    print("\nTesting synth preview without synth manager...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/synth/preview")
+    assert handler is not None
+
+    request = MockRequest()
+    request.json = lambda: {
+        "bpm": 120,
+        "channels": [{"patch": "RETRO_LEAD", "sequence": [["C4", 0.25]]}]
+    }
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "no_synth"
+
+    print("  ✓ Synth preview (no synth) test passed")
+
+
+def test_synth_preview_with_synth():
+    """Test POST /api/synth/preview calls synth_manager.preview_channels."""
+    print("\nTesting synth preview with synth manager...")
+
+    manager, mock_synth = _make_synth_manager()
+    handler = _find_route(manager, "/api/synth/preview")
+    assert handler is not None
+
+    request = MockRequest()
+    request.json = lambda: {
+        "bpm": 140,
+        "channels": [
+            {"patch": "RETRO_LEAD", "sequence": [["C4", 0.25], ["-", 0.25]]},
+            {"patch": "RETRO_BASS", "sequence": [["C3", 1.0]]},
+        ]
+    }
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert mock_synth.preview_called is True
+    assert len(mock_synth.preview_channels_arg) == 2
+    assert mock_synth.preview_channels_arg[0]['bpm'] == 140
+    assert mock_synth.preview_channels_arg[0]['patch'] == 'RETRO_LEAD'
+
+    print("  ✓ Synth preview with synth manager test passed")
+
+
+def test_synth_preview_validation():
+    """Test POST /api/synth/preview validates input."""
+    print("\nTesting synth preview validation...")
+
+    manager, _ = _make_synth_manager()
+    handler = _find_route(manager, "/api/synth/preview")
+
+    # Missing channels
+    req = MockRequest()
+    req.json = lambda: {"bpm": 120}
+    assert handler(req).status == 400
+
+    # Empty channels list
+    req2 = MockRequest()
+    req2.json = lambda: {"bpm": 120, "channels": []}
+    assert handler(req2).status == 400
+
+    # Too many channels (>4)
+    req3 = MockRequest()
+    req3.json = lambda: {"bpm": 120, "channels": [{"patch": "SELECT", "sequence": [["C4", 1]]}] * 5}
+    assert handler(req3).status == 400
+
+    # Invalid BPM
+    req4 = MockRequest()
+    req4.json = lambda: {"bpm": 5, "channels": [{"patch": "SELECT", "sequence": [["C4", 1]]}]}
+    assert handler(req4).status == 400
+
+    # Channel missing sequence
+    req5 = MockRequest()
+    req5.json = lambda: {"bpm": 120, "channels": [{"patch": "SELECT"}]}
+    assert handler(req5).status == 400
+
+    print("  ✓ Synth preview validation test passed")
+
+
+def test_synth_save_route():
+    """Test POST /api/synth/save in testing mode (no file I/O)."""
+    print("\nTesting synth save route...")
+
+    manager, _ = _make_synth_manager()
+    handler = _find_route(manager, "/api/synth/save")
+    assert handler is not None
+
+    # Build a minimal valid .jseq binary
+    import struct
+    bpm = 120
+    body = b'JSEQ\x01' + struct.pack('<H', bpm) + b'\x01'
+    body += b'\x00' + struct.pack('<H', 1) + b'\x00\x20'  # 1 note: rest (index 0), 0x20=32 units = 1.0 beat (Q)
+
+    request = MockRequest()
+    request.query_params = {"name": "test_seq"}
+    request.body = body
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert data["path"] == "/sd/sequences/test_seq.jseq"
+
+    print("  ✓ Synth save route test passed")
+
+
+def test_synth_save_validation():
+    """Test POST /api/synth/save validates name and binary data."""
+    print("\nTesting synth save validation...")
+
+    manager, _ = _make_synth_manager()
+    handler = _find_route(manager, "/api/synth/save")
+
+    # Missing name
+    req = MockRequest()
+    req.query_params = {}
+    req.body = b'JSEQ\x01\x78\x00\x00'
+    assert handler(req).status == 400
+
+    # Invalid name characters
+    req2 = MockRequest()
+    req2.query_params = {"name": "bad/name!"}
+    req2.body = b'JSEQ\x01\x78\x00\x00'
+    assert handler(req2).status == 400
+
+    # Body too short
+    req3 = MockRequest()
+    req3.query_params = {"name": "ok_name"}
+    req3.body = b'JS'
+    assert handler(req3).status == 400
+
+    # Wrong magic bytes
+    req4 = MockRequest()
+    req4.query_params = {"name": "ok_name"}
+    req4.body = b'NOPE\x01\x78\x00\x01'
+    assert handler(req4).status == 400
+
+    print("  ✓ Synth save validation test passed")
+
+
+def test_synth_stop_route():
+    """Test POST /api/synth/stop calls stop_chiptune."""
+    print("\nTesting synth stop route...")
+
+    manager, mock_synth = _make_synth_manager()
+    handler = _find_route(manager, "/api/synth/stop")
+    assert handler is not None
+
+    request = MockRequest()
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "stopped"
+    assert mock_synth.stop_called is True
+
+    print("  ✓ Synth stop route test passed")
+
+
+def test_synth_stop_no_synth():
+    """Test POST /api/synth/stop without a synth manager."""
+    print("\nTesting synth stop without synth manager...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/synth/stop")
+    assert handler is not None
+
+    request = MockRequest()
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "no_synth"
+
+    print("  ✓ Synth stop (no synth) test passed")
 
 
 def run_all_tests():
@@ -1182,6 +1923,30 @@ def run_all_tests():
         test_telemetry_sse_generator_with_managers,
         test_telemetry_sse_generator_no_managers,
         test_telemetry_keepalive_chunks,
+        test_pixel_art_palette_route,
+        test_pixel_art_preview_no_matrix,
+        test_pixel_art_preview_with_matrix,
+        test_pixel_art_preview_validation,
+        test_pixel_art_save_route,
+        test_pixel_art_save_validation,
+        test_pixel_art_matrix_manager_stored,
+        test_jeblogger_buffer,
+        test_jeblogger_buffer_level_filter,
+        test_jeblogger_buffer_search_filter,
+        test_jeblogger_clear_buffer,
+        test_logs_api_with_filters,
+        test_logs_clear_api,
+        test_console_input_api,
+        test_console_input_api_no_buffer,
+        test_synth_manager_stored,
+        test_synth_preview_routes_registered,
+        test_synth_preview_no_synth,
+        test_synth_preview_with_synth,
+        test_synth_preview_validation,
+        test_synth_save_route,
+        test_synth_save_validation,
+        test_synth_stop_route,
+        test_synth_stop_no_synth,
     ]
 
     try:

@@ -28,3 +28,15 @@ class SynthManager:
 
     async def start_generative_drone(self):
         pass
+
+    def stop_chiptune(self):
+        pass
+
+    def load_jseq(self, filepath):
+        return []
+
+    async def play_jseq(self, filepath):
+        pass
+
+    def preview_channels(self, channels_data):
+        return None

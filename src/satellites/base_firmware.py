@@ -45,7 +45,7 @@ class SatelliteFirmware:
     A class representing a satellite expansion box
     including hardware init and functions.
     """
-    def __init__(self, sid, sat_type_id, sat_type_name):
+    def __init__(self, sid, sat_type_id, sat_type_name, config=None):
         """
         Initialize a Satellite object.
 
@@ -53,10 +53,12 @@ class SatelliteFirmware:
             sid (str): Satellite ID.
             sat_type_id (str): Satellite type ID.
             sat_type_name (str): Satellite type name.
+            config (dict, optional): Configuration dictionary.
         """
         self.id = sid
         self.sat_type_id = sat_type_id
         self.sat_type_name = sat_type_name
+        self.config = config or {}
 
         JEBLogger.set_source(self.id)
         JEBLogger.info("FIRM", f"[INIT] SatelliteFirmware - type_id: {self.sat_type_id}, type_name: {self.sat_type_name}")
@@ -92,15 +94,15 @@ class SatelliteFirmware:
         uart_up_hw = busio.UART(
             Pins.UART_TX,
             Pins.UART_RX,
-            baudrate=115200,
-            receiver_buffer_size=1024,
+            baudrate= self.config.get("uart_baudrate", 921600),
+            receiver_buffer_size= self.config.get("uart_buffer_size", 4096),
             timeout=0.01
         )
         uart_down_hw = busio.UART(
             Pins.UART_DOWN_TX,
             Pins.UART_DOWN_RX,
-            baudrate=115200,
-            receiver_buffer_size=1024,
+            baudrate= self.config.get("uart_baudrate", 921600),
+            receiver_buffer_size= self.config.get("uart_buffer_size", 4096),
             timeout=0.01
         )
 
@@ -137,7 +139,7 @@ class SatelliteFirmware:
         self.watchdog = WatchdogManager(
             task_names=[],
             timeout=5.0,
-            mode="RESET"
+            mode= self.config.get("watchdog_mode", "RESET")
         )
 
     def __init_subclass__(cls, **kwargs):
@@ -797,6 +799,8 @@ class SatelliteFirmware:
                 "rx_upstream"
             ]
         )
+        # Start software watchdog monitor task (if applicable) now that loop is running
+        await self.watchdog.start()
 
         # Start the transport tasks
         self.transport_up.start()

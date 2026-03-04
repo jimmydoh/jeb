@@ -32,3 +32,9 @@ class AudioManager:
 
     def set_level(self, channel, level):
         pass
+
+    async def start_polling(self, heartbeat_callback=None):
+        """Dummy implementation - does nothing."""
+        while True:
+            heartbeat_callback() if heartbeat_callback else None
+            await asyncio.sleep(0.1)

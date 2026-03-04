@@ -37,17 +37,28 @@ class AudioAnalyzer:
         import analogbufio
         self.adc = analogbufio.BufferedIn(adc_pin, sample_rate=sample_rate)
 
-    def get_eq_bands(self, num_bands=16, max_height=16, sensitivity=1000.0):
-        """Capture audio and return per-band heights for EQ display.
+        # State for EQ smoothing
+        self._prev_eq_floats = []
 
-        Performs a single DMA capture, removes the DC bias, runs an FFT,
-        and maps the positive-frequency spectrum into ``num_bands`` buckets.
+    def capture(self):
+        """Performs a single, blocking DMA capture to fill the buffer."""
+        self.adc.readinto(self.buffer)
+
+    def get_eq_bands(self, num_bands=16, max_height=16, sensitivity=1000.0, smoothing=0.6):
+        """Return per-band heights for EQ display from the current buffer.
+
+        Assumes ``capture()`` has already been called to fill the buffer.
+        Removes the DC bias, runs an FFT, maps the positive-frequency spectrum
+        into ``num_bands`` buckets, and applies exponential moving average
+        smoothing so bars glide rather than jump.
 
         Args:
             num_bands:   Number of frequency bands (default: 16 for 16×16 matrix)
             max_height:  Maximum bar height in pixels (default: 16)
             sensitivity: Divisor applied to raw FFT magnitude; lower values
                          make the bars react to quieter audio.
+            smoothing:   Float from 0.0 to 1.0. Higher = smoother/slower,
+                         lower = jumpier/faster. (default: 0.6)
 
         Returns:
             List of ``num_bands`` integers, each clamped to [0, max_height].
@@ -55,7 +66,7 @@ class AudioAnalyzer:
         try:
             import ulab.numpy as np
 
-            self.adc.readinto(self.buffer)
+            # ASSUMES buffer is already filled via capture()
             data = np.array(self.buffer, dtype=np.float)
 
             # Strip DC bias so silence ≈ 0
@@ -68,13 +79,22 @@ class AudioAnalyzer:
             usable = (self.num_samples // 2) - 1
             bins_per_band = max(1, usable // num_bands)
 
+            # Initialize smoothing state if empty or resized
+            if not self._prev_eq_floats or len(self._prev_eq_floats) != num_bands:
+                self._prev_eq_floats = [0.0] * num_bands
+
             heights = []
             for i in range(num_bands):
                 start = 1 + i * bins_per_band
                 end = start + bins_per_band
                 band_vol = np.mean(magnitudes[start:end])
-                scaled = int(band_vol / sensitivity)
-                heights.append(max(0, min(max_height, scaled)))
+                raw_scaled = band_vol / sensitivity
+
+                # Apply Exponential Moving Average smoothing
+                smoothed = (raw_scaled * (1.0 - smoothing)) + (self._prev_eq_floats[i] * smoothing)
+                self._prev_eq_floats[i] = smoothed
+
+                heights.append(max(0, min(max_height, int(smoothed))))
 
             return heights
 
@@ -83,10 +103,11 @@ class AudioAnalyzer:
             return [0] * num_bands
 
     def get_waveform(self, num_points=128):
-        """Capture audio and return a normalized waveform for OLED display.
+        """Return a normalized waveform for OLED display from the current buffer.
 
-        Performs a single DMA capture, removes the DC bias, and downsamples
-        to ``num_points`` values normalized to [0.0, 1.0] where 0.5 = silence.
+        Assumes ``capture()`` has already been called to fill the buffer.
+        Removes the DC bias and downsamples to ``num_points`` values
+        normalized to [0.0, 1.0] where 0.5 = silence.
 
         Args:
             num_points: Number of output points (default: 128 = OLED width)
@@ -97,17 +118,21 @@ class AudioAnalyzer:
         try:
             import ulab.numpy as np
 
-            self.adc.readinto(self.buffer)
+            # ASSUMES buffer is already filled via capture()
             data = np.array(self.buffer, dtype=np.float)
             data = data - np.mean(data)
 
-            # Downsample to num_points
+            # C-speed downsampling via array slicing
             step = max(1, self.num_samples // num_points)
-            samples = [float(data[i * step]) for i in range(num_points)]
+            samples = data[::step][:num_points]
 
-            # Normalize: map [-peak, +peak] → [0.0, 1.0]; silence = 0.5
-            peak = max(abs(v) for v in samples) or 1.0
-            return [(v / peak + 1.0) / 2.0 for v in samples]
+            # C-speed vectorized normalization
+            peak = np.max(np.abs(samples))
+            if peak == 0.0:
+                peak = 1.0
+
+            normalized = (samples / peak + 1.0) / 2.0
+            return normalized.tolist()
 
         except Exception as e:
             print(f"AudioAnalyzer.get_waveform error: {e}")

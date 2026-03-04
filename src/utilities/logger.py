@@ -27,6 +27,11 @@ class JEBLogger:
     WRITE_TO_FILE = False
     LOG_FILE_PATH = "/jeb_syslog.txt"
 
+    # Ring buffer for web interface
+    LOG_BUFFER = []
+    LOG_BUFFER_MAX = 500
+    LOG_BUFFER_ENABLED = False
+
     # Terminal Color Codes (Makes console debugging much easier)
     COLORS = {
         LogLevel.DEBUG: "\033[90m",    # Gray
@@ -62,6 +67,41 @@ class JEBLogger:
     def enable_file_logging(cls, enable=True):
         """Note: Requires storage.remount() in boot.py to work on actual hardware!"""
         cls.WRITE_TO_FILE = enable
+
+    @classmethod
+    def enable_buffer(cls, max_entries=500):
+        """Enable the in-memory ring buffer used by the web interface."""
+        cls.LOG_BUFFER_ENABLED = True
+        cls.LOG_BUFFER_MAX = max_entries
+        cls.LOG_BUFFER = []
+
+    @classmethod
+    def get_buffer(cls, level=None, search=None):
+        """Return buffered log entries, optionally filtered by level and/or search text.
+
+        Args:
+            level (int|None): Minimum LogLevel value; ``None`` returns all levels.
+            search (str|None): Case-insensitive substring matched against the
+                               formatted message, module tag, and source tag.
+
+        Returns:
+            list: Filtered list of log entry dicts.
+        """
+        entries = cls.LOG_BUFFER
+        if level is not None:
+            entries = [e for e in entries if e["level"] >= level]
+        if search:
+            s = search.lower()
+            entries = [e for e in entries if
+                       s in e["message"].lower() or
+                       s in e["module"].lower() or
+                       s in e["source"].lower()]
+        return entries
+
+    @classmethod
+    def clear_buffer(cls):
+        """Clear the in-memory ring buffer."""
+        cls.LOG_BUFFER = []
 
     @classmethod
     def _get_timestamp(cls):
@@ -100,6 +140,18 @@ class JEBLogger:
                 # Catch Read-Only filesystem errors silently so they don't crash the program
                 if cls.PRINT_TO_CONSOLE:
                     print(f"{cls.COLORS[LogLevel.ERROR]}Logger OS Error: {e}{cls.COLORS['RESET']}")
+
+        if cls.LOG_BUFFER_ENABLED:
+            cls.LOG_BUFFER.append({
+                "time": timestamp,
+                "level": level,
+                "level_tag": lvl_tag,
+                "source": source_tag,
+                "module": module_tag,
+                "message": message,
+            })
+            if len(cls.LOG_BUFFER) > cls.LOG_BUFFER_MAX:
+                cls.LOG_BUFFER = cls.LOG_BUFFER[-cls.LOG_BUFFER_MAX:]
 
     # Convenience Wrappers
     @classmethod

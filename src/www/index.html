@@ -176,12 +176,189 @@
         }
         .sat-badge.online { background: #2d5016; color: #90EE90; }
         .sat-badge.offline { background: #501616; color: #ffcccb; }
+        /* Pixel Art Studio */
+        .pixel-grid {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 1px;
+            width: 320px;
+            height: 320px;
+            background: #111;
+            border: 2px solid #444;
+            border-radius: 3px;
+            cursor: crosshair;
+            user-select: none;
+        }
+        .pixel-cell {
+            background: #000;
+            border: none;
+        }
+        .palette-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 10px;
+            max-width: 400px;
+        }
+        .palette-swatch {
+            width: 28px;
+            height: 28px;
+            border-radius: 3px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            box-sizing: border-box;
+        }
+        .palette-swatch.selected {
+            border-color: #fff;
+        }
+        .pixel-studio-layout {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+        .pixel-studio-controls {
+            flex: 1;
+            min-width: 200px;
+        }
+        /* Audio Studio */
+        .audio-studio-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .audio-transport {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .audio-transport label {
+            display: inline;
+            color: #b0b0b0;
+            margin: 0;
+        }
+        .audio-transport input[type=number] {
+            width: 70px;
+            padding: 6px;
+        }
+        .channel-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 6px 8px;
+        }
+        .channel-label {
+            width: 28px;
+            font-size: 0.75em;
+            color: #888;
+            flex-shrink: 0;
+        }
+        .channel-patch {
+            width: 130px;
+            flex-shrink: 0;
+            font-size: 0.8em;
+            padding: 4px 6px;
+        }
+        .step-grid {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 2px;
+            flex: 1;
+            min-width: 0;
+        }
+        .step-btn {
+            padding: 4px 2px;
+            font-size: 0.65em;
+            background: #2a2a2a;
+            color: #888;
+            border: 1px solid #444;
+            border-radius: 3px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+        }
+        .step-btn.active {
+            background: #1a3a1a;
+            color: #4CAF50;
+            border-color: #4CAF50;
+        }
+        .step-btn:hover {
+            border-color: #888;
+        }
+        .note-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            margin-top: 8px;
+            max-width: 100%;
+        }
+        .note-pick-btn {
+            padding: 4px 6px;
+            font-size: 0.7em;
+            background: #2a2a2a;
+            color: #b0b0b0;
+            border: 1px solid #444;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .note-pick-btn:hover, .note-pick-btn.selected {
+            background: #2d5016;
+            color: #90EE90;
+            border-color: #4CAF50;
+        }
+        .note-pick-btn.rest {
+            color: #666;
+        }
+        .note-pick-btn.rest:hover, .note-pick-btn.rest.selected {
+            background: #3a1a1a;
+            color: #ff9090;
+            border-color: #aa4444;
+        }
+        .duration-picker {
+            display: flex;
+            gap: 4px;
+            margin-top: 6px;
+            flex-wrap: wrap;
+        }
+        .dur-btn {
+            padding: 4px 8px;
+            font-size: 0.7em;
+            background: #2a2a2a;
+            color: #b0b0b0;
+            border: 1px solid #444;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .dur-btn.selected {
+            background: #1a2a3a;
+            color: #80ccff;
+            border-color: #4488cc;
+        }
+        .dur-btn:hover { border-color: #888; }
+        .step-number-row {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 2px;
+            padding: 0 0 2px;
+        }
+        .step-number {
+            font-size: 0.6em;
+            color: #555;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🔧 JEB Field Service Configurator</h1>
-        
+
         <div class="tabs">
             <button class="tab active" onclick="showTab('system')">System Status</button>
             <button class="tab" onclick="showTab('config')">Configuration</button>
@@ -191,14 +368,16 @@
             <button class="tab" onclick="showTab('console')">Console</button>
             <button class="tab" onclick="showTab('actions')">Actions</button>
             <button class="tab" onclick="showTab('telemetry')">Telemetry</button>
+            <button class="tab" onclick="showTab('pixelart')">Pixel Art Studio</button>
+            <button class="tab" onclick="showTab('audiostudio')">Audio Studio</button>
         </div>
-        
+
         <div id="system" class="tab-content active">
             <h2>System Status</h2>
             <div class="info-grid" id="systemStatus"></div>
             <button onclick="loadSystemStatus()">Refresh Status</button>
         </div>
-        
+
         <div id="config" class="tab-content">
             <h2>Global Configuration</h2>
             <form id="configForm">
@@ -226,7 +405,7 @@
             </form>
             <div id="configStatus" class="status" style="display:none;"></div>
         </div>
-        
+
         <div id="modes" class="tab-content">
             <h2>Mode Settings</h2>
             <p style="color: #b0b0b0; margin-bottom: 15px;">Configure settings for each game mode</p>
@@ -234,7 +413,7 @@
             <button onclick="loadModeSettings()">Refresh Mode Settings</button>
             <div id="modesStatus" class="status" style="display:none;"></div>
         </div>
-        
+
         <div id="files" class="tab-content">
             <h2>File Browser</h2>
             <div>
@@ -248,19 +427,43 @@
             </div>
             <ul class="file-list" id="fileList"></ul>
         </div>
-        
+
         <div id="logs" class="tab-content">
             <h2>System Logs</h2>
-            <button onclick="loadLogs()">Refresh Logs</button>
+            <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
+                <select id="logLevelFilter" onchange="loadLogs()" style="width:auto;">
+                    <option value="">All Levels</option>
+                    <option value="0">DEBUG+</option>
+                    <option value="1">INFO+</option>
+                    <option value="2">NOTE+</option>
+                    <option value="3">WARNING+</option>
+                    <option value="4">CRITICAL+</option>
+                    <option value="5">ERROR only</option>
+                </select>
+                <input type="text" id="logSearch" placeholder="Search logs…" oninput="loadLogs()" style="width:220px;">
+                <button onclick="loadLogs()">Refresh</button>
+                <button class="secondary" onclick="clearLogs()">Clear</button>
+            </div>
             <div class="log-viewer" id="logViewer"></div>
         </div>
-        
+
         <div id="console" class="tab-content">
-            <h2>Console Output</h2>
-            <button onclick="loadConsole()">Refresh Console</button>
+            <h2>Console</h2>
+            <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center;">
+                <button onclick="loadConsole()">Refresh</button>
+                <label style="display:inline; margin:0;">
+                    <input type="checkbox" id="consoleAutoRefresh" onchange="toggleConsoleAutoRefresh()"> Auto-refresh
+                </label>
+            </div>
             <div class="log-viewer" id="consoleViewer"></div>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+                <input type="text" id="consoleInput" placeholder="Type command and press Enter…" style="flex:1;"
+                       onkeydown="if(event.key==='Enter') sendConsoleInput()">
+                <button onclick="sendConsoleInput()">Send</button>
+            </div>
+            <div id="consoleStatus" class="status" style="display:none;"></div>
         </div>
-        
+
         <div id="actions" class="tab-content">
             <h2>Field Service Actions</h2>
             <div class="form-group">
@@ -292,30 +495,119 @@
                 <canvas id="voltageChart" class="sparkline" width="800" height="120"></canvas>
             </div>
         </div>
+
+        <div id="pixelart" class="tab-content">
+            <h2>🎨 Pixel Art Studio</h2>
+            <p style="color: #b0b0b0; margin-bottom: 15px;">Draw 16×16 pixel art and preview it live on the LED matrix, then save as an icon.</p>
+            <div class="pixel-studio-layout">
+                <div>
+                    <div class="pixel-grid" id="pixelGrid" onmousedown="pixelMouseDown(event)" onmousemove="pixelMouseMove(event)" onmouseup="pixelMouseUp()"></div>
+                </div>
+                <div class="pixel-studio-controls">
+                    <div class="form-group">
+                        <label>Selected Color: <span id="selectedColorName">OFF</span></label>
+                        <div id="selectedColorPreview" style="width:32px;height:32px;background:#000;border:2px solid #666;border-radius:3px;margin-top:4px;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Palette:</label>
+                        <div class="palette-grid" id="paletteGrid"></div>
+                    </div>
+                    <div class="form-group" style="margin-top:15px;">
+                        <label>Icon Name:</label>
+                        <input type="text" id="iconName" placeholder="my_icon" maxlength="32" style="width:180px;">
+                    </div>
+                    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+                        <button onclick="previewPixelArt()">▶ Preview on Matrix</button>
+                        <button onclick="savePixelArt()">💾 Save Icon</button>
+                        <button class="secondary" onclick="clearCanvas()">Clear</button>
+                    </div>
+                    <div id="pixelArtStatus" class="status" style="display:none;margin-top:10px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="audiostudio" class="tab-content">
+            <h2>🎵 Audio Studio</h2>
+            <p style="color: #b0b0b0; margin-bottom: 15px;">Compose a multi-channel chiptune sequence, preview it live on the device, then save as a <code>.jseq</code> file.</p>
+
+            <div class="audio-studio-layout">
+                <!-- Transport controls -->
+                <div class="audio-transport">
+                    <label>BPM:</label>
+                    <input type="number" id="audioBpm" value="120" min="20" max="300" style="width:70px;">
+                    <button onclick="audioPreview()">▶ Play Preview</button>
+                    <button class="secondary" onclick="audioStop()">■ Stop</button>
+                    <button class="secondary" onclick="audioClearAll()">Clear All</button>
+                </div>
+
+                <!-- Step number ruler -->
+                <div style="display:flex; align-items:center; gap:6px; padding: 0 8px;">
+                    <div style="width:164px; flex-shrink:0;"></div>
+                    <div class="step-number-row" style="flex:1;">
+                        <div class="step-number">1</div><div class="step-number">2</div>
+                        <div class="step-number">3</div><div class="step-number">4</div>
+                        <div class="step-number">5</div><div class="step-number">6</div>
+                        <div class="step-number">7</div><div class="step-number">8</div>
+                        <div class="step-number">9</div><div class="step-number">10</div>
+                        <div class="step-number">11</div><div class="step-number">12</div>
+                        <div class="step-number">13</div><div class="step-number">14</div>
+                        <div class="step-number">15</div><div class="step-number">16</div>
+                    </div>
+                </div>
+
+                <!-- Channel rows (3 channels) -->
+                <div id="channelRows"></div>
+
+                <!-- Note & Duration Picker -->
+                <div style="background:#1a1a1a; border:1px solid #333; border-radius:4px; padding:10px; margin-top:4px;">
+                    <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
+                        <div>
+                            <label style="color:#b0b0b0; font-size:0.85em;">Active Note: <strong id="activeNoteLabel" style="color:#4CAF50;">—</strong></label>
+                            <div class="note-picker" id="notePicker"></div>
+                        </div>
+                        <div>
+                            <label style="color:#b0b0b0; font-size:0.85em;">Duration: <strong id="activeDurLabel" style="color:#80ccff;">♩ Quarter (1 beat)</strong></label>
+                            <div class="duration-picker" id="durationPicker"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Save section -->
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px;">
+                    <label style="color:#b0b0b0;">Sequence Name:</label>
+                    <input type="text" id="audioSeqName" placeholder="my_sequence" maxlength="32" style="width:180px;">
+                    <button onclick="audioSave()">💾 Save .jseq</button>
+                </div>
+                <div id="audioStatus" class="status" style="display:none;"></div>
+            </div>
+        </div>
     </div>
-    
+
     <script>
         let currentPath = '/sd';
-        
+
         function showTab(tabName) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
             event.target.classList.add('active');
             document.getElementById(tabName).classList.add('active');
-            
+
             // Auto-load content for some tabs
             if (tabName === 'system') loadSystemStatus();
             if (tabName === 'files') loadFiles();
             if (tabName === 'logs') loadLogs();
+            if (tabName === 'console') loadConsole();
             if (tabName === 'modes') loadModeSettings();
             if (tabName === 'telemetry') startTelemetry();
+            if (tabName === 'pixelart') initPixelArtStudio();
+            if (tabName === 'audiostudio') initAudioStudio();
         }
-        
+
         async function loadSystemStatus() {
             try {
                 const response = await fetch('/api/system/status');
                 const data = await response.json();
-                
+
                 const html = `
                     <div class="info-card">
                         <h3>WiFi SSID</h3>
@@ -343,23 +635,23 @@
                 showStatus('systemStatus', 'Error loading status: ' + error, 'error');
             }
         }
-        
+
         async function loadConfig() {
             try {
                 const response = await fetch('/api/config/global');
                 const config = await response.json();
-                
+
                 document.getElementById('wifi_ssid').value = config.wifi_ssid || '';
                 document.getElementById('wifi_password').value = config.wifi_password || '';
                 document.getElementById('update_url').value = config.update_url || '';
                 document.getElementById('debug_mode').value = config.debug_mode ? 'true' : 'false';
-                
+
                 showStatus('configStatus', 'Configuration loaded', 'success');
             } catch (error) {
                 showStatus('configStatus', 'Error loading config: ' + error, 'error');
             }
         }
-        
+
         async function saveConfig() {
             try {
                 const config = {
@@ -368,13 +660,13 @@
                     update_url: document.getElementById('update_url').value,
                     debug_mode: document.getElementById('debug_mode').value === 'true'
                 };
-                
+
                 const response = await fetch('/api/config/global', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
                 });
-                
+
                 if (response.ok) {
                     showStatus('configStatus', 'Configuration saved successfully', 'success');
                 } else {
@@ -384,15 +676,15 @@
                 showStatus('configStatus', 'Error: ' + error, 'error');
             }
         }
-        
+
         async function loadFiles() {
             try {
                 const response = await fetch(`/api/files?path=${encodeURIComponent(currentPath)}`);
                 const data = await response.json();
-                
+
                 const fileList = document.getElementById('fileList');
                 fileList.innerHTML = '';
-                
+
                 // Add parent directory link if not at root
                 if (currentPath !== '/sd' && currentPath !== '/') {
                     const li = document.createElement('li');
@@ -403,18 +695,18 @@
                     `;
                     fileList.appendChild(li);
                 }
-                
+
                 // Add files and directories
                 data.items.forEach(item => {
                     const li = document.createElement('li');
                     li.className = 'file-item';
                     const icon = item.is_dir ? '📁' : '📄';
                     const size = item.is_dir ? '' : ` (${formatSize(item.size)})`;
-                    
+
                     li.innerHTML = `
                         <span>${icon} ${item.name}${size}</span>
                         <div>
-                            ${item.is_dir ? 
+                            ${item.is_dir ?
                                 `<button class="secondary" onclick="navigateTo('${item.path}')">Open</button>` :
                                 `<button class="secondary" onclick="downloadFile('${item.path}')">Download</button>`
                             }
@@ -422,73 +714,148 @@
                     `;
                     fileList.appendChild(li);
                 });
-                
+
                 document.getElementById('currentPath').textContent = currentPath;
             } catch (error) {
                 console.error('Error loading files:', error);
             }
         }
-        
+
         function navigateTo(path) {
             currentPath = path;
             loadFiles();
         }
-        
+
         function navigateUp() {
             const parts = currentPath.split('/');
             parts.pop();
             currentPath = parts.join('/') || '/';
             loadFiles();
         }
-        
+
         function downloadFile(path) {
             window.location.href = `/api/files/download?path=${encodeURIComponent(path)}`;
         }
-        
+
         function formatSize(bytes) {
             if (bytes < 1024) return bytes + ' B';
             if (bytes < 1024 * 1024) return Math.floor(bytes / 1024) + ' KB';
             return Math.floor(bytes / (1024 * 1024)) + ' MB';
         }
         
+        const LOG_LEVEL_COLORS = {
+            'DBUG': '#888',
+            'INFO': '#4fc3f7',
+            'NOTE': '#80deea',
+            'WARN': '#ffcc02',
+            'CRIT': '#ffa726',
+            '!ERR': '#ef5350',
+            'EMUL': '#ce93d8',
+        };
+
         async function loadLogs() {
             try {
-                const response = await fetch('/api/logs');
+                const level = document.getElementById('logLevelFilter').value;
+                const search = document.getElementById('logSearch').value.trim();
+                let url = '/api/logs';
+                const params = [];
+                if (level !== '') params.push('level=' + encodeURIComponent(level));
+                if (search) params.push('search=' + encodeURIComponent(search));
+                if (params.length) url += '?' + params.join('&');
+
+                const response = await fetch(url);
                 const logs = await response.json();
-                
+
                 const logViewer = document.getElementById('logViewer');
-                // Use textContent to prevent XSS - build text with newlines
-                logViewer.textContent = logs.map(log => 
-                    `[${Math.floor(log.time)}s] ${log.message}`
-                ).join('\n');
-                
+                logViewer.innerHTML = '';
+
+                logs.forEach(entry => {
+                    const line = document.createElement('div');
+                    const tag = entry.level_tag || '';
+                    const color = LOG_LEVEL_COLORS[tag] || '#e0e0e0';
+                    // Escape HTML to prevent XSS, then colorise
+                    const text = `[${entry.time}][${tag}][${entry.source}][${entry.module}] ${entry.message}`;
+                    const escaped = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+                    line.innerHTML = `<span style="color:${color}">${escaped}</span>`;
+                    logViewer.appendChild(line);
+                });
+
+                if (logs.length === 0) {
+                    logViewer.textContent = 'No log entries.';
+                }
+
                 // Scroll to bottom
                 logViewer.scrollTop = logViewer.scrollHeight;
             } catch (error) {
                 document.getElementById('logViewer').textContent = 'Error loading logs: ' + error;
             }
         }
-        
+
+        async function clearLogs() {
+            try {
+                await fetch('/api/logs/clear', { method: 'POST' });
+            } catch (_) {}
+            document.getElementById('logViewer').textContent = '';
+        }
+
+        let _consoleAutoRefreshTimer = null;
+
+        function toggleConsoleAutoRefresh() {
+            const enabled = document.getElementById('consoleAutoRefresh').checked;
+            if (enabled) {
+                _consoleAutoRefreshTimer = setInterval(loadConsole, 2000);
+            } else {
+                if (_consoleAutoRefreshTimer) {
+                    clearInterval(_consoleAutoRefreshTimer);
+                    _consoleAutoRefreshTimer = null;
+                }
+            }
+        }
+
         async function loadConsole() {
             try {
                 const response = await fetch('/api/console');
                 const data = await response.json();
-                
+
                 // Use textContent to prevent XSS attacks
                 const consoleViewer = document.getElementById('consoleViewer');
+                const atBottom = consoleViewer.scrollHeight - consoleViewer.scrollTop <= consoleViewer.clientHeight + 40; // 40px tolerance
                 consoleViewer.textContent = data.output;
+                if (atBottom) consoleViewer.scrollTop = consoleViewer.scrollHeight;
             } catch (error) {
                 document.getElementById('consoleViewer').textContent = 'Error loading console: ' + error;
+            }
+        }
+
+        async function sendConsoleInput() {
+            const inputEl = document.getElementById('consoleInput');
+            const line = inputEl.value.trim();
+            if (!line) return;
+            try {
+                const response = await fetch('/api/console/input', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ input: line })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    inputEl.value = '';
+                    setTimeout(loadConsole, 200);
+                } else {
+                    showStatus('consoleStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (error) {
+                showStatus('consoleStatus', 'Error: ' + error, 'error');
             }
         }
         
         async function triggerOTAUpdate() {
             if (!confirm('Trigger OTA update? Device will update on next boot.')) return;
-            
+
             try {
                 const response = await fetch('/api/actions/ota-update', { method: 'POST' });
                 const data = await response.json();
-                
+
                 if (response.ok) {
                     showStatus('actionStatus', 'OTA update scheduled for next boot', 'success');
                 } else {
@@ -498,12 +865,12 @@
                 showStatus('actionStatus', 'Error: ' + error, 'error');
             }
         }
-        
+
         async function toggleDebugMode() {
             try {
                 const response = await fetch('/api/actions/toggle-debug', { method: 'POST' });
                 const data = await response.json();
-                
+
                 if (response.ok) {
                     showStatus('actionStatus', 'Debug mode toggled successfully', 'success');
                     loadSystemStatus();  // Refresh status
@@ -514,38 +881,38 @@
                 showStatus('actionStatus', 'Error: ' + error, 'error');
             }
         }
-        
+
         async function loadModeSettings() {
             try {
                 const response = await fetch('/api/config/modes');
                 const modes = await response.json();
-                
+
                 const modesList = document.getElementById('modesList');
                 modesList.innerHTML = '';
-                
+
                 for (const [modeId, modeData] of Object.entries(modes)) {
                     const modeDiv = document.createElement('div');
                     modeDiv.style.marginBottom = '20px';
                     modeDiv.style.padding = '15px';
                     modeDiv.style.background = '#1a1a1a';
                     modeDiv.style.borderRadius = '5px';
-                    
+
                     let html = `<h3 style="color: #4CAF50; margin-bottom: 10px;">${modeId}</h3>`;
-                    
+
                     modeData.settings.forEach(setting => {
                         const currentValue = modeData.current[setting.key] || setting.default;
                         html += `
                             <div class="form-group">
                                 <label>${setting.label}:</label>
                                 <select id="${modeId}_${setting.key}">
-                                    ${setting.options.map(opt => 
+                                    ${setting.options.map(opt =>
                                         `<option value="${opt}" ${opt === currentValue ? 'selected' : ''}>${opt}</option>`
                                     ).join('')}
                                 </select>
                             </div>
                         `;
                     });
-                    
+
                     html += `<button onclick="saveModeSettings('${modeId}')">Save ${modeId} Settings</button>`;
                     modeDiv.innerHTML = html;
                     modesList.appendChild(modeDiv);
@@ -554,7 +921,7 @@
                 showStatus('modesStatus', 'Error loading mode settings: ' + error, 'error');
             }
         }
-        
+
         async function saveModeSettings(modeId) {
             try {
                 // Collect all settings for this mode
@@ -563,13 +930,13 @@
                     const key = elem.id.replace(`${modeId}_`, '');
                     settings[key] = elem.value;
                 });
-                
+
                 const response = await fetch('/api/config/modes', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ mode_id: modeId, settings: settings })
                 });
-                
+
                 if (response.ok) {
                     showStatus('modesStatus', `${modeId} settings saved successfully`, 'success');
                 } else {
@@ -579,21 +946,21 @@
                 showStatus('modesStatus', 'Error: ' + error, 'error');
             }
         }
-        
+
         async function uploadFile() {
             const fileInput = document.getElementById('fileUpload');
             const file = fileInput.files[0];
-            
+
             if (!file) {
                 alert('Please select a file first');
                 return;
             }
-            
+
             try {
                 const reader = new FileReader();
                 reader.onload = async (e) => {
                     const content = e.target.result;
-                    
+
                     const response = await fetch(
                         `/api/files/upload?path=${encodeURIComponent(currentPath)}&filename=${encodeURIComponent(file.name)}`,
                         {
@@ -601,7 +968,7 @@
                             body: content
                         }
                     );
-                    
+
                     if (response.ok) {
                         alert(`File ${file.name} uploaded successfully`);
                         loadFiles();  // Refresh file list
@@ -615,7 +982,7 @@
                 alert('Upload error: ' + error);
             }
         }
-        
+
         function showStatus(elementId, message, type) {
             const status = document.getElementById(elementId);
             status.textContent = message;
@@ -625,9 +992,9 @@
                 status.style.display = 'none';
             }, 5000);
         }
-        
-        // --- Telemetry / SSE ---
-        let _telemetryES = null;
+
+        // --- Telemetry / Polling ---
+        let _telemetryTimer = null;
         const _voltageHistory = {};
         const CHART_MAX_POINTS = 60;
         const VOLTAGE_LABELS = {
@@ -637,34 +1004,34 @@
             led_5v:     'LED (5V)',
         };
 
-        function startTelemetry() {
-            if (_telemetryES) return; // Already connected
-            _telemetryES = new EventSource('/api/telemetry/stream');
+        async function fetchTelemetry() {
+            try {
+                const response = await fetch('/api/telemetry/status');
+                if (response.ok) {
+                    const data = await response.json();
+                    updateTelemetryUI(data);
 
-            _telemetryES.onopen = function() {
-                const el = document.getElementById('telemetryStatus');
-                el.textContent = 'Connected';
-                el.className = 'telemetry-status connected';
-            };
-
-            _telemetryES.onmessage = function(e) {
-                try {
-                    const d = JSON.parse(e.data);
-                    updateTelemetryUI(d);
-                } catch (err) { /* ignore parse errors */ }
-            };
-
-            _telemetryES.onerror = function() {
+                    const el = document.getElementById('telemetryStatus');
+                    el.textContent = 'Connected';
+                    el.className = 'telemetry-status connected';
+                }
+            } catch (err) {
                 const el = document.getElementById('telemetryStatus');
                 el.textContent = 'Reconnecting…';
                 el.className = 'telemetry-status disconnected';
-            };
+            }
+        }
+
+        function startTelemetry() {
+            if (_telemetryTimer) return; // Already polling
+            fetchTelemetry(); // Fetch immediately
+            _telemetryTimer = setInterval(fetchTelemetry, 1000); // Poll every 1 second
         }
 
         function stopTelemetry() {
-            if (_telemetryES) {
-                _telemetryES.close();
-                _telemetryES = null;
+            if (_telemetryTimer) {
+                clearInterval(_telemetryTimer);
+                _telemetryTimer = null;
             }
             const el = document.getElementById('telemetryStatus');
             el.textContent = 'Disconnected';
@@ -754,6 +1121,460 @@
 
         // Auto-load initial data
         loadSystemStatus();
+
+        // --- Pixel Art Studio ---
+        const GRID_SIZE = 16;
+        let pixelData = new Array(GRID_SIZE * GRID_SIZE).fill(0);
+        let selectedColorIndex = 0;
+        let selectedColorRGB = '#000000';
+        let paletteColors = {};
+        let pixelArtInitialized = false;
+        let isDrawing = false;
+
+        function rgbToHex(r, g, b) {
+            return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function initPixelArtStudio() {
+            if (pixelArtInitialized) return;
+            pixelArtInitialized = true;
+
+            // Build the 16x16 grid
+            const grid = document.getElementById('pixelGrid');
+            grid.innerHTML = '';
+            for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'pixel-cell';
+                cell.dataset.index = i;
+                grid.appendChild(cell);
+            }
+
+            // Fetch palette from server
+            try {
+                const resp = await fetch('/api/pixel-art/palette');
+                paletteColors = await resp.json();
+            } catch (e) {
+                // Fallback minimal palette if server unavailable.
+                // Indices match the JEB palette: 0=OFF, 11=RED, 41=GREEN, 61=BLUE
+                paletteColors = {'0': {name:'OFF',r:0,g:0,b:0}, '11': {name:'RED',r:255,g:0,b:0}, '41': {name:'GREEN',r:0,g:200,b:0}, '61': {name:'BLUE',r:0,g:0,b:255}};
+            }
+
+            // Build palette swatches
+            const paletteGrid = document.getElementById('paletteGrid');
+            paletteGrid.innerHTML = '';
+            for (const [idx, color] of Object.entries(paletteColors)) {
+                const swatch = document.createElement('div');
+                swatch.className = 'palette-swatch' + (parseInt(idx) === 0 ? ' selected' : '');
+                const hex = rgbToHex(color.r, color.g, color.b);
+                swatch.style.background = parseInt(idx) === 0 ? '#111' : hex;
+                swatch.title = `${idx}: ${color.name}`;
+                swatch.dataset.index = idx;
+                swatch.onclick = () => selectColor(parseInt(idx));
+                paletteGrid.appendChild(swatch);
+            }
+        }
+
+        function selectColor(idx) {
+            selectedColorIndex = idx;
+            const color = paletteColors[String(idx)];
+            if (!color) return;
+            const hex = (idx === 0) ? '#000000' : rgbToHex(color.r, color.g, color.b);
+            selectedColorRGB = hex;
+            document.getElementById('selectedColorName').textContent = `${idx}: ${color.name}`;
+            document.getElementById('selectedColorPreview').style.background = hex;
+            // Update swatch borders
+            document.querySelectorAll('.palette-swatch').forEach(s => {
+                s.classList.toggle('selected', parseInt(s.dataset.index) === idx);
+            });
+        }
+
+        function paintCell(index) {
+            if (index < 0 || index >= GRID_SIZE * GRID_SIZE) return;
+            pixelData[index] = selectedColorIndex;
+            const cell = document.querySelector(`.pixel-cell[data-index="${index}"]`);
+            if (cell) {
+                const color = paletteColors[String(selectedColorIndex)];
+                if (selectedColorIndex === 0 || !color) {
+                    cell.style.background = '#000';
+                } else {
+                    cell.style.background = rgbToHex(color.r, color.g, color.b);
+                }
+            }
+        }
+
+        function getCellIndexFromEvent(e) {
+            const target = e.target;
+            if (target && target.dataset && target.dataset.index !== undefined) {
+                return parseInt(target.dataset.index);
+            }
+            return -1;
+        }
+
+        function pixelMouseDown(e) {
+            isDrawing = true;
+            const idx = getCellIndexFromEvent(e);
+            if (idx >= 0) paintCell(idx);
+        }
+
+        function pixelMouseMove(e) {
+            if (!isDrawing) return;
+            const idx = getCellIndexFromEvent(e);
+            if (idx >= 0) paintCell(idx);
+        }
+
+        function pixelMouseUp() {
+            isDrawing = false;
+        }
+
+        function clearCanvas() {
+            pixelData.fill(0);
+            document.querySelectorAll('.pixel-cell').forEach(cell => {
+                cell.style.background = '#000';
+            });
+        }
+
+        async function previewPixelArt() {
+            try {
+                const resp = await fetch('/api/pixel-art/preview', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({pixels: pixelData})
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showStatus('pixelArtStatus', 'Preview sent to matrix!', 'success');
+                } else if (data.status === 'no_matrix') {
+                    showStatus('pixelArtStatus', 'Matrix not connected to web server', 'error');
+                } else {
+                    showStatus('pixelArtStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (e) {
+                showStatus('pixelArtStatus', 'Error: ' + e, 'error');
+            }
+        }
+
+        async function savePixelArt() {
+            const name = document.getElementById('iconName').value.trim();
+            if (!name) {
+                showStatus('pixelArtStatus', 'Please enter an icon name', 'error');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/pixel-art/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: name, pixels: pixelData})
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showStatus('pixelArtStatus', `Saved to ${data.path}`, 'success');
+                } else {
+                    showStatus('pixelArtStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (e) {
+                showStatus('pixelArtStatus', 'Error: ' + e, 'error');
+            }
+        }
+
+        // =====================================================================
+        // Audio Studio
+        // =====================================================================
+        const AUDIO_NUM_CHANNELS = 3;
+        const AUDIO_NUM_STEPS    = 16;
+
+        // Patch names – must match JSEQ_PATCH_NAMES in synth_manager.py
+        const JSEQ_PATCH_NAMES = [
+            'RETRO_LEAD', 'RETRO_BASS', 'RETRO_NOISE',
+            'BEEP', 'BEEP_SQUARE', 'PAD', 'PUNCH',
+            'ALARM', 'SCANNER', 'CLICK', 'NOISE', 'SELECT',
+        ];
+
+        // Available note names for the picker
+        const AUDIO_OCTAVES = [2, 3, 4, 5, 6, 7];
+        const AUDIO_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+        // Duration options: [label, beats]
+        const DURATION_OPTIONS = [
+            ['1/32', 0.125], ['1/16', 0.25], ['1/8', 0.5],
+            ['1/4', 1.0], ['1/2', 2.0], ['1', 4.0],
+        ];
+
+        // Sequence data: audioSteps[ch][step] = {note, duration} or null (rest)
+        let audioSteps = [];
+        let audioChannelPatches = [];
+        let activeNote = null;       // e.g. 'C4'
+        let activeDuration = 1.0;    // in beats (quarter note default)
+        let audioStudioInitialized = false;
+
+        function initAudioStudio() {
+            if (audioStudioInitialized) return;
+            audioStudioInitialized = true;
+
+            // Initialize data
+            for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+                audioSteps.push(new Array(AUDIO_NUM_STEPS).fill(null));
+                audioChannelPatches.push(JSEQ_PATCH_NAMES[c] || 'SELECT');
+            }
+
+            _buildChannelRows();
+            _buildNotePicker();
+            _buildDurationPicker();
+        }
+
+        function _buildChannelRows() {
+            const container = document.getElementById('channelRows');
+            container.innerHTML = '';
+            for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+                const row = document.createElement('div');
+                row.className = 'channel-row';
+                row.id = `channelRow_${c}`;
+
+                // Label
+                const lbl = document.createElement('div');
+                lbl.className = 'channel-label';
+                lbl.textContent = `Ch${c + 1}`;
+                row.appendChild(lbl);
+
+                // Patch selector
+                const sel = document.createElement('select');
+                sel.className = 'channel-patch';
+                sel.id = `channelPatch_${c}`;
+                JSEQ_PATCH_NAMES.forEach(name => {
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = name;
+                    if (name === audioChannelPatches[c]) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                sel.onchange = () => { audioChannelPatches[c] = sel.value; };
+                row.appendChild(sel);
+
+                // Step grid
+                const grid = document.createElement('div');
+                grid.className = 'step-grid';
+                grid.id = `stepGrid_${c}`;
+                for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
+                    const btn = document.createElement('button');
+                    btn.className = 'step-btn';
+                    btn.id = `step_${c}_${s}`;
+                    btn.textContent = '—';
+                    btn.onclick = () => _toggleStep(c, s);
+                    grid.appendChild(btn);
+                }
+                row.appendChild(grid);
+                container.appendChild(row);
+            }
+        }
+
+        function _buildNotePicker() {
+            const picker = document.getElementById('notePicker');
+            picker.innerHTML = '';
+
+            // Rest button
+            const restBtn = document.createElement('button');
+            restBtn.className = 'note-pick-btn rest';
+            restBtn.textContent = '— Rest';
+            restBtn.onclick = () => _selectNote(null);
+            picker.appendChild(restBtn);
+
+            // Note buttons by octave
+            AUDIO_OCTAVES.forEach(oct => {
+                AUDIO_NOTE_NAMES.forEach(n => {
+                    const noteName = n + oct;
+                    const btn = document.createElement('button');
+                    btn.className = 'note-pick-btn';
+                    btn.textContent = noteName;
+                    btn.id = `notePick_${noteName}`;
+                    btn.onclick = () => _selectNote(noteName);
+                    picker.appendChild(btn);
+                });
+            });
+        }
+
+        function _buildDurationPicker() {
+            const picker = document.getElementById('durationPicker');
+            picker.innerHTML = '';
+            DURATION_OPTIONS.forEach(([label, beats]) => {
+                const btn = document.createElement('button');
+                btn.className = 'dur-btn' + (beats === activeDuration ? ' selected' : '');
+                btn.textContent = label;
+                btn.onclick = () => _selectDuration(beats, label, btn);
+                picker.appendChild(btn);
+            });
+        }
+
+        function _selectNote(noteName) {
+            activeNote = noteName;
+            document.getElementById('activeNoteLabel').textContent = noteName || '— Rest';
+            document.querySelectorAll('.note-pick-btn').forEach(b => b.classList.remove('selected'));
+            if (noteName) {
+                const btn = document.getElementById(`notePick_${noteName}`);
+                if (btn) btn.classList.add('selected');
+            } else {
+                const restBtns = document.querySelectorAll('.note-pick-btn.rest');
+                restBtns.forEach(b => b.classList.add('selected'));
+            }
+        }
+
+        function _selectDuration(beats, label, clickedBtn) {
+            activeDuration = beats;
+            document.getElementById('activeDurLabel').textContent = label + ' (' + beats + ' beat' + (beats === 1 ? '' : 's') + ')';
+            document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('selected'));
+            clickedBtn.classList.add('selected');
+        }
+
+        function _toggleStep(ch, step) {
+            const current = audioSteps[ch][step];
+            if (current !== null && activeNote === current.note) {
+                // Same note clicked again → clear (rest)
+                audioSteps[ch][step] = null;
+            } else if (activeNote === null) {
+                // Rest selected → clear
+                audioSteps[ch][step] = null;
+            } else {
+                // Place or replace note
+                audioSteps[ch][step] = { note: activeNote, duration: activeDuration };
+            }
+            _refreshStepButton(ch, step);
+        }
+
+        function _refreshStepButton(ch, step) {
+            const btn = document.getElementById(`step_${ch}_${step}`);
+            if (!btn) return;
+            const s = audioSteps[ch][step];
+            if (s) {
+                btn.textContent = s.note;
+                btn.classList.add('active');
+            } else {
+                btn.textContent = '—';
+                btn.classList.remove('active');
+            }
+        }
+
+        function audioClearAll() {
+            for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+                audioSteps[c] = new Array(AUDIO_NUM_STEPS).fill(null);
+                for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
+                    _refreshStepButton(c, s);
+                }
+            }
+        }
+
+        function _buildPreviewPayload() {
+            const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
+            const channels = [];
+            const REST_DURATION = 1.0; // Quarter note default for rest steps
+            for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+                const sequence = audioSteps[c].map(s => s ? [s.note, s.duration] : ['-', REST_DURATION]);
+                channels.push({ patch: audioChannelPatches[c], sequence });
+            }
+            return { bpm, channels };
+        }
+
+        async function audioPreview() {
+            const payload = _buildPreviewPayload();
+            try {
+                const resp = await fetch('/api/synth/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showStatus('audioStatus', '▶ Preview started on device', 'success');
+                } else if (data.status === 'no_synth') {
+                    showStatus('audioStatus', 'Synth manager not connected to web server', 'error');
+                } else {
+                    showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (e) {
+                showStatus('audioStatus', 'Error: ' + e, 'error');
+            }
+        }
+
+        async function audioStop() {
+            try {
+                const resp = await fetch('/api/synth/stop', { method: 'POST' });
+                const data = await resp.json();
+                if (resp.ok) {
+                    showStatus('audioStatus', '■ Playback stopped', 'success');
+                } else {
+                    showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (e) {
+                showStatus('audioStatus', 'Error: ' + e, 'error');
+            }
+        }
+
+        // Encode a note name to .jseq MIDI index (0 = rest, 1 = MIDI note 0)
+        // MIDI numbering: C-1=0, C0=12, C1=24, C2=36, C4=60, A4=69
+        // Formula: (octave + 1) * 12 + semitone gives standard MIDI note number
+        function _noteToJseqIndex(noteName) {
+            if (!noteName || noteName === '-') return 0;
+            const semitones = { 'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11 };
+            const m = noteName.match(/^([A-G]#?)(\d+)$/);
+            if (!m) return 0;
+            const midi = (parseInt(m[2]) + 1) * 12 + (semitones[m[1]] !== undefined ? semitones[m[1]] : 0);
+            return midi + 1; // +1: index 0 reserved for rest
+        }
+
+        function _durationToJseqUnits(beats) {
+            return Math.max(1, Math.min(255, Math.round(beats * 32)));
+        }
+
+        function _encodeJseq() {
+            const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
+            // Calculate buffer size: 8-byte header + per-channel data
+            let size = 8;
+            for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) size += 3 + AUDIO_NUM_STEPS * 2;
+
+            const buf = new ArrayBuffer(size);
+            const view = new DataView(buf);
+            let pos = 0;
+
+            // Magic "JSEQ"
+            view.setUint8(pos++, 0x4A); view.setUint8(pos++, 0x53);
+            view.setUint8(pos++, 0x45); view.setUint8(pos++, 0x51);
+            view.setUint8(pos++, 1); // version
+            view.setUint16(pos, bpm, true); pos += 2;
+            view.setUint8(pos++, AUDIO_NUM_CHANNELS);
+
+            for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+                const patchIdx = JSEQ_PATCH_NAMES.indexOf(audioChannelPatches[c]);
+                view.setUint8(pos++, patchIdx >= 0 ? patchIdx : 0);
+                view.setUint16(pos, AUDIO_NUM_STEPS, true); pos += 2;
+                for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
+                    const step = audioSteps[c][s];
+                    view.setUint8(pos++, step ? _noteToJseqIndex(step.note) : 0);
+                    view.setUint8(pos++, step ? _durationToJseqUnits(step.duration) : _durationToJseqUnits(activeDuration));
+                }
+            }
+            return buf;
+        }
+
+        async function audioSave() {
+            const name = document.getElementById('audioSeqName').value.trim();
+            if (!name) {
+                showStatus('audioStatus', 'Please enter a sequence name', 'error');
+                return;
+            }
+            try {
+                const buf = _encodeJseq();
+                const resp = await fetch(`/api/synth/save?name=${encodeURIComponent(name)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: buf,
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showStatus('audioStatus', `💾 Saved to ${data.path}`, 'success');
+                } else {
+                    showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (e) {
+                showStatus('audioStatus', 'Error: ' + e, 'error');
+            }
+        }
     </script>
 </body>
 </html>

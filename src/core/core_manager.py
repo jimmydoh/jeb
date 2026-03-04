@@ -9,7 +9,7 @@ import busio
 import neopixel
 from adafruit_ticks import ticks_ms, ticks_diff
 
-from managers import PowerManager, WatchdogManager
+from managers import PowerManager, ResourceManager, WatchdogManager
 
 from managers.audio_manager import AudioManager
 from managers.buzzer_manager import BuzzerManager
@@ -38,6 +38,8 @@ from utilities.logger import JEBLogger
 from utilities.palette import Palette
 from utilities.pins import Pins
 from utilities import tones
+
+from core.boot_sequence import BootSequence
 
 # Dim blue used as low-power breathing colour during sleep
 SLEEP_LED_COLOR = (0, 0, 32)
@@ -123,11 +125,12 @@ class CoreManager:
     """
     def __init__(self, config=None):
         # Load config or use defaults
-        if config is None:
-            config = {}
+        self.config = config or {}
 
-        self.debug_mode = config.get("debug_mode", False)
-        self.root_data_dir = config.get("root_data_dir", "/")
+        self.debug_mode = self.config.get("debug_mode", False)
+        self.root_data_dir = self.config.get("root_data_dir", "/")
+        self.resource_monitor_enabled = self.config.get("resource_monitor", {}).get("enabled", False)
+        self.resource_monitor_interval = self.config.get("resource_monitor", {}).get("interval_seconds", 5)
 
         # --- SAFETY EVENTS ---
         self.estop_event = asyncio.Event()
@@ -140,6 +143,9 @@ class CoreManager:
 
         # Init Data Manager for persistent storage of scores and settings
         self.data = DataManager(root_dir=self.root_data_dir)
+
+        # Init Resource Manager for system metrics (memory, CPU proxy, temperature)
+        self.resources = ResourceManager(interval=self.resource_monitor_interval)
 
         # Init Pins
         Pins.initialize(profile="CORE", type_id="00")
@@ -164,8 +170,8 @@ class CoreManager:
         uart_hw = busio.UART(
             Pins.UART_TX,
             Pins.UART_RX,
-            baudrate=config.get("uart_baudrate", 115200),
-            receiver_buffer_size=config.get("uart_buffer_size", 1024),
+            baudrate=config.get("uart_baudrate", 921600),
+            receiver_buffer_size=config.get("uart_buffer_size", 4096),
             timeout=0.01,
         )
 
@@ -216,7 +222,7 @@ class CoreManager:
 
         # Init LEDs
         self.root_pixels = neopixel.NeoPixel(
-            Pins.LED_CONTROL, 260, brightness=0.3, auto_write=False
+            Pins.LED_CONTROL, 260, brightness=self.config.get("led_brightness", 0.3), auto_write=False
         )
 
         # Button LED Manager (first 4 pixels)
@@ -248,6 +254,19 @@ class CoreManager:
         # Sleep state
         self._sleeping = False
         self._sleep_timeout_ms = 5 * 60 * 1000  # 5 minutes in milliseconds
+
+    def _read_version(self):
+        """Read version string from the VERSION file.
+
+        Returns:
+            Version string prefixed with 'v' (e.g. ``"v0.8.0"``), or an
+            empty string if the file cannot be read.
+        """
+        try:
+            with open(f"{self.root_data_dir}VERSION", "r") as f:
+                return f"v{f.read().strip()}"
+        except Exception:
+            return ""
 
     def _get_mode(self, mode_name):
         """Get a mode class from the registry with helpful error message.
@@ -350,12 +369,33 @@ class CoreManager:
         """Access last debug message from SatelliteNetworkManager."""
         return self.sat_network.last_message_debug
 
+    # --- Task Management ---
     async def cleanup_task(self, task):
         """Gracefully awaits the cancellation of a task."""
         try:
             await task
         except asyncio.CancelledError:
             pass
+
+    async def clean_slate(self):
+        """Reset state before starting a new mode."""
+        # Reset safety events
+        self.estop_event.clear()
+        self.abort_event.clear()
+        self.target_sat_event.clear()
+
+        if self.display:            # Clear OLED
+            self.display.clear()
+        if self.leds:               # Turn off all LEDs
+            self.leds.off_led(-1)
+        if self.matrix:             # Clear LED matrix
+            self.matrix.clear()
+        if self.hid:                # Flush input buffers
+            self.hid.flush()
+        if self.audio:              # Stop all audio
+            self.audio.stop_all()
+        if self.buzzer:             # Stop buzzer
+            asyncio.create_task(self.buzzer.stop())
 
     async def run_mode_with_safety(self, mode_instance, target_sat=None):
         """Execute a task while monitoring for interrupts.
@@ -370,32 +410,32 @@ class CoreManager:
         if target_sat:
             target_sat_monitor_task = asyncio.create_task(self.monitor_satellite(target_sat))
 
-        # Clear events before starting
-        self.abort_event.clear()
-        self.target_sat_event.clear()
-
         exit_reason = "UNKNOWN_EXIT"
 
         try:
             while True:
                 # 1. Check if the mode task finished naturally
                 if sub_task.done():
+                    JEBLogger.info("CORE", f"Mode '{mode_instance.name}' completed with result: {sub_task.result()}")
                     exit_reason = "MODE_COMPLETE"
                     break
 
                 # 2. Check for safety events directly (no need to spawn wait tasks!)
                 if self.estop_event.is_set():
+                    JEBLogger.warning("CORE", "E-Stop engaged during mode execution!")
                     exit_reason = "ESTOP_ABORT"
                     self.display.update_status("ESTOP ENGAGED", "EXITING MODE...")
                     break
 
                 if self.abort_event.is_set():
+                    JEBLogger.warning("CORE", "Global abort triggered during mode execution!")
                     exit_reason = "SYSTEM_ABORT"
                     self.display.update_status("SYSTEM ABORT", "RESETTING CORE...")
                     self.abort_event.clear()  # Reset for future use
                     break
 
                 if target_sat and self.target_sat_event.is_set():
+                    JEBLogger.warning("CORE", f"Target satellite '{target_sat.sat_type_name}' disconnected during mode execution!")
                     exit_reason = "LINK_LOST"
                     self.display.update_status("LINK LOST", "EXITING MODE...")
                     break
@@ -405,8 +445,9 @@ class CoreManager:
 
         except Exception as e:
             JEBLogger.error("CORE", f"Error while running mode with safety monitoring: {e}")
+            import sys
             import traceback
-            traceback.print_exc()
+            traceback.print_exception(type(e), e, e.__traceback__)
             self.display.update_status("MODE ERROR", "CHECK LOGS")
             exit_reason = "MODE_ERROR"
 
@@ -421,12 +462,14 @@ class CoreManager:
         if exit_reason == "MODE_COMPLETE":
             # Propagate any exceptions from the mode task
             try:
-                result = sub_task.result()  # Get the result or exception
+                JEBLogger.info("CORE", f"Awaiting mode task completion for result retrieval...")
+                result = await sub_task  # Safely get result or raise exception
+                JEBLogger.info("CORE", f"Mode task completed with result: {result}")
                 return result if result else "SUCCESS"
             except Exception as e:
                 JEBLogger.error("CORE", f"Error in mode execution: {e}")
                 import traceback
-                traceback.print_exc()
+                traceback.print_exception(type(e), e, e.__traceback__)
                 self.display.update_status("MODE ERROR", "CHECK LOGS")
                 return "MODE_ERROR"
 
@@ -561,9 +604,7 @@ class CoreManager:
             self.watchdog.check_in("hw_hid")
             changed = self.hid.hw_update()
 
-            if self.hid.is_button_pressed(3, long=True, duration=5000):
-                # Long-press Button D to trigger manual abort
-                self.abort_event.set()
+            # TODO: Do we still need a global abort?
 
             if self._sleeping:
                 if changed:
@@ -574,18 +615,6 @@ class CoreManager:
                 if self.hid.get_idle_time_ms() >= self._sleep_timeout_ms:
                     await self._enter_sleep()
                 await asyncio.sleep(0.02)  # Poll at 50Hz when awake
-
-    async def monitor_audio(self):
-        """Background task to clean up finished audio streams to prevent memory leaks."""
-        while True:
-            # Set watchdog flag to indicate this task is alive
-            self.watchdog.check_in("audio")
-
-            # Clean up any streams that finished in the last 100ms
-            if hasattr(self, 'audio'):
-                self.audio.update()
-
-            await asyncio.sleep(0.1)  # Poll at 10Hz
 
     async def monitor_satellite(self, sat):
         """
@@ -604,7 +633,29 @@ class CoreManager:
         """Background task to feed the watchdog if all systems are healthy."""
         while True:
             self.watchdog.safe_feed()
-            await asyncio.sleep(1)  # Feed the watchdog every second
+            await asyncio.sleep(1.5)  # Feed the watchdog every 1.5 seconds
+
+    async def monitor_resources(self):
+        """Background task to refresh system resource metrics and update the display footer.
+
+        Runs every ``ResourceManager.UPDATE_INTERVAL_S`` seconds to avoid
+        expensive gc.collect() and temperature reads causing display lag.
+        """
+        while True:
+            self.resources.update()
+            if self.display:
+                self.display.update_footer(self.resources.get_status_bar_text())
+            await asyncio.sleep(self.resources._interval)
+
+    async def monitor_ticks(self):
+        """
+        Canary task to measure event loop latency.
+        Yields immediately; the time it takes to resume equals the time
+        taken by all other tasks in the event loop cycle.
+        """
+        while True:
+            self.resources.record_loop_tick()
+            await asyncio.sleep(0)
 
     async def start(self):
         """Main async loop for the Master Controller."""
@@ -620,12 +671,12 @@ class CoreManager:
                 task_names=[
                     "power",
                     "connection",
-                    "hw_hid",
-                    "audio"
+                    "hw_hid"
                 ],
                 timeout=5.0,
-                mode="RAISE"
+                mode="LOG_ONLY" if self.debug_mode else "RESET"
             )
+            await self.watchdog.start()
 
             # Start transport monitoring to handle satellite activation
             self.transport.start()
@@ -635,8 +686,6 @@ class CoreManager:
             asyncio.create_task(self.monitor_power())
             # Start hardware input monitoring
             asyncio.create_task(self.monitor_hw_hid())
-            # Start audio cleanup task
-            asyncio.create_task(self.monitor_audio())
 
         else:
             self.buzzer.play_sequence(tones.POWER_FAIL)
@@ -647,6 +696,13 @@ class CoreManager:
                 await asyncio.sleep(1)
 
         # Continue with other background tasks after power integrity is confirmed
+        self.watchdog.register_flags(["audio"])
+        asyncio.create_task( # Audio Manager cleanup monitoring
+            self.audio.start_polling(
+                heartbeat_callback=lambda: self.watchdog.check_in("audio")
+            )
+        )
+
         self.watchdog.register_flags(["sat_network"])
         asyncio.create_task( # Satellite Network Management
             self.sat_network.monitor_satellites(
@@ -655,7 +711,7 @@ class CoreManager:
         )
 
         self.watchdog.register_flags(["sat_messages"])
-        asyncio.create_task(
+        asyncio.create_task( # Satellite Message Monitoring
             self.sat_network.monitor_messages(
                 heartbeat_callback=lambda: self.watchdog.check_in("sat_messages")
             )
@@ -672,14 +728,50 @@ class CoreManager:
             asyncio.create_task(self.display.scroll_loop())
 
         asyncio.create_task(self.monitor_watchdog_feed())  # Start watchdog feed loop
+        if self.resource_monitor_enabled:
+            asyncio.create_task(self.monitor_ticks())  # Start event loop latency monitor
+            asyncio.create_task(self.monitor_resources())  # Start resource monitor
 
         # --- Experimental / Future Use ---
         #self.watchdog.register_flags(["estop"])
         #asyncio.create_task(self.monitor_estop())  # E-Stop Button (Gameplay)
         #asyncio.create_task(self.synth.start_generative_drone())  # Background Music Drone
 
-        # Bootup has completed, play a fancy animation
-        # TODO Add boot animation and audio
+        # --- Boot Animation ---
+        # Run the console power-on sequence: matrix curtain + OLED splash + synth swell + ping
+        version_str = self._read_version()
+        await BootSequence(self.matrix, self.display, self.synth, self.buzzer).play(version_str)
+
+        # If DEBUG_MODE, check PIO state machine count
+        if self.debug_mode:
+            import rp2pio
+            import array
+
+            def count_free_state_machines():
+                # A blank dummy PIO instruction (jmp 0)
+                dummy_program = array.array("H", [0x0000])
+                allocated_machines = []
+
+                try:
+                    # RP2350 has a maximum of 12 state machines
+                    for _ in range(12):
+                        # Attempt to claim a state machine
+                        sm = rp2pio.StateMachine(dummy_program, frequency=100000)
+                        allocated_machines.append(sm)
+                except (ValueError, RuntimeError):
+                    # We hit the limit of available state machines or instruction memory
+                    pass
+
+                free_count = len(allocated_machines)
+
+                # Deinitialize to return them cleanly to CircuitPython's pool
+                for sm in allocated_machines:
+                    sm.deinit()
+
+                return free_count
+
+            JEBLogger.debug("CORE", f"Free PIO State Machines at startup: {count_free_state_machines()}")
+
 
         while True:
             # Meltdown state pauses the menu selection
@@ -755,48 +847,67 @@ class CoreManager:
 
                     mode_instance = mode_class(self)
 
-                    if target_sat:
-                        run_robust = True
-                        while run_robust:
+                    run_robust = True
+                    while run_robust:
+                        if target_sat:
                             result = await self.run_mode_with_safety(
                                 mode_instance, target_sat=target_sat
                             )
-                            if result == "LINK_LOST":
+                        else:
+                            result = await self.run_mode_with_safety(mode_instance)
+
+                        if result == "LINK_LOST":
+                            self.display.update_status(
+                                "LINK LOST", "RECONNECT IN 60s"
+                            )
+                            asyncio.create_task(
+                                self.audio.play(
+                                    "link_lost.wav", bus_id=self.audio.CH_SFX
+                                )
+                            )
+                            await asyncio.sleep(1)
+                            # 60 second countdown
+                            disconnect_time = ticks_ms()
+                            while not target_sat.is_active and run_robust:
+                                elapsed = ticks_diff(ticks_ms(), disconnect_time)
+                                if elapsed > 60000:
+                                    run_robust = False
+                                    continue
+                                secs_left = 60 - (elapsed // 1000)
                                 self.display.update_status(
-                                    "LINK LOST", "RECONNECT IN 60s"
+                                    "LINK LOST", f"ABORT IN: {secs_left}s"
+                                )
+                                await asyncio.sleep(0.1)
+                            if target_sat.is_active and run_robust:
+                                self.display.update_status(
+                                    "LINK RESTORED", "RESUMING..."
                                 )
                                 asyncio.create_task(
                                     self.audio.play(
-                                        "link_lost.wav", bus_id=self.audio.CH_SFX
+                                        "link_restored.wav", bus_id=self.audio.CH_SFX
                                     )
                                 )
                                 await asyncio.sleep(1)
-                                # 60 second countdown
-                                disconnect_time = ticks_ms()
-                                while not target_sat.is_active and run_robust:
-                                    elapsed = ticks_diff(ticks_ms(), disconnect_time)
-                                    if elapsed > 60000:
-                                        run_robust = False
-                                        continue
-                                    secs_left = 60 - (elapsed // 1000)
-                                    self.display.update_status(
-                                        "LINK LOST", f"ABORT IN: {secs_left}s"
-                                    )
-                                    await asyncio.sleep(0.1)
-                                if target_sat.is_active and run_robust:
-                                    self.display.update_status(
-                                        "LINK RESTORED", "RESUMING..."
-                                    )
-                                    asyncio.create_task(
-                                        self.audio.play(
-                                            "link_restored.wav", bus_id=self.audio.CH_SFX
-                                        )
-                                    )
-                                    await asyncio.sleep(1)
-                            else:
-                                run_robust = False
-                    else:
-                        await self.run_mode_with_safety(mode_instance)
+                        elif result == "MODE_ERROR":
+                            JEBLogger.error("CORE", f"An error occurred during mode execution: {mode_instance.name}. Returning to DASHBOARD.")
+                            run_robust = False
+                        elif result in ["ESTOP_ABORT", "SYSTEM_ABORT"]:
+                            JEBLogger.warning("CORE", f"Mode '{mode_instance.name}' aborted due to safety event: {result}. Returning to DASHBOARD.")
+                            run_robust = False
+                        elif result == "SUCCESS":
+                            JEBLogger.info("CORE", f"Mode '{mode_instance.name}' completed successfully. Returning to DASHBOARD.")
+                            run_robust = False
+                        elif result == "EXIT":
+                            JEBLogger.info("CORE", f"Mode '{mode_instance.name}' exited by user command. Returning to DASHBOARD.")
+                            run_robust = False
+                        elif result in ["MENU_CHOICE", "ADMIN_CHOICE", "ZERO_CHOICE"]:
+                            JEBLogger.info("CORE", f"Mode '{mode_instance.name}' returned with choice result: {result}")
+                            run_robust = False
+                            break
+                        else:
+                            run_robust = False
+
+                        self.mode = "DASHBOARD"  # Return to dashboard after mode exit or error
                 else:
                     JEBLogger.warning("CORE", f"Cannot start {self.mode}: Missing Dependency")
 

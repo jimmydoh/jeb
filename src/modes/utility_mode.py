@@ -6,8 +6,8 @@ from .base import BaseMode
 
 class UtilityMode(BaseMode):
     """Base class for utility modes with timeout handling."""
-    def __init__(self, core, name, description="", timeout=10):
-        super().__init__(core, name, description=description)
+    def __init__(self, core, name, description="", exitable=True, timeout=10):
+        super().__init__(core, name, description=description, exitable=exitable)
         self.timeout_ms = timeout * 1000 if timeout else None
         self.last_interaction = ticks_ms()
 

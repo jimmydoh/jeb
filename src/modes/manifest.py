@@ -208,6 +208,16 @@ MODE_REGISTRY = {
         "requires": ["CORE"],
         "settings": []
     },
+    "POWER_TELEMETRY": {
+        "id": "POWER_TELEMETRY",
+        "name": "PWR TELEMETRY",
+        "module_path": "modes.power_telemetry",
+        "class_name": "PowerTelemetryMode",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "requires": ["CORE"],
+        "settings": []
+    },
     "SNAKE": {
         "id": "SNAKE",
         "name": "CYBER SNAKE",
@@ -299,6 +309,216 @@ MODE_REGISTRY = {
                 "default": "60"
             }
         ]
+    },
+    "ZERO_PLAYER_MENU": {
+        "id": "ZERO_PLAYER_MENU",
+        "name": "ZERO PLAYER",
+        "module_path": "",
+        "class_name": "",
+        "icon": "ZERO_PLAYER",
+        "menu": "MAIN",
+        "submenu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "CONWAYS_LIFE": {
+        "id": "CONWAYS_LIFE",
+        "name": "GAME OF LIFE",
+        "module_path": "modes.conways_life",
+        "class_name": "ConwaysLife",
+        "icon": "CONWAYS_LIFE",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "LANGTONS_ANT": {
+        "id": "LANGTONS_ANT",
+        "name": "LANGTON'S ANT",
+        "module_path": "modes.langtons_ant",
+        "class_name": "LangtonsAnt",
+        "icon": "LANGTONS_ANT",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "ants",
+                "label": "ANTS",
+                "options": ["1", "2", "4"],
+                "default": "1"
+            }
+        ]
+    },
+    "WOLFRAM_AUTOMATA": {
+        "id": "WOLFRAM_AUTOMATA",
+        "name": "WOLFRAM 1D",
+        "module_path": "modes.wolfram_automata",
+        "class_name": "WolframAutomata",
+        "icon": "WOLFRAM_AUTOMATA",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "rule",
+                "label": "RULE",
+                "options": ["30", "90", "110", "184"],
+                "default": "90"
+            }
+        ]
+    },
+    "LISSAJOUS": {
+        "id": "LISSAJOUS",
+        "name": "LISSAJOUS",
+        "module_path": "modes.lissajous",
+        "class_name": "LissajousMode",
+        "icon": "LISSAJOUS",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "BOIDS": {
+        "id": "BOIDS",
+        "name": "BOIDS",
+        "module_path": "modes.boids",
+        "class_name": "BoidsMode",
+        "icon": "BOIDS",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "PLASMA": {
+        "id": "PLASMA",
+        "name": "PLASMA",
+        "module_path": "modes.plasma",
+        "class_name": "PlasmaMode",
+        "icon": "PLASMA",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "FALLING_SAND": {
+        "id": "FALLING_SAND",
+        "name": "FALLING SAND",
+        "module_path": "modes.falling_sand",
+        "class_name": "FallingSandMode",
+        "icon": "FALLING_SAND",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "BOUNCING_SPRITE": {
+        "id": "BOUNCING_SPRITE",
+        "name": "BOUNCING SPRITE",
+        "module_path": "modes.bouncing_sprite",
+        "class_name": "BouncingSprite",
+        "icon": "BOUNCING_SPRITE",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "WIREWORLD": {
+        "id": "WIREWORLD",
+        "name": "WIREWORLD",
+        "module_path": "modes.wireworld",
+        "class_name": "Wireworld",
+        "icon": "WIREWORLD",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "STARFIELD": {
+        "id": "STARFIELD",
+        "name": "STARFIELD",
+        "module_path": "modes.starfield",
+        "class_name": "StarfieldMode",
+        "icon": "STARFIELD",
+        "menu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "warp",
+                "label": "WARP",
+                "options": ["1", "2", "3", "4", "5", "MAX"],
+                "default": "3"
+            }
+        ]
+    },
+    "ABYSSAL_PING": {
+        "id": "ABYSSAL_PING",
+        "name": "ABYSSAL PING",
+        "module_path": "modes.abyssal_ping",
+        "class_name": "AbyssalPing",
+        "icon": "ABYSSAL_PING",
+        "menu": "MAIN",
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "ORBITAL_STRIKE": {
+        "id": "ORBITAL_STRIKE",
+        "name": "ORBITAL STRIKE",
+        "module_path": "modes.orbital_strike",
+        "class_name": "OrbitalStrike",
+        "icon": "ORBITAL_STRIKE",
+        "menu": "MAIN",
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "IRON_CANOPY": {
+        "id": "IRON_CANOPY",
+        "name": "IRON CANOPY",
+        "module_path": "modes.iron_canopy",
+        "class_name": "IronCanopy",
+        "icon": "IRON_CANOPY",
+        "menu": "MAIN",
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "DEFCON_COMMANDER": {
+        "id": "DEFCON_COMMANDER",
+        "name": "DEFCON CMDR",
+        "module_path": "modes.defcon_commander",
+        "class_name": "DefconCommander",
+        "icon": "DEFCON_COMMANDER",
+        "menu": "MAIN",
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "VIRTUAL_PET": {
+        "id": "VIRTUAL_PET",
+        "name": "VIRTUAL PET",
+        "module_path": "modes.virtual_pet",
+        "class_name": "VirtualPet",
+        "icon": "VIRTUAL_PET",
+        "menu": "MAIN",
+        "requires": ["CORE"],
+        "settings": []
     }
 }
 

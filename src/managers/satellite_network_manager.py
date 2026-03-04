@@ -23,7 +23,7 @@ from transport.protocol import (
 )
 
 from utilities.logger import JEBLogger
-from utilities.payload_parser import parse_values
+from utilities.payload_parser import parse_values, get_float
 
 class SatelliteNetworkManager:
     """Manages satellite discovery, health monitoring, and message handling.
@@ -48,6 +48,7 @@ class SatelliteNetworkManager:
                 ``{"offset_x": int, "offset_y": int}`` dicts used to
                 transmit the ``SETOFF`` command upon satellite connection.
         """
+        JEBLogger.info("NETM", "[INIT] SatelliteNetworkManager")
         self.transport = transport
         self.display = display
         self.audio = audio
@@ -74,9 +75,22 @@ class SatelliteNetworkManager:
         # Task throttling: Single slot for status updates to prevent unbounded task spawning
         self._current_status_task = None
         self._current_audio_task = None
+        self._update_task = None
 
         # Callback invoked when a satellite sends CMD_MODE ACTIVE (remote wake)
         self._wake_callback = None
+
+        # Hotplug event callbacks: list of callables invoked with (sid, event)
+        # where event is "connected" or "disconnected".
+        self._hotplug_callbacks = []
+
+        # Watchdog timeout in milliseconds (configurable via config["watchdog_timeout_ms"])
+        self._watchdog_timeout_ms = int(_cfg.get("watchdog_timeout_ms", 5000))
+
+        # Optional path for a dedicated hotplug event log file.
+        # When set, connect/disconnect events are always written here regardless
+        # of the global JEBLogger.WRITE_TO_FILE setting.
+        self._hotplug_log_path = _cfg.get("hotplug_log_path", None)
 
         # System command handlers (can be extended for common commands across satellites)
         self._system_handlers = {
@@ -136,6 +150,41 @@ class SatelliteNetworkManager:
         """
         self._wake_callback = callback
 
+    def register_hotplug_callback(self, callback):
+        """Register a callback invoked on satellite connect/disconnect events.
+
+        The callback is called with two positional arguments:
+            sid (str): The satellite ID involved in the event.
+            event (str): ``"connected"`` when a satellite joins the network,
+                ``"disconnected"`` when a satellite is detected as offline.
+
+        The callback may be a regular function or an async coroutine function.
+
+        Args:
+            callback: Callable (sync or async) accepting ``(sid, event)`` args.
+        """
+        self._hotplug_callbacks.append(callback)
+
+    async def _fire_hotplug_event(self, sid, event):
+        """Invoke registered hotplug callbacks and write a persistent log entry.
+
+        Args:
+            sid (str): Satellite ID involved in the event.
+            event (str): ``"connected"`` or ``"disconnected"``.
+        """
+        msg = f"[HOTPLUG] {event.upper()} sat={sid}"
+        JEBLogger.note("NETM", msg)
+        if self._hotplug_log_path:
+            JEBLogger.note("NETM", msg, file=self._hotplug_log_path)
+        for cb in self._hotplug_callbacks:
+            try:
+                result = cb(sid, event)
+                # Support both sync and async callbacks
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as e:
+                JEBLogger.error("NETM", f"Hotplug callback error: {e}")
+
     def _spawn_status_task(self, coro_func, *args, **kwargs):
         """Spawn a status update task with throttling to prevent unbounded task creation.
 
@@ -168,6 +217,21 @@ class SatelliteNetworkManager:
         """
         if self._current_audio_task is None or self._current_audio_task.done():
             self._current_audio_task = asyncio.create_task(coro_func(*args, **kwargs))
+
+    def _spawn_update_task(self, coro_func, *args, **kwargs):
+        """Spawn a firmware update task, storing its reference for lifecycle management.
+
+        Stores the task in ``self._update_task`` so its status can be inspected
+        and it can be cancelled if needed.  The ``_update_in_progress`` guard in
+        :meth:`_handle_version_check_command` already serialises updates, so
+        only one update task is ever live at a time.
+
+        Args:
+            coro_func: Coroutine function to execute for the firmware update
+            *args: Positional arguments to pass to the coroutine function
+            **kwargs: Keyword arguments to pass to the coroutine function
+        """
+        self._update_task = asyncio.create_task(coro_func(*args, **kwargs))
 
     async def discover_satellites(self, sat_type_id="01"):
         """Triggers the ID assignment chain to discover satellites."""
@@ -237,16 +301,46 @@ class SatelliteNetworkManager:
             self.display.update_status("UNKNOWN SAT", f"{sid} sent STATUS.")
             JEBLogger.warning("NETM", f"STATUS from unknown sat {sid} | DATA: {val}")
 
+    # Minimum input voltage before a UVLO (Under-Voltage Lock-Out) alert is raised.
+    SAT_UVLO_THRESHOLD = 18.0
+
     async def _handle_power_command(self, sid, val):
         """
         Handle POWER command from satellite,
         which may indicate power state changes or alerts.
+
+        The payload contains three float values:
+            index 0 – input bus voltage (v_in)
+            index 1 – satellite bus voltage (v_bus)
+            index 2 – logic/main bus voltage (v_logic)
         """
         data = parse_values(val)
-        # TODO: Do something with this
-        i = 0
-        formatted_data = ", ".join(f"{v:5.2f}" for v in data)
-        #JEBLogger.debug("NETM", f"POWER update | DATA: {formatted_data}", src=sid)
+        v_in    = get_float(data, 0)
+        v_bus   = get_float(data, 1)
+        v_logic = get_float(data, 2)
+
+        # Store telemetry for external consumers (e.g. POWER_TELEMETRY mode)
+        self.sat_telemetry[sid] = {"in": v_in, "bus": v_bus, "logic": v_logic}
+
+        JEBLogger.debug(
+            "NETM",
+            f"POWER | in={v_in:.2f}V bus={v_bus:.2f}V logic={v_logic:.2f}V",
+            src=sid
+        )
+
+        # UVLO alert: raise alarm if input voltage drops below safe threshold
+        if v_in > 0 and v_in < self.SAT_UVLO_THRESHOLD:
+            self.display.update_status("SAT UVLO ALERT", f"ID:{sid} Vin={v_in:.1f}V")
+            JEBLogger.warning(
+                "NETM",
+                f"UVLO: Vin={v_in:.2f}V below {self.SAT_UVLO_THRESHOLD}V threshold",
+                src=sid
+            )
+            self._spawn_audio_task(
+                self.audio.play,
+                "alarm_klaxon.wav",
+                bus_id=self.audio.CH_SFX
+            )
 
     async def _handle_hello_command(self, sid, val):
         """
@@ -254,7 +348,24 @@ class SatelliteNetworkManager:
         which indicates a new satellite has come online and is announcing itself.
         """
         if sid in self.satellites:
-            self.satellites[sid].update_heartbeat()
+            sat = self.satellites[sid]
+            was_inactive = not sat.is_active
+            sat.update_heartbeat()
+
+            # Re-send spatial offset when a previously offline satellite reconnects
+            # so it can re-register its LEDs on the global animation canvas.
+            if was_inactive:
+                offset = self._satellite_offsets.get(sid)
+                if offset is not None:
+                    offset_x = int(offset.get("offset_x", 0))
+                    offset_y = int(offset.get("offset_y", 0))
+                    self.transport.send(
+                        Message("CORE", sid, CMD_SET_OFFSET, [offset_x, offset_y])
+                    )
+                    JEBLogger.info(
+                        "NETM",
+                        f"Re-sent SETOFF ({offset_x},{offset_y}) to reconnected {sid}."
+                    )
         else:
             # Identify type from the first 2 characters of the SID (e.g., "0100" -> "01" type)
             sat_type_id = sid[:2]
@@ -281,6 +392,8 @@ class SatelliteNetworkManager:
                     "NETM",
                     f"Sent SETOFF ({offset_x},{offset_y}) to {sid}."
                 )
+
+            await self._fire_hotplug_event(sid, "connected")
 
     async def _handle_new_sat_command(self, sid, val):
         """
@@ -386,7 +499,7 @@ class SatelliteNetworkManager:
                 f"Starting update for {sid}"
             )
             self._update_in_progress = sid
-            asyncio.create_task(self._initiate_satellite_update(sid, sat_type_id))
+            self._spawn_update_task(self._initiate_satellite_update, sid, sat_type_id)
 
     def _get_satellite_expected_version(self, sat_type_id):
         """Return the expected firmware version for a satellite type.
@@ -486,11 +599,9 @@ class SatelliteNetworkManager:
                 message = await wait_for_ms(self.transport.receive(), 1000)
             except asyncio.TimeoutError:
                 continue
-
-            # Store message representation for debugging
-            if self._debug_mode:
-                # TODO: Fix this, message is not a string anymore
-                self.last_message_debug = str(message)
+            except Exception as e:
+                JEBLogger.error("NETM", f"Error receiving message: {e}")
+                continue
 
             # Process the message based on its command and destination
             try:
@@ -535,8 +646,24 @@ class SatelliteNetworkManager:
                         )
                         sat.was_offline = False
 
-                    if ticks_diff(now, sat.last_seen) > 5000:
-                        # Satellite has not been seen for over 5 seconds, mark as offline
+                        # Re-send spatial offset so the satellite can re-register its
+                        # LEDs on the global animation canvas after reconnection.
+                        offset = self._satellite_offsets.get(sid)
+                        if offset is not None:
+                            offset_x = int(offset.get("offset_x", 0))
+                            offset_y = int(offset.get("offset_y", 0))
+                            self.transport.send(
+                                Message("CORE", sid, CMD_SET_OFFSET, [offset_x, offset_y])
+                            )
+                            JEBLogger.info(
+                                "NETM",
+                                f"Re-sent SETOFF ({offset_x},{offset_y}) to restored {sid}."
+                            )
+
+                        await self._fire_hotplug_event(sid, "connected")
+
+                    if ticks_diff(now, sat.last_seen) > self._watchdog_timeout_ms:
+                        # Satellite has not been seen for over the watchdog timeout, mark as offline
                         JEBLogger.warning("NETM", f"Link lost with {sid}. Marking as offline.")
                         sat.is_active = False
                         sat.was_offline = True
@@ -547,5 +674,7 @@ class SatelliteNetworkManager:
                             "link_lost.wav",
                             bus_id=self.audio.CH_SFX
                         )
+
+                        await self._fire_hotplug_event(sid, "disconnected")
 
             await asyncio.sleep(0.5)

@@ -12,6 +12,8 @@ Features:
 - Manual OTA update trigger
 - Debug mode toggle
 - Satellite reordering
+- Pixel Art Studio (live LED matrix drawing canvas)
+- Audio Studio (multi-channel chiptune sequence editor and .jseq export)
 
 Dependencies:
 - JEBLogger (for logging within the web server)
@@ -28,7 +30,8 @@ import time
 
 from adafruit_httpserver import Server, Request, Response, GET, POST
 
-from utilities.logger import JEBLogger
+from utilities.logger import JEBLogger, LogLevel
+from utilities.palette import Palette
 
 class WebServerManager:
     """
@@ -43,7 +46,7 @@ class WebServerManager:
     MAX_UPLOAD_SIZE_BYTES = 50 * 1024  # Maximum upload size (50KB)
     DEFAULT_MAX_LOGS = 1000  # Default maximum log entries to keep
 
-    def __init__(self, config, wifi_manager, console_buffer=None, power_manager=None, satellite_manager=None, testing=False):
+    def __init__(self, config, wifi_manager, console_buffer=None, power_manager=None, satellite_manager=None, matrix_manager=None, synth_manager=None, testing=False):
         """
         Initialize the web server manager.
 
@@ -53,6 +56,8 @@ class WebServerManager:
             console_buffer (object): Optional console buffer for output capture
             power_manager (PowerManager): Optional PowerManager for live telemetry
             satellite_manager (SatelliteNetworkManager): Optional SatelliteNetworkManager for link telemetry
+            matrix_manager (MatrixManager): Optional MatrixManager for live pixel art preview
+            synth_manager (SynthManager): Optional SynthManager for Audio Studio live preview
         """
         if wifi_manager is None:
             JEBLogger.warning("WEBS", "No WiFiManager provided - WebServerManager cannot start")
@@ -69,12 +74,17 @@ class WebServerManager:
         self.console_buffer = console_buffer
         self.power_manager = power_manager
         self.satellite_manager = satellite_manager
+        self.matrix_manager = matrix_manager
+        self.synth_manager = synth_manager
 
         self.server = None
         self.pool = None
         self.connected = False
         self.logs = []  # Ring buffer for log messages
         self.max_logs = self.DEFAULT_MAX_LOGS  # Maximum log entries to keep
+
+        # Enable JEBLogger ring buffer so all system logs feed the Logging tab
+        JEBLogger.enable_buffer(max_entries=self.DEFAULT_MAX_LOGS)
 
     async def connect_wifi(self, timeout=30):
         """
@@ -284,7 +294,7 @@ class WebServerManager:
                     if chunk_size is None:
                         chunk_size = self.CHUNK_SIZE
                     try:
-                        with open(filepath, "rb") as f:
+                        with open(filepath, "rb", encoding="utf-8") as f:
                             while True:
                                 chunk = f.read(chunk_size)
                                 if not chunk:
@@ -366,7 +376,7 @@ class WebServerManager:
                 bytes_written = 0
                 upload_method = "unknown"
 
-                with open(filepath, "wb") as f:
+                with open(filepath, "wb", encoding="utf-8") as f:
                     # Try to use streaming interface if available
                     # First, check for request.stream (newer adafruit_httpserver versions)
                     if hasattr(request, 'stream') and request.stream:
@@ -472,8 +482,39 @@ class WebServerManager:
         # API: Get logs
         @self.server.route("/api/logs", GET)
         def get_logs(request: Request):
-            """Return recent log messages."""
-            return Response(request, json.dumps(self.logs),
+            """Return JEBLogger ring buffer, optionally filtered.
+
+            Query parameters:
+                level  (int) – minimum LogLevel value (0=DEBUG … 5=ERROR)
+                search (str) – case-insensitive substring filter
+            """
+            try:
+                level_param = request.query_params.get("level")
+                search_param = request.query_params.get("search", "").strip()
+
+                level_filter = None
+                if level_param is not None:
+                    try:
+                        level_filter = int(level_param)
+                    except (ValueError, TypeError):
+                        pass
+
+                entries = JEBLogger.get_buffer(
+                    level=level_filter,
+                    search=search_param if search_param else None,
+                )
+                return Response(request, json.dumps(entries),
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Clear log buffer
+        @self.server.route("/api/logs/clear", POST)
+        def clear_logs(request: Request):
+            """Clear the JEBLogger ring buffer."""
+            JEBLogger.clear_buffer()
+            return Response(request, '{"status": "cleared"}',
                           content_type="application/json")
 
         # API: Get console output
@@ -488,6 +529,29 @@ class WebServerManager:
             return Response(request, json.dumps({"output": output}),
                           content_type="application/json")
 
+        # API: Send input to the console manager
+        @self.server.route("/api/console/input", POST)
+        def post_console_input(request: Request):
+            """Inject a line of text into the ConsoleManager input queue."""
+            try:
+                if self.console_buffer is None:
+                    return Response(request, '{"error": "Console not available"}',
+                                  content_type="application/json", status=503)
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+                line = data.get("input", "").strip()
+                if not line:
+                    return Response(request, '{"error": "input field required"}',
+                                  content_type="application/json", status=400)
+                self.console_buffer.input_queue.append(line)
+                return Response(request, '{"status": "queued"}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
         # API: Trigger OTA update
         @self.server.route("/api/actions/ota-update", POST)
         def trigger_ota_update(request: Request):
@@ -495,7 +559,7 @@ class WebServerManager:
             try:
                 # Set update flag
                 try:
-                    with open("/sd/UPDATE_FLAG.txt", "w") as f:
+                    with open("/sd/UPDATE_FLAG.txt", "w", encoding="utf-8") as f:
                         f.write("UPDATE_REQUESTED\n")
                 except OSError as e:
                     # Provide more specific error message
@@ -577,74 +641,264 @@ class WebServerManager:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
-        # API: Real-time telemetry via Server-Sent Events (SSE)
-        @self.server.route("/api/telemetry/stream", GET)
-        def telemetry_stream(request: Request):
-            """Stream live power and satellite telemetry as Server-Sent Events.
+        # API: Real-time telemetry via standard AJAX polling
+        @self.server.route("/api/telemetry/status", GET)
+        def telemetry_status(request: Request):
+            """Return current power and satellite telemetry as a single JSON response."""
+            try:
+                power_data = {}
+                if self.power_manager is not None:
+                    try:
+                        power_data = self.power_manager.status
+                    except Exception:
+                        pass
 
-            Yields one JSON data event per second containing:
-            - power: voltage readings from PowerManager (bus, logic, LED rails)
-            - satellites: link state for each satellite in SatelliteNetworkManager
-            - ts: monotonic timestamp
+                sat_data = {}
+                if self.satellite_manager is not None:
+                    try:
+                        for sid, sat in self.satellite_manager.satellites.items():
+                            sat_data[sid] = {"active": sat.is_active}
+                    except Exception:
+                        pass
 
-            SSE comment lines (': keepalive') are sent between data events to
-            maintain the connection without flooding the client.
-            """
-            power_manager = self.power_manager
-            satellite_manager = self.satellite_manager
+                payload = json.dumps({
+                    "power": power_data,
+                    "satellites": sat_data,
+                    "ts": time.monotonic(),
+                })
+                return Response(request, payload, content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
 
-            def sse_generator():
-                # Emit the first event immediately by pre-dating the last emit time
-                last_emit = time.monotonic() - 1.0
-                while True:
-                    now = time.monotonic()
-                    if now - last_emit >= 1.0:
-                        power_data = {}
-                        if power_manager is not None:
-                            try:
-                                power_data = power_manager.status
-                            except Exception:
-                                pass
+        # API: Get pixel art palette
+        @self.server.route("/api/pixel-art/palette", GET)
+        def get_pixel_art_palette(request: Request):
+            """Return the color palette as JSON for use in the pixel art studio."""
+            try:
+                palette_data = {}
+                for idx in sorted(Palette.LIBRARY.keys()):
+                    color = Palette.LIBRARY[idx]
+                    palette_data[str(idx)] = {
+                        "name": color.name,
+                        "r": color.r,
+                        "g": color.g,
+                        "b": color.b,
+                    }
+                return Response(request, json.dumps(palette_data),
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
 
-                        sat_data = {}
-                        if satellite_manager is not None:
-                            try:
-                                for sid, sat in satellite_manager.satellites.items():
-                                    sat_data[sid] = {"active": sat.is_active}
-                            except Exception:
-                                pass
+        # API: Preview pixel art on the live LED matrix
+        @self.server.route("/api/pixel-art/preview", POST)
+        def preview_pixel_art(request: Request):
+            """Draw pixel art on the live LED matrix for real-time preview."""
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
 
-                        payload = json.dumps({
-                            "power": power_data,
-                            "satellites": sat_data,
-                            "ts": now,
-                        })
-                        last_emit = now
-                        yield f"data: {payload}\n\n"
-                    else:
-                        # SSE comment used as keepalive between data events.
-                        # Each yield returns control to adafruit_httpserver's poll()
-                        # which sleeps ~10ms before calling next(), so CPU impact
-                        # is minimal and no additional sleep is required here.
-                        yield ": keepalive\n\n"
+                pixels = data.get("pixels")
+                if not pixels or len(pixels) != 256:
+                    return Response(request, '{"error": "pixels must be an array of 256 values"}',
+                                  content_type="application/json", status=400)
 
-            return Response(
-                request,
-                sse_generator(),
-                content_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                },
-            )
+                for v in pixels:
+                    if not isinstance(v, int) or v < 0 or v > 255:
+                        return Response(request, '{"error": "pixel values must be integers 0-255"}',
+                                      content_type="application/json", status=400)
+
+                if self.matrix_manager is None:
+                    return Response(request, '{"status": "no_matrix", "message": "Matrix manager not available"}',
+                                  content_type="application/json")
+
+                # Clear matrix and draw each pixel
+                self.matrix_manager.clear()
+                for y in range(16):
+                    for x in range(16):
+                        val = pixels[y * 16 + x]
+                        if val != 0:
+                            color = Palette.LIBRARY.get(val)
+                            if color:
+                                self.matrix_manager.draw_pixel(x, y, color)
+
+                self.log("Pixel art preview updated on matrix")
+                return Response(request, '{"status": "success"}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Save pixel art as a .bin icon file
+        @self.server.route("/api/pixel-art/save", POST)
+        def save_pixel_art(request: Request):
+            """Save pixel art as a .bin file to /sd/icons/."""
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                name = data.get("name", "").strip()
+                pixels = data.get("pixels")
+
+                if not name:
+                    return Response(request, '{"error": "name is required"}',
+                                  content_type="application/json", status=400)
+
+                # Validate name: letters, numbers, and underscores only
+                valid_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+                if not all(c in valid_chars for c in name):
+                    return Response(request, '{"error": "name must contain only letters, numbers, and underscores"}',
+                                  content_type="application/json", status=400)
+
+                if not pixels or len(pixels) != 256:
+                    return Response(request, '{"error": "pixels must be an array of 256 values"}',
+                                  content_type="application/json", status=400)
+
+                for v in pixels:
+                    if not isinstance(v, int) or v < 0 or v > 255:
+                        return Response(request, '{"error": "pixel values must be integers 0-255"}',
+                                      content_type="application/json", status=400)
+
+                filepath = f"/sd/icons/{name.lower()}.bin"
+
+                if not self._testing:
+                    # Ensure /sd/icons/ directory exists
+                    try:
+                        os.mkdir("/sd/icons")
+                    except OSError:
+                        pass  # Directory already exists
+
+                    with open(filepath, "wb", encoding="utf-8") as f:
+                        f.write(bytes(pixels))
+
+                self.log(f"Pixel art saved: {filepath}")
+                return Response(request, f'{{"status": "success", "path": "{filepath}"}}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Live preview of a multichannel synth sequence
+        @self.server.route("/api/synth/preview", POST)
+        def preview_synth(request: Request):
+            """Play a multichannel sequence on the synth engine for live preview."""
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                channels = data.get("channels")
+                if not channels or not isinstance(channels, list) or len(channels) == 0:
+                    return Response(request, '{"error": "channels array required"}',
+                                  content_type="application/json", status=400)
+
+                if len(channels) > 4:
+                    return Response(request, '{"error": "maximum 4 channels allowed"}',
+                                  content_type="application/json", status=400)
+
+                bpm = data.get("bpm", 120)
+                if not isinstance(bpm, int) or bpm < 20 or bpm > 300:
+                    return Response(request, '{"error": "bpm must be an integer between 20 and 300"}',
+                                  content_type="application/json", status=400)
+
+                channel_dicts = []
+                for ch in channels:
+                    if not isinstance(ch, dict):
+                        return Response(request, '{"error": "each channel must be an object"}',
+                                      content_type="application/json", status=400)
+                    sequence = ch.get("sequence")
+                    if not sequence or not isinstance(sequence, list):
+                        return Response(request, '{"error": "each channel must have a sequence array"}',
+                                      content_type="application/json", status=400)
+                    patch_name = ch.get("patch", "SELECT")
+                    channel_dicts.append({
+                        'bpm': bpm,
+                        'patch': patch_name,
+                        'sequence': sequence,
+                    })
+
+                if self.synth_manager is None:
+                    return Response(request, '{"status": "no_synth", "message": "Synth manager not available"}',
+                                  content_type="application/json")
+
+                self.synth_manager.preview_channels(channel_dicts)
+                self.log("Synth preview started")
+                return Response(request, '{"status": "success"}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Save a .jseq sequence file to /sd/sequences/
+        @self.server.route("/api/synth/save", POST)
+        def save_synth_sequence(request: Request):
+            """Save a .jseq binary sequence file to /sd/sequences/."""
+            try:
+                name = request.query_params.get("name", "").strip()
+                if not name:
+                    return Response(request, '{"error": "name query parameter required"}',
+                                  content_type="application/json", status=400)
+
+                valid_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+                if not all(c in valid_chars for c in name):
+                    return Response(request, '{"error": "name must contain only letters, numbers, and underscores"}',
+                                  content_type="application/json", status=400)
+
+                body = request.body
+                if not body or len(body) < 8:
+                    return Response(request, '{"error": "request body must contain .jseq binary data (minimum 8 bytes)"}',
+                                  content_type="application/json", status=400)
+
+                if body[:4] != b'JSEQ':
+                    return Response(request, '{"error": "invalid .jseq file: missing JSEQ magic bytes"}',
+                                  content_type="application/json", status=400)
+
+                filepath = f"/sd/sequences/{name.lower()}.jseq"
+
+                if not self._testing:
+                    try:
+                        os.mkdir("/sd/sequences")
+                    except OSError:
+                        pass  # Directory already exists
+
+                    with open(filepath, "wb") as f:
+                        f.write(body)
+
+                self.log(f"Synth sequence saved: {filepath}")
+                return Response(request, f'{{"status": "success", "path": "{filepath}"}}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Stop any currently playing synth sequence
+        @self.server.route("/api/synth/stop", POST)
+        def stop_synth(request: Request):
+            """Stop any currently playing synth sequence or preview."""
+            try:
+                if self.synth_manager is None:
+                    return Response(request, '{"status": "no_synth"}',
+                                  content_type="application/json")
+                self.synth_manager.stop_chiptune()
+                self.log("Synth playback stopped")
+                return Response(request, '{"status": "stopped"}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
 
     def _save_config(self):
         """Save configuration to config.json."""
         if self._testing:
             return
         try:
-            with open("config.json", "w") as f:
+            with open("config.json", "w", encoding="utf-8") as f:
                 json.dump(self.config, f)
             print("Configuration saved to config.json")
         except Exception as e:
@@ -682,14 +936,14 @@ class WebServerManager:
         for html_path in html_paths:
             try:
                 # Check if file exists before creating generator
-                with open(html_path, "r") as test_f:
+                with open(html_path, "r", encoding="utf-8") as test_f:
                     pass  # File exists, proceed
 
                 def html_generator(filepath, chunk_size=None):
                     """Generator that yields HTML file chunks to save RAM."""
                     if chunk_size is None:
                         chunk_size = self.CHUNK_SIZE
-                    with open(filepath, "r") as f:
+                    with open(filepath, "r", encoding="utf-8") as f:
                         while True:
                             chunk = f.read(chunk_size)
                             if not chunk:

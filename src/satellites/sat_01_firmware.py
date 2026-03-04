@@ -60,14 +60,17 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
     Handles hardware I/O, power management, and local command processing.
     Runs on the physical satellite hardware and manages all peripherals.
     """
-    def __init__(self):
+    def __init__(self, config=None):
         """Initialize the Industrial Satellite Firmware."""
+        # Normalize config so we can safely call .get() and boot with defaults
+        config = config or {}
         # --- ACTIVE MODE (Running on Satellite Hardware) ---
         # Initialize base class with upstream transport
         super().__init__(
-            sid=None,
-            sat_type_id=TYPE_ID,
-            sat_type_name=TYPE_NAME,
+            sid= config.get("sid", None),
+            sat_type_id= config.get("type_id", TYPE_ID),
+            sat_type_name= config.get("type_name", TYPE_NAME),
+            config=config,
         )
 
         # Satellite specific hardware initialization
@@ -95,7 +98,7 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
         self.root_pixels = neopixel.NeoPixel(
             Pins.LED_CONTROL,
             8,
-            brightness=0.3,
+            brightness= self.config.get("led_brightness", 0.3),
             auto_write=False
         )
 

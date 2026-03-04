@@ -8,8 +8,12 @@
     "wifi_ssid": "",
     "wifi_password": "",
     "update_url": "",
+    "resource_monitor": {
+        "enabled": false,
+        "interval_seconds": 15
+    },
     "web_server_enabled": false,
-    "web_server_port": 80,
+    "web_server_port": 8080,
     "hardware_features": {
         "audio": true,
         "display": true,

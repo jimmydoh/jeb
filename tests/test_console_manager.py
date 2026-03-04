@@ -375,12 +375,12 @@ async def test_test_display_status():
 
 @pytest.mark.asyncio
 async def test_test_display_clear():
-    """test_display clears the display when '4' is chosen."""
+    """test_display clears the display when '5' is chosen."""
     app = MockApp()
     app.display.update_header("OLD HEADER")
     cm = ConsoleManager("CORE", "00", app=app)
 
-    input_queue = ["4", "0"]
+    input_queue = ["5", "0"]
 
     async def fake_input(prompt):
         return input_queue.pop(0) if input_queue else "0"

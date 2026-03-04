@@ -141,6 +141,26 @@ def test_channel_aliases_within_bounds():
     print("✓ Channel aliases within bounds test passed")
 
 
+def test_attach_synth_uses_pool_voice():
+    """Test that attach_synth routes to the correct physical voice from the pool."""
+    print("\nTesting attach_synth uses pool voice index...")
+
+    manager = AudioManager(None, None, None)
+
+    mock_synth_source = object()
+    manager.attach_synth(mock_synth_source)
+
+    # The physical voice for CH_SYNTH bus is defined in pools[CH_SYNTH][0]
+    expected_voice_idx = manager.pools[manager.CH_SYNTH][0]
+    voice = manager.mixer.voice[expected_voice_idx]
+
+    assert voice.playing, "Synth voice should be marked as playing after attach"
+    assert voice.current_source is mock_synth_source, "Synth voice should hold the synth source"
+
+    print(f"  ✓ attach_synth routes to physical voice {expected_voice_idx} (from pool[CH_SYNTH])")
+    print("✓ attach_synth pool voice test passed")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("AudioManager Voice Count Validation Test Suite")
@@ -149,6 +169,7 @@ if __name__ == "__main__":
     try:
         test_channel_aliases_match()
         test_channel_aliases_within_bounds()
+        test_attach_synth_uses_pool_voice()
 
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED ✓")

@@ -14,8 +14,16 @@ class MainMenu(UtilityMode):
     def __init__(self, core):
         """Initialize Main Menu mode."""
         JEBLogger.info("MENU", "[INIT] MainMenu")
-        super().__init__(core, name="MAIN MENU", description="Select a mode to begin", timeout=10)
+        super().__init__(core, name="MAIN MENU", description="Select a mode to begin", exitable=False, timeout=10)
         self.state = "DASHBOARD"
+
+    async def enter(self):
+        """Override base setup to prevent clearing the boot logo."""
+        self.core.audio.stop_all()
+        self.core.hid.flush()
+        # We explicitly omit self.core.matrix.clear() here to keep the boot logo!
+        self.core.display.update_status("MAIN MENU", "LOADING...")
+        await asyncio.sleep(0.1)
 
     def _build_menu_items(self, menu="MAIN"):
         """Dynamically build menu based on mode registry and connected hardware.
@@ -68,7 +76,7 @@ class MainMenu(UtilityMode):
         if new_state == "DASHBOARD":
             self.set_timeout(None)
             self.core.display.update_status("SYSTEM READY", "AWAITING INPUT")
-            self.core.matrix.show_icon("DEFAULT")
+            #self.core.matrix.show_icon("DEFAULT")
 
         elif new_state == "MENU":
             self.set_timeout(30)
@@ -77,6 +85,12 @@ class MainMenu(UtilityMode):
             self.set_timeout(30)
             self.core.display.update_status("ADMIN CONSOLE", "AUTHORIZED ACCESS")
             self.core.matrix.show_icon("ADMIN")
+            self.core.hid.reset_encoder(0)
+
+        elif new_state == "ZERO_PLAYER":
+            self.set_timeout(30)
+            self.core.display.update_status("ZERO PLAYER", "SELECT A SIMULATION")
+            self.core.matrix.show_icon("ZERO_PLAYER")
             self.core.hid.reset_encoder(0)
 
     async def run(self):
@@ -89,13 +103,21 @@ class MainMenu(UtilityMode):
             sat.send("MODE", "IDLE")
 
         # UI State Variables
-        self._set_state("DASHBOARD")
+        start_state = getattr(self.core, "_menu_return_state", "DASHBOARD")
+        self._set_state(start_state)
+
         focus_mode = "GAME" # "GAME" or "SETTINGS"
 
         # Data Variables
         menu_items = self._build_menu_items()
         admin_items = self._build_menu_items("ADMIN")
-        selected_game_idx = 0
+        zero_player_items = self._build_menu_items("ZERO_PLAYER")
+
+        selected_game_idx = getattr(self.core, "_last_menu_idx", 0)
+
+        if menu_items and selected_game_idx >= len(menu_items):
+            selected_game_idx = len(menu_items) - 1
+
         selected_setting_idx = 0
 
         # Satellite topology tracking for hot-plug detection
@@ -107,6 +129,7 @@ class MainMenu(UtilityMode):
         last_rendered_game = -1
         last_rendered_setting = -1
         last_rendered_admin = -1
+        last_rendered_zero_player = -1
         last_rendered_state = None
         last_rendered_focus = None
         slide_direction = "SLIDE_LEFT"
@@ -114,7 +137,14 @@ class MainMenu(UtilityMode):
         # Turn off all button LEDs
         self.core.leds.off_led(-1)
 
-        last_pos = 0
+        # Configure hardware encoder based on our restored starting state
+        if self.state == "MENU":
+            self.core.hid.reset_encoder(selected_game_idx)
+            self.core.leds.set_led(3, color=Palette.CYAN, anim="BREATH", speed=0.5)
+        else:
+            self.core.hid.reset_encoder(0)
+
+        last_pos = self.core.hid.encoder_position()
 
         while True:
             # =========================================
@@ -124,14 +154,13 @@ class MainMenu(UtilityMode):
             encoder_diff = curr_pos - last_pos
             encoder_pressed = self.core.hid.is_encoder_button_pressed(action="tap")
             btn_d_pressed = self.core.hid.is_button_pressed(3, action="tap")
-            btn_a_long = self.core.hid.is_button_pressed(0, long=True)
-            btn_d_long = self.core.hid.is_button_pressed(3, long=True)
+            btn_a_long = self.core.hid.is_button_pressed(0, long=True, duration=2000)
             btn_b_long = self.core.hid.is_button_pressed(1, long=True, duration=2000)
 
             # --- GLOBAL TIMEOUT CHECK ---
             if self.is_timed_out and self.state != "DASHBOARD":
                 self.core.leds.off_led(-1)
-                await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
+                self.core.buzzer.play_sequence(tones.MENU_CLOSE)
                 self._set_state("DASHBOARD")
                 focus_mode = "GAME"
                 needs_render = True
@@ -143,6 +172,7 @@ class MainMenu(UtilityMode):
                 last_sat_keys = curr_sat_keys
                 menu_items = self._build_menu_items()
                 admin_items = self._build_menu_items("ADMIN")
+                zero_player_items = self._build_menu_items("ZERO_PLAYER")
                 if menu_items and selected_game_idx >= len(menu_items):
                     selected_game_idx = len(menu_items) - 1
                 needs_render = True
@@ -154,11 +184,12 @@ class MainMenu(UtilityMode):
             # --- DASHBOARD STATE ---
             if self.state == "DASHBOARD":
                 if encoder_diff != 0 or encoder_pressed:
+                    JEBLogger.info("MENU", f"Encoder activity detected on DASHBOARD: diff={encoder_diff}, pressed={encoder_pressed}")
                     self.touch()
                     menu_items = self._build_menu_items()
                     self._set_state("MENU")
                     needs_render = True
-                    await self.core.audio.play("audio/menu/open.wav", self.core.audio.CH_SFX, level=0.8)
+                    self.core.buzzer.play_sequence(tones.MENU_OPEN)
 
                     # Prepare hardware for MENU state
                     self.core.hid.reset_encoder(selected_game_idx)
@@ -170,33 +201,67 @@ class MainMenu(UtilityMode):
                 admin_idx = curr_pos % len(admin_items) if admin_items else 0
 
                 if encoder_diff != 0:
+                    JEBLogger.info("MENU", f"Encoder activity detected in ADMIN: diff={encoder_diff}, pressed={encoder_pressed}")
                     self.touch()
                     slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
-                    await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
+                    self.core.buzzer.play_sequence(tones.UI_TICK)
                     needs_render = True
 
                 if encoder_pressed and admin_items:
+                    JEBLogger.info("MENU", f"Encoder button pressed in ADMIN: selected_idx={admin_idx}, mode_id={admin_items[admin_idx]}")
                     self.touch()
-                    await self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
+                    self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+                    self.core._menu_return_state = "ADMIN"
                     self.core.mode = admin_items[admin_idx]
-                    return "SUCCESS"
+                    return "ADMIN_CHOICE"
 
                 if btn_b_long:
+                    JEBLogger.info("MENU", "Long press detected on 'B' button in ADMIN, returning to DASHBOARD")
                     self.touch()
-                    await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
+                    self.core.buzzer.play_sequence(tones.MENU_CLOSE)
                     self._set_state("DASHBOARD")
                     self.core.leds.stop_cylon()
                     self.core.leds.off_led(-1)
                     needs_render = True
 
+            # --- ZERO PLAYER STATE ---
+            elif self.state == "ZERO_PLAYER":
+                zero_player_idx = curr_pos % len(zero_player_items) if zero_player_items else 0
+
+                if encoder_diff != 0:
+                    JEBLogger.info("MENU", f"Encoder activity detected in ZERO_PLAYER: diff={encoder_diff}")
+                    self.touch()
+                    slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
+                    self.core.buzzer.play_sequence(tones.UI_TICK)
+                    needs_render = True
+
+                if encoder_pressed and zero_player_items:
+                    JEBLogger.info("MENU", f"Encoder button pressed in ZERO_PLAYER: selected_idx={zero_player_idx}, mode_id={zero_player_items[zero_player_idx]}")
+                    self.touch()
+                    self.core.buzzer.play_sequence(tones.MENU_LAUNCH)
+                    self.core._menu_return_state = "ZERO_PLAYER"
+                    self.core.mode = zero_player_items[zero_player_idx]
+                    return "ZERO_CHOICE"
+
+                if btn_b_long:
+                    JEBLogger.info("MENU", "Long press detected on 'B' button in ZERO_PLAYER, returning to MENU")
+                    self.touch()
+                    self.core.buzzer.play_sequence(tones.MENU_CLOSE)
+                    self._set_state("MENU")
+                    self.core.hid.reset_encoder(selected_game_idx)
+                    curr_pos = selected_game_idx
+                    self.core.leds.set_led(3, color=Palette.CYAN, anim="BREATH", speed=0.5)
+                    needs_render = True
+
             # --- MENU STATE ---
             elif self.state == "MENU":
                 # Check for Admin transition
-                if focus_mode == "GAME" and btn_a_long and btn_d_long:
+                if focus_mode == "GAME" and btn_a_long and btn_b_long:
+                    JEBLogger.info("MENU", "Admin access granted via long press on 'A' and 'D' buttons")
                     self.touch()
                     self.core.buzzer.play_sequence(tones.SECRET_FOUND)
                     self._set_state("ADMIN")
-                    print("DEBUG: Entering Admin Menu")
+                    JEBLogger.info("MENU", "Entering Admin Menu")
                     self.core.leds.off_led(-1)
                     self.core.leds.start_cylon(Palette.RED, speed=0.05)
                     self.core.leds.set_led(1, color=Palette.ORANGE, anim="FLASH", speed=2.0)
@@ -205,39 +270,56 @@ class MainMenu(UtilityMode):
 
                 # Handle Focus Toggle ('D' Button)
                 if btn_d_pressed:
+                    JEBLogger.info("MENU", f"'D' button pressed, toggling focus from {focus_mode}")
                     self.touch()
                     if focus_mode == "GAME":
                         # Only enter settings if the current game HAS settings
                         current_game = menu_items[selected_game_idx]
                         if len(self.core.mode_registry[current_game].get("settings", [])) > 0:
+                            JEBLogger.info("MENU", f"Entering SETTINGS focus for game '{current_game}'")
                             focus_mode = "SETTINGS"
                             selected_setting_idx = 0
                             self.core.hid.reset_encoder(0)
                             curr_pos = 0
-                            await self.core.audio.play("audio/menu/open.wav", self.core.audio.CH_SFX, level=0.8)
+                            self.core.buzzer.play_sequence(tones.MENU_OPEN)
                             needs_render = True
                     else: # Exiting Settings
+                        JEBLogger.info("MENU", "Exiting SETTINGS focus, returning to GAME focus")
                         focus_mode = "GAME"
                         self.core.hid.reset_encoder(selected_game_idx)
                         curr_pos = selected_game_idx
-                        await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
+                        self.core.buzzer.play_sequence(tones.MENU_CLOSE)
                         needs_render = True
 
                 # Handle GAME Focus Logic
                 if focus_mode == "GAME":
                     if encoder_diff != 0:
+                        JEBLogger.info("MENU", f"Encoder activity detected in GAME focus: diff={encoder_diff}")
                         self.touch()
                         slide_direction = "SLIDE_LEFT" if encoder_diff > 0 else "SLIDE_RIGHT"
                         selected_game_idx = curr_pos % len(menu_items)
                         JEBLogger.info("MENU", f"Encoder moved: diff={encoder_diff}, new_pos={curr_pos}, selected_game_idx={selected_game_idx}, menu_length={len(menu_items)}")
-                        await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
+                        self.core.buzzer.play_sequence(tones.UI_TICK)
                         needs_render = True
 
                     if encoder_pressed:
+                        mode_id = menu_items[selected_game_idx]
+                        mode_meta = self.core.mode_registry[mode_id]
+                        JEBLogger.info("MENU", f"Encoder button pressed in GAME focus: selected_idx={selected_game_idx}, mode_id={mode_id}")
                         self.touch()
-                        await self.core.audio.play("audio/menu/power.wav", self.core.audio.CH_SFX, level=0.8)
-                        self.core.mode = menu_items[selected_game_idx]
-                        return "SUCCESS"
+                        if mode_meta.get("submenu") == "ZERO_PLAYER":
+                            JEBLogger.info("MENU", "Opening Zero Player submenu")
+                            self.core.buzzer.play_sequence(tones.MENU_OPEN)
+                            self._set_state("ZERO_PLAYER")
+                            needs_render = True
+                        else:
+                            self.core.buzzer.play_sequence(tones.MENU_LAUNCH)
+
+                            self.core._menu_return_state = "MENU"
+                            self.core._last_menu_idx = selected_game_idx
+
+                            self.core.mode = mode_id
+                            return "MENU_CHOICE"
 
                 # Handle SETTINGS Focus Logic
                 elif focus_mode == "SETTINGS":
@@ -247,12 +329,14 @@ class MainMenu(UtilityMode):
 
                     if len(mode_settings) > 0:
                         if encoder_diff != 0:
+                            JEBLogger.info("MENU", f"Encoder activity detected in SETTINGS focus: diff={encoder_diff}")
                             self.touch()
                             selected_setting_idx = curr_pos % len(mode_settings)
-                            await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.8)
+                            self.core.buzzer.play_sequence(tones.UI_TICK)
                             needs_render = True
 
                         if encoder_pressed:
+                            JEBLogger.info("MENU", f"Encoder button pressed in SETTINGS focus: selected_setting_idx={selected_setting_idx}")
                             self.touch()
                             setting = mode_settings[selected_setting_idx]
                             # Toggle Logic
@@ -265,7 +349,7 @@ class MainMenu(UtilityMode):
                             new_value = setting["options"][new_idx]
 
                             self.core.data.set_setting(mode_meta["id"], setting["key"], new_value)
-                            await self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
+                            self.core.buzzer.play_sequence(tones.UI_CONFIRM)
                             needs_render = True
 
             # =========================================
@@ -280,7 +364,10 @@ class MainMenu(UtilityMode):
                     self.core.display.update_header("JADNET Electronics Box")
                     self.core.display.update_status("SYSTEM READY", "Push encoder to begin")
                     self.core.display.update_footer("")
-                    self.core.matrix.clear()
+                    #self.core.matrix.clear()
+
+                    if last_rendered_state is not None and last_rendered_state != "DASHBOARD":
+                        self.core.matrix.show_icon("DEFAULT", anim_mode="FADE_IN", speed=1.0)
 
                 elif self.state == "ADMIN":
                     admin_idx = curr_pos % len(admin_items) if admin_items else 0
@@ -303,17 +390,42 @@ class MainMenu(UtilityMode):
                         self.core.display.update_footer("WARNING: System Override")
                         self.core.matrix.show_icon("WARNING")
 
+                elif self.state == "ZERO_PLAYER":
+                    zero_player_idx = curr_pos % len(zero_player_items) if zero_player_items else 0
+
+                    self.core.display.use_standard_layout()
+                    self.core.display.update_header("- ZERO PLAYER -")
+
+                    if zero_player_items:
+                        mode_id = zero_player_items[zero_player_idx]
+                        mode_meta = self.core.mode_registry[mode_id]
+                        self.core.display.update_status(f"> {mode_meta['name']} <", "Push to Select")
+                        self.core.display.update_footer("Hold 'B' to Exit")
+
+                        # Only re-trigger the slide animation if the selection actually changed
+                        if zero_player_idx != last_rendered_zero_player:
+                            self.core.matrix.show_icon(mode_meta["icon"], anim_mode=slide_direction, speed=2.0)
+                        last_rendered_zero_player = zero_player_idx
+                    else:
+                        self.core.display.update_status("NO ZERO PLAYER MODES", "")
+                        self.core.display.update_footer("Hold 'B' to Exit")
+                        self.core.matrix.show_icon("DEFAULT")
+
                 elif self.state == "MENU":
                     mode_id = menu_items[selected_game_idx]
                     mode_meta = self.core.mode_registry[mode_id]
 
                     if focus_mode == "GAME":
                         self.core.display.update_header(f"-{mode_meta['name']}-")
-                        high_score = self.core.data.get_high_score(mode_id)
-                        self.core.display.update_status(f"HIGH SCORE: {high_score}", "Push to Select")
+                        if mode_meta.get("submenu"):
+                            self.core.display.update_status("> SUBMENU <", "Push to Open")
+                            self.core.display.update_footer("")
+                        else:
+                            high_score = self.core.data.get_high_score(mode_id)
+                            self.core.display.update_status(f"HIGH SCORE: {high_score}", "Push to Select")
+                            settings_hint = "Press 'D' for Settings" if len(mode_meta.get("settings", [])) > 0 else ""
+                            self.core.display.update_footer(settings_hint)
                         self.core.display.show_settings_menu(False)
-                        settings_hint = "Press 'D' for Settings" if len(mode_meta.get("settings", [])) > 0 else ""
-                        self.core.display.update_footer(settings_hint)
 
                         # Only re-trigger the slide animation if the game actually changed
                         if selected_game_idx != last_rendered_game:
