@@ -81,6 +81,7 @@ class BasePixelManager:
         # Fixed-size list for animations (one slot per pixel)
         # Each slot is a reusable AnimationSlot object
         self.active_animations = [AnimationSlot() for _ in range(self.num_pixels)]
+        self._active_indices = set() # Set of indices with active animations for quick lookup
 
         # Track active animation count to avoid O(n) checks
         self._active_count = 0
@@ -110,6 +111,7 @@ class BasePixelManager:
         for slot in self.active_animations:
             slot.clear()
         self._active_count = 0
+        self._active_indices.clear()
         self.pixels.fill((0, 0, 0))
         # Note: Hardware write is now handled by CoreManager.render_loop()
 
@@ -130,6 +132,7 @@ class BasePixelManager:
                 return False
             slot.clear()
             self._active_count -= 1
+            self._active_indices.discard(idx)
             return True
         return False
 
@@ -153,6 +156,7 @@ class BasePixelManager:
             self._active_count += 1
 
         slot.set(anim_type, color, speed, time.monotonic(), duration, priority)
+        self._active_indices.add(idx)
 
     def fill_animation(self, anim_type, color, speed=1.0, duration=None, priority=0):
         """Applies an animation to ALL pixels."""
@@ -168,6 +172,7 @@ class BasePixelManager:
                 self._active_count += 1
 
             slot.set(anim_type, color, speed, start_t, duration, priority)
+            self._active_indices.add(i)
 
     def _apply_brightness(self, base_color, brightness):
         """
@@ -315,7 +320,7 @@ class BasePixelManager:
 
             now = time.monotonic()
 
-            for idx in range(self.num_pixels):
+            for idx in self._active_indices:
                 slot = self.active_animations[idx]
                 if not slot.active:
                     continue
@@ -351,7 +356,11 @@ class BasePixelManager:
                     factor = 0.5 + 0.5 * math.sin(t * 2 * math.pi)
                     factor = max(0.1, factor)
                     base = slot.color
-                    self.pixels[idx] = tuple(int(c * factor) for c in base)
+                    self.pixels[idx] = (
+                        int(base[0] * factor),
+                        int(base[1] * factor),
+                        int(base[2] * factor)
+                    )
 
                 # --- RAINBOW ---
                 elif slot.type == "RAINBOW":
@@ -384,7 +393,11 @@ class BasePixelManager:
                     dist = abs(idx - pos)
                     brightness = max(0, 1.0 - dist) # Tail length of 1.0
                     base = slot.color
-                    self.pixels[idx] = tuple(int(c * brightness) for c in base)
+                    self.pixels[idx] = (
+                        int(base[0] * brightness),
+                        int(base[1] * brightness),
+                        int(base[2] * brightness)
+                    )
 
                 # --- CHASER (Centrifuge) ---
                 elif slot.type == "CHASER":
@@ -397,7 +410,11 @@ class BasePixelManager:
 
                     brightness = max(0, 1.0 - (dist / 2.0)) # Broader tail
                     base = slot.color
-                    self.pixels[idx] = tuple(int(c * brightness) for c in base)
+                    self.pixels[idx] = (
+                        int(base[0] * brightness),
+                        int(base[1] * brightness),
+                        int(base[2] * brightness)
+                    )
 
                 # --- DECAY ---
                 elif slot.type == "DECAY":
@@ -409,7 +426,11 @@ class BasePixelManager:
                     else:
                         factor = 1.0 - (elapsed / duration)
                         base = slot.color
-                        self.pixels[idx] = tuple(int(c * factor) for c in base)
+                        self.pixels[idx] = (
+                        int(base[0] * factor),
+                        int(base[1] * factor),
+                        int(base[2] * factor)
+                    )
 
             if step:
                 return
