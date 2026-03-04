@@ -80,6 +80,7 @@ def _make_starfield(width=16, height=16):
     mode.width  = width
     mode.height = height
     mode._frame = bytearray(width * height)
+    mode._zero_frame = b'\x00' * (width * height)
     return mode
 
 

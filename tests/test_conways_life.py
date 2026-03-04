@@ -346,19 +346,22 @@ def test_step_still_life_block():
 # ===========================================================================
 
 def _slot_color(matrix, x, y):
-    """Return the color stored in the animation slot for (x, y), or None if inactive."""
-    idx = matrix._get_idx(x, y)
-    slot = matrix.active_animations[idx]
-    return slot.color if slot.active else None
+    """Return the colour written to the hardware pixel for (x, y), or None if off.
+
+    show_frame now writes directly to matrix.pixels bypassing animation slots,
+    so we read the hardware buffer here.  A pixel initialised to (0, 0, 0)
+    (the fill value) is treated as off.
+    """
+    hw_idx = matrix._get_idx(x, y)
+    color = matrix.pixels[hw_idx]
+    return None if color == (0, 0, 0) else color
 
 
 def _as_tuple(color):
     """Normalise a Color object or plain RGB tuple to a plain (r, g, b) tuple.
 
-    AnimationSlot stores colors as whatever was passed to draw_pixel —
-    typically a Palette.Color object from self.palette[idx]. Color objects
-    support indexing, so (color[0], color[1], color[2]) extracts the RGB
-    components into a plain tuple for straightforward equality assertions.
+    Color objects support indexing, so (color[0], color[1], color[2]) extracts
+    the RGB components into a plain tuple for straightforward equality assertions.
     """
     if color is None:
         return None
