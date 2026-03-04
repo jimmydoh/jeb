@@ -273,7 +273,7 @@ async def animate_sprite_sheet(matrix_manager, icon_data, timing_data=(1000,), l
 
     This approach avoids Python-list fragmentation and GC pauses on the Pico 2:
     the entire animation lives in one contiguous heap allocation.  Frame slicing
-    is performed in C-level bytearray code, so there is no per-frame allocation.
+    uses a memoryview so there is no per-frame allocation.
 
     Designed to run as a background asyncio task.  Cancel the task to stop.
 
@@ -298,6 +298,9 @@ async def animate_sprite_sheet(matrix_manager, icon_data, timing_data=(1000,), l
     frame_count = len(icon_data) // frame_size
     if frame_count < 1:
         return
+
+    # Wrap icon_data in a memoryview so frame slices are zero-copy
+    icon_mv = memoryview(icon_data)
 
     try:
         frame_idx = 0
@@ -327,7 +330,7 @@ async def animate_sprite_sheet(matrix_manager, icon_data, timing_data=(1000,), l
 
             if dirty:
                 start = frame_idx * frame_size
-                frame = icon_data[start : start + frame_size]
+                frame = icon_mv[start : start + frame_size]
                 matrix_manager.show_frame(frame, clear=False, color=color, brightness=brightness)
                 dirty = False
 

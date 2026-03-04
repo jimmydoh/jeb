@@ -271,9 +271,9 @@ class MatrixManager(BasePixelManager):
         anim_mode: "SLIDE_LEFT", "SLIDE_RIGHT" are non-blocking (spawned as background tasks).
         anim_mode: "ANIMATED" - plays a multi-frame sprite sheet as a looping background task.
             The icon data must be a contiguous bytes/bytearray where each frame is
-            width*height bytes.  Frame count is derived automatically.
-            ``speed`` is used as the target FPS (default 1.0 → 8 FPS via the
-            animation function default; pass e.g. speed=12 for 12 FPS).
+            width*height bytes. Frame count is derived automatically, and per-frame
+            timing is controlled by the icon's own timing data (from Icons.get_anim),
+            not by the ``speed`` parameter.
 
         border_color: Optional RGB tuple. When provided, a 1-pixel border is drawn
         around the icon footprint using the specified colour. Intended for 14x14

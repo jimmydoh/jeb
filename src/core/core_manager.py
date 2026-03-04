@@ -676,6 +676,7 @@ class CoreManager:
                 timeout=5.0,
                 mode="LOG_ONLY" if self.debug_mode else "RESET"
             )
+            await self.watchdog.start()
 
             # Start transport monitoring to handle satellite activation
             self.transport.start()

@@ -325,7 +325,7 @@ class BasePixelManager:
 
             now = time.monotonic()
 
-            for idx in self._active_indices:
+            for idx in tuple(self._active_indices):
                 slot = self.active_animations[idx]
                 if not slot.active:
                     continue
