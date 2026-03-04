@@ -92,6 +92,7 @@ class StarfieldMode(BaseMode):
         self.height    = 0
         self._stars    = None   # list of [x, y, z] floats, one per star
         self._frame    = None   # bytearray: palette-index frame buffer
+        self._zero_frame = None   # bytearray of all-0s for quick clearing
         self._warp_idx = _DEFAULT_WARP_IDX
         self._star_idx = _DEFAULT_STAR_IDX
 
@@ -149,25 +150,24 @@ class StarfieldMode(BaseMode):
         half   = _Z_MAX * 0.5
 
         # Clear the frame buffer before rendering this tick.
-        for i in range(len(frame)):
-            frame[i] = 0
+        frame[:] = self._zero_frame
 
         for star in self._stars:
-            # Move star toward the camera.
-            star[2] -= speed
+            # Cache list elements to local variables (faster lookups)
+            z = star[2] - speed
 
-            if star[2] <= _Z_MIN:
-                # Recycle: assign a new random position at the far end.
+            if z <= _Z_MIN:
                 star[0] = random.uniform(-half, half)
                 star[1] = random.uniform(-half, half)
                 star[2] = _Z_MAX
-                # Skip rendering for this tick – the star just spawned.
                 continue
 
-            # Perspective projection onto the matrix.
-            inv_z = 1.0 / star[2]
-            sx = int(star[0] * _SCALE * inv_z + half_x + 0.5)
-            sy = int(star[1] * _SCALE * inv_z + half_y + 0.5)
+            star[2] = z  # Write back once
+
+            # Calculate scale once
+            scale_factor = _SCALE / z
+            sx = int(star[0] * scale_factor + half_x + 0.5)
+            sy = int(star[1] * scale_factor + half_y + 0.5)
 
             if 0 <= sx < w and 0 <= sy < h:
                 color = self._depth_color(star[2])
@@ -193,6 +193,7 @@ class StarfieldMode(BaseMode):
 
         self.width  = self.core.matrix.width
         self.height = self.core.matrix.height
+        self._zero_frame = b'\x00' * (self.width * self.height)  # all-0s for quick clearing
 
         self._warp_idx = _DEFAULT_WARP_IDX
         self._star_idx = _DEFAULT_STAR_IDX

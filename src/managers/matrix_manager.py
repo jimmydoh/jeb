@@ -385,13 +385,17 @@ class MatrixManager(BasePixelManager):
         if clear:
             self.clear()
 
-        for y in range(self.height):
-            for x in range(self.width):
-                idx = y * self.width + x
-                if idx < len(frame):
-                    pixel_value = frame[idx]
-                    base = color if color else self.palette[pixel_value]
-                    self.draw_pixel(x, y, base, brightness=brightness)
+        # Cache references to avoid global/instance lookups in the loop
+        pixels = self.pixels
+        lut = self._idx_map
+        palette = self.palette
+
+        # Iterate in 1D directly over the frame buffer
+        for idx, pixel_value in enumerate(frame):
+            if pixel_value != 0:
+                # Map logical 1D index directly to hardware index via LUT
+                hw_idx = lut[idx]
+                pixels[hw_idx] = palette[pixel_value]
 
     # TODO Refactor progress grid to use animations
     def show_progress_grid(self, iterations, total=10, color=(100, 0, 200)):
