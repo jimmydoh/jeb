@@ -11,9 +11,20 @@ Verifies:
 
 import sys
 import os
+import types
+import time as _time
 
 # Add src directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+# ---------------------------------------------------------------------------
+# Stub out CircuitPython-specific modules at module import time so that any
+# subsequent imports (including matrix_animations) get proper ticks stubs.
+# ---------------------------------------------------------------------------
+_ticks_stub = types.ModuleType('adafruit_ticks')
+_ticks_stub.ticks_ms   = lambda: int(_time.monotonic() * 1000)
+_ticks_stub.ticks_diff = lambda a, b: a - b
+sys.modules['adafruit_ticks'] = _ticks_stub
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +409,7 @@ class _MockMatrixForAnim:
         self.palette = {v: (v, v, v) for v in range(256)}
         self.pixels_drawn = []
         self.fills = 0
+        self.frames_shown = 0
 
     def fill(self, color, show=False, **kwargs):
         self.fills += 1
@@ -405,11 +417,25 @@ class _MockMatrixForAnim:
     def draw_pixel(self, x, y, color, brightness=1.0, **kwargs):
         self.pixels_drawn.append((x, y, color))
 
+    def show_frame(self, frame, clear=True, color=None, brightness=1.0):
+        self.frames_shown += 1
+
 
 def test_animate_sprite_sheet_renders_frames():
     """animate_sprite_sheet must render the correct number of frames."""
-    import sys, os, types
+    import sys, os, types, time as _time2
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+    # Ensure adafruit_ticks is a real stub (other tests may have replaced it with MagicMock)
+    _ts = types.ModuleType('adafruit_ticks')
+    _ts.ticks_ms   = lambda: int(_time2.monotonic() * 1000)
+    _ts.ticks_diff = lambda a, b: a - b
+    sys.modules['adafruit_ticks'] = _ts
+    # Force full re-import so matrix_animations binds to the correct ticks stubs.
+    # Must also remove the attribute from the parent package so Python re-executes the module.
+    sys.modules.pop('utilities.matrix_animations', None)
+    _utils = sys.modules.get('utilities')
+    if _utils is not None and hasattr(_utils, 'matrix_animations'):
+        delattr(_utils, 'matrix_animations')
     from utilities import matrix_animations
 
     # 2-frame sprite: frame0 = all 1s, frame1 = all 2s
@@ -420,32 +446,42 @@ def test_animate_sprite_sheet_renders_frames():
     matrix = _MockMatrixForAnim()
 
     async def run():
+        # timing_data=(1,) = 1 ms per frame — plays through both frames almost instantly
         task = _asyncio.create_task(
-            matrix_animations.animate_sprite_sheet(matrix, sprite, fps=100, loop=False)
+            matrix_animations.animate_sprite_sheet(matrix, sprite, timing_data=(1,), loop=False)
         )
         await task
 
     _asyncio.run(run())
 
-    # Should have called fill once per frame (2 times) and drawn pixels
-    assert matrix.fills == 2, f"Expected 2 fill() calls (one per frame), got {matrix.fills}"
-    print(f"✓ animate_sprite_sheet rendered 2 frames ({matrix.fills} fill calls)")
+    # Should have called show_frame twice (once per frame)
+    assert matrix.frames_shown == 2, f"Expected 2 show_frame() calls (one per frame), got {matrix.frames_shown}"
+    print(f"✓ animate_sprite_sheet rendered 2 frames ({matrix.frames_shown} show_frame calls)")
 
 
 def test_animate_sprite_sheet_cancellable():
     """animate_sprite_sheet must stop cleanly when cancelled."""
-    import sys, os
+    import sys, os, types, time as _time2
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+    _ts = types.ModuleType('adafruit_ticks')
+    _ts.ticks_ms   = lambda: int(_time2.monotonic() * 1000)
+    _ts.ticks_diff = lambda a, b: a - b
+    sys.modules['adafruit_ticks'] = _ts
+    sys.modules.pop('utilities.matrix_animations', None)
+    _utils = sys.modules.get('utilities')
+    if _utils is not None and hasattr(_utils, 'matrix_animations'):
+        delattr(_utils, 'matrix_animations')
     from utilities import matrix_animations
 
     sprite = bytes([1] * 256 + [2] * 256)
     matrix = _MockMatrixForAnim()
 
     async def run():
+        # timing_data=(10000,) = very slow (10 s per frame) so we have time to cancel
         task = _asyncio.create_task(
-            matrix_animations.animate_sprite_sheet(matrix, sprite, fps=1, loop=True)
+            matrix_animations.animate_sprite_sheet(matrix, sprite, timing_data=(10000,), loop=True)
         )
-        await _asyncio.sleep(0.05)  # let it start
+        await _asyncio.sleep(0.05)  # let it start and render the first frame
         task.cancel()
         try:
             await task
@@ -453,8 +489,8 @@ def test_animate_sprite_sheet_cancellable():
             pass
 
     _asyncio.run(run())
-    # Task should have drawn at least one frame before being cancelled
-    assert matrix.fills >= 1, "Should have rendered at least one frame before cancel"
+    # Task should have rendered at least one frame before being cancelled
+    assert matrix.frames_shown >= 1, "Should have rendered at least one frame before cancel"
     print("✓ animate_sprite_sheet cancels cleanly")
 
 

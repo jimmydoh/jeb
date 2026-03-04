@@ -127,7 +127,7 @@ class _FakeMatrix:
         self.drawn = []  # list of (x, y, color)
         self.filled = []
 
-    def fill(self, color, show=False):
+    def fill(self, color, show=False, **kwargs):
         self.filled.append(color)
         self.drawn = []
 
