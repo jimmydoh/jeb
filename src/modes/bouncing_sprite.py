@@ -18,6 +18,7 @@ Controls:
 
 import asyncio
 import gc
+from random import random
 
 from adafruit_ticks import ticks_ms, ticks_diff
 
@@ -64,15 +65,6 @@ _COLOR_INDICES = (11, 51, 41, 71, 22, 21)
 _SPEED_LEVELS_MS = (300, 200, 120, 80, 50)
 _SPEED_NAMES = ("SLOW", "MED", "NORM", "FAST", "TURBO")
 
-# Starting position: top-left corner of the 3×3 bounding box.
-_START_X = 0
-_START_Y = 0
-
-# Starting velocity: one pixel per step in each axis (diagonal movement).
-_START_VX = 1
-_START_VY = 1
-
-
 class BouncingSprite(BaseMode):
     """DVD-logo style bouncing sprite screensaver.
 
@@ -95,10 +87,10 @@ class BouncingSprite(BaseMode):
         self.width = 0
         self.height = 0
         self._frame = None       # bytearray: palette-indexed render buffer
-        self._x = 0              # integer x position (top-left of bounding box)
-        self._y = 0              # integer y position
-        self._vx = _START_VX     # integer x velocity (+1 or -1)
-        self._vy = _START_VY     # integer y velocity (+1 or -1)
+        self._x = int(random() * (self.width - _SPRITE_W))  # integer x position (top-left of bounding box)
+        self._y = int(random() * (self.height - _SPRITE_H))  # integer y position
+        self._vx = 1 if random() < 0.5 else -1  # integer x velocity (+1 or -1)
+        self._vy = 1 if random() < 0.5 else -1  # integer y velocity (+1 or -1)
         self._color_idx = 0      # index into _COLOR_INDICES
         self._speed_idx = 2      # default: NORM
 
@@ -112,10 +104,10 @@ class BouncingSprite(BaseMode):
         A gc.collect() is triggered here (a safe, low-frequency moment)
         to relieve GC pressure before the main render loop begins.
         """
-        self._x = _START_X
-        self._y = _START_Y
-        self._vx = _START_VX
-        self._vy = _START_VY
+        self._x = int(random() * (self.width - _SPRITE_W))  # integer x position (top-left of bounding box)
+        self._y = int(random() * (self.height - _SPRITE_H))  # integer y position
+        self._vx = 1 if random() < 0.5 else -1  # integer x velocity (+1 or -1)
+        self._vy = 1 if random() < 0.5 else -1  # integer y velocity (+1 or -1)
         gc.collect()
 
     def _step(self):
