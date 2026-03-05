@@ -71,13 +71,23 @@ class MCPKeys:
 
         live_gpio_register = self._mcp.gpio  # Read the entire GPIO register once
 
+<<<<<<< HEAD
         JEBLogger.debug("MCPKeys", f"GPIO Register Read: {bin(live_gpio_register)} at {now} ms")
+=======
+        if JEBLogger.LEVEL <= 0:  # DEBUG level
+            JEBLogger.debug("MCPKeys", f"GPIO Register Read: {bin(live_gpio_register)} at {now} ms")
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
 
         for i, (pin_num, pin) in enumerate(self._pins):
 
             val = bool((live_gpio_register >> pin_num) & 1)
 
+<<<<<<< HEAD
             JEBLogger.debug("MCPKeys", f"Pin {pin_num} state: {val} (was {self._last_state[i]})")
+=======
+            if JEBLogger.LEVEL <= 0:  # DEBUG level
+                JEBLogger.debug("MCPKeys", f"Pin {pin_num} state: {val} (was {self._last_state[i]})")
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
 
             if val != self._last_state[i]:
                 # State Changed!
@@ -93,7 +103,12 @@ class MCPKeys:
                     "timestamp": now
                 })
 
+<<<<<<< HEAD
                 JEBLogger.info("MCPKeys", f"Adding to Queue: key_number={i}, pressed={is_pressed}, released={not is_pressed}, timestamp={now}")
+=======
+                if JEBLogger.LEVEL <= 0:  # DEBUG level
+                    JEBLogger.debug("MCPKeys", f"Adding to Queue: key_number={i}, pressed={is_pressed}, released={not is_pressed}, timestamp={now}")
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
 
     @property
     def num_pins(self):

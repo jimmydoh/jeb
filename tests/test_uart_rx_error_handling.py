@@ -88,7 +88,15 @@ def test_rx_error_increments_on_hardware_fault(capsys):
 
 
 def test_rx_error_count_accumulates(capsys):
+<<<<<<< HEAD
     """Test that repeated hardware errors accumulate in the counter."""
+=======
+    """Test that repeated hardware errors accumulate in the counter.
+
+    With throttled logging, only the first error and every 100th error
+    are printed; intermediate errors are counted but not logged.
+    """
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
     mock_uart = MockUARTRaisesOnRead()
     transport = UARTTransport(uart_hw=mock_uart)
 
@@ -98,9 +106,21 @@ def test_rx_error_count_accumulates(capsys):
     assert transport._rx_error_count == 3, \
         "_rx_error_count should be 3 after three hardware errors"
 
+<<<<<<< HEAD
     captured = capsys.readouterr()
     assert "count=3" in captured.out, \
         "Third error log should show count=3"
+=======
+    # With throttled logging, only the first error is printed for counts 1-99
+    captured = capsys.readouterr()
+    assert "count=1" in captured.out, \
+        "First error log should show count=1"
+    # Counts 2 and 3 should not be logged (throttled until count=100)
+    assert "count=2" not in captured.out, \
+        "Second error should be throttled (not logged)"
+    assert "count=3" not in captured.out, \
+        "Third error should be throttled (not logged)"
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
 
 
 def test_rx_no_error_on_normal_operation():
@@ -128,6 +148,36 @@ def test_rx_error_message_includes_exception_detail(capsys):
         "Exception message should appear in the log output"
 
 
+<<<<<<< HEAD
+=======
+def test_rx_error_throttle_logs_100th_error(capsys):
+    """Test that the 100th error is logged (throttle boundary)."""
+    mock_uart = MockUARTRaisesOnRead()
+    transport = UARTTransport(uart_hw=mock_uart)
+
+    for _ in range(100):
+        transport._read_hw()
+
+    assert transport._rx_error_count == 100
+
+    captured = capsys.readouterr()
+    assert "count=100" in captured.out, \
+        "100th error should be logged (throttle boundary)"
+
+
+def test_rx_error_last_rx_error_stored():
+    """Test that the most recent error is stored in _last_rx_error."""
+    error = OSError("storage error")
+    mock_uart = MockUARTRaisesOnRead(error=error)
+    transport = UARTTransport(uart_hw=mock_uart)
+
+    transport._read_hw()
+
+    assert transport._last_rx_error is error, \
+        "_last_rx_error should hold the most recent exception"
+
+
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
 async def run_all_tests():
     """Run all tests standalone."""
     print("=" * 70)

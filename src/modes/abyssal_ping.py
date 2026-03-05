@@ -250,7 +250,11 @@ class AbyssalPing(GameMode):
                     # Play noise with probability proportional to distance
                     noise_prob = 1.0 - az_prox
                     if random.random() < noise_prob:
+<<<<<<< HEAD
                         self.core.synth.play_note(400.0, Patches.NOISE, duration=0.05)
+=======
+                        self.core.synth.play_note(400.0, Patches.get_noise_patch(), duration=0.05)
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
 
                 await asyncio.sleep(0.2)
 
@@ -613,7 +617,11 @@ class AbyssalPing(GameMode):
                 self.core.matrix.clear()
             else:
                 # Toggles changed after aiming – dull splash, sub warps away
+<<<<<<< HEAD
                 self.core.synth.play_note(220.0, Patches.NOISE, duration=0.3)
+=======
+                self.core.synth.play_note(220.0, Patches.get_noise_patch(), duration=0.3)
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
                 self.core.display.update_status("SPLASH!", "SUB SPOOKED – WARPING")
                 self._send_segment("SPLASH  ")
                 await asyncio.sleep(1.0)

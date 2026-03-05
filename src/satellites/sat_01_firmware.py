@@ -62,6 +62,8 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
     """
     def __init__(self, config=None):
         """Initialize the Industrial Satellite Firmware."""
+        # Normalize config so we can safely call .get() and boot with defaults
+        config = config or {}
         # --- ACTIVE MODE (Running on Satellite Hardware) ---
         # Initialize base class with upstream transport
         super().__init__(

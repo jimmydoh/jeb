@@ -355,6 +355,10 @@ class UARTTransport(BaseTransport):
 
         # Error tracking
         self._rx_error_count = 0
+<<<<<<< HEAD
+=======
+        self._last_rx_error = None
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
 
 #region --- Harware / IO Methods ---
     def _write_to_tx_buffer(self, data):
@@ -465,7 +469,14 @@ class UARTTransport(BaseTransport):
                 self._rx_head = (self._rx_head + count) % self._rx_buf_size
         except Exception as e:
             self._rx_error_count += 1
+<<<<<<< HEAD
             print(f"RX Hardware Error (count={self._rx_error_count}): {e}")
+=======
+            self._last_rx_error = e
+            # Throttle logging: log the first error and then every 100th error.
+            if self._rx_error_count == 1 or (self._rx_error_count % 100) == 0:
+                print(f"RX Hardware Error (count={self._rx_error_count}): {e}")
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
 
     def _try_decode_one(self):
         """Receive a message from UART if available.

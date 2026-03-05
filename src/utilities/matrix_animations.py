@@ -16,6 +16,8 @@ added to this module rather than as methods in MatrixManager. This promotes:
 import asyncio
 import math
 from utilities.palette import Palette
+from adafruit_ticks import ticks_ms, ticks_diff
+
 
 
 async def animate_slide(matrix_manager, icon_data, direction, color=None, brightness=1.0):
@@ -63,21 +65,21 @@ async def animate_slide(matrix_manager, icon_data, direction, color=None, bright
 
         # The end parameter in range() is exclusive, so we add the step to include end_x
         for current_x in range(start_x, end_x + step, step):
-            matrix_manager.fill(Palette.OFF, show=False)
-            
+            matrix_manager.fill(Palette.OFF, show=False, cancel_tasks=False)
+
             for y in range(icon_dim):
                 for x in range(icon_dim):
                     target_x = x + current_x
                     target_y = y + y_offset_center
-                    
+
                     if 0 <= target_x < matrix_manager.width and 0 <= target_y < matrix_manager.height:
                         pixel_value = icon_data[y * icon_dim + x]
                         if pixel_value != 0:
                             base = color if color else matrix_manager.palette.get(pixel_value, (255, 255, 255))
                             matrix_manager.draw_pixel(target_x, target_y, base, brightness=brightness)
-            
+
             await asyncio.sleep(0.01)
-            
+
     except asyncio.CancelledError:
         # Task was cancelled - clean up and exit gracefully
         raise
@@ -208,7 +210,11 @@ def animate_radar_sweep(matrix_manager, sweep_angle, bogeys=None, interceptors=N
         cy = (h - 1) / 2.0
         max_r = min(cx, cy)
 
+<<<<<<< HEAD
         matrix_manager.fill(Palette.OFF, show=False)
+=======
+        matrix_manager.fill(Palette.OFF, show=False, cancel_tasks=False)
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
 
         # Draw fading sweep trail (behind the leading edge)
         trail_spread = 25.0  # degrees of trail arc
@@ -258,6 +264,91 @@ def animate_radar_sweep(matrix_manager, sweep_angle, bogeys=None, interceptors=N
         print(f"Error in RADAR_SWEEP animation: {e}")
 
 
+<<<<<<< HEAD
+=======
+async def animate_sprite_sheet(matrix_manager, icon_data, timing_data=(1000,), loop=True, color=None, brightness=1.0):
+    """
+    Plays a multi-frame sprite animation from a 1D sprite-sheet bytearray.
+
+    The sprite sheet is a single contiguous bytes/bytearray where frames are
+    concatenated sequentially.  Each frame occupies exactly
+    ``matrix_manager.width * matrix_manager.height`` bytes (palette indices,
+    same encoding as show_icon).  Frame count is derived automatically::
+
+        frame_count = len(icon_data) // (width * height)
+
+    This approach avoids Python-list fragmentation and GC pauses on the Pico 2:
+    the entire animation lives in one contiguous heap allocation.  Frame slicing
+    uses a memoryview so there is no per-frame allocation.
+
+    Designed to run as a background asyncio task.  Cancel the task to stop.
+
+    Args:
+        matrix_manager: MatrixManager instance (needs draw_pixel, fill, palette,
+                        width, height).
+        icon_data: bytes or bytearray containing all animation frames concatenated.
+        timing_data: Tuple of frame durations in milliseconds or a
+                        single duration for all frames.
+        loop: When True (default) the animation repeats indefinitely; when False
+              it plays once and exits.
+        color: Optional RGB tuple to override palette colors. If None, uses palette.
+        brightness: Float from 0.0 to 1.0 for brightness adjustment.
+
+    Raises:
+        asyncio.CancelledError: propagated to the caller for clean task teardown.
+    """
+    frame_size = matrix_manager.width * matrix_manager.height
+    if frame_size == 0:
+        return
+
+    frame_count = len(icon_data) // frame_size
+    if frame_count < 1:
+        return
+
+    # Wrap icon_data in a memoryview so frame slices are zero-copy
+    icon_mv = memoryview(icon_data)
+
+    try:
+        frame_idx = 0
+        last_frame_time = ticks_ms()
+        dirty = True  # Force initial frame render
+        while True:
+            now = ticks_ms()
+
+            # 1. Determine how long the current frame should stay on screen
+            if isinstance(timing_data, tuple):
+                # Use the specific duration for this frame (safely modulo the length just in case)
+                current_duration = timing_data[frame_idx % len(timing_data)]
+            else:
+                # If timing_data is a single number, use it as a fixed frame delay
+                current_duration = timing_data
+
+            # 2. Check if it's time to advance to the next frame
+            if ticks_diff(now, last_frame_time) >= current_duration:
+                dirty = True
+                last_frame_time = now
+                frame_idx += 1
+                if frame_idx >= frame_count:
+                    if loop:
+                        frame_idx = 0
+                    else:
+                        break
+
+            if dirty:
+                start = frame_idx * frame_size
+                frame = icon_mv[start : start + frame_size]
+                matrix_manager.show_frame(frame, clear=False, color=color, brightness=brightness)
+                dirty = False
+
+            await asyncio.sleep(0.01)  # Small sleep to yield control and allow cancellation
+
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        print(f"Error in ANIMATED sprite sheet: {e}")
+
+
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
 def animate_static_resolve(matrix_manager, icon_data, clarity, color=None, brightness=1.0):
     """
     Renders a single frame that blends random static with a target icon.
@@ -298,7 +389,7 @@ def animate_static_resolve(matrix_manager, icon_data, clarity, color=None, brigh
 
         clarity = max(0.0, min(1.0, clarity))
 
-        matrix_manager.fill(Palette.OFF, show=False)
+        matrix_manager.fill(Palette.OFF, show=False, cancel_tasks=False)
 
         for y in range(icon_dim):
             for x in range(icon_dim):

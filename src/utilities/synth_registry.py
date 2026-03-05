@@ -70,7 +70,23 @@ class Waveforms:
     TRIANGLE = _generate_triangle(SAMPLE_SIZE, MAX_AMP)
     PULSE = _generate_pulse(SAMPLE_SIZE, MAX_AMP)
     PULSE_125 = _generate_pulse(SAMPLE_SIZE, MAX_AMP, duty=0.125)
+<<<<<<< HEAD
     NOISE = _generate_noise(sample_size=4096, max_amp=32767)
+=======
+    _NOISE = None  # Lazy-generated on first use to reduce boot latency
+
+    @classmethod
+    def get_noise(cls):
+        """Return the NOISE waveform, generating it on first use.
+
+        Safe to call from the asyncio event loop: CircuitPython uses cooperative
+        multitasking so no preemptive race can occur between the None check and
+        the assignment.
+        """
+        if cls._NOISE is None:
+            cls._NOISE = _generate_noise(sample_size=4096, max_amp=32767)
+        return cls._NOISE
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
 
 class Envelopes:
     """Pre-defined ADSR Envelopes."""
@@ -165,10 +181,24 @@ class Patches:
         "envelope": Envelopes.BEEP
     }
 
+<<<<<<< HEAD
     NOISE = {
         "wave": Waveforms.NOISE,
         "envelope": Envelopes.PERCUSSION
     }
+=======
+    NOISE = None  # Lazily initialized on first access via get_noise_patch()
+
+    @classmethod
+    def get_noise_patch(cls):
+        """Return the NOISE patch, generating the waveform on first use.
+
+        Safe under CircuitPython's cooperative asyncio scheduler.
+        """
+        if cls.NOISE is None:
+            cls.NOISE = {"wave": Waveforms.get_noise(), "envelope": Envelopes.PERCUSSION}
+        return cls.NOISE
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
 
     PAD = {
         "wave": Waveforms.TRIANGLE,
@@ -286,6 +316,7 @@ class Patches:
     }
 
     # 3-channel chiptune: noise/percussion channel (short burst of noise)
+<<<<<<< HEAD
     RETRO_NOISE = {
         "wave": Waveforms.NOISE,
         "envelope": synthio.Envelope(
@@ -296,3 +327,25 @@ class Patches:
             sustain_level=0.0
         )
     }
+=======
+    RETRO_NOISE = None  # Lazily initialized on first access via get_retro_noise_patch()
+
+    @classmethod
+    def get_retro_noise_patch(cls):
+        """Return the RETRO_NOISE patch, generating the waveform on first use.
+
+        Safe under CircuitPython's cooperative asyncio scheduler.
+        """
+        if cls.RETRO_NOISE is None:
+            cls.RETRO_NOISE = {
+                "wave": Waveforms.get_noise(),
+                "envelope": synthio.Envelope(
+                    attack_time=0.001,
+                    decay_time=0.05,
+                    release_time=0.02,
+                    attack_level=0.6,
+                    sustain_level=0.0
+                )
+            }
+        return cls.RETRO_NOISE
+>>>>>>> 7b8c9bce433424a8abe7b8f711a8c279f371eba4
