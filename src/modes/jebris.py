@@ -261,7 +261,7 @@ class JEBris(GameMode):
 
             # Stack Collision (ignore if above board, e.g. spawning)
             if ny >= 0:
-                if self.grid[ny * self.playfield_width + nx] != Palette.OFF:
+                if self.grid[ny * self.playfield_width + nx] != Palette.OFF.index:
                     return True
         return False
 
@@ -271,7 +271,7 @@ class JEBris(GameMode):
             nx = self.piece_x + x
             ny = self.piece_y + y
             if 0 <= nx < self.playfield_width and 0 <= ny < self.playfield_height:
-                self.grid[ny * self.playfield_width + nx] = self.piece_color
+                self.grid[ny * self.playfield_width + nx] = self.piece_color.index
         self._dirty = True
 
     def start_clear_lines(self):
@@ -284,7 +284,7 @@ class JEBris(GameMode):
             row_offset = y * self.playfield_width
 
             for x in range(self.playfield_width):
-                if self.grid[row_offset + x] == Palette.OFF:
+                if self.grid[row_offset + x] == Palette.OFF.index:
                     row_is_full = False
                     break  # Stop checking this row as soon as we find an empty space
 
@@ -313,7 +313,7 @@ class JEBris(GameMode):
             # Shift all rows above 'y' down by one row
             self.grid[self.playfield_width : (y + 1) * self.playfield_width] = self.grid[0 : y * self.playfield_width]
             # Clear the top row
-            self.grid[0 : self.playfield_width] = bytearray([Palette.OFF] * self.playfield_width)
+            self.grid[0 : self.playfield_width] = bytearray([Palette.OFF.index] * self.playfield_width)
 
         # Update score
         self.score += lines_cleared
@@ -327,10 +327,14 @@ class JEBris(GameMode):
         if not self.next_piece:
             return
 
+        # Draw a border for the preview area
+        for y in range(self.matrix_height):
+            self.core.matrix.draw_pixel(self.preview_x_offset - 1, y, Palette.CHARCOAL, show=False)
+
         # Calculate center position for preview (in the right area)
         # Preview starts at column 11 (playfield_width=10, gap=1)
         preview_center_x = self.preview_x_offset + 2
-        preview_center_y = 3  # Near top of screen
+        preview_center_y = 6  # Near top of screen
 
         # Draw the next piece centered in preview area
         for x, y in self.next_piece:
@@ -354,8 +358,9 @@ class JEBris(GameMode):
                 # If we're in clearing state, show white for lines being cleared
                 if self.game_state == self.STATE_CLEARING_LINES and y in self.lines_to_clear:
                     self.core.matrix.draw_pixel(x, y, Palette.WHITE, show=False)
-                elif self.grid[y * self.playfield_width + x] != Palette.OFF:
-                    self.core.matrix.draw_pixel(x, y, self.grid[y * self.playfield_width + x], show=False)
+                elif self.grid[y * self.playfield_width + x] != Palette.OFF.index:
+                    color_idx = self.grid[y * self.playfield_width + x]
+                    self.core.matrix.draw_pixel(x, y, Palette.get_color(color_idx), show=False)
 
         # 3. Draw Active Piece (only in PLAYING state)
         if self.game_state == self.STATE_PLAYING and self.current_piece:
