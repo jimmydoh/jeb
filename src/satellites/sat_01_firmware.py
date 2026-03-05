@@ -141,7 +141,7 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
     async def on_sleep(self):
         """Hardware-specific sleep routine."""
         await self.segment.clear()
-        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim="BREATH", speed=0.5)
+        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim_mode="BREATH", speed=0.5)
         self.renderer.target_frame_rate = 10
 
     async def on_wake(self):

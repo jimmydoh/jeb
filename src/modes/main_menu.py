@@ -140,7 +140,7 @@ class MainMenu(UtilityMode):
         # Configure hardware encoder based on our restored starting state
         if self.state == "MENU":
             self.core.hid.reset_encoder(selected_game_idx)
-            self.core.leds.set_led(3, color=Palette.CYAN, anim="BREATH", speed=0.5)
+            self.core.leds.set_led(3, color=Palette.CYAN, anim_mode="BREATH", speed=0.5)
         else:
             self.core.hid.reset_encoder(0)
 
@@ -194,7 +194,7 @@ class MainMenu(UtilityMode):
                     # Prepare hardware for MENU state
                     self.core.hid.reset_encoder(selected_game_idx)
                     curr_pos = selected_game_idx
-                    self.core.leds.set_led(3, color=Palette.CYAN, anim="BREATH", speed=0.5)
+                    self.core.leds.set_led(3, color=Palette.CYAN, anim_mode="BREATH", speed=0.5)
 
             # --- ADMIN STATE ---
             elif self.state == "ADMIN":
@@ -250,7 +250,7 @@ class MainMenu(UtilityMode):
                     self._set_state("MENU")
                     self.core.hid.reset_encoder(selected_game_idx)
                     curr_pos = selected_game_idx
-                    self.core.leds.set_led(3, color=Palette.CYAN, anim="BREATH", speed=0.5)
+                    self.core.leds.set_led(3, color=Palette.CYAN, anim_mode="BREATH", speed=0.5)
                     needs_render = True
 
             # --- MENU STATE ---
@@ -264,7 +264,7 @@ class MainMenu(UtilityMode):
                     JEBLogger.info("MENU", "Entering Admin Menu")
                     self.core.leds.off_led(-1)
                     self.core.leds.start_cylon(Palette.RED, speed=0.05)
-                    self.core.leds.set_led(1, color=Palette.ORANGE, anim="FLASH", speed=2.0)
+                    self.core.leds.set_led(1, color=Palette.ORANGE, anim_mode="FLASH", speed=2.0)
                     needs_render = True
                     continue
 

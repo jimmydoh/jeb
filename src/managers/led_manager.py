@@ -15,16 +15,16 @@ class LEDManager(BasePixelManager):
         super().__init__(jeb_pixel, layout_type=PixelLayout.LINEAR, dimensions=(jeb_pixel.n,))
 
     # --- BASIC TRIGGERS ---
-    def set_led(self, index, color, brightness=1.0, anim=None, duration=None, priority=2, speed=1.0):
+    def set_led(self, index, color, brightness=1.0, anim_mode=None, duration=None, priority=2, speed=1.0):
         """Sets a specific LED (or all LEDs) to a color with optional animation."""
-        JEBLogger.debug("LED", f"Setting LED at index {index} with color {color}, brightness {brightness}, anim {anim}, duration {duration}, priority {priority}, speed {speed}")
+        JEBLogger.debug("LED", f"Setting LED at index {index} with color {color}, brightness {brightness}, anim_mode {anim_mode}, duration {duration}, priority {priority}, speed {speed}")
         targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
         for i in targets:
-            if anim is None:
+            if anim_mode is None:
                 self.solid_led(i, color, brightness=brightness, duration=duration, priority=priority)
-            elif anim == "FLASH":
+            elif anim_mode == "FLASH":
                 self.flash_led(i, color, brightness=brightness, duration=duration, priority=priority, speed=speed)
-            elif anim == "BREATH":
+            elif anim_mode == "BREATH":
                 self.breathe_led(i, color, brightness=brightness, duration=duration, priority=priority, speed=speed)
             else:
                 self.solid_led(i, color, brightness=brightness, duration=duration, priority=priority)
