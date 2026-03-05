@@ -7,6 +7,7 @@ from adafruit_ticks import ticks_ms, ticks_diff
 
 from utilities.palette import Palette
 from utilities import tones
+from utilities.synth_registry import Patches
 
 from .game_mode import GameMode
 
@@ -34,12 +35,29 @@ class Simon(GameMode):
         self.speed_multiplier = 1.0  # Speed modification from difficulty
         self.score_multiplier = 1.0  # Score multiplier based on difficulty
 
+        self.audio_engine = "MODERN"  # Default audio engine, can be switched to CLASSIC for buzzer-only mode
+
+    def _play_simon_note(self, freq, duration=None):
+        """Helper function to play a note with the current audio engine."""
+        if self.audio_engine == "MODERN":
+            self.core.synth.play_note(freq, patch=Patches.BEEP, duration=duration)
+        else:  # CLASSIC
+            self.core.buzzer.play_note(freq, duration=duration)
+
+    def _play_simon_sequence(self, sequence):
+        """Helper function to play a sequence of notes with the current audio engine."""
+        if self.audio_engine == "MODERN":
+            self.core.synth.play_sequence(sequence, patch=Patches.BEEP)
+        else:  # CLASSIC
+            self.core.buzzer.play_sequence(sequence)
+
     async def run(self):
         """Play the classic Simon memory game."""
 
         # --- LOAD SETTINGS ---
         self.variant = self.core.data.get_setting("SIMON", "mode", "CLASSIC")
         self.difficulty = self.core.data.get_setting("SIMON", "difficulty", "NORMAL")
+        self.audio_engine = self.core.data.get_setting("SIMON", "audio_engine", "MODERN")
 
         # Apply Difficulty
         if self.difficulty == "EASY":
@@ -123,8 +141,8 @@ class Simon(GameMode):
                         duration=final_speed
                     )
 
-                # Audio: Play tone (non-blocking for better timing)
-                await self.core.buzzer.play_note(
+                # Audio: Play tone
+                self._play_simon_note(
                     self.colors_tones[val],
                     duration=final_speed
                 )
@@ -150,7 +168,7 @@ class Simon(GameMode):
                     self.colors[i],
                     brightness=0.5,
                     priority=1,
-                    speed=1.0 / self.speed_factor
+                    speed=10.0 * self.speed_factor
                 )
 
             # Determine target sequence based on mode
@@ -170,7 +188,7 @@ class Simon(GameMode):
 
                     # Check for timeout
                     if ticks_diff(now, last_interaction_time) > self.timeout_ms:
-                        await self.core.audio.play(
+                        self.core.audio.play(
                             "audio/simon/tooslow.wav",
                             self.core.audio.CH_SFX,
                             level=0.8
@@ -181,7 +199,7 @@ class Simon(GameMode):
 
                     # Check all 4 face buttons (Indices 0-3)
                     for i in range(4):
-                        if self.core.hid.is_pressed(i):
+                        if self.core.hid.is_button_pressed(i):
                             user_input = i
                             last_interaction_time = ticks_ms()
 
@@ -197,12 +215,12 @@ class Simon(GameMode):
                                 anim_mode="FLASH",
                                 speed=1.0 / self.speed_factor
                             )
-                            await self.core.buzzer.play_note(
+                            self._play_simon_note(
                                 self.colors_tones[i]
                             )
 
                             # Wait for release (Debounce & Hold Visual)
-                            while self.core.hid.is_pressed(i):
+                            while self.core.hid.is_button_pressed(i):
                                 await asyncio.sleep(0.01)
 
                             # Turn off the matrix quadrant and restore breathing LED
@@ -215,7 +233,7 @@ class Simon(GameMode):
                                 priority=1,
                                 speed=2.0 * self.speed_factor
                             )
-                            await self.core.buzzer.stop() # Stop tone immediately on release
+                            self.core.buzzer.stop() # Stop tone immediately on release
                             break
 
                     # Yield to system loop to prevent blocking
@@ -230,11 +248,7 @@ class Simon(GameMode):
             # of the sequence is flashed on with each beep. The victory tone is
             # played 0.8 seconds after the last colour of the sequence has been
             # pressed and released.
-            self.core.leds.start_rainbow(
-                speed=0.08,
-                brightness=0.8,
-                duration=0.48
-            )
+            self.core.leds.start_rainbow()
             self.core.matrix.draw_wedge(
                 sequence[-1],
                 self.colors[sequence[-1]],
@@ -243,7 +257,7 @@ class Simon(GameMode):
                 duration=0.48
             )
 
-            await self.core.buzzer.play_sequence(
+            self._play_simon_sequence(
                 {
                     "bpm": 120,
                     "sequence": [
@@ -302,8 +316,8 @@ class Simon(GameMode):
             duration=2.0,
             speed=0.5
         )
-        await self.core.audio.stop_all()
-        await self.core.buzzer.stop()
-        await self.core.buzzer.play_sequence(tones.GAME_OVER)
+        self.core.audio.stop_all()
+        self.core.buzzer.stop()
+        self.core.buzzer.play_sequence(tones.GAME_OVER)
         await asyncio.sleep(2)
         return await self.game_over()

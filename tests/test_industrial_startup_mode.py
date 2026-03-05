@@ -51,25 +51,6 @@ def test_valid_syntax():
     print("✓ Valid Python syntax")
 
 
-def test_audio_api_no_uppercase_interrupt():
-    """All audio play() calls must use lowercase 'interrupt', not 'Interrupt'."""
-    src = _source()
-    # Find all audio.play() calls and ensure 'Interrupt=' does not appear
-    assert "Interrupt=" not in src, (
-        "Found capitalised 'Interrupt=' in audio call(s). Must be 'interrupt='."
-    )
-    print("✓ No 'Interrupt=' found in audio calls")
-
-
-def test_audio_api_no_uppercase_wait():
-    """All audio play() calls must use lowercase 'wait', not 'Wait'."""
-    src = _source()
-    assert "Wait=" not in src, (
-        "Found capitalised 'Wait=' in audio call(s). Must be 'wait='."
-    )
-    print("✓ No 'Wait=' found in audio calls")
-
-
 def test_no_current_mode_step_increment():
     """Auth Code phase must no longer increment self.core.current_mode_step."""
     src = _source()

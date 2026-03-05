@@ -195,7 +195,7 @@ class LEDManager(BasePixelManager):
         """A looping 'spinning' effect with motion blur."""
         self.centrifuge(color, duration=duration, speed=speed, priority=1)
 
-    def start_rainbow(self, duration=None, speed=0.01):
+    def start_rainbow(self, duration=None, speed=1.0):
         """Smoothly cycles colors across the whole strip."""
         self.rainbow(duration=duration, speed=speed, priority=1)
 

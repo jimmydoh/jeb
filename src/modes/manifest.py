@@ -51,6 +51,12 @@ MODE_REGISTRY = {
                 "label": "DIFF",
                 "options": ["EASY","NORMAL", "HARD", "INSANE"],
                 "default": "NORMAL"
+            },
+            {
+                "key": "audio_engine",
+                "label": "AUDIO",
+                "options": ["MODERN", "CLASSIC"],
+                "default": "MODERN"
             }
         ]
     },
