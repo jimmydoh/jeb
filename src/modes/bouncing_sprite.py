@@ -99,51 +99,49 @@ class BouncingSprite(BaseMode):
     # ------------------------------------------------------------------
 
     def _reset(self):
-        """Reset sprite to its starting position and velocity.
+        """Reset sprite to its starting position and velocity using fixed-point math."""
+        # Shift by 8 bits (multiply by 256) for sub-pixel precision
+        self._x = int(random() * (self.width - _SPRITE_W)) << 8
+        self._y = int(random() * (self.height - _SPRITE_H)) << 8
 
-        A gc.collect() is triggered here (a safe, low-frequency moment)
-        to relieve GC pressure before the main render loop begins.
-        """
-        self._x = int(random() * (self.width - _SPRITE_W))  # integer x position (top-left of bounding box)
-        self._y = int(random() * (self.height - _SPRITE_H))  # integer y position
-        self._vx = 1 if random() < 0.5 else -1  # integer x velocity (+1 or -1)
-        self._vy = 1 if random() < 0.5 else -1  # integer y velocity (+1 or -1)
+        # Give it a random sub-pixel velocity between ~0.7 and 1.3 pixels per frame
+        # (179 to 332 in fixed point)
+        self._vx = 179 + int(random() * 153)
+        self._vx = self._vx if random() < 0.5 else -self._vx
+
+        self._vy = 179 + int(random() * 153)
+        self._vy = self._vy if random() < 0.5 else -self._vy
         gc.collect()
 
     def _step(self):
-        """Advance the sprite by one pixel step.
-
-        After moving, checks whether the bounding box has reached or
-        exceeded any wall.  On a collision the offending velocity component
-        is negated and the primary colour index is cycled once.  Corner
-        hits (both axes simultaneously) count as a single colour cycle.
-        """
-        max_x = self.width - _SPRITE_W
-        max_y = self.height - _SPRITE_H
+        """Advance the sprite by one sub-pixel step."""
+        # Convert boundaries to fixed-point
+        max_x = (self.width - _SPRITE_W) << 8
+        max_y = (self.height - _SPRITE_H) << 8
 
         bounced = False
 
         nx = self._x + self._vx
         ny = self._y + self._vy
 
-        # Horizontal wall check.
+        # Horizontal wall check
         if nx <= 0:
             nx = 0
-            self._vx = 1
+            self._vx = -self._vx
             bounced = True
         elif nx >= max_x:
             nx = max_x
-            self._vx = -1
+            self._vx = -self._vx
             bounced = True
 
-        # Vertical wall check.
+        # Vertical wall check
         if ny <= 0:
             ny = 0
-            self._vy = 1
+            self._vy = -self._vy
             bounced = True
         elif ny >= max_y:
             ny = max_y
-            self._vy = -1
+            self._vy = -self._vy
             bounced = True
 
         self._x = nx
@@ -152,20 +150,30 @@ class BouncingSprite(BaseMode):
         if bounced:
             self._color_idx = (self._color_idx + 1) % len(_COLOR_INDICES)
 
-    def _build_frame(self):
-        """Write the sprite into the palette-indexed frame buffer.
+            # Add a slight "spin" (random drift) on bounce to prevent infinite identical loops
+            # +/- 16 sub-pixels (~0.06 pixels)
+            self._vx += int((random() - 0.5) * 32)
+            self._vy += int((random() - 0.5) * 32)
 
-        The buffer is cleared first (all zeroes = off), then each
-        non-transparent sprite pixel is written at its current position.
-        """
+            # Cap the velocities so it doesn't get too slow or fast over time
+            # 128 is 0.5 pixels, 384 is 1.5 pixels
+            self._vx = max(-384, min(384, self._vx))
+            if abs(self._vx) < 128: self._vx = 128 if self._vx > 0 else -128
+
+            self._vy = max(-384, min(384, self._vy))
+            if abs(self._vy) < 128: self._vy = 128 if self._vy > 0 else -128
+
+    def _build_frame(self):
         # Clear the frame.
         for i in range(len(self._frame)):
             self._frame[i] = 0
 
         primary = _COLOR_INDICES[self._color_idx]
         w = self.width
-        x0 = self._x
-        y0 = self._y
+
+        # Shift back down to real pixels for rendering
+        x0 = self._x >> 8
+        y0 = self._y >> 8
 
         for dx, dy, ptype in _SPRITE_PIXELS:
             color = primary if ptype == 1 else _ACCENT_INDEX
@@ -175,7 +183,8 @@ class BouncingSprite(BaseMode):
         """Return two-line status tuple for the current simulation state."""
         name = _SPEED_NAMES[self._speed_idx]
         ms = _SPEED_LEVELS_MS[self._speed_idx]
-        return f"{name} ({ms}ms)", f"POS:{self._x},{self._y}"
+        # Shift back down for the UI read-out
+        return f"{name} ({ms}ms)", f"POS:{self._x >> 8},{self._y >> 8}"
 
     # ------------------------------------------------------------------
     # Main loop
