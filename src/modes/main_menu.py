@@ -33,6 +33,9 @@ class MainMenu(UtilityMode):
         module_path, class_name, requirements, settings, and other configuration.
         Mode classes are lazily loaded via _load_mode_class() when needed.
 
+        Orders the list by the "order" field in metadata if present, otherwise
+        defaults to alphabetical by the mode name.
+
         Returns:
             List[str]: List of mode_id strings for modes that have their requirements met.
         """
@@ -63,6 +66,7 @@ class MainMenu(UtilityMode):
 
             if requirements_met:
                 items.append(mode_id)
+                items.sort(key=lambda mid: (self.core.mode_registry[mid].get("order", 9999), self.core.mode_registry[mid]["name"]))
 
         JEBLogger.info("MENU", f"Built menu items: {items}")
         return items

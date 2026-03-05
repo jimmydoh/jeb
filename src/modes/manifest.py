@@ -19,6 +19,7 @@ MODE_REGISTRY = {
         "module_path": "modes.main_menu",
         "class_name": "MainMenu",
         "icon": "DEFAULT",
+        "order": 0,
         "requires": ["CORE"],
         "settings": []
     },
@@ -28,6 +29,7 @@ MODE_REGISTRY = {
         "module_path": "modes.main_menu",
         "class_name": "MainMenu",
         "icon": "DEFAULT",
+        "order": 0,
         "requires": ["CORE"],
         "settings": []
     },
@@ -38,6 +40,7 @@ MODE_REGISTRY = {
         "class_name": "Simon",
         "icon": "SIMON",
         "menu": "MAIN",
+        "order": 10,
         "requires": ["CORE"],
         "settings": [
             {
@@ -67,6 +70,7 @@ MODE_REGISTRY = {
         "class_name": "JEBris",
         "icon": "JEBRIS",
         "menu": "MAIN",
+        "order": 20,
         "requires": ["CORE"],
         "settings": [
             {
@@ -90,6 +94,7 @@ MODE_REGISTRY = {
         "class_name": "SafeCracker",
         "icon": "SAFE",
         "menu": "MAIN",
+        "order": 30,
         "requires": ["CORE"],
         "settings": []
     },
@@ -100,6 +105,7 @@ MODE_REGISTRY = {
         "class_name": "IndustrialStartup",
         "icon": "IND",
         "menu": "MAIN",
+        "order": 1,
         "requires": ["INDUSTRIAL"],
         "settings": []
     },
@@ -110,6 +116,7 @@ MODE_REGISTRY = {
         "class_name": "Pong",
         "icon": "PONG",
         "menu": "MAIN",
+        "order": 40,
         "requires": ["CORE"],
         "optional": ["INDUSTRIAL"],
         "settings": [
@@ -134,6 +141,7 @@ MODE_REGISTRY = {
         "class_name": "AstroBreaker",
         "icon": "ASTRO_BREAKER",
         "menu": "MAIN",
+        "order": 50,
         "requires": ["CORE"],
         "settings": [
             {
@@ -151,6 +159,7 @@ MODE_REGISTRY = {
         "class_name": "TrenchRun",
         "icon": "TRENCH_RUN",
         "menu": "MAIN",
+        "order": 60,
         "requires": ["CORE"],
         "settings": [
             {
@@ -174,6 +183,7 @@ MODE_REGISTRY = {
         "class_name": "DataFlowMode",
         "icon": "DATA_FLOW",
         "menu": "MAIN",
+        "order": 70,
         "requires": ["CORE"],
         "settings": [
             {
@@ -191,6 +201,7 @@ MODE_REGISTRY = {
         "class_name": "LayoutConfigurator",
         "icon": "ADMIN",
         "menu": "ADMIN",
+        "order": 1020,
         "requires": ["CORE"],
         "settings": []
     },
@@ -201,6 +212,7 @@ MODE_REGISTRY = {
         "class_name": "GlobalSettings",
         "icon": "ADMIN",
         "menu": "ADMIN",
+        "order": 1030,
         "requires": ["CORE"],
         "settings": []
     },
@@ -211,6 +223,7 @@ MODE_REGISTRY = {
         "class_name": "DebugMode",
         "icon": "ADMIN",
         "menu": "ADMIN",
+        "order": 1099,
         "requires": ["CORE"],
         "settings": []
     },
@@ -221,6 +234,7 @@ MODE_REGISTRY = {
         "class_name": "PowerTelemetryMode",
         "icon": "ADMIN",
         "menu": "ADMIN",
+        "order": 1015,
         "requires": ["CORE"],
         "settings": []
     },
@@ -231,6 +245,7 @@ MODE_REGISTRY = {
         "class_name": "CyberSnakeMode",
         "icon": "SNAKE",
         "menu": "MAIN",
+        "order": 80,
         "requires": ["CORE"],
         "settings": [
             {
@@ -254,6 +269,7 @@ MODE_REGISTRY = {
         "class_name": "RhythmMode",
         "icon": "RHYTHM",
         "menu": "MAIN",
+        "order": 999,
         "requires": ["CORE"],
         "settings": [
             {
@@ -277,6 +293,7 @@ MODE_REGISTRY = {
         "class_name": "EmojiRevealMode",
         "icon": "EMOJI_REVEAL",
         "menu": "MAIN",
+        "order": 90,
         "requires": ["CORE"],
         "settings": [
             {
@@ -300,6 +317,7 @@ MODE_REGISTRY = {
         "class_name": "FrequencyHunterMode",
         "icon": "FREQ_HUNTER",
         "menu": "MAIN",
+        "order": 100,
         "requires": ["CORE"],
         "settings": [
             {
@@ -323,6 +341,7 @@ MODE_REGISTRY = {
         "class_name": "",
         "icon": "ZERO_PLAYER",
         "menu": "MAIN",
+        "order": 500,
         "submenu": "ZERO_PLAYER",
         "requires": ["CORE"],
         "settings": []
@@ -334,6 +353,7 @@ MODE_REGISTRY = {
         "class_name": "ConwaysLife",
         "icon": "CONWAYS_LIFE",
         "menu": "ZERO_PLAYER",
+        "order": 510,
         "requires": ["CORE"],
         "settings": []
     },
@@ -344,6 +364,7 @@ MODE_REGISTRY = {
         "class_name": "LangtonsAnt",
         "icon": "LANGTONS_ANT",
         "menu": "ZERO_PLAYER",
+        "order": 520,
         "requires": ["CORE"],
         "settings": [
             {
@@ -361,6 +382,7 @@ MODE_REGISTRY = {
         "class_name": "WolframAutomata",
         "icon": "WOLFRAM_AUTOMATA",
         "menu": "ZERO_PLAYER",
+        "order": 530,
         "requires": ["CORE"],
         "settings": [
             {
@@ -378,6 +400,7 @@ MODE_REGISTRY = {
         "class_name": "LissajousMode",
         "icon": "LISSAJOUS",
         "menu": "ZERO_PLAYER",
+        "order": 540,
         "requires": ["CORE"],
         "settings": []
     },
@@ -388,6 +411,7 @@ MODE_REGISTRY = {
         "class_name": "BoidsMode",
         "icon": "BOIDS",
         "menu": "ZERO_PLAYER",
+        "order": 550,
         "requires": ["CORE"],
         "settings": []
     },
@@ -398,6 +422,7 @@ MODE_REGISTRY = {
         "class_name": "PlasmaMode",
         "icon": "PLASMA",
         "menu": "ZERO_PLAYER",
+        "order": 560,
         "requires": ["CORE"],
         "settings": []
     },
@@ -408,6 +433,7 @@ MODE_REGISTRY = {
         "class_name": "FallingSandMode",
         "icon": "FALLING_SAND",
         "menu": "ZERO_PLAYER",
+        "order": 570,
         "requires": ["CORE"],
         "settings": []
     },
@@ -418,6 +444,7 @@ MODE_REGISTRY = {
         "class_name": "BouncingSprite",
         "icon": "BOUNCING_SPRITE",
         "menu": "ZERO_PLAYER",
+        "order": 580,
         "requires": ["CORE"],
         "settings": []
     },
@@ -428,6 +455,7 @@ MODE_REGISTRY = {
         "class_name": "Wireworld",
         "icon": "WIREWORLD",
         "menu": "ZERO_PLAYER",
+        "order": 590,
         "requires": ["CORE"],
         "settings": []
     },
@@ -438,6 +466,7 @@ MODE_REGISTRY = {
         "class_name": "StarfieldMode",
         "icon": "STARFIELD",
         "menu": "ZERO_PLAYER",
+        "order": 600,
         "requires": ["CORE"],
         "settings": [
             {
@@ -455,6 +484,7 @@ MODE_REGISTRY = {
         "class_name": "AbyssalPing",
         "icon": "ABYSSAL_PING",
         "menu": "MAIN",
+        "order": 2,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
             {
@@ -472,6 +502,7 @@ MODE_REGISTRY = {
         "class_name": "OrbitalStrike",
         "icon": "ORBITAL_STRIKE",
         "menu": "MAIN",
+        "order": 3,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
             {
@@ -489,6 +520,7 @@ MODE_REGISTRY = {
         "class_name": "IronCanopy",
         "icon": "IRON_CANOPY",
         "menu": "MAIN",
+        "order": 4,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
             {
@@ -506,6 +538,7 @@ MODE_REGISTRY = {
         "class_name": "DefconCommander",
         "icon": "DEFCON_COMMANDER",
         "menu": "MAIN",
+        "order": 5,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
             {
@@ -523,6 +556,7 @@ MODE_REGISTRY = {
         "class_name": "VirtualPet",
         "icon": "VIRTUAL_PET",
         "menu": "MAIN",
+        "order": 110,
         "requires": ["CORE"],
         "settings": []
     }
