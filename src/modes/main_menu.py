@@ -361,8 +361,8 @@ class MainMenu(UtilityMode):
                 JEBLogger.debug("MENU", f"Last - state={last_rendered_state}, focus={last_rendered_focus}, sett={last_rendered_setting}")
                 if self.state == "DASHBOARD":
                     self.core.display.use_standard_layout()
-                    self.core.display.update_header("JADNET Electronics Box")
-                    self.core.display.update_status("SYSTEM READY", "Push encoder to begin")
+                    self.core.display.update_header("JEB OS")
+                    self.core.display.update_status("SYSTEM READY", "AWAITING INPUT")
                     self.core.display.update_footer("")
                     #self.core.matrix.clear()
 
