@@ -11,7 +11,7 @@ from .game_mode import GameMode
 class DataFlowMode(GameMode):
     """
     Data Flow Game Mode.
-    
+
     Features:
     - Procedurally generated laser-routing puzzles
     - Rotary encoder seamlessly maps 1D rotation to a 2D cursor
@@ -19,96 +19,208 @@ class DataFlowMode(GameMode):
     - Instant ray-casting physics to trace the data stream
     - Synthio audio for tactile cursor movement and routing
     """
-    
+
     # Game constants
     AMBIENT_HUM_PROBABILITY = 0.05  # 5% chance per frame to play ambient hum
     MAX_GENERATION_ATTEMPTS = 100  # Maximum attempts to generate a valid level
-    
-    METADATA = {
-        "id": "DATA_FLOW",
-        "name": "DATA FLOW",
-        "icon": "GAME", 
-        "requires": ["CORE"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["NORMAL", "HARD"],
-                "default": "NORMAL"
-            }
-        ]
-    }
 
     def __init__(self, core):
         super().__init__(core, "DATA FLOW", "Optical Routing Puzzle")
-        
+
         self.grid_w = self.core.matrix.width   # Grid width in pixels
         self.grid_h = self.core.matrix.height  # Grid height in pixels
-        
+
         self.cursor_pos = 0  # 0 to (grid_w*grid_h - 1), maps to 2D grid
         self.last_encoder_pos = 0
-        
+
         # Track edge-triggers for Button 0 (Rotate), Button 1 (Up), Button 2 (Down)
         self.last_btn_states = {0: False, 1: False, 2: False}
-        
+
         self.source = (0, 0)
         self.target = (self.grid_w - 1, self.grid_h - 1)
         self.mirrors = {} # dict of (x,y) -> {'type': int} (0 = '/', 1 = '\')
         self.beam_path = []
-        
+
         self.level = 1
         self.score = 0
-        
+
         # Colors
         self.COLOR_SOURCE = Palette.GREEN
         self.COLOR_TARGET = Palette.GOLD
         self.COLOR_MIRROR_0 = Palette.CYAN     # '/' mirror
         self.COLOR_MIRROR_1 = Palette.MAGENTA  # '\' mirror
         self.COLOR_BEAM = (80, 80, 0)          # Dim yellow data stream
-        
+
+    async def run_tutorial(self):
+        """
+        A guided, non-interactive demonstration of Data Flow.
+
+        The Voiceover Script (audio/tutes/data_tute.wav)
+            [0:00] "Welcome to Data Flow. Your goal is to route the data stream from the green source to the gold target."
+            [0:06] "Turn the dial to smoothly move your cursor across the grid."
+            [0:11] "Use buttons two and three to quickly jump entire rows up and down."
+            [0:16] "When hovering over a node, press button one to rotate the mirror."
+            [0:21] "Cyan mirrors deflect the beam one way, while magenta mirrors deflect it the other."
+            [0:26] "Connect the stream to the target to secure the network!"
+            [0:30] (End of file)
+        """
+        await self.core.clean_slate()
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/data_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # Initial Setup - Hardcode a simple broken puzzle
+        self.source = (2, 7)
+        self.target = (12, 10)
+        self.mirrors.clear()
+
+        # Mirror 1: Needs to be type 1 (\) to send beam DOWN, currently type 0 (/)
+        self.mirrors[(7, 7)] = {'type': 0}
+        # Mirror 2: Needs to be type 1 (\) to send beam RIGHT to target, currently type 0 (/)
+        self.mirrors[(7, 10)] = {'type': 0}
+
+        self.calculate_beam()
+        self.cursor_pos = 0 # Start top left
+
+        # [0:00 - 0:06] "Welcome to Data Flow... green source to gold target."
+        self.core.display.update_status("DATA FLOW", "ROUTE THE STREAM")
+        self.render(ticks_ms())
+        self.core.matrix.show_frame()
+        await asyncio.sleep(6.0)
+
+        # [0:06 - 0:11] "Turn the dial to smoothly move your cursor..."
+        self.core.display.update_status("NAVIGATION", "TURN DIAL TO MOVE")
+
+        # Move cursor sequentially to the first mirror at (7,7)
+        target_pos = (7 * self.grid_w) + 7
+        while self.cursor_pos < target_pos:
+            self.cursor_pos += 1
+            self.core.synth.play_note(1000.0, "UI_SELECT", duration=0.01)
+            self.render(ticks_ms())
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.04)
+
+        await asyncio.sleep(1.0)
+
+        # [0:11 - 0:16] "Use buttons two and three to quickly jump entire rows..."
+        self.core.display.update_status("NAVIGATION", "PRESS B2 & B3 TO JUMP")
+
+        # Flash physical LEDs for Buttons 2 & 3 if they exist
+        self.core.leds.flash_led(1, Palette.WHITE, duration=3.5)
+        self.core.leds.flash_led(2, Palette.WHITE, duration=3.5)
+
+        # Jump down 3 rows to hover over the second mirror at (7, 10)
+        for _ in range(3):
+            self.cursor_pos += self.grid_w
+            self.core.synth.play_note(800.0, "UI_SELECT", duration=0.015)
+            self.render(ticks_ms())
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.3)
+
+        await asyncio.sleep(1.0)
+
+        # [0:16 - 0:21] "When hovering over a node, press button one to rotate..."
+        self.core.display.update_status("MIRRORS", "PRESS B1 TO ROTATE")
+
+        # Flash B1 LED
+        self.core.leds.flash_led(1, Palette.WHITE, duration=4.0)
+
+        # Fix the bottom mirror (7,10) - changes from Cyan to Magenta
+        self.mirrors[(7, 10)]['type'] = 1
+        self.core.synth.play_note(600.0, "UI_SELECT", duration=0.05)
+        self.calculate_beam() # Beam still shoots off screen because top mirror is wrong
+        self.render(ticks_ms())
+        self.core.matrix.show_frame()
+
+        await asyncio.sleep(4.0)
+
+        # [0:21 - 0:26] "Cyan mirrors deflect one way, while magenta..."
+        self.core.display.update_status("MIRRORS", "CYAN vs MAGENTA")
+
+        # Jump back up to the top mirror
+        for _ in range(3):
+            self.cursor_pos -= self.grid_w
+            self.core.synth.play_note(1200.0, "UI_SELECT", duration=0.015)
+            self.render(ticks_ms())
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.3)
+
+        # [0:26 - 0:30] "Connect the stream to the target to secure the network!"
+        self.core.display.update_status("DATA FLOW", "CONNECT THE STREAM")
+        await asyncio.sleep(0.5)
+
+        # Fix the top mirror - Beam routes to target!
+        self.mirrors[(7, 7)]['type'] = 1
+        self.core.synth.play_note(600.0, "UI_SELECT", duration=0.05)
+        self.calculate_beam()
+
+        # Trigger the victory sequence visually
+        self.render(ticks_ms())
+        self.core.matrix.show_frame()
+        self.core.matrix.draw_pixel(self.target[0], self.target[1], Palette.WHITE)
+        asyncio.create_task(self.core.synth.play_sequence(tones.NOTIFY_INBOX, patch="SUCCESS"))
+
+        for pos in self.beam_path:
+            self.core.matrix.draw_pixel(pos[0], pos[1], Palette.WHITE)
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.05)
+
+        await asyncio.sleep(1.0)
+        self.core.display.update_status("NETWORK SECURED", "LEVEL COMPLETE")
+
+        # Wait for the audio track to finish naturally
+        await tute_audio
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
+
     async def run(self):
         """Main game loop."""
         self.difficulty = self.core.data.get_setting("DATA_FLOW", "difficulty", "NORMAL")
         self.variant = f"PUZZLE_{self.difficulty}"
-        
+
         self.core.display.use_standard_layout()
         await self.core.display.update_status("DATA FLOW", "INITIALIZING...")
         asyncio.create_task(self.core.synth.play_sequence(tones.SYSTEM_BOOT))
         await asyncio.sleep(1.5)
-        
+
         self.core.hid.reset_encoder(0)
         self.last_encoder_pos = self.core.hid.encoder_positions[0]
         self.level = 1
         self.score = 0
-        
+
         self.generate_level()
         self.calculate_beam()
-        
+
         last_tick = ticks_ms()
         game_running = True
-        
+
         while game_running:
             now = ticks_ms()
             delta_ms = ticks_diff(now, last_tick)
-            
+
             if delta_ms >= 16:  # ~60 FPS
                 self.update_cursor()
                 self.handle_input()
-                
+
                 # Check Win Condition
                 if self.target in self.beam_path:
                     await self.handle_victory(now)
-                
+
                 # Render
                 await self.core.display.update_status(f"ROUTER SEC: {self.level}", f"NODES: {len(self.mirrors)}")
                 self.render(now)
-                
+
                 # Background ambient hum
                 if random.random() < self.AMBIENT_HUM_PROBABILITY:
                     self.core.synth.play_note(60.0, "ENGINE_HUM", duration=0.1)
-                
+
                 last_tick = now
-            
+
             await asyncio.sleep(0.01)
 
     # --- GAME LOGIC ---
@@ -116,19 +228,19 @@ class DataFlowMode(GameMode):
     def update_cursor(self):
         """Map 1D encoder rotation to 2D grid position."""
         current_encoder = self.core.hid.encoder_positions[0]
-        
+
         if current_encoder != self.last_encoder_pos:
             delta = current_encoder - self.last_encoder_pos
             self.cursor_pos = (self.cursor_pos + delta) % (self.grid_w * self.grid_h)
             self.last_encoder_pos = current_encoder
-            
+
             # Ultra-short tactile click for dial rotation
             self.core.synth.play_note(1000.0, "UI_SELECT", duration=0.01)
 
     def handle_input(self):
         """Check for button presses to rotate mirrors or jump rows."""
         btn_pressed = {0: False, 1: False, 2: False}
-        
+
         if hasattr(self.core.hid, 'button_pressed'):
             for i in range(3):
                 current_btn = self.core.hid.button_pressed(i)
@@ -140,14 +252,14 @@ class DataFlowMode(GameMode):
         if btn_pressed[0]:
             cx = self.cursor_pos % self.grid_w
             cy = self.cursor_pos // self.grid_w
-            
+
             if (cx, cy) in self.mirrors:
                 self.mirrors[(cx, cy)]['type'] = 1 - self.mirrors[(cx, cy)]['type']
                 self.core.synth.play_note(600.0, "UI_SELECT", duration=0.05)
                 self.calculate_beam()
             else:
                 self.core.synth.play_note(200.0, "UI_ERROR", duration=0.05)
-                
+
         # Button 1: Jump UP one row (-grid_w)
         if btn_pressed[1]:
             self.cursor_pos = (self.cursor_pos - self.grid_w) % (self.grid_w * self.grid_h)
@@ -163,22 +275,22 @@ class DataFlowMode(GameMode):
     def calculate_beam(self):
         """Ray-casts the data stream from source through the mirrors."""
         self.beam_path.clear()
-        
+
         x, y = self.source
         dx, dy = 1, 0  # Source always faces right
-        
+
         for _ in range(self.grid_w * self.grid_h):
             x += dx
             y += dy
-            
+
             if not (0 <= x < self.grid_w and 0 <= y < self.grid_h):
                 break
-                
+
             self.beam_path.append((x, y))
-            
+
             if (x, y) == self.target:
-                break 
-                
+                break
+
             if (x, y) in self.mirrors:
                 m_type = self.mirrors[(x, y)]['type']
                 if m_type == 0:
@@ -193,18 +305,18 @@ class DataFlowMode(GameMode):
         base_mirrors = 3
         if self.difficulty == "HARD":
             base_mirrors = 5
-            
+
         num_mirrors = min(base_mirrors + (self.level // 2), 12)
-        
+
         for attempt in range(self.MAX_GENERATION_ATTEMPTS):
             self.mirrors.clear()
-            
+
             x, y = 0, random.randint(1, max(1, self.grid_h - 2))
             self.source = (x, y)
             dx, dy = 1, 0
-            
+
             valid_path = True
-            
+
             for _ in range(num_mirrors):
                 steps = random.randint(1, 3)
                 for _ in range(steps):
@@ -213,21 +325,21 @@ class DataFlowMode(GameMode):
                     if not (0 <= x < self.grid_w and 0 <= y < self.grid_h):
                         valid_path = False
                         break
-                
+
                 if not valid_path: break
-                
+
                 if (x, y) == self.source or (x, y) in self.mirrors:
                     valid_path = False
                     break
-                    
+
                 m_type = random.choice([0, 1])
                 if m_type == 0:
                     dx, dy = -dy, -dx
                 else:
                     dx, dy = dy, dx
-                    
+
                 self.mirrors[(x, y)] = {'type': m_type}
-                
+
             if valid_path:
                 steps = random.randint(1, 3)
                 for _ in range(steps):
@@ -236,14 +348,14 @@ class DataFlowMode(GameMode):
                     if not (0 <= x < self.grid_w and 0 <= y < self.grid_h):
                         valid_path = False
                         break
-                        
+
                 if valid_path and (x, y) not in self.mirrors and (x, y) != self.source:
                     self.target = (x, y)
-                    
+
                     for pos in self.mirrors:
                         self.mirrors[pos]['type'] = random.choice([0, 1])
                     return
-                    
+
         self.generate_fallback_level()
 
     def generate_fallback_level(self):
@@ -263,39 +375,39 @@ class DataFlowMode(GameMode):
         """Plays victory animation and advances level."""
         self.render(now)
         self.core.matrix.draw_pixel(self.target[0], self.target[1], Palette.WHITE)
-        
+
         asyncio.create_task(self.core.synth.play_sequence(tones.NOTIFY_INBOX, patch="SUCCESS"))
-        
+
         for pos in self.beam_path:
             self.core.matrix.draw_pixel(pos[0], pos[1], Palette.WHITE)
             await asyncio.sleep(0.05)
-            
+
         await asyncio.sleep(1.0)
-        
+
         self.score += (100 * self.level)
         self.level += 1
-        
+
         self.generate_level()
         self.calculate_beam()
         self.cursor_pos = 0
 
     def render(self, now):
         self.core.matrix.clear()
-        
+
         for pos in self.beam_path:
             self.core.matrix.draw_pixel(pos[0], pos[1], self.COLOR_BEAM)
-            
+
         for (mx, my), mirror in self.mirrors.items():
             color = self.COLOR_MIRROR_0 if mirror['type'] == 0 else self.COLOR_MIRROR_1
             self.core.matrix.draw_pixel(mx, my, color)
-            
+
         pulse = (now % 1000) > 500
         source_color = Palette.WHITE if pulse else self.COLOR_SOURCE
         target_color = Palette.WHITE if not pulse else self.COLOR_TARGET
-        
+
         self.core.matrix.draw_pixel(self.source[0], self.source[1], source_color)
         self.core.matrix.draw_pixel(self.target[0], self.target[1], target_color)
-        
+
         if (now % 400) > 200:
             cx = self.cursor_pos % self.grid_w
             cy = self.cursor_pos // self.grid_w

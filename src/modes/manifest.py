@@ -266,6 +266,7 @@ MODE_REGISTRY |= {
         "class_name": "DataFlowMode",
         "icon": "DATA_FLOW",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 70,
         "requires": ["CORE"],
         "settings": [
