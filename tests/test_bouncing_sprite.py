@@ -1,14 +1,14 @@
 """Tests for Bouncing Sprite screensaver mode.
 
 Verifies:
-- BouncingSprite._reset() places sprite at starting position/velocity
+- BouncingSprite._reset() places sprite at a random valid position/velocity
 - BouncingSprite._step() moves sprite by its velocity each tick
 - BouncingSprite._step() reverses vx on left/right wall collision
 - BouncingSprite._step() reverses vy on top/bottom wall collision
 - BouncingSprite._step() cycles colour index on every wall hit
 - BouncingSprite._step() handles corner collision (both axes bounce together)
 - BouncingSprite._build_frame() renders the correct palette bytes
-- BouncingSprite velocity values are always +1 or -1 (integer, never float)
+- BouncingSprite velocity values are always non-zero integers (sub-pixel fixed-point)
 - manifest.py contains a valid BOUNCING_SPRITE entry under ZERO_PLAYER
 - icons.py exposes a BOUNCING_SPRITE icon that is 256 bytes
 """
@@ -91,27 +91,30 @@ def _make_sprite(width=16, height=16):
 # ===========================================================================
 
 def test_reset_sets_starting_position():
-    """_reset() places the sprite at the defined starting coordinates."""
-    from modes.bouncing_sprite import _START_X, _START_Y
+    """_reset() places the sprite at a random position within valid fixed-point bounds."""
+    from modes.bouncing_sprite import _SPRITE_W, _SPRITE_H
     s = _make_sprite()
-    s._x = 5
-    s._y = 7
     s._reset()
-    assert s._x == _START_X, f"Expected x={_START_X} after reset, got {s._x}"
-    assert s._y == _START_Y, f"Expected y={_START_Y} after reset, got {s._y}"
-    print(f"✓ _reset: sprite placed at starting position ({_START_X}, {_START_Y})")
+    max_x_fp = (s.width - _SPRITE_W) << 8
+    max_y_fp = (s.height - _SPRITE_H) << 8
+    assert 0 <= s._x <= max_x_fp, \
+        f"Expected x in [0, {max_x_fp}] after reset, got {s._x}"
+    assert 0 <= s._y <= max_y_fp, \
+        f"Expected y in [0, {max_y_fp}] after reset, got {s._y}"
+    print(f"✓ _reset: sprite placed at valid starting position ({s._x >> 8}, {s._y >> 8})")
 
 
 def test_reset_sets_starting_velocity():
-    """_reset() restores the starting velocity vector."""
-    from modes.bouncing_sprite import _START_VX, _START_VY
+    """_reset() sets a random non-zero sub-pixel velocity for both axes."""
     s = _make_sprite()
-    s._vx = -1
-    s._vy = -1
     s._reset()
-    assert s._vx == _START_VX, f"Expected vx={_START_VX} after reset, got {s._vx}"
-    assert s._vy == _START_VY, f"Expected vy={_START_VY} after reset, got {s._vy}"
-    print(f"✓ _reset: velocity restored to ({_START_VX}, {_START_VY})")
+    assert isinstance(s._vx, int), f"vx should be an int after reset, got {type(s._vx)}"
+    assert isinstance(s._vy, int), f"vy should be an int after reset, got {type(s._vy)}"
+    assert s._vx != 0, f"vx should be non-zero after reset, got {s._vx}"
+    assert s._vy != 0, f"vy should be non-zero after reset, got {s._vy}"
+    assert 179 <= abs(s._vx) <= 331, f"vx magnitude should be in [179, 331] after reset, got {abs(s._vx)}"
+    assert 179 <= abs(s._vy) <= 331, f"vy magnitude should be in [179, 331] after reset, got {abs(s._vy)}"
+    print(f"✓ _reset: velocity set to valid sub-pixel values (vx={s._vx}, vy={s._vy})")
 
 
 # ===========================================================================
@@ -153,40 +156,43 @@ def test_step_bounces_off_right_wall():
     """Sprite moving right reverses vx when it reaches the right boundary."""
     from modes.bouncing_sprite import _SPRITE_W
     s = _make_sprite(16, 16)
-    max_x = 16 - _SPRITE_W      # = 13
-    s._x = max_x - 1            # one step away from the right wall
-    s._y = 5
-    s._vx = 1
+    max_x_fp = (16 - _SPRITE_W) << 8   # = 3328 (fixed-point)
+    step = 256                           # 1 pixel per step in fixed-point
+    s._x = max_x_fp - step + 1          # overshoots wall on next step; clamped to max_x_fp
+    s._y = 5 << 8
+    s._vx = step
     s._vy = 0
     s._step()
-    assert s._x == max_x, f"Expected x={max_x} at right wall, got {s._x}"
-    assert s._vx == -1, f"Expected vx=-1 after right-wall bounce, got {s._vx}"
+    assert s._x == max_x_fp, f"Expected x={max_x_fp} at right wall, got {s._x}"
+    assert s._vx < 0, f"Expected vx<0 after right-wall bounce, got {s._vx}"
     print("✓ _step: vx reversed on right-wall collision")
 
 
 def test_step_bounces_off_left_wall():
     """Sprite moving left reverses vx when it reaches x=0."""
     s = _make_sprite(16, 16)
-    s._x = 1
-    s._y = 5
-    s._vx = -1
+    step = 256                  # 1 pixel per step in fixed-point
+    s._x = step                 # 1 pixel from the left wall
+    s._y = 5 << 8
+    s._vx = -step
     s._vy = 0
     s._step()
     assert s._x == 0, f"Expected x=0 at left wall, got {s._x}"
-    assert s._vx == 1, f"Expected vx=+1 after left-wall bounce, got {s._vx}"
+    assert s._vx > 0, f"Expected vx>0 after left-wall bounce, got {s._vx}"
     print("✓ _step: vx reversed on left-wall collision")
 
 
 def test_step_left_wall_clamps_position():
     """Sprite that would go negative is clamped to x=0."""
     s = _make_sprite(16, 16)
+    step = 256                  # 1 pixel per step in fixed-point
     s._x = 0
-    s._y = 5
-    s._vx = -1
+    s._y = 5 << 8
+    s._vx = -step
     s._vy = 0
     s._step()
     assert s._x == 0, f"Expected x clamped to 0, got {s._x}"
-    assert s._vx == 1, "Expected vx reversed to +1"
+    assert s._vx > 0, "Expected vx reversed to positive"
     print("✓ _step: position clamped to 0 on left-wall hit")
 
 
@@ -198,27 +204,29 @@ def test_step_bounces_off_bottom_wall():
     """Sprite moving down reverses vy when it reaches the bottom boundary."""
     from modes.bouncing_sprite import _SPRITE_H
     s = _make_sprite(16, 16)
-    max_y = 16 - _SPRITE_H      # = 13
-    s._x = 5
-    s._y = max_y - 1            # one step away from the bottom wall
+    max_y_fp = (16 - _SPRITE_H) << 8   # = 3328 (fixed-point)
+    step = 256                           # 1 pixel per step in fixed-point
+    s._x = 5 << 8
+    s._y = max_y_fp - step + 1          # overshoots wall on next step; clamped to max_y_fp
     s._vx = 0
-    s._vy = 1
+    s._vy = step
     s._step()
-    assert s._y == max_y, f"Expected y={max_y} at bottom wall, got {s._y}"
-    assert s._vy == -1, f"Expected vy=-1 after bottom-wall bounce, got {s._vy}"
+    assert s._y == max_y_fp, f"Expected y={max_y_fp} at bottom wall, got {s._y}"
+    assert s._vy < 0, f"Expected vy<0 after bottom-wall bounce, got {s._vy}"
     print("✓ _step: vy reversed on bottom-wall collision")
 
 
 def test_step_bounces_off_top_wall():
     """Sprite moving up reverses vy when it reaches y=0."""
     s = _make_sprite(16, 16)
-    s._x = 5
-    s._y = 1
+    step = 256                  # 1 pixel per step in fixed-point
+    s._x = 5 << 8
+    s._y = step                 # 1 pixel from the top wall
     s._vx = 0
-    s._vy = -1
+    s._vy = -step
     s._step()
     assert s._y == 0, f"Expected y=0 at top wall, got {s._y}"
-    assert s._vy == 1, f"Expected vy=+1 after top-wall bounce, got {s._vy}"
+    assert s._vy > 0, f"Expected vy>0 after top-wall bounce, got {s._vy}"
     print("✓ _step: vy reversed on top-wall collision")
 
 
@@ -230,9 +238,11 @@ def test_step_color_cycles_on_right_wall():
     """Colour index increments by 1 when sprite hits the right wall."""
     from modes.bouncing_sprite import _SPRITE_W, _COLOR_INDICES
     s = _make_sprite(16, 16)
-    s._x = 16 - _SPRITE_W - 1   # one step from right wall
-    s._y = 5
-    s._vx = 1
+    max_x_fp = (16 - _SPRITE_W) << 8   # = 3328 (fixed-point)
+    step = 256                           # 1 pixel per step in fixed-point
+    s._x = max_x_fp - step + 1          # overshoots right wall; clamped to max_x_fp
+    s._y = 5 << 8
+    s._vx = step
     s._vy = 0
     s._color_idx = 0
     s._step()
@@ -244,10 +254,11 @@ def test_step_color_cycles_on_right_wall():
 def test_step_color_cycles_on_top_wall():
     """Colour index increments by 1 when sprite hits the top wall."""
     s = _make_sprite(16, 16)
-    s._x = 5
-    s._y = 1
+    step = 256                  # 1 pixel per step in fixed-point
+    s._x = 5 << 8
+    s._y = step                 # 1 pixel from the top wall
     s._vx = 0
-    s._vy = -1
+    s._vy = -step
     s._color_idx = 2
     s._step()
     assert s._color_idx == 3, \
@@ -259,10 +270,11 @@ def test_step_color_wraps_around():
     """Colour index wraps from last to first entry."""
     from modes.bouncing_sprite import _COLOR_INDICES
     s = _make_sprite(16, 16)
-    s._x = 5
-    s._y = 1
+    step = 256                  # 1 pixel per step in fixed-point
+    s._x = 5 << 8
+    s._y = step                 # 1 pixel from the top wall
     s._vx = 0
-    s._vy = -1
+    s._vy = -step
     last_idx = len(_COLOR_INDICES) - 1
     s._color_idx = last_idx
     s._step()
@@ -275,10 +287,13 @@ def test_step_corner_collision_cycles_color_once():
     """Corner collision (both axes hit simultaneously) cycles colour exactly once."""
     from modes.bouncing_sprite import _SPRITE_W, _SPRITE_H
     s = _make_sprite(16, 16)
-    s._x = 16 - _SPRITE_W - 1   # one step from right wall
-    s._y = 16 - _SPRITE_H - 1   # one step from bottom wall
-    s._vx = 1
-    s._vy = 1
+    step = 256                          # 1 pixel per step in fixed-point
+    max_x_fp = (16 - _SPRITE_W) << 8   # = 3328
+    max_y_fp = (16 - _SPRITE_H) << 8   # = 3328
+    s._x = max_x_fp - step + 1         # overshoots right wall; clamped to max_x_fp
+    s._y = max_y_fp - step + 1         # overshoots bottom wall; clamped to max_y_fp
+    s._vx = step
+    s._vy = step
     s._color_idx = 0
     s._step()
     assert s._color_idx == 1, \
@@ -291,15 +306,15 @@ def test_step_corner_collision_cycles_color_once():
 # ===========================================================================
 
 def test_step_velocity_always_integer():
-    """Velocity values are always integer ±1 after multiple steps."""
+    """Velocity values are always non-zero integers after multiple steps."""
     s = _make_sprite(16, 16)
     for _ in range(200):
         s._step()
         assert isinstance(s._vx, int), f"vx is not an int: {type(s._vx)}"
         assert isinstance(s._vy, int), f"vy is not an int: {type(s._vy)}"
-        assert s._vx in (-1, 1), f"vx must be ±1, got {s._vx}"
-        assert s._vy in (-1, 1), f"vy must be ±1, got {s._vy}"
-    print("✓ _step: velocity remains integer ±1 throughout simulation")
+        assert s._vx != 0, f"vx must be non-zero, got {s._vx}"
+        assert s._vy != 0, f"vy must be non-zero, got {s._vy}"
+    print("✓ _step: velocity remains a non-zero integer throughout simulation")
 
 
 def test_step_position_always_integer():
@@ -320,12 +335,14 @@ def test_step_sprite_stays_within_bounds():
     """After many steps the sprite's bounding box never exceeds the grid."""
     from modes.bouncing_sprite import _SPRITE_W, _SPRITE_H
     s = _make_sprite(16, 16)
+    max_x_fp = (16 - _SPRITE_W) << 8
+    max_y_fp = (16 - _SPRITE_H) << 8
     for _ in range(500):
         s._step()
-        assert 0 <= s._x <= 16 - _SPRITE_W, \
-            f"x={s._x} out of bounds [0, {16 - _SPRITE_W}]"
-        assert 0 <= s._y <= 16 - _SPRITE_H, \
-            f"y={s._y} out of bounds [0, {16 - _SPRITE_H}]"
+        assert 0 <= s._x <= max_x_fp, \
+            f"x={s._x} out of fixed-point bounds [0, {max_x_fp}]"
+        assert 0 <= s._y <= max_y_fp, \
+            f"y={s._y} out of fixed-point bounds [0, {max_y_fp}]"
     print("✓ _step: sprite stays within grid bounds over 500 steps")
 
 
@@ -386,11 +403,11 @@ def test_build_frame_off_pixels_are_zero():
     """Grid positions not covered by the sprite are set to 0 (off)."""
     from modes.bouncing_sprite import _SPRITE_PIXELS
     s = _make_sprite(16, 16)
-    s._x = 4
-    s._y = 4
+    s._x = 4 << 8               # fixed-point for pixel position 4
+    s._y = 4 << 8
     s._build_frame()
 
-    # Collect sprite pixel positions
+    # Collect sprite pixel positions (using actual pixel coordinates)
     sprite_positions = {(4 + dx, 4 + dy) for dx, dy, _ in _SPRITE_PIXELS}
 
     for y in range(16):
