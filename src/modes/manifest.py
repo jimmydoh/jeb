@@ -40,6 +40,7 @@ MODE_REGISTRY = {
         "class_name": "Simon",
         "icon": "SIMON",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 10,
         "requires": ["CORE"],
         "settings": [

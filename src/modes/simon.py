@@ -37,6 +37,118 @@ class Simon(GameMode):
 
         self.audio_engine = "MODERN"  # Default audio engine, can be switched to CLASSIC for buzzer-only mode
 
+    async def run_tutorial(self):
+        """
+        A guided, non-interactive demonstration of Simon.
+
+        The Voiceover Script (audio/tutes/simon_tute.wav)
+            [0:00] "Welcome to Simon. Your goal is simple: memorize and repeat."
+            [0:04] "First, watch and listen to the sequence of lights."
+            [0:08] (Silent for 3 seconds while the game demonstrates a sequence)
+            [0:11] "When it's your turn, repeat the exact sequence back by pressing the matching buttons."
+            [0:16] (Silent for 5 seconds while the game simulates the player entering the sequence, followed by the success chime)
+            [0:21] "The sequences will get longer and faster. Don't take too long, or it's game over. Good luck!"
+            [0:26] (End of file)
+        """
+        await self.core.clean_slate()
+
+        # Load settings to respect the user's audio engine preference
+        # (Assuming you added this from our previous discussion)
+        self.audio_engine = self.core.data.get_setting("SIMON", "audio_engine", "BUZZER")
+
+        # 1. Start the voiceover track
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/simon_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # Helper method to simulate a button press and release perfectly
+        async def _demo_press(val, duration, is_player=False):
+            # Visuals
+            self.core.matrix.draw_wedge(val, self.colors[val], duration=duration)
+            self.core.leds.set_led(val, self.colors[val], brightness=0.8, anim_mode="FLASH", speed=0.1, duration=duration)
+
+            # Audio
+            self._play_simon_note(self.colors_tones[val], duration=duration)
+
+            await asyncio.sleep(duration)
+
+            # Turn off visuals (Player presses snap off faster)
+            self.core.matrix.draw_wedge(val, Palette.OFF)
+            if is_player:
+                self.core.leds.breathe_led(val, self.colors[val], brightness=0.5, priority=1, speed=2.0)
+            else:
+                self.core.leds.off_led(val)
+            await asyncio.sleep(0.1)
+
+        # [0:00 - 0:04] Intro
+        self.core.display.update_status("SIMON TUTORIAL", "MEMORIZE & REPEAT")
+        self.core.matrix.show_icon("SIMON", anim_mode="PULSE", speed=2.0)
+        await asyncio.sleep(4.0)
+        self.core.matrix.clear()
+
+        # [0:04 - 0:08] "First, watch and listen..."
+        self.core.display.update_status("SIMON TUTORIAL", "WATCH THE LIGHTS")
+        await asyncio.sleep(4.0)
+
+        # [0:08 - 0:11] Demonstrate the Sequence (Green, Red, Yellow)
+        # Using 0.42s duration from your level 1 speed settings
+        await _demo_press(0, 0.42)
+        await asyncio.sleep(0.1)
+        await _demo_press(1, 0.42)
+        await asyncio.sleep(0.1)
+        await _demo_press(2, 0.42)
+
+        # [0:11 - 0:16] "When it's your turn..."
+        self.core.display.update_status("SIMON TUTORIAL", "YOUR TURN")
+        for i in range(4):
+            self.core.leds.breathe_led(i, self.colors[i], brightness=0.5, priority=1, speed=2.0)
+        await asyncio.sleep(5.0)
+
+        # [0:16 - 0:19] Simulate the player entering the sequence (faster taps)
+        for i in range(4):
+            self.core.leds.off_led(i)
+
+        await _demo_press(0, 0.2, is_player=True)
+        await asyncio.sleep(0.3)
+        await _demo_press(1, 0.2, is_player=True)
+        await asyncio.sleep(0.3)
+        await _demo_press(2, 0.2, is_player=True)
+
+        # [0:19 - 0:21] The Victory Chime
+        self.core.leds.start_rainbow()
+        self.core.matrix.draw_wedge(2, self.colors[2], anim_mode="FLASH", speed=0.08, duration=1.0)
+
+        self._play_simon_sequence(
+                {
+                    "bpm": 120,
+                    "sequence": [
+                        (self.colors_tones[2], 0.02),
+                        ("-", 0.01),
+                        (self.colors_tones[2], 0.07),
+                        ("-", 0.01),
+                        (self.colors_tones[2], 0.07),
+                        ("-", 0.01),
+                        (self.colors_tones[2], 0.07),
+                        ("-", 0.01),
+                        (self.colors_tones[2], 0.07),
+                    ]
+                }
+            )
+
+        await asyncio.sleep(1.0)
+        self.core.matrix.clear()
+        self.core.leds.off_led(-1)
+
+        # [0:21 - 0:26] "The sequences will get longer..."
+        self.core.display.update_status("SIMON TUTORIAL", "GOOD LUCK!")
+
+        # Wait for the audio track to finish naturally
+        await tute_audio
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
+
     def _play_simon_note(self, freq, duration=None):
         """Helper function to play a note with the current audio engine."""
         if self.audio_engine == "MODERN":

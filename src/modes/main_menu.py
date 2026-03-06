@@ -157,6 +157,7 @@ class MainMenu(UtilityMode):
             curr_pos = self.core.hid.encoder_position()
             encoder_diff = curr_pos - last_pos
             encoder_pressed = self.core.hid.is_encoder_button_pressed(action="tap")
+            btn_c_pressed = self.core.hid.is_button_pressed(2, action="tap")
             btn_d_pressed = self.core.hid.is_button_pressed(3, action="tap")
             btn_a_long = self.core.hid.is_button_pressed(0, long=True, duration=2000)
             btn_b_long = self.core.hid.is_button_pressed(1, long=True, duration=2000)
@@ -306,6 +307,33 @@ class MainMenu(UtilityMode):
                         self.core.buzzer.play_sequence(tones.UI_TICK)
                         needs_render = True
 
+                    if btn_c_pressed:
+                        mode_id = menu_items[selected_game_idx]
+                        mode_meta = self.core.mode_registry[mode_id]
+                        self.touch() # Reset menu timeout
+
+                        # Check the manifest BEFORE loading the class!
+                        if mode_meta.get("has_tutorial", False):
+                            JEBLogger.info("MENU", f"Starting tutorial for {mode_id}")
+                            self.core.buzzer.play_sequence(tones.MENU_LAUNCH)
+                            self.core.display.update_status("TUTORIAL", "LOADING...")
+
+                            # Safely load the class and run the sequence
+                            mode_class = self.core._load_mode_class(mode_id)
+                            mode_instance = mode_class(self.core)
+                            await mode_instance.run_tutorial()
+
+                            # Tutorial finished: trigger a full menu re-render
+                            self._set_state("MENU")
+                            needs_render = True
+                            last_pos = self.core.hid.encoder_position()
+                        else:
+                            # Catch-all just in case they press it on a mode without one
+                            JEBLogger.info("MENU", f"No tutorial available for {mode_id}")
+                            self.core.buzzer.play_sequence(tones.ERROR)
+                            self.core.display.update_footer("NO TUTORIAL")
+                            needs_render = True
+
                     if encoder_pressed:
                         mode_id = menu_items[selected_game_idx]
                         mode_meta = self.core.mode_registry[mode_id]
@@ -383,14 +411,14 @@ class MainMenu(UtilityMode):
                         mode_id = admin_items[admin_idx]
                         mode_meta = self.core.mode_registry[mode_id]
                         self.core.display.update_status(f"> {mode_meta['name']} <", "Push to Select")
-                        self.core.display.update_footer("Hold 'W' to Exit")
+                        self.core.display.update_footer("B2: Exit")
 
                         # Only re-trigger the slide animation if the admin mode actually changed
                         if admin_idx != last_rendered_admin:
                             self.core.matrix.show_icon(mode_meta["icon"], anim_mode=slide_direction, speed=2.0)
                         last_rendered_admin = admin_idx
                     else:
-                        self.core.display.update_status("NO ADMIN MODES", "Hold 'W' to Exit")
+                        self.core.display.update_status("NO ADMIN MODES", "B2: Exit")
                         self.core.display.update_footer("WARNING: System Override")
                         self.core.matrix.show_icon("WARNING")
 
@@ -404,7 +432,7 @@ class MainMenu(UtilityMode):
                         mode_id = zero_player_items[zero_player_idx]
                         mode_meta = self.core.mode_registry[mode_id]
                         self.core.display.update_status(f"> {mode_meta['name']} <", "Push to Select")
-                        self.core.display.update_footer("Hold 'B' to Exit")
+                        self.core.display.update_footer("B2: Exit")
 
                         # Only re-trigger the slide animation if the selection actually changed
                         if zero_player_idx != last_rendered_zero_player:
@@ -412,7 +440,7 @@ class MainMenu(UtilityMode):
                         last_rendered_zero_player = zero_player_idx
                     else:
                         self.core.display.update_status("NO ZERO PLAYER MODES", "")
-                        self.core.display.update_footer("Hold 'B' to Exit")
+                        self.core.display.update_footer("B2: Exit")
                         self.core.matrix.show_icon("DEFAULT")
 
                 elif self.state == "MENU":
@@ -427,7 +455,8 @@ class MainMenu(UtilityMode):
                         else:
                             high_score = self.core.data.get_high_score(mode_id)
                             self.core.display.update_status(f"HIGH SCORE: {high_score}", "Push to Select")
-                            settings_hint = "Press 'D' for Settings" if len(mode_meta.get("settings", [])) > 0 else ""
+                            settings_hint = "B3: Tute " if mode_meta.get("has_tutorial", False) else ""
+                            settings_hint += "B4: Sett " if len(mode_meta.get("settings", [])) > 0 else ""
                             self.core.display.update_footer(settings_hint)
                         self.core.display.show_settings_menu(False)
 

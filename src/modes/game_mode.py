@@ -6,7 +6,6 @@ from .base import BaseMode
 
 class GameMode(BaseMode):
     """Base class for all game modes."""
-
     def __init__(self, core, name, description, total_steps=1):
         super().__init__(core, name, description)
         self.score = 0
@@ -25,6 +24,10 @@ class GameMode(BaseMode):
         return f"{self.variant}_{self.difficulty}"
         """
         return self.variant or "DEFAULT"
+
+    async def run_tutorial(self):
+        """Override this method in subclasses that have tutorials."""
+        pass
 
     def get_high_score(self):
         """Helper to get the high score for the current setup."""
