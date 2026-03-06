@@ -103,6 +103,128 @@ class JEBris(GameMode):
         self.clear_animation_start = 0
         self.clear_animation_duration_ms = 50
 
+    async def run_tutorial(self):
+        """
+        The Voiceover Script (audio/tutes/jebris_tute.wav) ~ 20 seconds:
+            [0:00] "Welcome to JEBris. Turn the rotary encoder to move your falling blocks left and right."
+            [0:04] "Press button one to spin the block into the perfect spot."
+            [0:07] "When you're ready, hit button two to instantly drop it into place."
+            [0:11] "Complete solid lines across the matrix to clear them and score points."
+            [0:16] "But be careful... if your stack reaches the top, it's game over!"
+            [0:20] (End of file)
+        """
+        await self.core.clean_slate()
+        await self.reset_game()
+
+        # Suspend normal gravity and input handling
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/jebris_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # [0:00 - 0:04] "Welcome to JEBris. Turn the rotary encoder..."
+        self.core.display.update_status("JEBRIS TUTORIAL", "TURN ENCODER TO MOVE")
+
+        # Setup a specific piece (e.g., the Magenta 'T' piece)
+        self.current_piece = self.shapes[2]
+        self.piece_color = self.colors[2]
+        self.piece_x = 5
+        self.piece_y = 2
+        self._dirty = True
+        self.draw()
+        self.core.matrix.show_frame()
+
+        await asyncio.sleep(2.0)
+
+        # Puppeteer left/right movement
+        for _ in range(2):
+            self.move_piece(-1, 0)
+            self.draw()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.5)
+
+        self.move_piece(1, 0)
+        self.draw()
+        self.core.matrix.show_frame()
+
+        # [0:04 - 0:07] "Press button one to spin..."
+        self.core.display.update_status("JEBRIS TUTORIAL", "PRESS B1 TO ROTATE")
+        self.core.leds.flash_led(0, Palette.MAGENTA, duration=2.0)
+        await asyncio.sleep(1.0)
+
+        for _ in range(2):
+            self.rotate_piece()
+            self.draw()
+            self.core.matrix.show_frame()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await asyncio.sleep(0.5)
+
+        # [0:07 - 0:11] "When you're ready, hit button two..."
+        self.core.display.update_status("JEBRIS TUTORIAL", "PRESS B2 TO DROP")
+        self.core.leds.flash_led(1, Palette.MAGENTA, duration=2.0)
+        await asyncio.sleep(2.0)
+
+        # Simulate the Fast Drop
+        while self.move_piece(0, 1):
+            self.draw()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.02)
+
+        self.lock_piece()
+        self.core.buzzer.play_sequence(tones.BEEP)
+        self.draw()
+        self.core.matrix.show_frame()
+
+        # [0:11 - 0:16] "Complete solid lines across the matrix..."
+        self.core.display.update_status("JEBRIS TUTORIAL", "CLEAR LINES TO SCORE")
+
+        # Trick Shot Setup: Fill the bottom row with Gray, leaving a 1-block hole on the right
+        bottom_row_offset = (self.playfield_height - 1) * self.playfield_width
+        for x in range(self.playfield_width - 1):
+            self.grid[bottom_row_offset + x] = Palette.GRAY.index
+        self._dirty = True
+
+        # Spawn a Cyan 'I' piece directly above the hole
+        self.current_piece = self.shapes[0]
+        self.piece_color = self.colors[0]
+        self.piece_x = self.playfield_width - 1
+        self.piece_y = self.playfield_height - 6
+        self.rotate_piece() # Rotate to vertical
+        self.draw()
+        self.core.matrix.show_frame()
+        await asyncio.sleep(1.0)
+
+        # Drop it into the hole
+        while self.move_piece(0, 1):
+            self.draw()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.05)
+
+        self.lock_piece()
+
+        # Trigger the native clear animation manually
+        self.start_clear_lines()
+        self.draw()
+        self.core.matrix.show_frame()
+
+        # Wait for the clear animation duration, then finish it
+        await asyncio.sleep(0.5)
+        self.finish_clear_lines()
+        self.draw()
+        self.core.matrix.show_frame()
+
+        # [0:16 - 0:20] "But be careful, if your stack reaches the top..."
+        self.core.display.update_status("JEBRIS TUTORIAL", "DON'T TOP OUT!")
+
+        # Wait for the audio track to finish naturally
+        await tute_audio
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
+
     async def run(self):
         """Main Game Loop"""
         await self.reset_game()

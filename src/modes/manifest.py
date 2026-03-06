@@ -71,6 +71,7 @@ MODE_REGISTRY = {
         "class_name": "JEBris",
         "icon": "JEBRIS",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 20,
         "requires": ["CORE"],
         "settings": [
