@@ -171,6 +171,7 @@ MODE_REGISTRY |= {
         "class_name": "Pong",
         "icon": "PONG",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 40,
         "requires": ["CORE"],
         "optional": ["INDUSTRIAL"],
