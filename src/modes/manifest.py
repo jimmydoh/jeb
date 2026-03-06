@@ -197,6 +197,7 @@ MODE_REGISTRY |= {
         "class_name": "CyberSnakeMode",
         "icon": "SNAKE",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 80,
         "requires": ["CORE"],
         "settings": [
