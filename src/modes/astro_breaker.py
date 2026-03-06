@@ -158,11 +158,8 @@ class AstroBreakerMode(GameMode):
         self.core.display.update_status("ASTRO BREAKER", "PRESS ANY BUTTON")
 
         # Flash the physical LEDs white to prompt the physical buttons
-        if hasattr(self.core.leds, 'set_pixel'):
-            for i in range(4):
-                self.core.leds.set_pixel(i, Palette.WHITE)
-            if hasattr(self.core.leds, 'show'):
-                self.core.leds.show()
+        for i in range(4):
+            self.core.leds.flash_led(i, Palette.WHITE, duration=2.0)
 
         await asyncio.sleep(2.0)
         self.update_leds() # Restore to 4 green lives
@@ -283,15 +280,9 @@ class AstroBreakerMode(GameMode):
         for i in range(4):
             # i = 0, 1, 2, 3
             if i < self.lives:
-                if hasattr(self.core.leds, 'set_pixel'):
-                    self.core.leds.set_pixel(i, Palette.GREEN)
-                else:
-                    self.core.leds[i] = Palette.GREEN
+                self.core.leds.solid_led(i, Palette.GREEN)
             else:
-                if hasattr(self.core.leds, 'set_pixel'):
-                    self.core.leds.set_pixel(i, Palette.RED)
-                else:
-                    self.core.leds[i] = Palette.RED
+                self.core.leds.solid_led(i, Palette.RED)
 
         if hasattr(self.core.leds, 'show'):
             self.core.leds.show()

@@ -327,18 +327,18 @@ class RhythmMode(GameMode):
 
             if smallest_diff <= self.PERFECT_WINDOW_MS:
                 self.score += 100
-                self.core.leds.set_pixel(col % 4, Palette.GREEN)
+                self.core.leds.solid_led(col % 4, Palette.GREEN)
                 self.core.synth.play_note(880.0, "UI_SELECT", duration=0.05)
             else:
                 self.score += 50
-                self.core.leds.set_pixel(col % 4, Palette.YELLOW)
+                self.core.leds.solid_led(col % 4, Palette.YELLOW)
                 self.core.synth.play_note(660.0, "UI_SELECT", duration=0.05)
 
             self.core.display.update_status("NEON BEATS", f"SCORE: {self.score}")
         else:
             # Miss / stray press
             self.combo = 0
-            self.core.leds.set_pixel(col % 4, Palette.RED)
+            self.core.leds.solid_led(col % 4, Palette.RED)
 
     # ------------------------------------------------------------------
     # Rendering

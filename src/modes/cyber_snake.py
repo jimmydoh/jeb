@@ -358,13 +358,7 @@ class CyberSnakeMode(GameMode):
             else:
                 color = Palette.OFF
 
-            if hasattr(self.core.leds, 'set_pixel'):
-                self.core.leds.set_pixel(i, color)
-            else:
-                self.core.leds[i] = color
-
-        if hasattr(self.core.leds, 'show'):
-            self.core.leds.show()
+            self.core.leds.solid_led(i, color)
 
     async def handle_death(self):
         """Cinematic death sequence."""
@@ -387,12 +381,7 @@ class CyberSnakeMode(GameMode):
         """Sets all core LEDs to red during the death sequence."""
         if not hasattr(self.core, 'leds'): return
         for i in range(4):
-            if hasattr(self.core.leds, 'set_pixel'):
-                self.core.leds.set_pixel(i, Palette.RED)
-            else:
-                self.core.leds[i] = Palette.RED
-        if hasattr(self.core.leds, 'show'):
-            self.core.leds.show()
+            self.core.leds.solid_led(i, Palette.RED)
 
     def render(self, now):
         """Draws the current game state to the matrix."""
