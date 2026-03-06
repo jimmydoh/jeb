@@ -19,10 +19,8 @@ class JEBris(GameMode):
     STATE_CLEARING_LINES = "CLEARING_LINES"
 
     # Input debounce constants (in milliseconds)
-    DEBOUNCE_LEFT_MS = 100
     DEBOUNCE_ROTATE_MS = 200
     DEBOUNCE_DROP_MS = 0  # No debounce for fast drop
-    DEBOUNCE_RIGHT_MS = 100
 
     def __init__(self, core):
         super().__init__(core, "JEBRIS", "Tetris-inspired Falling Block Game")
@@ -89,14 +87,15 @@ class JEBris(GameMode):
         self.next_piece_color = Palette.OFF
 
         # --- TIMING STATE (for non-blocking input debouncing) ---
-        # Track last input time for each button (0: Left, 1: Rotate, 2: Drop, 3: Right)
-        self.last_input_time = [0, 0, 0, 0]
+        # Track last input time for each action (0: Rotate, 1: Drop)
+        self.last_input_time = [0, 0]
         self.input_debounce_ms = [
-            self.DEBOUNCE_LEFT_MS,
             self.DEBOUNCE_ROTATE_MS,
             self.DEBOUNCE_DROP_MS,
-            self.DEBOUNCE_RIGHT_MS
         ]
+
+        # Encoder tracking for left/right movement
+        self.last_encoder_pos = 0
 
         # --- STATE MACHINE for line clearing ---
         self.game_state = self.STATE_PLAYING
@@ -169,6 +168,7 @@ class JEBris(GameMode):
         self.grid = bytearray(self.playfield_width * self.playfield_height)
         self.score = 0
         self.is_game_over = False
+        self.last_encoder_pos = self.core.hid.encoder_position()
         await self.core.clean_slate()  # Clear any existing state
         self.spawn_piece()
 
@@ -197,28 +197,25 @@ class JEBris(GameMode):
         """Checks for button presses with non-blocking debouncing."""
         hid = self.core.hid
 
-        # LEFT (Btn 0)
+        # LEFT / RIGHT (Encoder rotation)
+        current_encoder_pos = hid.encoder_position()
+        encoder_diff = current_encoder_pos - self.last_encoder_pos
+        if encoder_diff != 0:
+            direction = -1 if encoder_diff < 0 else 1
+            for _ in range(abs(encoder_diff)):
+                self.move_piece(direction, 0)
+            self.last_encoder_pos = current_encoder_pos
+
+        # ROTATE (B1 / Button A)
         if hid.is_button_pressed(0):
             if ticks_diff(now, self.last_input_time[0]) > self.input_debounce_ms[0]:
-                self.move_piece(-1, 0)
+                self.rotate_piece()
                 self.last_input_time[0] = now
 
-        # ROTATE (Btn 1)
+        # FAST DROP (B2 / Button B)
         if hid.is_button_pressed(1):
-            if ticks_diff(now, self.last_input_time[1]) > self.input_debounce_ms[1]:
-                self.rotate_piece()
-                self.last_input_time[1] = now
-
-        # FAST DROP (Btn 2)
-        if hid.is_button_pressed(2):
             # No debounce for fast drop to allow continuous dropping
             self.move_piece(0, 1)
-
-        # RIGHT (Btn 3)
-        if hid.is_button_pressed(3):
-            if ticks_diff(now, self.last_input_time[3]) > self.input_debounce_ms[3]:
-                self.move_piece(1, 0)
-                self.last_input_time[3] = now
 
     def move_piece(self, dx, dy):
         """Attempts to move the piece. Returns True if successful."""
