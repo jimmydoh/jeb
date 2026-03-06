@@ -222,6 +222,7 @@ MODE_REGISTRY |= {
         "class_name": "AstroBreaker",
         "icon": "ASTRO_BREAKER",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 50,
         "requires": ["CORE"],
         "settings": [

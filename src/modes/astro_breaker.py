@@ -35,21 +35,6 @@ class AstroBreakerMode(GameMode):
     CORE_BRICK_SCORE = 50
     SMART_BOMB_BRICK_SCORE = 5
 
-    METADATA = {
-        "id": "ASTRO_BREAKER",
-        "name": "ASTRO BREAKER",
-        "icon": "ASTRO_BREAKER",
-        "requires": ["CORE"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["NORMAL", "HARD", "INSANE"],
-                "default": "NORMAL"
-            }
-        ]
-    }
-
     def __init__(self, core):
         super().__init__(core, "ASTRO BREAKER", "Sci-Fi Brick Breaker")
 
@@ -69,6 +54,138 @@ class AstroBreakerMode(GameMode):
         self.level = 1
 
         self.bricks = {}
+
+    async def run_tutorial(self):
+        """
+        A guided, non-interactive demonstration of Astro Breaker.
+
+        The Voiceover Script (audio/tutes/astro_tute.wav)
+            [0:00] "Welcome to Astro Breaker. You are the final shield against the swarm."
+            [0:04] "Turn the dial to maneuver your shield and deflect the plasma bolt."
+            [0:09] "Cyan bricks take one hit. Indigo and magenta bricks take multiple."
+            [0:15] "Red core bricks are indestructible until their defenses are cleared."
+            [0:20] "If you get overwhelmed, press any button to detonate a Smart Bomb."
+            [0:25] "This will cost you one shield, shown on the physical LEDs, but will obliterate the sector."
+            [0:31] "Good luck, Commander."
+            [0:34] (End of file)
+        """
+        await self.core.clean_slate()
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/astro_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # Initial Setup
+        self.lives = 4
+        self.update_leds()
+        self.paddle_x = 6
+        self.ball_x = 7.5
+        self.ball_y = 13.0
+        self.ball_dx = 0.0
+        self.ball_dy = 0.0
+
+        # Construct a custom mini-level to demonstrate brick types
+        self.bricks.clear()
+        self.bricks[(7, 2)] = {'type': 'CORE', 'hp': 1}
+        self.bricks[(6, 4)] = {'type': 'TOUGH', 'hp': 3}
+        self.bricks[(8, 4)] = {'type': 'NORMAL', 'hp': 1}
+
+        # [0:00 - 0:04] "Welcome to Astro Breaker..."
+        self.core.display.update_status("ASTRO BREAKER", "DEFEND THE SECTOR")
+        self.render()
+        self.core.matrix.show_frame()
+        await asyncio.sleep(4.0)
+
+        # [0:04 - 0:09] "Turn the dial to maneuver your shield..."
+        self.core.display.update_status("ASTRO BREAKER", "TURN DIAL TO MOVE")
+
+        # Puppeteer moving the paddle back and forth
+        for x_pos in [6, 5, 4, 3, 4, 5, 6, 7, 8, 9, 8, 7, 6]:
+            self.paddle_x = x_pos
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.15)
+
+        await asyncio.sleep(1.0)
+
+        # [0:09 - 0:15] "Cyan bricks take one hit. Indigo..."
+        self.core.display.update_status("ASTRO BREAKER", "BREAK THE DEFENSES")
+
+        # Puppeteer the ball launching and breaking the normal brick
+        self.ball_dy = -1.0
+        self.ball_dx = 0.15
+        for _ in range(8):
+            self.ball_x += self.ball_dx
+            self.ball_y += self.ball_dy
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.05)
+
+        # Ball hits the NORMAL brick at (8,4)
+        del self.bricks[(8, 4)]
+        self.core.synth.play_note(880.0, Patches.RETRO_SFX, duration=0.05)
+        self.ball_dy = 1.0 # Bounce down
+
+        for _ in range(4):
+            self.ball_x += self.ball_dx
+            self.ball_y += self.ball_dy
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.05)
+
+        self.ball_y = -10.0 # Hide ball for the rest of the demo
+        await asyncio.sleep(3.0)
+
+        # [0:15 - 0:20] "Red core bricks are indestructible until..."
+        self.core.display.update_status("ASTRO BREAKER", "CORES ARE SHIELDED")
+
+        # Flash the core brick to draw attention to it
+        for _ in range(4):
+            self.bricks[(7, 2)]['type'] = 'NORMAL' # Temporarily change type to flash color cyan
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.3)
+            self.bricks[(7, 2)]['type'] = 'CORE'   # Back to protected red
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.3)
+
+        await asyncio.sleep(0.2)
+
+        # [0:20 - 0:25] "If you get overwhelmed, press any button..."
+        self.core.display.update_status("ASTRO BREAKER", "PRESS ANY BUTTON")
+
+        # Flash the physical LEDs white to prompt the physical buttons
+        if hasattr(self.core.leds, 'set_pixel'):
+            for i in range(4):
+                self.core.leds.set_pixel(i, Palette.WHITE)
+            if hasattr(self.core.leds, 'show'):
+                self.core.leds.show()
+
+        await asyncio.sleep(2.0)
+        self.update_leds() # Restore to 4 green lives
+        await asyncio.sleep(1.0)
+
+        # [0:25 - 0:31] "This will cost you one shield... but obliterate..."
+        self.core.display.update_status("ASTRO BREAKER", "SMART BOMB!")
+
+        # Trigger the ACTUAL smart bomb sequence!
+        # This perfectly integrates your existing logic, showing the shockwave,
+        # playing the synth, and physically turning the 4th LED from Green to Red.
+        await self.trigger_smart_bomb()
+        await asyncio.sleep(2.0)
+
+        # [0:31 - 0:34] "Good luck, Commander."
+        self.core.display.update_status("ASTRO BREAKER", "GOOD LUCK, COMMANDER")
+
+        # Wait for the audio track to finish naturally
+        await tute_audio
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
 
     async def run(self):
         """Main game loop."""
