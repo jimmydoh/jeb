@@ -20,27 +20,6 @@ class TrenchRunMode(GameMode):
     - Synthio procedural audio
     """
 
-    METADATA = {
-        "id": "TRENCH_RUN",
-        "name": "TRENCH RUN",
-        "icon": "game",
-        "requires": ["CORE"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["NORMAL", "HARD", "INSANE"],
-                "default": "NORMAL"
-            },
-            {
-                "key": "perspective",
-                "label": "VIEW",
-                "options": ["3RD_PERSON", "1ST_PERSON"],
-                "default": "3RD_PERSON"
-            }
-        ]
-    }
-
     # Matrix dimensions
     MATRIX_WIDTH = 16
     MATRIX_HEIGHT = 16
@@ -57,6 +36,154 @@ class TrenchRunMode(GameMode):
         self.current_speed = self.base_speed
         self.gap_width = 3
         self.wall_spacing = 4.0  # Vertical space between spawned walls
+
+    async def run_tutorial(self):
+        """
+        A guided, non-interactive demonstration of Trench Run.
+
+        The Voiceover Script (audio/tutes/trench_tute.wav) ~ 31 seconds:
+            [0:00] "Welcome to Trench Run. A high-speed test of survival."
+            [0:04] "Turn the dial to maneuver your ship through the gaps in the approaching walls."
+            [0:10] "In third-person mode, your ship moves horizontally across the bottom of the screen."
+            [0:15] "Press Button One at any time to seamlessly switch to first-person mode."
+            [0:19] "In this view, your ship is locked in the center, and the entire trench rotates around you!"
+            [0:25] "The trench will accelerate the further you go. Try to survive as long as possible."
+            [0:31] (End of file)
+        """
+        await self.core.clean_slate()
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/trench_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # Initial Setup (Slow speed, wide gaps)
+        self.base_speed = 0.05
+        self.current_speed = self.base_speed
+        self.gap_width = 3
+        self.wall_spacing = 6.0
+        self.perspective = "3RD_PERSON"
+        self.player_pos = 8
+        self.walls.clear()
+
+        # Pre-seed a few walls for the demo
+        self.walls.append({'y': 0.0, 'gap_x': 8})
+        self.walls.append({'y': -6.0, 'gap_x': 12})
+        self.walls.append({'y': -12.0, 'gap_x': 3})
+
+        # [0:00 - 0:04] "Welcome to Trench Run..."
+        self.core.display.update_status("TRENCH RUN", "HIGH SPEED SURVIVAL")
+        self.render()
+        self.core.matrix.show_frame()
+        await asyncio.sleep(4.0)
+
+        # [0:04 - 0:10] "Turn the dial to maneuver your ship..."
+        self.core.display.update_status("TRENCH RUN", "TURN DIAL TO DODGE")
+
+        # Run physics for a few seconds to let the walls drop
+        for _ in range(120): # ~2 seconds at 60fps
+            for wall in self.walls:
+                wall['y'] += self.current_speed
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.016)
+
+        # [0:10 - 0:15] "In third-person mode, your ship moves..."
+        self.core.display.update_status("PERSPECTIVE", "3RD PERSON VIEW")
+
+        # Puppeteer the ship dodging the remaining walls
+        # Move right to gap 12
+        for pos in range(8, 14):
+            self.player_pos = pos
+            for wall in self.walls: wall['y'] += self.current_speed
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.08)
+
+        # Wait for wall to pass
+        for _ in range(60):
+            for wall in self.walls: wall['y'] += self.current_speed
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.016)
+
+        # Move left to gap 3
+        for pos in range(13, 2, -1):
+            self.player_pos = pos
+            for wall in self.walls: wall['y'] += self.current_speed
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.05)
+
+        await asyncio.sleep(1.0)
+
+        # [0:15 - 0:19] "Press Button One at any time to seamlessly switch..."
+        self.core.display.update_status("PERSPECTIVE", "PRESS B1 TO SWITCH")
+
+        # Flash B1 LED to guide the player
+        self.core.leds.flash_led(0, Palette.CYAN, duration=1.5)
+        await asyncio.sleep(1.0)
+
+        # Reset the walls, switch perspective, and play the toggle sound
+        self.walls.clear()
+        self.walls.append({'y': 0.0, 'gap_x': 8})
+        self.walls.append({'y': -6.0, 'gap_x': 12})
+        self.walls.append({'y': -12.0, 'gap_x': 3})
+
+        self.perspective = "1ST_PERSON"
+        self.player_pos = 8
+        self.core.buzzer.play_sequence(tones.UI_TICK)
+
+        # [0:19 - 0:25] "In this view, your ship is locked in the center..."
+        # Run the exact same dodging sequence, but rendered in 1st person!
+        for _ in range(120):
+            for wall in self.walls: wall['y'] += self.current_speed
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.016)
+
+        for pos in range(8, 14):
+            self.player_pos = pos
+            for wall in self.walls: wall['y'] += self.current_speed
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.08)
+
+        for _ in range(60):
+            for wall in self.walls: wall['y'] += self.current_speed
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.016)
+
+        for pos in range(13, 2, -1):
+            self.player_pos = pos
+            for wall in self.walls: wall['y'] += self.current_speed
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.05)
+
+        # [0:25 - 0:31] "The trench will accelerate... Try to survive..."
+        self.core.display.update_status("TRENCH RUN", "SPEED INCREASES!")
+
+        # Demonstrate the speed up
+        self.current_speed = 0.15 # Turbo speed!
+        self.walls.clear()
+        for i in range(5):
+             self.walls.append({'y': -(i*4.0), 'gap_x': random.randint(0, 15)})
+
+        for _ in range(150):
+            for wall in self.walls: wall['y'] += self.current_speed
+            self.render()
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.016)
+
+        # Wait for the audio track to finish naturally
+        await tute_audio
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
 
     async def run(self):
         """Main game loop."""
@@ -77,6 +204,7 @@ class TrenchRunMode(GameMode):
 
         self.core.display.use_standard_layout()
         self.core.display.update_status("TRENCH RUN", f"VIEW: {self.perspective}")
+        self.core.display.update_footer("B1: TOGGLE VIEW")
         asyncio.create_task(self.core.synth.play_sequence(tones.POWER_UP, patch="SCANNER"))
         await asyncio.sleep(2.0)
 
@@ -97,6 +225,23 @@ class TrenchRunMode(GameMode):
             delta_ms = ticks_diff(now, last_tick)
 
             if delta_ms >= 16:  # ~60 FPS Target
+
+                # --- NEW: Perspective Toggle via Button 1 (B1) ---
+                if self.core.hid.is_button_pressed(0, action="tap"):
+                    # Toggle the state
+                    self.perspective = "1ST_PERSON" if self.perspective == "3RD_PERSON" else "3RD_PERSON"
+
+                    # Persist the setting so it remembers their preference next time
+                    self.core.data.set_setting("TRENCH_RUN", "perspective", self.perspective)
+
+                    # Update the variant so high scores are tracked for the view they finish in
+                    self.variant = f"{self.perspective}_{self.difficulty}"
+
+                    # Give audio/visual feedback of the change
+                    self.core.display.update_status("TRENCH RUN", f"VIEW: {self.perspective}")
+                    self.core.buzzer.play_sequence(tones.UI_TICK)
+                # -------------------------------------------------
+
                 self.update_player()
                 crashed = self.update_walls()
 
@@ -145,8 +290,8 @@ class TrenchRunMode(GameMode):
             wall['y'] += self.current_speed
             new_y_int = int(wall['y'])
 
-            # If the wall just hit the bottom row (y = MATRIX_HEIGHT - 1), check collision
-            if old_y_int < (self.MATRIX_HEIGHT - 1) and new_y_int >= (self.MATRIX_HEIGHT - 1):
+            collision_row = self.MATRIX_HEIGHT - 2
+            if old_y_int < collision_row and new_y_int >= collision_row:
                 # Calculate the safe indices for this wall
                 safe_indices = [(wall['gap_x'] + i) % self.MATRIX_WIDTH for i in range(self.gap_width)]
 

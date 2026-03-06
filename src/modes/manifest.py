@@ -241,6 +241,7 @@ MODE_REGISTRY |= {
         "class_name": "TrenchRun",
         "icon": "TRENCH_RUN",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 60,
         "requires": ["CORE"],
         "settings": [
