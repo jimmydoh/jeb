@@ -96,6 +96,7 @@ MODE_REGISTRY = {
         "class_name": "SafeCracker",
         "icon": "SAFE",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 30,
         "requires": ["CORE"],
         "settings": []
