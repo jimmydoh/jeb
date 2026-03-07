@@ -212,6 +212,15 @@ class AudioManager:
                     # Track the file handle so we can close it later
                     self._stream_files[voice_idx] = f
 
+    async def wait_for_bus(self, bus_id):
+        """Yields the event loop until all voices on the specified bus are silent."""
+        pool = self.pools.get(bus_id)
+        if not pool:
+            return
+            
+        while any(self.mixer.voice[v].playing for v in pool):
+            await asyncio.sleep(0.1)
+
     async def fade_out(self, bus_id, duration=1.0):
         """
         Gradually fades out an entire logical bus over the specified duration (in seconds),

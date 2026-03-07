@@ -285,6 +285,7 @@ MODE_REGISTRY |= {
         "class_name": "VirtualPet",
         "icon": "VIRTUAL_PET",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 110,
         "requires": ["CORE"],
         "settings": []

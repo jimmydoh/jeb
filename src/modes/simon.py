@@ -51,6 +51,7 @@ class Simon(GameMode):
             [0:26] (End of file)
         """
         await self.core.clean_slate()
+        self.audio_engine = self.core.data.get_setting("SIMON", "audio_engine", "MODERN")
 
         # Load settings to respect the user's audio engine preference
         # (Assuming you added this from our previous discussion)
@@ -114,11 +115,13 @@ class Simon(GameMode):
         await asyncio.sleep(0.3)
         await _demo_press(2, 0.2, is_player=True)
 
+        await asyncio.sleep(0.5)
+
         # [0:19 - 0:21] The Victory Chime
         self.core.leds.start_rainbow()
         self.core.matrix.draw_wedge(2, self.colors[2], anim_mode="FLASH", speed=0.08, duration=1.0)
 
-        self._play_simon_sequence(
+        await self._play_simon_sequence(
                 {
                     "bpm": 120,
                     "sequence": [
@@ -143,6 +146,7 @@ class Simon(GameMode):
         self.core.display.update_status("SIMON TUTORIAL", "GOOD LUCK!")
 
         # Wait for the audio track to finish naturally
+        await asyncio.sleep(10.0)  # Ensure we wait at least until the end of the track if it hasn't finished yet
         await tute_audio
 
         # Clean up and return to the menu
@@ -156,10 +160,17 @@ class Simon(GameMode):
         else:  # CLASSIC
             self.core.buzzer.play_note(freq, duration=duration)
 
-    def _play_simon_sequence(self, sequence):
+    def _stop_simon_note(self):
+        """Helper function to stop a note with the current audio engine."""
+        if self.audio_engine == "MODERN":
+            self.core.synth.stop()
+        else:  # CLASSIC
+            self.core.buzzer.stop()
+
+    async def _play_simon_sequence(self, sequence):
         """Helper function to play a sequence of notes with the current audio engine."""
         if self.audio_engine == "MODERN":
-            self.core.synth.play_sequence(sequence, patch=Patches.BEEP)
+            await self.core.synth.play_sequence(sequence, patch=Patches.BEEP)
         else:  # CLASSIC
             self.core.buzzer.play_sequence(sequence)
 
@@ -345,7 +356,7 @@ class Simon(GameMode):
                                 priority=1,
                                 speed=2.0 * self.speed_factor
                             )
-                            self.core.buzzer.stop() # Stop tone immediately on release
+                            self._stop_simon_note()
                             break
 
                     # Yield to system loop to prevent blocking
