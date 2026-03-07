@@ -33,6 +33,9 @@ class MainMenu(UtilityMode):
         module_path, class_name, requirements, settings, and other configuration.
         Mode classes are lazily loaded via _load_mode_class() when needed.
 
+        Orders the list by the "order" field in metadata if present, otherwise
+        defaults to alphabetical by the mode name.
+
         Returns:
             List[str]: List of mode_id strings for modes that have their requirements met.
         """
@@ -63,6 +66,7 @@ class MainMenu(UtilityMode):
 
             if requirements_met:
                 items.append(mode_id)
+                items.sort(key=lambda mid: (self.core.mode_registry[mid].get("order", 9999), self.core.mode_registry[mid]["name"]))
 
         JEBLogger.info("MENU", f"Built menu items: {items}")
         return items
@@ -140,7 +144,7 @@ class MainMenu(UtilityMode):
         # Configure hardware encoder based on our restored starting state
         if self.state == "MENU":
             self.core.hid.reset_encoder(selected_game_idx)
-            self.core.leds.set_led(3, color=Palette.CYAN, anim="BREATH", speed=0.5)
+            self.core.leds.set_led(3, color=Palette.CYAN, anim_mode="BREATH", speed=0.5)
         else:
             self.core.hid.reset_encoder(0)
 
@@ -153,6 +157,7 @@ class MainMenu(UtilityMode):
             curr_pos = self.core.hid.encoder_position()
             encoder_diff = curr_pos - last_pos
             encoder_pressed = self.core.hid.is_encoder_button_pressed(action="tap")
+            btn_c_pressed = self.core.hid.is_button_pressed(2, action="tap")
             btn_d_pressed = self.core.hid.is_button_pressed(3, action="tap")
             btn_a_long = self.core.hid.is_button_pressed(0, long=True, duration=2000)
             btn_b_long = self.core.hid.is_button_pressed(1, long=True, duration=2000)
@@ -194,7 +199,7 @@ class MainMenu(UtilityMode):
                     # Prepare hardware for MENU state
                     self.core.hid.reset_encoder(selected_game_idx)
                     curr_pos = selected_game_idx
-                    self.core.leds.set_led(3, color=Palette.CYAN, anim="BREATH", speed=0.5)
+                    self.core.leds.set_led(3, color=Palette.CYAN, anim_mode="BREATH", speed=0.5)
 
             # --- ADMIN STATE ---
             elif self.state == "ADMIN":
@@ -250,7 +255,7 @@ class MainMenu(UtilityMode):
                     self._set_state("MENU")
                     self.core.hid.reset_encoder(selected_game_idx)
                     curr_pos = selected_game_idx
-                    self.core.leds.set_led(3, color=Palette.CYAN, anim="BREATH", speed=0.5)
+                    self.core.leds.set_led(3, color=Palette.CYAN, anim_mode="BREATH", speed=0.5)
                     needs_render = True
 
             # --- MENU STATE ---
@@ -264,7 +269,7 @@ class MainMenu(UtilityMode):
                     JEBLogger.info("MENU", "Entering Admin Menu")
                     self.core.leds.off_led(-1)
                     self.core.leds.start_cylon(Palette.RED, speed=0.05)
-                    self.core.leds.set_led(1, color=Palette.ORANGE, anim="FLASH", speed=2.0)
+                    self.core.leds.set_led(1, color=Palette.ORANGE, anim_mode="FLASH", speed=2.0)
                     needs_render = True
                     continue
 
@@ -301,6 +306,35 @@ class MainMenu(UtilityMode):
                         JEBLogger.info("MENU", f"Encoder moved: diff={encoder_diff}, new_pos={curr_pos}, selected_game_idx={selected_game_idx}, menu_length={len(menu_items)}")
                         self.core.buzzer.play_sequence(tones.UI_TICK)
                         needs_render = True
+
+                    if btn_c_pressed:
+                        mode_id = menu_items[selected_game_idx]
+                        mode_meta = self.core.mode_registry[mode_id]
+                        self.touch() # Reset menu timeout
+
+                        # Check the manifest BEFORE loading the class!
+                        if mode_meta.get("has_tutorial", False):
+                            JEBLogger.info("MENU", f"Starting tutorial for {mode_id}")
+                            self.core.buzzer.play_sequence(tones.MENU_LAUNCH)
+                            self.core.display.update_status("TUTORIAL", "LOADING...")
+
+                            # Safely load the class and run the sequence
+                            mode_class = self.core._load_mode_class(mode_id)
+                            mode_instance = mode_class(self.core)
+                            await mode_instance.run_tutorial()
+
+                            # Tutorial finished: trigger a full menu re-render
+                            self._set_state("MENU")
+                            needs_render = True
+                            last_pos = self.core.hid.encoder_position()
+
+                            last_rendered_game = -1
+                        else:
+                            # Catch-all just in case they press it on a mode without one
+                            JEBLogger.info("MENU", f"No tutorial available for {mode_id}")
+                            self.core.buzzer.play_sequence(tones.ERROR)
+                            self.core.display.update_footer("NO TUTORIAL")
+                            needs_render = True
 
                     if encoder_pressed:
                         mode_id = menu_items[selected_game_idx]
@@ -361,8 +395,8 @@ class MainMenu(UtilityMode):
                 JEBLogger.debug("MENU", f"Last - state={last_rendered_state}, focus={last_rendered_focus}, sett={last_rendered_setting}")
                 if self.state == "DASHBOARD":
                     self.core.display.use_standard_layout()
-                    self.core.display.update_header("JADNET Electronics Box")
-                    self.core.display.update_status("SYSTEM READY", "Push encoder to begin")
+                    self.core.display.update_header("JEB OS")
+                    self.core.display.update_status("SYSTEM READY", "AWAITING INPUT")
                     self.core.display.update_footer("")
                     #self.core.matrix.clear()
 
@@ -379,14 +413,14 @@ class MainMenu(UtilityMode):
                         mode_id = admin_items[admin_idx]
                         mode_meta = self.core.mode_registry[mode_id]
                         self.core.display.update_status(f"> {mode_meta['name']} <", "Push to Select")
-                        self.core.display.update_footer("Hold 'W' to Exit")
+                        self.core.display.update_footer("B2: Exit")
 
                         # Only re-trigger the slide animation if the admin mode actually changed
                         if admin_idx != last_rendered_admin:
                             self.core.matrix.show_icon(mode_meta["icon"], anim_mode=slide_direction, speed=2.0)
                         last_rendered_admin = admin_idx
                     else:
-                        self.core.display.update_status("NO ADMIN MODES", "Hold 'W' to Exit")
+                        self.core.display.update_status("NO ADMIN MODES", "B2: Exit")
                         self.core.display.update_footer("WARNING: System Override")
                         self.core.matrix.show_icon("WARNING")
 
@@ -400,7 +434,7 @@ class MainMenu(UtilityMode):
                         mode_id = zero_player_items[zero_player_idx]
                         mode_meta = self.core.mode_registry[mode_id]
                         self.core.display.update_status(f"> {mode_meta['name']} <", "Push to Select")
-                        self.core.display.update_footer("Hold 'B' to Exit")
+                        self.core.display.update_footer("B2: Exit")
 
                         # Only re-trigger the slide animation if the selection actually changed
                         if zero_player_idx != last_rendered_zero_player:
@@ -408,7 +442,7 @@ class MainMenu(UtilityMode):
                         last_rendered_zero_player = zero_player_idx
                     else:
                         self.core.display.update_status("NO ZERO PLAYER MODES", "")
-                        self.core.display.update_footer("Hold 'B' to Exit")
+                        self.core.display.update_footer("B2: Exit")
                         self.core.matrix.show_icon("DEFAULT")
 
                 elif self.state == "MENU":
@@ -423,7 +457,8 @@ class MainMenu(UtilityMode):
                         else:
                             high_score = self.core.data.get_high_score(mode_id)
                             self.core.display.update_status(f"HIGH SCORE: {high_score}", "Push to Select")
-                            settings_hint = "Press 'D' for Settings" if len(mode_meta.get("settings", [])) > 0 else ""
+                            settings_hint = "B3: Tute " if mode_meta.get("has_tutorial", False) else ""
+                            settings_hint += "B4: Sett " if len(mode_meta.get("settings", [])) > 0 else ""
                             self.core.display.update_footer(settings_hint)
                         self.core.display.show_settings_menu(False)
 

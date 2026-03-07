@@ -369,7 +369,7 @@ class BasePixelManager:
 
                 # --- RAINBOW ---
                 elif slot.type == "RAINBOW":
-                    hue = (elapsed * slot.speed + (idx * 0.05)) % 1.0
+                    hue = (elapsed * slot.speed * 360 + (idx / self.num_pixels) * 360) % 360
                     self.pixels[idx] = Palette.hsv_to_rgb(hue, 1.0, 1.0)
 
                 # --- GLITCH ---

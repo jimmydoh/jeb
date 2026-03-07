@@ -277,10 +277,10 @@ class ConsoleManager():
                 except ValueError:
                     print("Please enter a number.")
             elif choice == "2":
-                leds.set_led(-1, Palette.CYAN, anim="FLASH")
+                leds.set_led(-1, Palette.CYAN, anim_mode="FLASH")
                 print("LEDs flashing cyan.")
             elif choice == "3":
-                leds.set_led(-1, Palette.MAGENTA, anim="BREATH")
+                leds.set_led(-1, Palette.MAGENTA, anim_mode="BREATH")
                 print("LEDs breathing magenta.")
             elif choice == "4":
                 leds.start_rainbow(duration=5.0)

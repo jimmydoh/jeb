@@ -8,6 +8,9 @@
     "wifi_ssid": "",
     "wifi_password": "",
     "update_url": "",
+    "uart_baudrate": 921600,
+    "uart_buffer_size": 4096,
+    "led_brightness": 0.3,
     "resource_monitor": {
         "enabled": false,
         "interval_seconds": 15

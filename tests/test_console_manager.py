@@ -140,8 +140,8 @@ class MockLEDs:
         self.turned_off = False
         self.rainbow_started = False
 
-    def set_led(self, index, color, brightness=1.0, anim=None, duration=None, priority=2, speed=1.0):
-        self.last_set = (index, color, anim)
+    def set_led(self, index, color, brightness=1.0, anim_mode=None, duration=None, priority=2, speed=1.0):
+        self.last_set = (index, color, anim_mode)
 
     def off_led(self, index, priority=99):
         self.turned_off = True

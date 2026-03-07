@@ -61,6 +61,7 @@ def load_config():
         "update_url": "",  # OTA update URL (empty by default)
         "uart_baudrate": 921600,  # Default UART baudrate
         "uart_buffer_size": 4096,  # Default UART buffer size
+        "led_brightness": 0.3,  # Default LED brightness (0.0 to 1.0)
         "mount_sd_card": False,  # Whether to initialize SD card
         "debug_mode": False,  # Debug mode off by default
         "test_mode": True,  # Test mode on by default (real hardware should set to False)

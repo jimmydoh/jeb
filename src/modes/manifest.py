@@ -7,8 +7,7 @@ direct imports, avoiding circular dependencies and tight coupling.
 
 To add a new mode:
 1. Create your mode class in a new file in the modes/ directory
-2. Import it in this file
-3. Add it to the AVAILABLE_MODES list
+2. Add its details to the MODE_REGISTRY dictionary below, following the existing structure.
 """
 
 # Mode Registry
@@ -19,6 +18,7 @@ MODE_REGISTRY = {
         "module_path": "modes.main_menu",
         "class_name": "MainMenu",
         "icon": "DEFAULT",
+        "order": 0,
         "requires": ["CORE"],
         "settings": []
     },
@@ -28,9 +28,74 @@ MODE_REGISTRY = {
         "module_path": "modes.main_menu",
         "class_name": "MainMenu",
         "icon": "DEFAULT",
+        "order": 0,
         "requires": ["CORE"],
         "settings": []
     },
+    "ZERO_PLAYER_MENU": {
+        "id": "ZERO_PLAYER_MENU",
+        "name": "ZERO PLAYER",
+        "module_path": "",
+        "class_name": "",
+        "icon": "ZERO_PLAYER",
+        "menu": "MAIN",
+        "order": 500,
+        "submenu": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+}
+
+# Admin Menu Items
+MODE_REGISTRY |= {
+    "LAYOUT_CONFIGURATOR": {
+        "id": "LAYOUT_CONFIGURATOR",
+        "name": "LAYOUT CONFIG",
+        "module_path": "modes.layout_configurator",
+        "class_name": "LayoutConfigurator",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "order": 1020,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "GLOBAL_SETTINGS": {
+        "id": "GLOBAL_SETTINGS",
+        "name": "GLOBAL SETTINGS",
+        "module_path": "modes.global_settings",
+        "class_name": "GlobalSettings",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "order": 1030,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "DEBUG": {
+        "id": "DEBUG",
+        "name": "DEBUG DASH",
+        "module_path": "modes.debug",
+        "class_name": "DebugMode",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "order": 1099,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "POWER_TELEMETRY": {
+        "id": "POWER_TELEMETRY",
+        "name": "PWR TELEMETRY",
+        "module_path": "modes.power_telemetry",
+        "class_name": "PowerTelemetryMode",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "order": 1015,
+        "requires": ["CORE"],
+        "settings": []
+    },
+}
+
+# CORE Game Modes
+MODE_REGISTRY |= {
     "SIMON": {
         "id": "SIMON",
         "name": "SIMON SAYS",
@@ -38,6 +103,8 @@ MODE_REGISTRY = {
         "class_name": "Simon",
         "icon": "SIMON",
         "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 10,
         "requires": ["CORE"],
         "settings": [
             {
@@ -51,6 +118,12 @@ MODE_REGISTRY = {
                 "label": "DIFF",
                 "options": ["EASY","NORMAL", "HARD", "INSANE"],
                 "default": "NORMAL"
+            },
+            {
+                "key": "audio_engine",
+                "label": "AUDIO",
+                "options": ["MODERN", "CLASSIC"],
+                "default": "MODERN"
             }
         ]
     },
@@ -61,6 +134,8 @@ MODE_REGISTRY = {
         "class_name": "JEBris",
         "icon": "JEBRIS",
         "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 20,
         "requires": ["CORE"],
         "settings": [
             {
@@ -84,17 +159,9 @@ MODE_REGISTRY = {
         "class_name": "SafeCracker",
         "icon": "SAFE",
         "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 30,
         "requires": ["CORE"],
-        "settings": []
-    },
-    "IND_START": {
-        "id": "IND_START",
-        "name": "INDUSTRIAL STARTUP",
-        "module_path": "modes.industrial_startup",
-        "class_name": "IndustrialStartup",
-        "icon": "IND",
-        "menu": "MAIN",
-        "requires": ["INDUSTRIAL"],
         "settings": []
     },
     "PONG": {
@@ -104,6 +171,8 @@ MODE_REGISTRY = {
         "class_name": "Pong",
         "icon": "PONG",
         "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 40,
         "requires": ["CORE"],
         "optional": ["INDUSTRIAL"],
         "settings": [
@@ -121,6 +190,31 @@ MODE_REGISTRY = {
             }
         ]
     },
+    "SNAKE": {
+        "id": "SNAKE",
+        "name": "CYBER SNAKE",
+        "module_path": "modes.cyber_snake",
+        "class_name": "CyberSnakeMode",
+        "icon": "SNAKE",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 80,
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "edges",
+                "label": "EDGES",
+                "options": ["WRAP", "WALLS"],
+                "default": "WRAP"
+            }
+        ]
+    },
     "ASTRO_BREAKER": {
         "id": "ASTRO_BREAKER",
         "name": "ASTRO BREAKER",
@@ -128,6 +222,8 @@ MODE_REGISTRY = {
         "class_name": "AstroBreaker",
         "icon": "ASTRO_BREAKER",
         "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 50,
         "requires": ["CORE"],
         "settings": [
             {
@@ -145,6 +241,8 @@ MODE_REGISTRY = {
         "class_name": "TrenchRun",
         "icon": "TRENCH_RUN",
         "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 60,
         "requires": ["CORE"],
         "settings": [
             {
@@ -168,6 +266,8 @@ MODE_REGISTRY = {
         "class_name": "DataFlowMode",
         "icon": "DATA_FLOW",
         "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 70,
         "requires": ["CORE"],
         "settings": [
             {
@@ -178,68 +278,17 @@ MODE_REGISTRY = {
             }
         ]
     },
-    "LAYOUT_CONFIGURATOR": {
-        "id": "LAYOUT_CONFIGURATOR",
-        "name": "LAYOUT CONFIG",
-        "module_path": "modes.layout_configurator",
-        "class_name": "LayoutConfigurator",
-        "icon": "ADMIN",
-        "menu": "ADMIN",
-        "requires": ["CORE"],
-        "settings": []
-    },
-    "GLOBAL_SETTINGS": {
-        "id": "GLOBAL_SETTINGS",
-        "name": "GLOBAL SETTINGS",
-        "module_path": "modes.global_settings",
-        "class_name": "GlobalSettings",
-        "icon": "ADMIN",
-        "menu": "ADMIN",
-        "requires": ["CORE"],
-        "settings": []
-    },
-    "DEBUG": {
-        "id": "DEBUG",
-        "name": "DEBUG DASH",
-        "module_path": "modes.debug",
-        "class_name": "DebugMode",
-        "icon": "ADMIN",
-        "menu": "ADMIN",
-        "requires": ["CORE"],
-        "settings": []
-    },
-    "POWER_TELEMETRY": {
-        "id": "POWER_TELEMETRY",
-        "name": "PWR TELEMETRY",
-        "module_path": "modes.power_telemetry",
-        "class_name": "PowerTelemetryMode",
-        "icon": "ADMIN",
-        "menu": "ADMIN",
-        "requires": ["CORE"],
-        "settings": []
-    },
-    "SNAKE": {
-        "id": "SNAKE",
-        "name": "CYBER SNAKE",
-        "module_path": "modes.cyber_snake",
-        "class_name": "CyberSnakeMode",
-        "icon": "SNAKE",
+    "VIRTUAL_PET": {
+        "id": "VIRTUAL_PET",
+        "name": "VIRTUAL PET",
+        "module_path": "modes.virtual_pet",
+        "class_name": "VirtualPet",
+        "icon": "VIRTUAL_PET",
         "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 110,
         "requires": ["CORE"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["NORMAL", "HARD", "INSANE"],
-                "default": "NORMAL"
-            },
-            {
-                "key": "edges",
-                "label": "EDGES",
-                "options": ["WRAP", "WALLS"],
-                "default": "WRAP"
-            }
-        ]
+        "settings": []
     },
     "RHYTHM": {
         "id": "RHYTHM",
@@ -248,6 +297,7 @@ MODE_REGISTRY = {
         "class_name": "RhythmMode",
         "icon": "RHYTHM",
         "menu": "MAIN",
+        "order": 999,
         "requires": ["CORE"],
         "settings": [
             {
@@ -271,6 +321,7 @@ MODE_REGISTRY = {
         "class_name": "EmojiRevealMode",
         "icon": "EMOJI_REVEAL",
         "menu": "MAIN",
+        "order": 90,
         "requires": ["CORE"],
         "settings": [
             {
@@ -294,6 +345,7 @@ MODE_REGISTRY = {
         "class_name": "FrequencyHunterMode",
         "icon": "FREQ_HUNTER",
         "menu": "MAIN",
+        "order": 100,
         "requires": ["CORE"],
         "settings": [
             {
@@ -310,17 +362,10 @@ MODE_REGISTRY = {
             }
         ]
     },
-    "ZERO_PLAYER_MENU": {
-        "id": "ZERO_PLAYER_MENU",
-        "name": "ZERO PLAYER",
-        "module_path": "",
-        "class_name": "",
-        "icon": "ZERO_PLAYER",
-        "menu": "MAIN",
-        "submenu": "ZERO_PLAYER",
-        "requires": ["CORE"],
-        "settings": []
-    },
+}
+
+# Zero Player Game Modes
+MODE_REGISTRY |= {
     "CONWAYS_LIFE": {
         "id": "CONWAYS_LIFE",
         "name": "GAME OF LIFE",
@@ -328,6 +373,7 @@ MODE_REGISTRY = {
         "class_name": "ConwaysLife",
         "icon": "CONWAYS_LIFE",
         "menu": "ZERO_PLAYER",
+        "order": 510,
         "requires": ["CORE"],
         "settings": []
     },
@@ -338,6 +384,7 @@ MODE_REGISTRY = {
         "class_name": "LangtonsAnt",
         "icon": "LANGTONS_ANT",
         "menu": "ZERO_PLAYER",
+        "order": 520,
         "requires": ["CORE"],
         "settings": [
             {
@@ -355,6 +402,7 @@ MODE_REGISTRY = {
         "class_name": "WolframAutomata",
         "icon": "WOLFRAM_AUTOMATA",
         "menu": "ZERO_PLAYER",
+        "order": 530,
         "requires": ["CORE"],
         "settings": [
             {
@@ -372,6 +420,7 @@ MODE_REGISTRY = {
         "class_name": "LissajousMode",
         "icon": "LISSAJOUS",
         "menu": "ZERO_PLAYER",
+        "order": 540,
         "requires": ["CORE"],
         "settings": []
     },
@@ -382,6 +431,7 @@ MODE_REGISTRY = {
         "class_name": "BoidsMode",
         "icon": "BOIDS",
         "menu": "ZERO_PLAYER",
+        "order": 550,
         "requires": ["CORE"],
         "settings": []
     },
@@ -392,6 +442,7 @@ MODE_REGISTRY = {
         "class_name": "PlasmaMode",
         "icon": "PLASMA",
         "menu": "ZERO_PLAYER",
+        "order": 560,
         "requires": ["CORE"],
         "settings": []
     },
@@ -402,6 +453,7 @@ MODE_REGISTRY = {
         "class_name": "FallingSandMode",
         "icon": "FALLING_SAND",
         "menu": "ZERO_PLAYER",
+        "order": 570,
         "requires": ["CORE"],
         "settings": []
     },
@@ -412,6 +464,7 @@ MODE_REGISTRY = {
         "class_name": "BouncingSprite",
         "icon": "BOUNCING_SPRITE",
         "menu": "ZERO_PLAYER",
+        "order": 580,
         "requires": ["CORE"],
         "settings": []
     },
@@ -422,6 +475,7 @@ MODE_REGISTRY = {
         "class_name": "Wireworld",
         "icon": "WIREWORLD",
         "menu": "ZERO_PLAYER",
+        "order": 590,
         "requires": ["CORE"],
         "settings": []
     },
@@ -432,6 +486,7 @@ MODE_REGISTRY = {
         "class_name": "StarfieldMode",
         "icon": "STARFIELD",
         "menu": "ZERO_PLAYER",
+        "order": 600,
         "requires": ["CORE"],
         "settings": [
             {
@@ -442,6 +497,22 @@ MODE_REGISTRY = {
             }
         ]
     },
+}
+
+# Sat Type 01 INDUSTRIAL Game Modes
+MODE_REGISTRY |= {
+    "IND_START": {
+        "id": "IND_START",
+        "name": "INDUSTRIAL STARTUP",
+        "module_path": "modes.industrial_startup",
+        "class_name": "IndustrialStartup",
+        "icon": "IND",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 1,
+        "requires": ["INDUSTRIAL"],
+        "settings": []
+    },
     "ABYSSAL_PING": {
         "id": "ABYSSAL_PING",
         "name": "ABYSSAL PING",
@@ -449,6 +520,7 @@ MODE_REGISTRY = {
         "class_name": "AbyssalPing",
         "icon": "ABYSSAL_PING",
         "menu": "MAIN",
+        "order": 2,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
             {
@@ -466,6 +538,7 @@ MODE_REGISTRY = {
         "class_name": "OrbitalStrike",
         "icon": "ORBITAL_STRIKE",
         "menu": "MAIN",
+        "order": 3,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
             {
@@ -483,6 +556,7 @@ MODE_REGISTRY = {
         "class_name": "IronCanopy",
         "icon": "IRON_CANOPY",
         "menu": "MAIN",
+        "order": 4,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
             {
@@ -500,6 +574,7 @@ MODE_REGISTRY = {
         "class_name": "DefconCommander",
         "icon": "DEFCON_COMMANDER",
         "menu": "MAIN",
+        "order": 5,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
             {
@@ -510,16 +585,6 @@ MODE_REGISTRY = {
             }
         ]
     },
-    "VIRTUAL_PET": {
-        "id": "VIRTUAL_PET",
-        "name": "VIRTUAL PET",
-        "module_path": "modes.virtual_pet",
-        "class_name": "VirtualPet",
-        "icon": "VIRTUAL_PET",
-        "menu": "MAIN",
-        "requires": ["CORE"],
-        "settings": []
-    }
 }
 
 __all__ = ["MODE_REGISTRY"]

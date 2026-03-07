@@ -580,7 +580,7 @@ class CoreManager:
         self._sleeping = True
         # Blank the display and set LEDs to a low-power breathing animation
         self.display.update_status("", "")
-        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim="BREATH", speed=0.5)
+        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim_mode="BREATH", speed=0.5)
         # Throttle render loop to 10Hz to reduce power draw
         self.renderer.target_frame_rate = 10
         # Broadcast SLEEP to all satellites
