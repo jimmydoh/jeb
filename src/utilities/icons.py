@@ -658,6 +658,30 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # Artillery Command – steampunk cannon side-view
+    # Barrel (gray/silver) points left with muzzle flash (orange);
+    # breech ring and wheel spokes in gold/brass; carriage in brown/wood.
+    # Colour key: 0=OFF, 2=GRAY, 3=SILVER, 20=BROWN, 21=ORANGE, 22=GOLD, 11=RED
+    ARTILLERY_COMMAND = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,  11,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  0  target north
+         0,   0,   0,   0,   0,   0,   0,  11,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  1
+         0,   0,   0,   0,   0,   0,   0,  11,   0,   0,   0,  22,  22,  22,   0,   0,  # Row  2  breech ring top
+        21,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  3  muzzle flash hint
+        21,  21,   2,   2,   2,   2,   2,   2,   2,   2,   2,  22,   3,  22,   0,   0,  # Row  4  barrel top + breech
+        21,  21,   3,   3,   3,   3,   3,   3,   3,   3,   3,  22,   3,  22,   0,   0,  # Row  5  barrel bore
+         0,  21,   2,   2,   2,   2,   2,   2,   2,   2,   2,  22,   3,  22,   0,   0,  # Row  6  barrel bottom + breech
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  22,  22,  22,   0,   0,  # Row  7  breech ring bottom
+         0,   0,   0,   0,   0,   0,   0,  20,  20,  20,  20,  20,  20,  20,  20,   0,  # Row  8  carriage top beam
+         0,   0,   0,   0,   0,   0,  20,  20,  20,  20,  20,  20,  20,  20,  20,   0,  # Row  9  carriage body
+         0,   0,   0,   0,   0,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,   0,  # Row 10  carriage lower
+         0,  22,  22,   0,  20,   0,   0,   0,   0,   0,   0,  20,   0,  22,  22,   0,  # Row 11  wheel tops + carriage
+        22,   0,   0,  22,  20,   0,   0,   0,   0,   0,   0,  20,  22,   0,   0,  22,  # Row 12  wheel sides
+         0,  22,  22,   0,  20,  20,  20,  20,  20,  20,  20,  20,   0,  22,  22,   0,  # Row 13  wheel bottoms
+        20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  # Row 14  ground line
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15
+    ])
+
     # -------------------------------------------------------------------------
     # Virtual Pet cat sprites (16x16)
     # Colour key:
@@ -1029,6 +1053,7 @@ class Icons:
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
+        "ARTILLERY_COMMAND": ARTILLERY_COMMAND,
         "VIRTUAL_PET": VIRTUAL_PET,
         "CAT_IDLE": CAT_IDLE,
         "CAT_EAT": CAT_EAT,
