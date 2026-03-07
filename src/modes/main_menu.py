@@ -327,6 +327,8 @@ class MainMenu(UtilityMode):
                             self._set_state("MENU")
                             needs_render = True
                             last_pos = self.core.hid.encoder_position()
+
+                            last_rendered_game = -1
                         else:
                             # Catch-all just in case they press it on a mode without one
                             JEBLogger.info("MENU", f"No tutorial available for {mode_id}")
