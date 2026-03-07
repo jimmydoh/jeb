@@ -227,13 +227,13 @@ def test_difficulty_min_charges_progression():
     hard_block    = block[hard_start:insane_start]
     insane_block  = block[insane_start:]
 
-    def _extract_min_charges(blk):
+    def extract_min_charges(blk):
         m = re.search(r'"min_charges":\s*(\d+)', blk)
         return int(m.group(1)) if m else None
 
-    n_mc = _extract_min_charges(normal_block)
-    h_mc = _extract_min_charges(hard_block)
-    i_mc = _extract_min_charges(insane_block)
+    n_mc = extract_min_charges(normal_block)
+    h_mc = extract_min_charges(hard_block)
+    i_mc = extract_min_charges(insane_block)
 
     assert n_mc is not None and h_mc is not None and i_mc is not None, \
         "Could not extract min_charges values"
@@ -253,13 +253,13 @@ def test_elevation_tolerance_decreases():
     hard_start    = block.find('"HARD"')
     insane_start  = block.find('"INSANE"')
 
-    def _extract_tol(blk):
+    def extract_elev_tol(blk):
         m = re.search(r'"elev_tol":\s*(\d+)', blk)
         return int(m.group(1)) if m else None
 
-    n_tol = _extract_tol(block[normal_start:hard_start])
-    h_tol = _extract_tol(block[hard_start:insane_start])
-    i_tol = _extract_tol(block[insane_start:])
+    n_tol = extract_elev_tol(block[normal_start:hard_start])
+    h_tol = extract_elev_tol(block[hard_start:insane_start])
+    i_tol = extract_elev_tol(block[insane_start:])
 
     assert n_tol and h_tol and i_tol, "Could not extract elev_tol values"
     assert n_tol > h_tol >= i_tol, \
@@ -313,14 +313,14 @@ def test_ap_requires_higher_elevation_than_he():
     distance = 3000
     num_charges = 3
 
-    def _elev(wf):
+    def calculate_elevation(wf):
         v = bv + num_charges * vc
         sin_2t = max(-1.0, min(1.0, g * distance * wf / (v * v)))
         return max(1, min(89, round(math.degrees(math.asin(sin_2t)) / 2.0)))
 
-    elev_he   = _elev(1.0)
-    elev_ap   = _elev(1.2)
-    elev_star = _elev(0.7)
+    elev_he   = calculate_elevation(1.0)
+    elev_ap   = calculate_elevation(1.2)
+    elev_star = calculate_elevation(0.7)
 
     assert elev_ap > elev_he, \
         f"AP ({elev_ap}°) should need more elevation than HE ({elev_he}°)"
@@ -343,14 +343,14 @@ def test_more_charges_reduce_elevation():
     distance = 4000
     wf = 1.0  # HE
 
-    def _elev(nc):
+    def calculate_elevation_for_charges(nc):
         v = bv + nc * vc
         sin_2t = max(-1.0, min(1.0, g * distance * wf / (v * v)))
         return max(1, min(89, round(math.degrees(math.asin(sin_2t)) / 2.0)))
 
-    e2 = _elev(2)
-    e4 = _elev(4)
-    e8 = _elev(8)
+    e2 = calculate_elevation_for_charges(2)
+    e4 = calculate_elevation_for_charges(4)
+    e8 = calculate_elevation_for_charges(8)
 
     assert e2 >= e4 >= e8, \
         f"More charges should reduce elevation: 2c={e2}°, 4c={e4}°, 8c={e8}°"
