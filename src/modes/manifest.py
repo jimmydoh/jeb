@@ -522,6 +522,7 @@ MODE_REGISTRY |= {
         "class_name": "AbyssalPing",
         "icon": "ABYSSAL_PING",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 2,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
