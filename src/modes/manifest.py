@@ -670,6 +670,25 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "SEISMIC_STABILIZER": {
+        "id": "SEISMIC_STABILIZER",
+        "name": "SEISMIC STAB",
+        "module_path": "modes.seismic_stabilizer",
+        "class_name": "SeismicStabilizer",
+        "icon": "SEISMIC_STABILIZER",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
 }
 
 __all__ = ["MODE_REGISTRY"]
