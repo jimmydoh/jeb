@@ -631,6 +631,25 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "ENIGMA_BYTE": {
+        "id": "ENIGMA_BYTE",
+        "name": "ENIGMA BYTE",
+        "module_path": "modes.enigma_byte",
+        "class_name": "EnigmaByte",
+        "icon": "ENIGMA_BYTE",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 7,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
 }
 
 __all__ = ["MODE_REGISTRY"]
