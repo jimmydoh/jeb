@@ -232,12 +232,14 @@ class SeismicStabilizer(GameMode):
         self._angular_velocity += (grav_torque - net_control) * dt
 
         # Natural damping
-        self._angular_velocity *= (1.0 - _DAMPING * dt)
+        decay_factor = math.exp(-_DAMPING * dt)
+        self._angular_velocity *= decay_factor
 
         # Vent: rapidly damp both angle and velocity toward zero
         if vent_held:
-            self._angular_velocity *= (1.0 - _VENT_DAMP_RATE * dt)
-            self._angle            *= (1.0 - _VENT_DAMP_RATE * dt)
+            decay_factor = math.exp(-_VENT_DAMP_RATE * dt)
+            self._angular_velocity *= decay_factor
+            self._angle            *= decay_factor
 
         # Integrate
         self._angle += self._angular_velocity * dt
@@ -488,6 +490,28 @@ class SeismicStabilizer(GameMode):
                 # --- Read inputs ---
                 coolant_count = self._count_coolant_rods()
                 vent_held     = self._is_vent_held()
+
+                # NEW: Clamp encoder positions to prevent "wind-up" debt
+                max_ticks = int(_CABLE_MAX / _CABLE_STEP)
+
+                # Clamp Core
+                core_enc = self.core.hid.encoder_positions[_ENC_CORE]
+                if core_enc > max_ticks:
+                    self.core.hid.encoder_positions[_ENC_CORE] = max_ticks
+                elif core_enc < -max_ticks:
+                    self.core.hid.encoder_positions[_ENC_CORE] = -max_ticks
+
+                # Clamp Satellite
+                if self.sat:
+                    sat_enc = self.sat.hid.encoder_positions[_ENC_SAT]
+                    target_sat_max = self._sat_enc_offset + max_ticks
+                    target_sat_min = self._sat_enc_offset - max_ticks
+
+                    if sat_enc > target_sat_max:
+                        self.sat.hid.encoder_positions[_ENC_SAT] = target_sat_max
+                    elif sat_enc < target_sat_min:
+                        self.sat.hid.encoder_positions[_ENC_SAT] = target_sat_min
+
                 left_tension, right_tension = self._get_cable_tensions()
 
                 # --- Overheat management ---
