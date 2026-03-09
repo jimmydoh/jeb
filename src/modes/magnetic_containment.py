@@ -187,6 +187,14 @@ class MagneticContainment(GameMode):
         # Score accumulator for fractional seconds
         self._score_accumulator = 0.0
 
+        # Pre-compute safe zone ring pixels to save CPU in the render loop
+        self._safe_ring_pixels = []
+        for x in range(_MATRIX_W):
+            for y in range(_MATRIX_H):
+                dist = math.sqrt((x - _CENTER_X) ** 2 + (y - _CENTER_Y) ** 2)
+                if abs(dist - _SAFE_RADIUS) < _SAFE_RING_THICKNESS:
+                    self._safe_ring_pixels.append((x, y))
+
     # ------------------------------------------------------------------
     # Satellite helpers
     # ------------------------------------------------------------------
@@ -227,8 +235,11 @@ class MagneticContainment(GameMode):
                 pass
 
     def _play_encoder_click(self):
-        """Play a short tactile click tone for encoder input feedback."""
-        self.core.synth.play_note(880.0, "UI_SELECT", duration=0.01)
+        """Play a short tactile click tone for encoder input feedback (throttled)."""
+        now = ticks_ms()
+        if ticks_diff(now, getattr(self, '_last_click_ms', 0)) > 50:
+            self.core.synth.play_note(880.0, "UI_SELECT", duration=0.01)
+            self._last_click_ms = now
 
     def _update_segment_display(self):
         """Send Containment Integrity to the 14-segment display (throttled)."""
@@ -343,12 +354,8 @@ class MagneticContainment(GameMode):
             self.core.matrix.draw_pixel(cx, y, Palette.CYAN, brightness=0.08)
 
         # ---- Safe zone corners (dim blue) ----
-        safe_r = int(_SAFE_RADIUS)
-        for x in range(_MATRIX_W):
-            for y in range(_MATRIX_H):
-                dist = math.sqrt((x - _CENTER_X) ** 2 + (y - _CENTER_Y) ** 2)
-                if abs(dist - _SAFE_RADIUS) < _SAFE_RING_THICKNESS:
-                    self.core.matrix.draw_pixel(x, y, Palette.BLUE, brightness=0.12)
+        for px, py in self._safe_ring_pixels:
+            self.core.matrix.draw_pixel(px, py, Palette.BLUE, brightness=0.12)
 
         # ---- Stasis field effect (blue pulse overlay when active) ----
         if self._stasis_active:
@@ -626,6 +633,10 @@ class MagneticContainment(GameMode):
             arm_now = self._sat_arm()
             mot_now = self._sat_momentary_up()
 
+            # Edge detection for the momentary switch
+            mot_rising = mot_now and not getattr(self, '_last_mot_state', False)
+            self._last_mot_state = mot_now
+
             if self._stasis_active:
                 self._stasis_timer -= delta_s
                 if self._stasis_timer <= 0:
@@ -642,7 +653,7 @@ class MagneticContainment(GameMode):
                     self._stasis_cooldown = max(0.0, self._stasis_cooldown - delta_s)
 
                 # Trigger stasis: armed + momentary up, no cooldown
-                if arm_now and mot_now and self._stasis_cooldown <= 0:
+                if arm_now and mot_rising and self._stasis_cooldown <= 0:
                     self._stasis_active = True
                     self._stasis_timer  = _STASIS_DURATION
                     asyncio.create_task(
