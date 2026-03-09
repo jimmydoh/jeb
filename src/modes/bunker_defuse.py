@@ -485,7 +485,7 @@ class BunkerDefuse(GameMode):
             "PRESS SEQUENCE",
             f"BTN x{target} TIMES",
             "COUNT CAREFULLY",
-            "NO MORE NO LESS",
+            "THEN LIFT GUARD",
         ]
 
     # ------------------------------------------------------------------
@@ -746,10 +746,17 @@ class BunkerDefuse(GameMode):
             return None
 
         if mtype == _MOD_ARM:
-            # Guarded toggle must be UP before button presses are counted
             arm_up = self._sat_latching(_SW_ARM)
-            if btn_rising:
+
+            # Enforce starting with the guard down
+            if not mod.get("ready", False):
                 if arm_up:
+                    return None # Ignore button presses until they lower the guard
+                else:
+                    mod["ready"] = True
+
+            if btn_rising:
+                if arm_up and mod.get("ready", False):
                     mod["press_count"] = mod.get("press_count", 0) + 1
                     if mod["press_count"] >= mod["confirm_count"]:
                         return "SOLVED"
@@ -758,14 +765,21 @@ class BunkerDefuse(GameMode):
             return None
 
         if mtype == _MOD_SEQUENCE:
-            # Count exact button presses; over-pressing triggers a strike
+            # Button increments the count
             if btn_rising:
                 mod["press_count"] = mod.get("press_count", 0) + 1
-                if mod["press_count"] == mod["target_presses"]:
+                # Optional: Add a little audio tick so they know it registered!
+                self.core.synth.play_note(800.0, "UI_TICK", duration=0.05)
+
+            # Lifting the Guarded Toggle submits the count
+            arm_up = self._sat_latching(_SW_ARM)
+            if arm_up and not mod.get("arm_was_up", False):
+                if mod.get("press_count", 0) == mod["target_presses"]:
                     return "SOLVED"
-                if mod["press_count"] > mod["target_presses"]:
-                    await self._on_strike("TOO MANY!")
-                    mod["press_count"] = 0
+                else:
+                    await self._on_strike("WRONG COUNT!")
+                    mod["press_count"] = 0 # Reset count on strike
+            mod["arm_was_up"] = arm_up
             return None
 
         return None
@@ -818,6 +832,11 @@ class BunkerDefuse(GameMode):
 
         defused = self._current_mod_idx
         total   = len(self._modules)
+
+        # NEW: Calculate partial score before displaying
+        modules_score = defused * _POINTS_PER_MODULE
+        strike_penalty = self._strikes * _STRIKE_PENALTY_SCORE
+        self.score = max(0, modules_score - strike_penalty)
 
         self.core.display.update_header("BOOM! GAME OVER")
         self.core.display.update_status(
