@@ -540,6 +540,7 @@ MODE_REGISTRY |= {
         "class_name": "OrbitalStrike",
         "icon": "ORBITAL_STRIKE",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 3,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
