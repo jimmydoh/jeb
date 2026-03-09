@@ -1068,6 +1068,27 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # Mecha Forge – 16×16 pixel-art robot icon
+    # Body: CYAN (51), Eyes: WHITE (4), Chest accents: GOLD (22)
+    MECHA_FORGE = bytes([
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  # row  0
+         0,  0,  0,  0,  0,  0, 51, 51, 51,  0,  0,  0,  0,  0,  0,  0,  # row  1  antenna
+         0,  0,  0,  0,  0, 51, 51, 51, 51, 51,  0,  0,  0,  0,  0,  0,  # row  2  head top
+         0,  0,  0,  0, 51, 51, 51, 51, 51, 51, 51,  0,  0,  0,  0,  0,  # row  3  head
+         0,  0,  0,  0, 51,  4, 51, 51, 51,  4, 51,  0,  0,  0,  0,  0,  # row  4  eyes
+         0,  0,  0,  0, 51, 51, 51, 51, 51, 51, 51,  0,  0,  0,  0,  0,  # row  5  face
+         0,  0,  0,  0,  0, 51, 51, 51, 51, 51,  0,  0,  0,  0,  0,  0,  # row  6  chin
+         0,  0,  0,  0,  0,  0, 51, 51, 51,  0,  0,  0,  0,  0,  0,  0,  # row  7  neck
+         0,  0, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51,  0,  0,  0,  # row  8  shoulder
+         0,  0,  0, 51, 51, 22, 51, 51, 51, 22, 51, 51,  0,  0,  0,  0,  # row  9  chest+accents
+         0,  0,  0, 51, 51, 51, 51, 51, 51, 51, 51, 51,  0,  0,  0,  0,  # row 10  chest
+         0,  0,  0,  0, 51, 51, 51, 51, 51, 51, 51,  0,  0,  0,  0,  0,  # row 11  waist
+         0,  0,  0,  0,  0, 51, 51,  0,  0, 51, 51,  0,  0,  0,  0,  0,  # row 12  upper legs
+         0,  0,  0,  0,  0, 51, 51,  0,  0, 51, 51,  0,  0,  0,  0,  0,  # row 13  lower legs
+         0,  0,  0,  0, 51, 51, 51,  0,  0, 51, 51, 51,  0,  0,  0,  0,  # row 14  feet
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  # row 15
+    ])
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -1102,6 +1123,7 @@ class Icons:
         "PLASMA": PLASMA,
         "WIREWORLD": WIREWORLD,
         "STARFIELD": STARFIELD,
+        "MECHA_FORGE": MECHA_FORGE,
         "IRON_CANOPY": IRON_CANOPY,
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,
