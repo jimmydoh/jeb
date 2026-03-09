@@ -410,3 +410,96 @@ def animate_static_resolve(matrix_manager, icon_data, clarity, color=None, brigh
 
     except Exception as e:
         print(f"Error in STATIC_RESOLVE animation: {e}")
+
+
+def animate_vanishing_point(matrix_manager, arch_offset, speed_fraction=0.0, fault_flash=False):
+    """
+    Renders a single frame of a 3D vanishing-point tunnel view.
+
+    Draws two converging track rails from the bottom corners to the vanishing
+    point near the top-centre of the matrix, plus horizontal support arches
+    that scroll toward the viewer.  The visual tempo is controlled by
+    arch_offset (advance it each game tick by speed * dt to produce motion).
+
+    Designed to be called once per game tick (synchronous).  The caller is
+    responsible for scheduling display refreshes.
+
+    Args:
+        matrix_manager: MatrixManager with draw_pixel, fill, width, height.
+        arch_offset: Float 0.0–<1.0 controlling arch scroll phase; wrap with % 1.0.
+        speed_fraction: Float 0.0–1.0 mapping train speed → visual intensity.
+            At 0.0 the rails are dim cyan; at 1.0 they are bright white-cyan.
+        fault_flash: Bool.  When True, draws a single-pixel red border on all
+            four edges to indicate an active fault alert.
+
+    Note:
+        Hardware writes are centralised in CoreManager.render_loop().
+        This function only updates the pixel buffer.
+    """
+    try:
+        w = matrix_manager.width
+        h = matrix_manager.height
+        vp_x = (w - 1) / 2.0   # vanishing-point x (fractional centre)
+        vp_y = 1                  # vanishing-point row (near top)
+        bot_y = h - 1
+
+        matrix_manager.fill(Palette.OFF, show=False, cancel_tasks=False)
+
+        # ── Rail brightness scales with speed ──
+        rail_bright = 0.3 + 0.7 * speed_fraction
+        arch_bright = 0.15 + 0.45 * speed_fraction
+
+        rail_color = (0, int(220 * rail_bright), int(255 * rail_bright))
+        arch_color = (0, int(60 * arch_bright), int(160 * arch_bright))
+
+        # ── Draw the two converging rails ──
+        for y in range(vp_y, bot_y + 1):
+            t = (y - vp_y) / max(1, bot_y - vp_y)   # 0 at horizon, 1 at bottom
+            left_x  = int(vp_x - t * vp_x + 0.5)
+            right_x = int(vp_x + t * (w - 1 - vp_x) + 0.5)
+            # Clamp to matrix bounds
+            left_x  = max(0, min(w - 1, left_x))
+            right_x = max(0, min(w - 1, right_x))
+
+            b = 0.3 + 0.7 * t   # brighter as rails come closer
+            matrix_manager.draw_pixel(left_x,  y, rail_color, brightness=b * rail_bright)
+            if right_x != left_x:
+                matrix_manager.draw_pixel(right_x, y, rail_color, brightness=b * rail_bright)
+
+        # ── Draw scrolling support arches ──
+        # Five evenly-spaced arches; arch_offset shifts their depth position
+        num_arches = 5
+        for i in range(num_arches):
+            d = ((i / num_arches) + arch_offset) % 1.0  # depth 0=far, 1=close
+            if d < 0.05:                                  # skip arches at the very horizon
+                continue
+            y = int(vp_y + d * (bot_y - vp_y) + 0.5)
+            if not (0 <= y < h):
+                continue
+            t = (y - vp_y) / max(1, bot_y - vp_y)
+            left_x  = int(vp_x - t * vp_x + 0.5) + 1
+            right_x = int(vp_x + t * (w - 1 - vp_x) + 0.5) - 1
+            left_x  = max(0, min(w - 1, left_x))
+            right_x = max(0, min(w - 1, right_x))
+            b = 0.2 + 0.8 * d  # nearer arches are brighter
+            for x in range(left_x, right_x + 1):
+                matrix_manager.draw_pixel(x, y, arch_color, brightness=b * arch_bright)
+
+        # ── Vanishing-point beacon (bright centre pixel) ──
+        vp_xi = int(vp_x + 0.5)
+        matrix_manager.draw_pixel(vp_xi, vp_y, (255, 255, 255), brightness=0.6)
+        if vp_xi + 1 < w:
+            matrix_manager.draw_pixel(vp_xi + 1, vp_y, (255, 255, 255), brightness=0.3)
+
+        # ── Fault-flash red border ──
+        if fault_flash:
+            border_color = Palette.RED
+            for x in range(w):
+                matrix_manager.draw_pixel(x, 0,     border_color, brightness=0.8)
+                matrix_manager.draw_pixel(x, h - 1, border_color, brightness=0.8)
+            for y in range(h):
+                matrix_manager.draw_pixel(0,     y, border_color, brightness=0.8)
+                matrix_manager.draw_pixel(w - 1, y, border_color, brightness=0.8)
+
+    except Exception as e:
+        print(f"Error in VANISHING_POINT animation: {e}")

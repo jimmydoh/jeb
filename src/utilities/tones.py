@@ -458,6 +458,31 @@ CHARGING = {
     ]
 }
 
+# Maglev Horn – two-note foghorn blast
+MAGLEV_HORN = {
+    'bpm': 60,
+    'sequence': [
+        ('A2', H), ('-', S), ('D3', Q)
+    ]
+}
+
+# Maglev Emergency Brake – descending squeal
+MAGLEV_BRAKE = {
+    'bpm': 180,
+    'sequence': [
+        ('A5', S), ('G5', S), ('F5', S), ('E5', S),
+        ('D5', S), ('C5', S), ('B4', S), ('A4', E)
+    ]
+}
+
+# Maglev Fault Alert – urgent triple beep
+MAGLEV_FAULT = {
+    'bpm': 200,
+    'sequence': [
+        ('C5', S), ('-', N32), ('C5', S), ('-', N32), ('C5', E)
+    ]
+}
+
 # --- TONE CALCULATOR ---
 def note(note_name):
     """Converts a note name (e.g., 'A4', 'C#5') to its frequency in Hz."""

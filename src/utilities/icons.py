@@ -735,6 +735,33 @@ class Icons:
     ])
 
     # -------------------------------------------------------------------------
+    # Maglev Express icon (16x16)
+    # Front-on view of a futuristic maglev train nose with headlights, track
+    # lines converging from the bottom corners, and a speed stripe.
+    # Colour key:
+    #   0=OFF  2=GRAY  3=SILVER  51=CYAN  41=GREEN  11=RED  31=YELLOW
+    # -------------------------------------------------------------------------
+    MAGLEV_EXPRESS = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  0
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  1
+         0,   0,   0,   2,   2,   2,   2,   2,   2,   2,   2,   2,   2,   0,   0,   0,  # Row  2  nose top
+         0,   0,   2,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   2,   0,   0,  # Row  3  nose body
+         0,   2,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   2,   0,  # Row  4  nose wide
+         0,   2,   3,  31,  31,   3,   3,   3,   3,   3,   3,  31,  31,   3,   2,   0,  # Row  5  headlights (yellow)
+         0,   2,   3,  51,  51,   3,   3,   2,   2,   3,   3,  51,  51,   3,   2,   0,  # Row  6  headlights (cyan) + centre stripe
+         0,   2,   3,   3,   3,   3,   2,   3,   3,   2,   3,   3,   3,   3,   2,   0,  # Row  7  windshield frame
+         0,   2,   3,   3,   3,  51,  51,  51,  51,  51,  51,   3,   3,   3,   2,   0,  # Row  8  windshield glass (cyan)
+         0,   2,   3,   3,   3,   3,   3,  51,  51,   3,   3,   3,   3,   3,   2,   0,  # Row  9  windshield lower
+         0,   0,   2,   2,   2,   2,   2,   2,   2,   2,   2,   2,   2,   2,   0,   0,  # Row 10  skirt top
+         0,   0,   0,   2,   2,   2,   2,   2,   2,   2,   2,   2,   2,   0,   0,   0,  # Row 11  skirt body
+         0,   0,   0,   0,   2,   0,   0,   0,   0,   0,   0,   2,   0,   0,   0,   0,  # Row 12  track suggestion
+        51,   0,   0,   0,   2,   0,   0,   0,   0,   0,   0,   2,   0,   0,   0,  51,  # Row 13  track rails diverge
+        51,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  51,  # Row 14  outer rails
+        51,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  51,  # Row 15  bottom rail hint
+    ])
+
+    # -------------------------------------------------------------------------
     # Virtual Pet cat sprites (16x16)
     # Colour key:
     #   0=OFF  1=CHARCOAL  2=GRAY  3=SILVER  4=WHITE
@@ -1109,6 +1136,7 @@ class Icons:
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
         "ARTILLERY_COMMAND": ARTILLERY_COMMAND,
         "ENIGMA_BYTE": ENIGMA_BYTE,
+        "MAGLEV_EXPRESS": MAGLEV_EXPRESS,
         "VIRTUAL_PET": VIRTUAL_PET,
         "CAT_IDLE": CAT_IDLE,
         "CAT_EAT": CAT_EAT,
