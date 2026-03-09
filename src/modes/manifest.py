@@ -310,6 +310,25 @@ MODE_REGISTRY |= {
         "requires": ["CORE"],
         "settings": []
     },
+    "GROOVEBOX": {
+        "id": "GROOVEBOX",
+        "name": "JEB-808",
+        "module_path": "modes.groovebox",
+        "class_name": "GrooveboxMode",
+        "icon": "GROOVEBOX",
+        "menu": "MAIN",
+        "order": 120,
+        "requires": ["CORE"],
+        "optional": ["INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "bpm",
+                "label": "BPM",
+                "options": ["80", "100", "120", "140", "160"],
+                "default": "120"
+            }
+        ]
+    },
     "RHYTHM": {
         "id": "RHYTHM",
         "name": "NEON BEATS",

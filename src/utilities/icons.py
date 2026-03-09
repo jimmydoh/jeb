@@ -1068,6 +1068,42 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # 16×16 icon for the JEB-808 Groovebox sequencer mode.
+    # Each pair of rows represents one of the 8 instrument tracks; columns are
+    # time steps.  A handful of steps per track are lit in that track's colour
+    # to give the icon the feel of a real step-sequencer pattern.
+    #
+    # Palette indices used:
+    #   11 = RED    (KICK)    21 = ORANGE (SNARE)   31 = YELLOW (HIHAT)
+    #   41 = GREEN  (TOM)     51 = CYAN   (BASS)    71 = MAGENTA (LEAD)
+    #   61 = BLUE   (PAD)      4 = WHITE  (FX)
+    GROOVEBOX = bytes([
+        # Track 0 – KICK  (RED 11): steps 0, 4, 8, 12
+        11,  0,  0,  0, 11,  0,  0,  0, 11,  0,  0,  0, 11,  0,  0,  0,
+        11,  0,  0,  0, 11,  0,  0,  0, 11,  0,  0,  0, 11,  0,  0,  0,
+        # Track 1 – SNARE (ORANGE 21): steps 4, 12
+         0,  0,  0,  0, 21,  0,  0,  0,  0,  0,  0,  0, 21,  0,  0,  0,
+         0,  0,  0,  0, 21,  0,  0,  0,  0,  0,  0,  0, 21,  0,  0,  0,
+        # Track 2 – HIHAT (YELLOW 31): all even steps
+        31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0,
+        31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0,
+        # Track 3 – TOM   (GREEN 41): steps 6, 14
+         0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0, 41,  0,
+         0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0, 41,  0,
+        # Track 4 – BASS  (CYAN 51): steps 0, 3, 8, 11
+        51,  0,  0, 51,  0,  0,  0,  0, 51,  0,  0, 51,  0,  0,  0,  0,
+        51,  0,  0, 51,  0,  0,  0,  0, 51,  0,  0, 51,  0,  0,  0,  0,
+        # Track 5 – LEAD  (MAGENTA 71): steps 4, 7, 12, 15
+         0,  0,  0,  0, 71,  0,  0, 71,  0,  0,  0,  0, 71,  0,  0, 71,
+         0,  0,  0,  0, 71,  0,  0, 71,  0,  0,  0,  0, 71,  0,  0, 71,
+        # Track 6 – PAD   (BLUE 61): steps 0, 8
+        61,  0,  0,  0,  0,  0,  0,  0, 61,  0,  0,  0,  0,  0,  0,  0,
+        61,  0,  0,  0,  0,  0,  0,  0, 61,  0,  0,  0,  0,  0,  0,  0,
+        # Track 7 – FX    (WHITE 4): steps 2, 10
+         0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,
+         0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,
+    ])
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -1102,6 +1138,7 @@ class Icons:
         "PLASMA": PLASMA,
         "WIREWORLD": WIREWORLD,
         "STARFIELD": STARFIELD,
+        "GROOVEBOX": GROOVEBOX,
         "IRON_CANOPY": IRON_CANOPY,
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,
