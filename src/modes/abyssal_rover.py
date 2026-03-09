@@ -262,6 +262,7 @@ class AbyssalRover(GameMode):
         """Render the 5×5 lit viewport centered on the rover to the LED matrix.
 
         All matrix pixels outside the viewport are left dark.
+        A single 'nose' indicator pixel (yellow) marks the facing direction.
         """
         r        = _VIEWPORT_RADIUS
         cx, cy   = _MATRIX_CENTER_X, _MATRIX_CENTER_Y
@@ -271,17 +272,17 @@ class AbyssalRover(GameMode):
 
         self.core.matrix.clear()
 
-        for dy in range(-r, r + 1):
-            for dx in range(-r, r + 1):
-                mx = cx + dx
-                my = cy + dy
-                wx = self._rover_x + dx
-                wy = self._rover_y + dy
+        for vdy in range(-r, r + 1):
+            for vdx in range(-r, r + 1):
+                mx = cx + vdx
+                my = cy + vdy
+                wx = self._rover_x + vdx
+                wy = self._rover_y + vdy
 
                 if not (0 <= mx < _MATRIX_W and 0 <= my < _MATRIX_H):
                     continue
 
-                if dx == 0 and dy == 0:
+                if vdx == 0 and vdy == 0:
                     color = _COL_ROVER
                 elif wx == exit_wx and wy == exit_wy:
                     color = _COL_EXIT
@@ -293,12 +294,13 @@ class AbyssalRover(GameMode):
                 if color != Palette.OFF:
                     self.core.matrix.draw_pixel(mx, my, color)
 
-                # NEW: Draw a 'nose' pixel to show facing direction
-                dx, dy = _DIRECTIONS[self._facing]
-                nose_mx = _MATRIX_CENTER_X + dx
-                nose_my = _MATRIX_CENTER_Y + dy
-                if 0 <= nose_mx < _MATRIX_W and 0 <= nose_my < _MATRIX_H:
-                    self.core.matrix.draw_pixel(nose_mx, nose_my, Palette.YELLOW)
+        # Draw a single 'nose' pixel to show the rover's facing direction.
+        # Uses separate variables so the loop variables above are not shadowed.
+        ndx, ndy = _DIRECTIONS[self._facing]
+        nose_mx  = _MATRIX_CENTER_X + ndx
+        nose_my  = _MATRIX_CENTER_Y + ndy
+        if 0 <= nose_mx < _MATRIX_W and 0 <= nose_my < _MATRIX_H:
+            self.core.matrix.draw_pixel(nose_mx, nose_my, Palette.YELLOW)
 
     def _render_flare(self):
         """Scale the entire maze to 16×16 and render it (flare overview)."""
