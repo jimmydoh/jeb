@@ -70,7 +70,7 @@ class LunarSalvage(GameMode):
         self._gravity_mult = 1.0
         self._crash_speed = self.CRASH_SPEED
         self._reset_ship()
-        self._pad_x = 0
+        self._new_pad()
         self._tractor_hold = 0
         self._salvage_count = 0
 
@@ -115,7 +115,10 @@ class LunarSalvage(GameMode):
         # Gravity (positive = downward in screen coords)
         self.vel_y += self._gravity()
 
-        # Thrust in the current heading direction
+        # Thrust in the current heading direction.
+        # Angle is measured counter-clockwise from the positive X-axis, with
+        # screen Y increasing downward – so thrust "up" (angle=90°) subtracts
+        # from vel_y to move against gravity.
         if thrust_on:
             angle_rad = math.radians(self.angle)
             self.vel_x += math.cos(angle_rad) * self.THRUST_FORCE

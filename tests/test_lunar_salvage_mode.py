@@ -180,8 +180,8 @@ def test_physics_thrust_up_at_90_degrees():
     mode.vel_y = 0.0
     mode.vel_x = 0.0
     mode._update_physics(thrust_on=True)
-    # vel_y = GRAVITY_BASE - THRUST_FORCE  (thrust upward = negative screen-y delta)
-    expected = mode.GRAVITY_BASE - mode.THRUST_FORCE
+    # vel_y = gravity() - THRUST_FORCE  (thrust upward = negative screen-y delta)
+    expected = mode._gravity() - mode.THRUST_FORCE
     assert abs(mode.vel_y - expected) < 1e-6, (
         f"vel_y should be {expected:.4f}, got {mode.vel_y:.4f}"
     )
@@ -196,7 +196,7 @@ def test_physics_thrust_right_at_0_degrees():
     mode.vel_y = 0.0
     mode._update_physics(thrust_on=True)
     assert mode.vel_x > 0, "Thrust at 0° should increase vel_x"
-    assert abs(mode.vel_y - mode.GRAVITY_BASE) < 1e-6, (
+    assert abs(mode.vel_y - mode._gravity()) < 1e-6, (
         "Thrust at 0° should not add vertical force beyond gravity"
     )
     print(f"✓ Thrust at 0°: vel_x = {mode.vel_x:.4f}")
