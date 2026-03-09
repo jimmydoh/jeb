@@ -260,6 +260,25 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "LUNAR_SALVAGE": {
+        "id": "LUNAR_SALVAGE",
+        "name": "LUNAR SALVAGE",
+        "module_path": "modes.lunar_salvage",
+        "class_name": "LunarSalvage",
+        "icon": "LUNAR_SALVAGE",
+        "menu": "MAIN",
+        "has_tutorial": False,
+        "order": 65,
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY", "NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
     "DATA_FLOW": {
         "id": "DATA_FLOW",
         "name": "DATA FLOW",
