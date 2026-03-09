@@ -690,6 +690,25 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "MAGNETIC_CONTAINMENT": {
+        "id": "MAGNETIC_CONTAINMENT",
+        "name": "MAG CONTAINMENT",
+        "module_path": "modes.magnetic_containment",
+        "class_name": "MagneticContainment",
+        "icon": "MAGNETIC_CONTAINMENT",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
     "BUNKER_DEFUSE": {
         "id": "BUNKER_DEFUSE",
         "name": "BUNKER DEFUSE",
