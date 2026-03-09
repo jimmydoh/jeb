@@ -210,6 +210,9 @@ class ArtilleryCommand(GameMode):
         # LED state cache to avoid flooding UART
         self._last_led_states = [None] * _CHARGE_TOGGLE_COUNT
 
+        # Segment display cache to avoid flooding UART
+        self._last_segment_text = ""
+
     # ------------------------------------------------------------------
     # Satellite HID helpers
     # ------------------------------------------------------------------
@@ -261,9 +264,11 @@ class ArtilleryCommand(GameMode):
 
     def _send_segment(self, text):
         """Send text string to the satellite 14-segment display (max 8 chars)."""
-        if self.sat:
+        safe_text = text[:8]
+        if self.sat and self._last_segment_text != safe_text:
             try:
-                self.sat.send("DSP", text[:8])
+                self.sat.send("DSP", safe_text)
+                self._last_segment_text = safe_text
             except Exception:
                 pass
 
@@ -346,6 +351,11 @@ class ArtilleryCommand(GameMode):
         # Clamp to valid arcsin domain
         sin_2theta = max(-1.0, min(1.0, sin_2theta))
         elevation = math.degrees(math.asin(sin_2theta)) / 2.0
+
+        # Force high-arc trajectory for Starshells
+        if shell_type == SHELL_STARSHELL:
+            elevation = 90.0 - elevation
+
         return max(1, min(89, round(elevation)))
 
     # ------------------------------------------------------------------
@@ -355,6 +365,7 @@ class ArtilleryCommand(GameMode):
     def _new_order(self):
         """Generate a new fire order (bearing, distance, shell type)."""
         self._order_bearing  = random.randint(0, 359)
+
         # Round distance to nearest 100m for clean keypad entry
         dist_units = random.randint(_DIST_MIN // 100, _DIST_MAX // 100)
         self._order_distance = dist_units * 100
@@ -363,8 +374,11 @@ class ArtilleryCommand(GameMode):
         # Shell type is part of the order; rotary switch must be dialled to match
         self._order_shell = random.choice([SHELL_HE, SHELL_AP, SHELL_STARSHELL])
 
-        # Bearing that the player must aim at
-        self._req_bearing = self._order_bearing
+        # Generate wind: -15 to +15 degrees
+        self._wind_offset = random.choice([-15, -10, -5, 5, 10, 15])
+
+        # The required bearing is the ordered bearing countered by the wind
+        self._req_bearing = (self._order_bearing - self._wind_offset) % 360
 
         # Reset distance entry buffer
         self._dist_entered     = ""
@@ -501,10 +515,12 @@ class ArtilleryCommand(GameMode):
     async def _run_phase_order(self):
         """Phase 1 – Display the incoming fire order."""
         shell_name = _SHELL_NAMES.get(self._order_shell, self._order_shell)
+        wind_dir = "E" if self._wind_offset > 0 else "W"
         self.core.display.update_status(
-            f"FIRE ORDER #{self._mission_count + 1}",
-            f"BRG:{self._order_bearing:03d} D:{self._order_distance}m {shell_name}"
+            f"FIRE ORDER #{self._mission_count + 1} | {shell_name} |",
+            f"BRG:{self._order_bearing:03d} D:{self._order_distance}m "
         )
+        self.core.display.update_footer(f"WIND:{abs(self._wind_offset)}°{wind_dir}")
         self._send_segment("INCOMNG ")
         asyncio.create_task(
             self.core.synth.play_sequence(tones.NOTIFY_INBOX, patch="BEEP")
