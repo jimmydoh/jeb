@@ -670,6 +670,25 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "ORBITAL_DOCKING": {
+        "id": "ORBITAL_DOCKING",
+        "name": "ORBITAL DOCKING",
+        "module_path": "modes.orbital_docking",
+        "class_name": "OrbitalDocking",
+        "icon": "ORBITAL_DOCKING",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY", "NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
 }
 
 __all__ = ["MODE_REGISTRY"]

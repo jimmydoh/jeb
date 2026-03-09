@@ -734,6 +734,29 @@ class Icons:
          0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15
     ])
 
+    # Orbital Docking: targeting crosshair with expanding docking ring
+    # Colour key: 0=OFF  21=ORANGE(docking port)  41=GREEN(crosshair arms)
+    #             51=CYAN(outer ring)  4=WHITE(centre dot)
+    ORBITAL_DOCKING = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  0  top arm
+         0,   0,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  1
+         0,  51,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,  51,   0,   0,  # Row  2  outer ring corners
+         0,   0,  51,   0,   0,   0,   0,  41,   0,   0,   0,   0,  51,   0,   0,   0,  # Row  3
+         0,   0,   0,  51,   0,   0,   0,  41,   0,   0,   0,  51,   0,   0,   0,   0,  # Row  4
+         0,   0,   0,   0,   0,  51,   0,  41,   0,  51,   0,   0,   0,   0,   0,   0,  # Row  5  inner ring
+         0,   0,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  6
+        41,  41,  41,  41,  41,  41,  41,   4,  41,  41,  41,  41,  41,  41,  41,  41,  # Row  7  horizontal arm + centre
+         0,   0,   0,   0,   0,   0,   0,  21,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  8  docking port (orange)
+         0,   0,   0,   0,   0,  51,   0,  41,   0,  51,   0,   0,   0,   0,   0,   0,  # Row  9  inner ring
+         0,   0,   0,  51,   0,   0,   0,  41,   0,   0,   0,  51,   0,   0,   0,   0,  # Row 10
+         0,   0,  51,   0,   0,   0,   0,  41,   0,   0,   0,   0,  51,   0,   0,   0,  # Row 11
+         0,  51,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,  51,   0,   0,  # Row 12  outer ring corners
+         0,   0,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 13
+         0,   0,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 14
+         0,   0,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15  bottom arm
+    ])
+
     # -------------------------------------------------------------------------
     # Virtual Pet cat sprites (16x16)
     # Colour key:
@@ -1109,6 +1132,7 @@ class Icons:
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
         "ARTILLERY_COMMAND": ARTILLERY_COMMAND,
         "ENIGMA_BYTE": ENIGMA_BYTE,
+        "ORBITAL_DOCKING": ORBITAL_DOCKING,
         "VIRTUAL_PET": VIRTUAL_PET,
         "CAT_IDLE": CAT_IDLE,
         "CAT_EAT": CAT_EAT,
