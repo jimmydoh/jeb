@@ -600,6 +600,7 @@ MODE_REGISTRY |= {
         "class_name": "ArtilleryCommand",
         "icon": "ARTILLERY_COMMAND",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 6,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [

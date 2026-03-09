@@ -144,21 +144,6 @@ class ArtilleryCommand(GameMode):
             - 14-Segment Display: Phase readout / elevation / bearing
     """
 
-    METADATA = {
-        "id": "ARTILLERY_COMMAND",
-        "name": "ARTY COMMAND",
-        "icon": "ARTILLERY_COMMAND",
-        "requires": ["CORE", "INDUSTRIAL"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["NORMAL", "HARD", "INSANE"],
-                "default": "NORMAL"
-            }
-        ]
-    }
-
     def __init__(self, core):
         super().__init__(core, "ARTY COMMAND", "Steampunk Artillery Simulator")
 
@@ -212,6 +197,187 @@ class ArtilleryCommand(GameMode):
 
         # Segment display cache to avoid flooding UART
         self._last_segment_text = ""
+
+    async def run_tutorial(self):
+        """
+        A guided, non-interactive demonstration of a Fire Mission.
+
+        The Voiceover Script (audio/tutes/arty_tute.wav) ~ 55 seconds:
+            [0:00] "Gunner, welcome to Artillery Command. You must manually load, aim, and fire the big gun."
+            [0:06] "When a fire order arrives, note the bearing, distance, and shell type."
+            [0:12] "Phase one. Enter the required distance using the numeric keypad."
+            [0:17] "Phase two. Turn the rotary switch to select the correct shell type."
+            [0:22] "Phase three. Flip the toggle switches to load the required powder charge bags."
+            [0:28] "Phase four. Use the core dial for bearing, and the satellite dial for elevation."
+            [0:34] "Hold the momentary switch up or down to change your aiming speed."
+            [0:39] "Phase five. Lift the guarded master arm, and hold the momentary switch UP to ram the round home."
+            [0:46] "Phase six. Press the big red button to fire!"
+            [0:50] "Clear your toggles and disarm the panel for the next mission. Good luck."
+            [0:55] (End of file)
+        """
+        await self.core.clean_slate()
+
+        # Ensure satellite is connected
+        if not self.sat or not self.sat.is_active:
+            self.core.display.update_status("ARTY COMMAND", "SAT OFFLINE - ABORT")
+            await asyncio.sleep(2)
+            return "TUTORIAL_FAILED"
+
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/arty_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # Base mock setup
+        self._mission_count = 0
+        self._order_bearing = 120
+        self._order_distance = 4500
+        self._order_shell = "AP"
+        self._min_charges = 3
+        self._req_elevation = 45
+        self._req_bearing = 120
+        self._player_elevation = 0
+        self._player_bearing = 0
+        self._wind_offset = 0
+
+        # [0:00 - 0:06] "Gunner, welcome to Artillery Command..."
+        self.core.display.update_header("-ARTY COMMAND-")
+        self.core.display.update_status("MANUAL FIRE CONTROL", "STAND BY")
+        self.core.matrix.show_icon("ARTILLERY_COMMAND", clear=True)
+        await asyncio.sleep(6.0)
+
+        # [0:06 - 0:12] "When a fire order arrives, note the bearing, distance..."
+        self.core.display.update_status(
+            f"FIRE ORDER #1 | AP |",
+            f"BRG:{self._order_bearing:03d} D:{self._order_distance}m "
+        )
+        self.core.display.update_footer("WIND: 0°")
+        self._send_segment("INCOMNG ")
+        self.core.synth.play_sequence(tones.NOTIFY_INBOX, patch="BEEP")
+        self._render_target_map()
+        await asyncio.sleep(6.0)
+
+        # [0:12 - 0:17] "Phase one. Enter the required distance using the numeric keypad."
+        self._send_segment("        ")
+        demo_dist = "4500"
+        entered = ""
+        for char in demo_dist:
+            entered += char
+            self.core.display.update_status(f"TYPE: {demo_dist}m", f"ENTERED: {entered}")
+            self._send_segment(entered.ljust(4))
+            self.core.synth.play_note(880.0, "BEEP", duration=0.05)
+            await asyncio.sleep(0.6)
+
+        self.core.synth.play_note(1200.0, "SUCCESS", duration=0.1)
+        await asyncio.sleep(2.6)
+
+        # [0:17 - 0:22] "Phase two. Turn the rotary switch to select the correct shell type."
+        self.core.display.update_status("SELECT SHELL TYPE", "REQUIRED: AP")
+        self._send_segment("SHL:HE  ")
+        await asyncio.sleep(1.5)
+
+        # Switch from HE to AP
+        self.core.display.update_status("REQUIRED: AP", "SELECTED: AP")
+        self._send_segment("SHL:APOK")
+        self.core.synth.play_note(1000.0, "SUCCESS", duration=0.1)
+        await asyncio.sleep(3.5)
+
+        # [0:22 - 0:28] "Phase three. Flip the toggle switches to load the required powder..."
+        self.core.display.update_status("LOAD CHARGE BAGS", "MINIMUM: 3 BAGS")
+        self._send_segment("MIN:3   ")
+        await asyncio.sleep(1.5)
+
+        # Load 3 charges
+        for i in range(3):
+            self._set_sat_led(i, Palette.ORANGE)
+            self._send_segment(f"CHG:{i+1}   ")
+            self.core.display.update_status(f"BAGS: {i+1}/8", "MIN 3 TO CONTINUE")
+            self.core.synth.play_sequence(tones.UI_TICK, patch="CLICK")
+            await asyncio.sleep(0.8)
+
+        self._send_segment("CHG:3RDY")
+        self.core.synth.play_note(1100.0, "SUCCESS", duration=0.1)
+        await asyncio.sleep(2.1)
+
+        # [0:28 - 0:34] "Phase four. Use the core dial for bearing, and the satellite dial..."
+        self.core.display.update_status("AIM CANNON", "ELV:45  BRG:120")
+        self._send_segment("E00B000 ")
+
+        # Puppeteer aiming with dual encoders
+        for i in range(1, 16):
+            self._player_elevation = min(45, i * 3)
+            self._player_bearing = min(120, i * 8)
+            self.core.display.update_status(
+                f"ELV:{self._player_elevation:02d}° [45°]  BRG:{self._player_bearing:03d}°",
+                f"ERR E:{45-self._player_elevation:02d} B:{120-self._player_bearing:03d} SPD:FAST"
+            )
+            self._send_segment(f"E{self._player_elevation:02d}B{self._player_bearing:03d}")
+            self._render_ballistic_arc()
+            self.core.synth.play_note(660.0, "CLICK", duration=0.03)
+            await asyncio.sleep(0.15)
+
+        await asyncio.sleep(3.7)
+
+        # [0:34 - 0:39] "Hold the momentary switch up or down to change your aiming speed."
+        self.core.display.update_status(
+            f"ELV:{self._player_elevation:02d}° [45°]  BRG:{self._player_bearing:03d}°",
+            f"ERR E:00 B:00 SPD:FINE"
+        )
+        await asyncio.sleep(1.0)
+        self.core.synth.play_note(1200.0, "SUCCESS", duration=0.15)
+        self._send_segment("AIM LOCK")
+        await asyncio.sleep(4.0)
+
+        # [0:39 - 0:46] "Phase five. Lift the guarded master arm, and hold the momentary switch UP..."
+        self.core.display.update_status("RAM HOME & LOCK", "ARM GUARD + HOLD UP")
+        self._send_segment("RAM HME ")
+        self.core.synth.play_sequence(tones.ALARM, patch="ALARM")
+
+        # Turn loaded charge bags cyan
+        for i in range(3):
+            self._set_sat_led(i, Palette.CYAN)
+
+        for pct in range(0, 101, 20):
+            self._send_segment(f"RAM:{pct:3d}%")
+            self.core.display.update_status("RAMMING HOME...", f"HOLD: {pct/100 * 2.0:.1f}s / 2s  ({pct}%)")
+            await asyncio.sleep(0.4)
+
+        self.core.synth.play_note(1200.0, "SUCCESS", duration=0.15)
+        self._send_segment("LOCKED! ")
+        await asyncio.sleep(2.0)
+
+        # [0:46 - 0:50] "Phase six. Press the big red button to fire!"
+        self.core.display.update_status("READY TO FIRE", "PRESS BIG RED BUTTON")
+        self._send_segment("FIRE!!! ")
+        self.core.synth.play_sequence(tones.ALARM, patch="ALARM")
+        await asyncio.sleep(2.0)
+
+        # Fire!
+        self.core.display.update_status("ROUND FIRED!", "+250 PTS")
+        self._send_segment("FIRED!! ")
+        self.core.synth.play_sequence(tones.FIREBALL, patch="ALARM")
+        await self._animate_fire()
+        await asyncio.sleep(1.0)
+
+        # [0:50 - 0:55] "Clear your toggles and disarm the panel for the next mission. Good luck."
+        self.core.display.update_status("RESET HARDWARE", "CLEAR BAGS + ARM")
+        self._send_segment("RESET   ")
+
+        # Turn off LEDs
+        for i in range(3):
+            self._set_sat_led(i, Palette.OFF)
+
+        # Wait for the voice track to finish naturally
+        if hasattr(self.core.audio, 'wait_for_bus'):
+            await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+        else:
+            await asyncio.sleep(5.0)
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
 
     # ------------------------------------------------------------------
     # Satellite HID helpers
