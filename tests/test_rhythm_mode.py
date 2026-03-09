@@ -130,6 +130,7 @@ class _FakeCore:
 
     class _FakeLeds:
         def solid_led(self, *a, **kw): pass
+        def flash_led(self, *a, **kw): pass
 
     class _FakeSynth:
         def play_note(self, *a, **kw): pass
