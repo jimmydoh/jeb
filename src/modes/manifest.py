@@ -593,6 +593,25 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "ARTILLERY_COMMAND": {
+        "id": "ARTILLERY_COMMAND",
+        "name": "ARTY COMMAND",
+        "module_path": "modes.artillery_command",
+        "class_name": "ArtilleryCommand",
+        "icon": "ARTILLERY_COMMAND",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 6,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
 }
 
 __all__ = ["MODE_REGISTRY"]
