@@ -735,6 +735,31 @@ class Icons:
     ])
 
     # -------------------------------------------------------------------------
+    # Magnetic Containment: plasma ball enclosed in a magnetic field coil.
+    # Colour key:
+    #   0=OFF  51=CYAN (field lines)  61=BLUE (coil ring)  71=MAGENTA (plasma core)
+    # -------------------------------------------------------------------------
+    MAGNETIC_CONTAINMENT = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  0
+         0,   0,   0,   0,   0,  51,   0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  # Row  1  NW/NE field dots
+         0,   0,   0,  51,   0,   0,   0,   0,   0,   0,   0,   0,  51,   0,   0,   0,  # Row  2  diagonal field dots
+         0,   0,  51,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  51,   0,   0,  # Row  3  corner field dots
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  4
+         0,  51,   0,   0,   0,   0,  61,  61,  61,  61,   0,   0,   0,   0,  51,   0,  # Row  5  coil top arc
+         0,   0,   0,   0,   0,  61,   0,   0,   0,   0,  61,   0,   0,   0,   0,   0,  # Row  6  coil sides
+         0,   0,   0,   0,   0,  61,   0,  71,  71,   0,  61,   0,   0,   0,   0,   0,  # Row  7  plasma core
+         0,   0,   0,   0,   0,  61,   0,  71,  71,   0,  61,   0,   0,   0,   0,   0,  # Row  8  plasma core
+         0,   0,   0,   0,   0,  61,   0,   0,   0,   0,  61,   0,   0,   0,   0,   0,  # Row  9  coil sides
+         0,  51,   0,   0,   0,   0,  61,  61,  61,  61,   0,   0,   0,   0,  51,   0,  # Row 10  coil bottom arc
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 11
+         0,   0,  51,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  51,   0,   0,  # Row 12  corner field dots
+         0,   0,   0,  51,   0,   0,   0,   0,   0,   0,   0,   0,  51,   0,   0,   0,  # Row 13  diagonal field dots
+         0,   0,   0,   0,   0,  51,   0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  # Row 14  SW/SE field dots
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15
+    ])
+
+    # -------------------------------------------------------------------------
     # Virtual Pet cat sprites (16x16)
     # Colour key:
     #   0=OFF  1=CHARCOAL  2=GRAY  3=SILVER  4=WHITE
@@ -1109,6 +1134,7 @@ class Icons:
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
         "ARTILLERY_COMMAND": ARTILLERY_COMMAND,
         "ENIGMA_BYTE": ENIGMA_BYTE,
+        "MAGNETIC_CONTAINMENT": MAGNETIC_CONTAINMENT,
         "VIRTUAL_PET": VIRTUAL_PET,
         "CAT_IDLE": CAT_IDLE,
         "CAT_EAT": CAT_EAT,
