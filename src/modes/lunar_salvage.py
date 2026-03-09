@@ -74,6 +74,132 @@ class LunarSalvage(GameMode):
         self._tractor_hold = 0
         self._salvage_count = 0
 
+    async def run_tutorial(self):
+        """
+        A guided, non-interactive demonstration of Lunar Salvage.
+
+        The Voiceover Script (audio/tutes/lunar_tute.wav) ~ 35 seconds:
+            [0:00] "Welcome to Lunar Salvage. A physics-based test of momentum."
+            [0:05] "Gravity will constantly pull your ship down."
+            [0:09] "Use the dial to rotate your ship."
+            [0:13] "Hold button one to fire your main thruster and fight gravity."
+            [0:19] "Your goal is to hover gently over the cyan salvage pad."
+            [0:24] "Once hovering safely over the pad, hold button two to activate the tractor beam."
+            [0:30] "Collect the salvage, but don't hit the walls too hard. Good luck!"
+            [0:35] (End of file)
+        """
+        await self.core.clean_slate()
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/lunar_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # Setup safe initial state
+        self.ship_x = 8.0
+        self.ship_y = 2.0
+        self.vel_x = 0.0
+        self.vel_y = 0.0
+        self.angle = 90.0  # Pointing right
+        self._pad_x = 8
+        self._tractor_time = 0.0
+        self.crashed = False
+
+        # Internal helper to step physics for the tutorial
+        async def sim_frames(frames, thrust=False, tractor=False, angle_adj=0):
+            for _ in range(frames):
+                self.angle = (self.angle + angle_adj) % 360.0
+                rad = math.radians(self.angle)
+
+                # Apply Gravity
+                self.vel_y += 0.8 * 0.03 # _GRAVITY * delta_s
+
+                if thrust:
+                    self.vel_x += math.sin(rad) * 1.5 * 0.03 # _THRUST * delta_s
+                    self.vel_y -= math.cos(rad) * 1.5 * 0.03
+                    # Thrust visuals
+                    if random.random() < 0.5:
+                        self.core.matrix.draw_pixel(
+                            int(self.ship_x - math.sin(rad)*2),
+                            int(self.ship_y + math.cos(rad)*2),
+                            Palette.ORANGE, show=False
+                        )
+
+                self.ship_x += self.vel_x * 0.03
+                self.ship_y += self.vel_y * 0.03
+
+                # Floor collision logic
+                if self.ship_y >= self.core.matrix.height - 1:
+                    self.ship_y = self.core.matrix.height - 1
+                    self.vel_y = 0.0
+                    self.vel_x *= 0.8
+
+                self._render(tractor_active=tractor, frame_count=int(ticks_ms()/33))
+                self.core.matrix.show_frame()
+                await asyncio.sleep(0.03)
+
+        # [0:00 - 0:05] "Welcome to Lunar Salvage. A physics-based test of momentum."
+        self.core.display.update_status("LUNAR SALVAGE", "MOMENTUM PHYSICS")
+
+        # We assume you added LUNAR_SALVAGE to icons.py! If not, change to "DEFAULT"
+        self.core.matrix.show_icon("LUNAR_SALVAGE", clear=True)
+        await asyncio.sleep(5.0)
+
+        # [0:05 - 0:09] "Gravity will constantly pull your ship down."
+        self.core.display.update_status("GRAVITY", "PULLS YOU DOWN")
+        self.angle = 0 # Point UP
+        await sim_frames(110) # Let it fall gracefully
+
+        # [0:09 - 0:13] "Use the dial to rotate your ship."
+        self.core.display.update_status("NAVIGATION", "DIAL TO ROTATE")
+        await sim_frames(40, angle_adj=3)  # Rotate Right
+        await sim_frames(40, angle_adj=-3) # Rotate Left
+
+        # [0:13 - 0:19] "Hold button one to fire your main thruster..."
+        self.core.display.update_status("THRUST", "HOLD B1 TO FIRE")
+        self.core.leds.solid_led(0, Palette.ORANGE) # Light up Button 0
+        await sim_frames(120, thrust=True) # Fire thruster to arrest fall
+        self.core.leds.off_led(0)
+
+        # [0:19 - 0:24] "Your goal is to land gently on the cyan salvage pad."
+        self.core.display.update_status("SALVAGE PAD", "LAND GENTLY")
+        self.angle = 180 # Point DOWN
+        await sim_frames(60, thrust=True) # Push down toward pad
+        self.angle = 0   # Point UP
+        await sim_frames(70, thrust=True) # Retro-burn to slow down
+        await sim_frames(60) # Settle onto the pad
+
+        # [0:24 - 0:30] "Once hovering safely over the pad, hold button two..."
+        self.core.display.update_status("TRACTOR BEAM", "HOLD B2 TO COLLECT")
+        self.core.leds.solid_led(1, Palette.CYAN) # Light up Button 1
+
+        for _ in range(80):
+            self._tractor_time += 0.03
+            await sim_frames(1, thrust=True, tractor=True)
+
+        # Collection Success
+        self.core.display.update_status("SALVAGE SECURED!", "+100 PTS")
+        self.core.matrix.fill(Palette.GREEN, show=True)
+        self.core.synth.play_note(880.0, "SUCCESS", duration=0.1)
+        await asyncio.sleep(1.0)
+        self.core.leds.off_led(1)
+
+        # [0:30 - 0:35] "Collect the salvage, but don't hit the walls too hard..."
+        self.core.display.update_status("CAUTION", "WATCH YOUR SPEED")
+        self.core.matrix.clear()
+        self.core.matrix.show_frame()
+
+        # Wait for the audio track to finish naturally
+        if hasattr(self.core.audio, 'wait_for_bus'):
+            await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+        else:
+            await asyncio.sleep(4.0)
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
@@ -203,6 +329,13 @@ class LunarSalvage(GameMode):
             if nose_x != sx or nose_y != sy:
                 self.core.matrix.draw_pixel(nose_x, nose_y, Palette.YELLOW)
 
+        # Draw velocity vector (dim pixel showing momentum direction)
+        if abs(self.vel_x) > 0.5 or abs(self.vel_y) > 0.5:
+            vec_x = sx + int(self.vel_x * 1.5)
+            vec_y = sy + int(self.vel_y * 1.5)
+            if 0 <= vec_x < self.MATRIX_WIDTH and 0 <= vec_y < self.MATRIX_HEIGHT:
+                self.core.matrix.draw_pixel(vec_x, vec_y, Palette.GRAY, brightness=0.2)
+
         self.core.matrix.show_frame()
 
     # ------------------------------------------------------------------
@@ -253,8 +386,11 @@ class LunarSalvage(GameMode):
 
                 # --- Engine sound while thrusting ---
                 if thrust_on:
-                    freq = 100.0 + abs(self.vel_y) * 60.0
-                    self.core.synth.play_note(freq, "ENGINE_HUM", duration=0.05)
+                    # Throttle audio to ~10Hz to protect the I2C bus
+                    if now - getattr(self, '_last_thrust_audio', 0) > 100:
+                        freq = 100.0 + abs(self.vel_y) * 60.0
+                        self.core.synth.play_note(freq, "ENGINE_HUM", duration=0.1) # matched duration to throttle
+                        self._last_thrust_audio = now
 
                 # --- Physics ---
                 self._update_physics(thrust_on)
@@ -293,12 +429,16 @@ class LunarSalvage(GameMode):
                             f"SCORE: {self.score}",
                             f"SALVAGE x{self._salvage_count}!"
                         )
-                        await asyncio.sleep(0.6)
+                        await asyncio.sleep(1.0)
 
                         # Respawn ship and move the pad
                         self._reset_ship()
                         self._new_pad()
                         self._tractor_hold = 0
+
+                        # Flush inputs so the ship doesn't immediately thrust on respawn
+                        self.core.hid.flush()
+                        last_tick = ticks_ms() # Reset tick so physics don't jump
                 else:
                     # Reset beam counter whenever the beam is off or misaligned
                     self._tractor_hold = 0
