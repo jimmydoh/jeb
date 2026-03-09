@@ -758,6 +758,31 @@ class Icons:
          0,   0,   0,   0,   0,  51,   0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  # Row 14  SW/SE field dots
          0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15
     ])
+      
+    # Bunker Defuse icon (16x16)
+    # A classic round bomb with a lit fuse and toggle-switch silhouettes.
+    # Colour key:
+    #   0=OFF  1=CHARCOAL  4=WHITE  11=RED  21=ORANGE  22=GOLD  31=YELLOW  51=CYAN
+    # -------------------------------------------------------------------------
+    BUNKER_DEFUSE = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  22,  22,   0,   0,   0,   0,  # Row  0  fuse top
+         0,   0,   0,   0,   0,   0,   0,   0,   0,  22,   0,   0,  31,   0,   0,   0,  # Row  1  fuse bend + spark
+         0,   0,   0,   0,   0,   0,   0,   0,  22,   0,   0,  21,  31,  21,   0,   0,  # Row  2  fuse + flame
+         0,   0,   0,   0,   0,   1,   1,   1,  22,  1,    1,   0,  31,   0,   0,   0,  # Row  3  fuse socket + bomb top
+         0,   0,   0,   1,   1,  11,  11,  11,  11,  11,  11,   1,   1,   0,   0,   0,  # Row  4  bomb upper body
+         0,   0,   1,  11,  11,  11,   4,  11,  11,  11,  11,  11,  11,   1,   0,   0,  # Row  5  highlight
+         0,   1,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,   1,   0,  # Row  6  bomb mid
+         0,   1,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,   1,   0,  # Row  7  bomb mid
+         0,   0,   1,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,   1,   0,   0,  # Row  8  bomb lower body
+         0,   0,   0,   1,   1,  11,  11,  11,  11,  11,  11,   1,   1,   0,   0,   0,  # Row  9  bomb bottom
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 10  gap
+         0,  51,   0,  51,   0,  51,   0,  51,   0,  51,   0,  51,   0,  51,   0,  51,  # Row 11  toggle dots (8 off)
+         0,   1,   0,   1,   0,   1,   0,   1,   0,   1,   0,   1,   0,   1,   0,   1,  # Row 12  toggle stems
+         0,   1,   0,   1,   0,   1,   0,   1,   0,   1,   0,   1,   0,   1,   0,   1,  # Row 13  toggle base
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 14
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15
+    ])
 
     # -------------------------------------------------------------------------
     # Virtual Pet cat sprites (16x16)
@@ -1093,6 +1118,42 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # 16×16 icon for the JEB-808 Groovebox sequencer mode.
+    # Each pair of rows represents one of the 8 instrument tracks; columns are
+    # time steps.  A handful of steps per track are lit in that track's colour
+    # to give the icon the feel of a real step-sequencer pattern.
+    #
+    # Palette indices used:
+    #   11 = RED    (KICK)    21 = ORANGE (SNARE)   31 = YELLOW (HIHAT)
+    #   41 = GREEN  (TOM)     51 = CYAN   (BASS)    71 = MAGENTA (LEAD)
+    #   61 = BLUE   (PAD)      4 = WHITE  (FX)
+    GROOVEBOX = bytes([
+        # Track 0 – KICK  (RED 11): steps 0, 4, 8, 12
+        11,  0,  0,  0, 11,  0,  0,  0, 11,  0,  0,  0, 11,  0,  0,  0,
+        11,  0,  0,  0, 11,  0,  0,  0, 11,  0,  0,  0, 11,  0,  0,  0,
+        # Track 1 – SNARE (ORANGE 21): steps 4, 12
+         0,  0,  0,  0, 21,  0,  0,  0,  0,  0,  0,  0, 21,  0,  0,  0,
+         0,  0,  0,  0, 21,  0,  0,  0,  0,  0,  0,  0, 21,  0,  0,  0,
+        # Track 2 – HIHAT (YELLOW 31): all even steps
+        31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0,
+        31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0,
+        # Track 3 – TOM   (GREEN 41): steps 6, 14
+         0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0, 41,  0,
+         0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0, 41,  0,
+        # Track 4 – BASS  (CYAN 51): steps 0, 3, 8, 11
+        51,  0,  0, 51,  0,  0,  0,  0, 51,  0,  0, 51,  0,  0,  0,  0,
+        51,  0,  0, 51,  0,  0,  0,  0, 51,  0,  0, 51,  0,  0,  0,  0,
+        # Track 5 – LEAD  (MAGENTA 71): steps 4, 7, 12, 15
+         0,  0,  0,  0, 71,  0,  0, 71,  0,  0,  0,  0, 71,  0,  0, 71,
+         0,  0,  0,  0, 71,  0,  0, 71,  0,  0,  0,  0, 71,  0,  0, 71,
+        # Track 6 – PAD   (BLUE 61): steps 0, 8
+        61,  0,  0,  0,  0,  0,  0,  0, 61,  0,  0,  0,  0,  0,  0,  0,
+        61,  0,  0,  0,  0,  0,  0,  0, 61,  0,  0,  0,  0,  0,  0,  0,
+        # Track 7 – FX    (WHITE 4): steps 2, 10
+         0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,
+         0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,
+    ])
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -1127,6 +1188,7 @@ class Icons:
         "PLASMA": PLASMA,
         "WIREWORLD": WIREWORLD,
         "STARFIELD": STARFIELD,
+        "GROOVEBOX": GROOVEBOX,
         "IRON_CANOPY": IRON_CANOPY,
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,
@@ -1135,6 +1197,8 @@ class Icons:
         "ARTILLERY_COMMAND": ARTILLERY_COMMAND,
         "ENIGMA_BYTE": ENIGMA_BYTE,
         "MAGNETIC_CONTAINMENT": MAGNETIC_CONTAINMENT,
+        "BUNKER_DEFUSE": BUNKER_DEFUSE,
+        "SEISMIC_STABILIZER": DEFAULT,
         "VIRTUAL_PET": VIRTUAL_PET,
         "CAT_IDLE": CAT_IDLE,
         "CAT_EAT": CAT_EAT,

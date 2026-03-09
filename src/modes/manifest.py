@@ -310,6 +310,26 @@ MODE_REGISTRY |= {
         "requires": ["CORE"],
         "settings": []
     },
+    "GROOVEBOX": {
+        "id": "GROOVEBOX",
+        "name": "JEB-808",
+        "module_path": "modes.groovebox",
+        "class_name": "GrooveboxMode",
+        "icon": "GROOVEBOX",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 120,
+        "requires": ["CORE"],
+        "optional": ["INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "bpm",
+                "label": "BPM",
+                "options": ["80", "100", "120", "140", "160"],
+                "default": "120"
+            }
+        ]
+    },
     "RHYTHM": {
         "id": "RHYTHM",
         "name": "NEON BEATS",
@@ -676,6 +696,44 @@ MODE_REGISTRY |= {
         "module_path": "modes.magnetic_containment",
         "class_name": "MagneticContainment",
         "icon": "MAGNETIC_CONTAINMENT",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "BUNKER_DEFUSE": {
+        "id": "BUNKER_DEFUSE",
+        "name": "BUNKER DEFUSE",
+        "module_path": "modes.bunker_defuse",
+        "class_name": "BunkerDefuse",
+        "icon": "BUNKER_DEFUSE",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "SEISMIC_STABILIZER": {
+        "id": "SEISMIC_STABILIZER",
+        "name": "SEISMIC STAB",
+        "module_path": "modes.seismic_stabilizer",
+        "class_name": "SeismicStabilizer",
+        "icon": "SEISMIC_STABILIZER",
         "menu": "MAIN",
         "has_tutorial": True,
         "order": 8,
