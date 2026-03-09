@@ -650,6 +650,25 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "BUNKER_DEFUSE": {
+        "id": "BUNKER_DEFUSE",
+        "name": "BUNKER DEFUSE",
+        "module_path": "modes.bunker_defuse",
+        "class_name": "BunkerDefuse",
+        "icon": "BUNKER_DEFUSE",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
 }
 
 __all__ = ["MODE_REGISTRY"]
