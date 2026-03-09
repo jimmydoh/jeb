@@ -267,7 +267,7 @@ MODE_REGISTRY |= {
         "class_name": "LunarSalvage",
         "icon": "LUNAR_SALVAGE",
         "menu": "MAIN",
-        "has_tutorial": False,
+        "has_tutorial": True,
         "order": 65,
         "requires": ["CORE"],
         "settings": [

@@ -34,6 +34,7 @@ from adafruit_ticks import ticks_ms, ticks_diff
 
 from utilities.palette import Palette
 from utilities import tones
+from utilities.synth_registry import Patches
 
 from .game_mode import GameMode
 
@@ -557,7 +558,7 @@ class AbyssalRover(GameMode):
             f"{self.difficulty}{linked}"
         )
         asyncio.create_task(
-            self.core.synth.play_sequence(tones.POWER_UP, patch="SCANNER")
+            self.core.synth.play_sequence(tones.POWER_UP, patch=Patches.SCANNER)
         )
         await asyncio.sleep(2.0)
 

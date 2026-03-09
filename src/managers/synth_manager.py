@@ -107,7 +107,12 @@ class SynthManager:
         # sequence_data.get('patch') -> Returns Patch Object or None
         # patch -> Returns Patch Object or None
         # Patches.SELECT -> The guaranteed fallback
-        active_patch = sequence_data.get('patch') or patch or Patches.SELECT
+        active_patch = patch or sequence_data.get('patch') or Patches.SELECT
+
+        if isinstance(active_patch, str):
+            active_patch = getattr(Patches, active_patch, Patches.SELECT)
+
+        JEBLogger.debug("SYNTH", f"Playing sequence - BPM: {bpm}, Patch: {active_patch['name']}, Override Waveform: {self.override}")
 
         wave = self.override if self.override else active_patch["wave"]
 

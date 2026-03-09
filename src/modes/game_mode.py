@@ -45,7 +45,7 @@ class GameMode(BaseMode):
 
         # Stop existing audio and buzzer
         self.core.audio.stop_all()
-        self.core.buzzer.stop()
+        await self.core.buzzer.stop()
 
         # Show high score animation if we beat the record
         if self.save_high_score():
@@ -57,11 +57,13 @@ class GameMode(BaseMode):
                 "HIGH_SCORE",
                 anim_mode="PULSE",
                 speed=2.0)
-            self.core.audio.play(
-                "audio/general/new_record.wav",
-                self.core.audio.CH_SFX,
-                level=1.0,
-                interrupt=True
+            asyncio.create_task(
+                self.core.audio.play(
+                    "audio/general/new_record.wav",
+                    self.core.audio.CH_SFX,
+                    level=1.0,
+                    interrupt=True
+                )
             )
             await asyncio.sleep(2)
         # Show regular game over if we didn't beat the record
@@ -75,11 +77,13 @@ class GameMode(BaseMode):
                 anim_mode="PULSE",
                 speed=2.0
             )
-            self.core.audio.play(
-                "audio/general/fail.wav",
-                self.core.audio.CH_SFX,
-                level=1.0,
-                interrupt=True
+            asyncio.create_task(
+                self.core.audio.play(
+                    "audio/general/fail.wav",
+                    self.core.audio.CH_SFX,
+                    level=1.0,
+                    interrupt=True
+                )
             )
             await asyncio.sleep(2)
 
@@ -89,7 +93,7 @@ class GameMode(BaseMode):
         """Standard Win State with high score handling."""
 
         self.core.audio.stop_all()
-        self.core.buzzer.stop()
+        await self.core.buzzer.stop()
 
         # Show high score animation if we beat the record
         if self.save_high_score():
@@ -101,11 +105,13 @@ class GameMode(BaseMode):
                 "HIGH_SCORE",
                 anim_mode="PULSE",
                 speed=2.0)
-            self.core.audio.play(
-                "audio/general/new_record.wav",
-                self.core.audio.CH_SFX,
-                level=1.0,
-                interrupt=True
+            asyncio.create_task(
+                self.core.audio.play(
+                    "audio/general/new_record.wav",
+                    self.core.audio.CH_SFX,
+                    level=1.0,
+                    interrupt=True
+                )
             )
             await asyncio.sleep(2)
         # Show regular victory if we didn't beat the record
@@ -119,11 +125,13 @@ class GameMode(BaseMode):
                 anim_mode="PULSE",
                 speed=2.0
             )
-            self.core.audio.play(
-                "audio/general/win.wav",
-                self.core.audio.CH_SFX,
-                level=1.0,
-                interrupt=True
+            asyncio.create_task(
+                self.core.audio.play(
+                    "audio/general/win.wav",
+                    self.core.audio.CH_SFX,
+                    level=1.0,
+                    interrupt=True
+                )
             )
             await asyncio.sleep(2)
         return "VICTORY"
