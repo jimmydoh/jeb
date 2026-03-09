@@ -1030,6 +1030,7 @@ class Icons:
         "ASTRO_BREAKER": ASTRO_BREAKER,
         "DATA_FLOW": DATA_FLOW,
         "TRENCH_RUN": DEFAULT,
+        "LUNAR_SALVAGE": DEFAULT,
         "SNAKE": DEFAULT,
         "RHYTHM": RHYTHM,
         "EMOJI_REVEAL": EMOJI_REVEAL,
