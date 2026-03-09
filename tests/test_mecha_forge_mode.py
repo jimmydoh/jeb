@@ -329,9 +329,6 @@ def test_default_body_color_is_3_tuple():
 
 def _simulate_keypad_input(r_digit, g_digit, b_digit):
     """Simulate what MechaForge does when it receives 3 keypad digits."""
-    import importlib
-    m = importlib.import_module('modes.mecha_forge')
-
     r = min(9, r_digit) * 28
     g = min(9, g_digit) * 28
     b = min(9, b_digit) * 28

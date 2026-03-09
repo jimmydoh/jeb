@@ -209,7 +209,7 @@ _ACCESSORIES = (
 )
 
 _ACC_NAMES = (
-    "CANNON", "RADAR", "JETPAK", "LASER",
+    "CANNON", "RADAR", "JETPACK", "LASER",
     "ROCKET", "SHIELD", "WINGS", "CREST",
 )
 
