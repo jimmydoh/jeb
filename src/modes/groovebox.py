@@ -42,6 +42,7 @@ from adafruit_ticks import ticks_ms, ticks_diff
 
 from utilities.palette import Palette
 from utilities.synth_registry import Patches
+from utilities import tones
 from .base import BaseMode
 
 # ---------------------------------------------------------------------------
@@ -130,6 +131,141 @@ class GrooveboxMode(BaseMode):
         # Pitch multiplier set by the momentary toggle; 1.0 = no shift.
         self._pitch_mult = 1.0
 
+        self._last_seg_text = ""
+
+    async def run_tutorial(self):
+        """
+        A guided demonstration of the JEB-808 Groovebox.
+
+        The Voiceover Script (audio/tutes/808_tute.wav) ~36 seconds:
+            [0:00] "Welcome to the JEB-808 Groovebox. A sixteen-step live sequencer."
+            [0:05] "The matrix displays eight tracks. Turn the core dial to move your edit cursor."
+            [0:10] "Press the dial to place or remove a note on the grid."
+            [0:14] "Use buttons one and two to move your cursor up and down between instruments."
+            [0:19] "Button three plays and stops the sequence."
+            [0:23] "On the satellite, use the latching toggles to mute individual tracks."
+            [0:28] "Type a new tempo on the keypad and press star to lock it in."
+            [0:33] "Have fun and make some music."
+            [0:36] (End of file)
+        """
+        await self.core.clean_slate()
+        self.game_state = "TUTORIAL"
+
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/808_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # Pre-load a basic "Four-on-the-floor" beat so there's something to look at
+        self.notes[0] = [True, False, False, False, True, False, False, False, True, False, False, False, True, False, False, False] # Kick
+        self.notes[2] = [True, False, True, False, True, False, True, False, True, False, True, False, True, False, True, False] # HiHat
+        self.notes[4] = [False, False, True, False, False, False, True, True, False, False, True, False, False, False, True, False] # Bass
+
+        self.bpm = 120
+        self.is_playing = False
+        self.cursor_track = 0
+        self.cursor_step = 0
+
+        # [0:00 - 0:05] "Welcome to the JEB-808 Groovebox..."
+        self.core.display.update_status("JEB-808", "LIVE SEQUENCER")
+        self._render()
+        self.core.matrix.show_frame()
+        await asyncio.sleep(5.0)
+
+        # [0:05 - 0:10] "The matrix displays eight tracks. Turn the core dial..."
+        self.core.display.update_status("EDIT CURSOR", "TURN DIAL TO MOVE")
+        for _ in range(8):
+            self.cursor_step += 1
+            self._render()
+            self.core.matrix.show_frame()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await asyncio.sleep(0.5)
+
+        # [0:10 - 0:14] "Press the dial to place or remove a note on the grid."
+        self.core.display.update_status("EDIT GRID", "PRESS DIAL TO TOGGLE")
+        self.notes[0][self.cursor_step] = True # Place a kick
+        self._render()
+        self.core.matrix.show_frame()
+        self.core.synth.play_note(_TRACK_INFO[0][1], patch=self._get_patch(0), duration=0.1)
+        await asyncio.sleep(3.5)
+
+        # [0:14 - 0:19] "Use buttons zero and one to move your cursor up and down..."
+        self.core.display.update_status("CHANGE TRACK", "PRESS B1 OR B2")
+        for _ in range(4):
+            self.cursor_track += 1
+            self._render()
+            self.core.matrix.show_frame()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await asyncio.sleep(1.0)
+
+        # [0:19 - 0:23] "Button two plays and stops the sequence."
+        self.core.display.update_status("PLAY / STOP", "PRESS B3")
+        self.is_playing = True
+        self._last_step_ms = ticks_ms()
+
+        # Let the sequencer run for a few seconds!
+        end_time = ticks_ms() + 4000
+        while ticks_ms() < end_time:
+            now = ticks_ms()
+            if ticks_diff(now, self._last_step_ms) >= self._step_interval_ms:
+                self._last_step_ms += self._step_interval_ms
+                self._fire_step()
+                self.current_step = (self.current_step + 1) % NUM_STEPS
+                self._render()
+                self.core.matrix.show_frame()
+            await asyncio.sleep(0.01)
+
+        # [0:23 - 0:28] "On the satellite, use the latching toggles to mute..."
+        self.core.display.update_status("TRACK MUTES", "USE SAT TOGGLES")
+        # Visual only, simulate muting track 0 and 2
+        self.notes[0] = [False] * 16
+        self.notes[2] = [False] * 16
+
+        end_time = ticks_ms() + 5000
+        while ticks_ms() < end_time:
+            now = ticks_ms()
+            if ticks_diff(now, self._last_step_ms) >= self._step_interval_ms:
+                self._last_step_ms += self._step_interval_ms
+                self._fire_step()
+                self.current_step = (self.current_step + 1) % NUM_STEPS
+                self._render()
+                self.core.matrix.show_frame()
+            await asyncio.sleep(0.01)
+
+        # [0:28 - 0:33] "Type a new tempo on the keypad and press star..."
+        self.core.display.update_status("TEMPO", "USE SATELLITE KEYPAD")
+        self.is_playing = False
+        self._render()
+        self.core.matrix.show_frame()
+
+        # Simulate typing 1-4-5-*
+        self._bpm_buf = "1"
+        self._send_segment_display()
+        self.core.buzzer.play_sequence(tones.UI_TICK)
+        await asyncio.sleep(0.5)
+        self._bpm_buf = "14"
+        self._send_segment_display()
+        self.core.buzzer.play_sequence(tones.UI_TICK)
+        await asyncio.sleep(0.5)
+        self._bpm_buf = "145"
+        self._send_segment_display()
+        self.core.buzzer.play_sequence(tones.UI_TICK)
+        await asyncio.sleep(1.0)
+
+        self.bpm = 145
+        self._bpm_buf = ""
+        self._send_segment_display()
+        self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+        await asyncio.sleep(3.0)
+
+        # Wait for the audio track to finish naturally
+        if hasattr(self.core.audio, 'wait_for_bus'):
+            await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+        else:
+            await asyncio.sleep(3.0)
+
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
+
     # ------------------------------------------------------------------
     # Timing
     # ------------------------------------------------------------------
@@ -197,14 +333,17 @@ class GrooveboxMode(BaseMode):
         """Push the current BPM (or entry buffer) to the satellite 14-seg display."""
         if not self.sat:
             return
+
         try:
             if self._bpm_buf:
-                self.sat.send("DSP", f"BPM {self._bpm_buf:>3s}?")
+                text = f"BPM {self._bpm_buf:>3s}?"
             else:
-                self.sat.send("DSP", f"BPM {self.bpm:>4d}")
+                text = f"BPM {self.bpm:>4d}"
+
+            if text != self._last_seg_text:
+                self.sat.send("DSP", text)
+                self._last_seg_text = text
         except (AttributeError, OSError, RuntimeError):
-            # Satellite may be temporarily unreachable; display update is
-            # best-effort and safe to skip.
             pass
 
     # ------------------------------------------------------------------
@@ -304,7 +443,8 @@ class GrooveboxMode(BaseMode):
 
             # --- Sequencer clock ---
             if self.is_playing and ticks_diff(now, self._last_step_ms) >= self._step_interval_ms:
-                self._last_step_ms = now
+                # Add the exact interval to prevent timing drift!
+                self._last_step_ms += self._step_interval_ms
                 self._fire_step()
                 self.current_step = (self.current_step + 1) % NUM_STEPS
 

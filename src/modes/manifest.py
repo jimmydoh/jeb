@@ -317,6 +317,7 @@ MODE_REGISTRY |= {
         "class_name": "GrooveboxMode",
         "icon": "GROOVEBOX",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 120,
         "requires": ["CORE"],
         "optional": ["INDUSTRIAL"],
