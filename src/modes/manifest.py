@@ -298,6 +298,7 @@ MODE_REGISTRY |= {
         "class_name": "RhythmMode",
         "icon": "RHYTHM",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 999,
         "requires": ["CORE"],
         "settings": [
