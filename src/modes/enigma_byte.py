@@ -67,9 +67,18 @@ _ROW_GUESS_BAR      = 15   # Remaining-guesses progress bar
 # Difficulty tuning
 # ---------------------------------------------------------------------------
 _DIFF_PARAMS = {
-    "NORMAL": {"max_guesses": 10},
-    "HARD":   {"max_guesses": 8},
-    "INSANE": {"max_guesses": 6},
+    "NORMAL": {
+        "max_guesses": 10,
+        "points_multiplier": 1,
+    },
+    "HARD":   {
+        "max_guesses": 8,
+        "points_multiplier": 3
+    },
+    "INSANE": {
+        "max_guesses": 6,
+        "points_multiplier": 5
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -97,27 +106,6 @@ class EnigmaByte(GameMode):
             - 9-Digit Keypad: Numeric notepad (shown on OLED)
             - 14-Segment Display: Active layer and guess count
     """
-
-    METADATA = {
-        "id": "ENIGMA_BYTE",
-        "name": "ENIGMA BYTE",
-        "module_path": "modes.enigma_byte",
-        "class_name": "EnigmaByte",
-        "icon": "ENIGMA_BYTE",
-        "menu": "MAIN",
-        "has_tutorial": True,
-        "order": 7,
-        "requires": ["CORE", "INDUSTRIAL"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["NORMAL", "HARD", "INSANE"],
-                "default": "NORMAL"
-            }
-        ]
-    }
-
     def __init__(self, core):
         super().__init__(core, "ENIGMA BYTE", "Deductive Logic Puzzle")
         self.sat = None
@@ -138,6 +126,7 @@ class EnigmaByte(GameMode):
         self._last_keypad_snap = ""
         self._last_btn_state   = False
         self._phase            = _PHASE_INPUT
+        self._last_segment_text = ""
 
     # ------------------------------------------------------------------
     # Satellite helpers
@@ -163,8 +152,13 @@ class EnigmaByte(GameMode):
 
     def _send_segment(self, text):
         """Send text to the satellite 14-segment display."""
-        if self.sat:
-            self.sat.send("DSP", text[:8])
+        safe_text = text[:8]
+        if self.sat and self._last_segment_text != safe_text:
+            try:
+                self.sat.send("DSP", safe_text)
+                self._last_segment_text = safe_text
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Layer / guess helpers
@@ -293,7 +287,19 @@ class EnigmaByte(GameMode):
     # ------------------------------------------------------------------
 
     async def run_tutorial(self):
-        """Guided demonstration of an Enigma Byte session."""
+        """
+        Guided demonstration of an Enigma Byte session.
+
+        The Voiceover Script (audio/tutes/enigma_tute.wav) ~ 21 seconds:
+            [0:00] "Welcome to Enigma Byte. A test of deductive logic."
+            [0:03] "You must crack three separate eight-bit codes. Use the rotary switch to change layers."
+            [0:06] "Set your guess using the eight physical toggles."
+            [0:09] "Then, press the big red button to submit your sequence."
+            [0:11] "The matrix provides feedback. Green means right value, right place. Yellow means right value, wrong place."
+            [0:14] "Use the numeric keypad to type physical notes onto your screen."
+            [0:17] "Solve all three layers before you run out of guesses to win. Good luck."
+            [0:21] (End of file)
+        """
         await self.core.clean_slate()
 
         if not self.sat or not self.sat.is_active:
@@ -362,6 +368,8 @@ class EnigmaByte(GameMode):
                 self.sat.send("LED", f"{i},{Palette.OFF.index},0.0,0.0,2")
         except Exception:
             pass
+
+        await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
 
         await self.core.clean_slate()
         return "TUTORIAL_COMPLETE"
@@ -454,10 +462,11 @@ class EnigmaByte(GameMode):
             await asyncio.sleep(0.05)
 
         # Victory – compute score and celebrate
+        points_multiplier = _DIFF_PARAMS.get(self.difficulty, _DIFF_PARAMS["NORMAL"])["points_multiplier"]
         for i in range(_LAYER_COUNT):
             if self._solved[i]:
                 remaining = self._max_guesses - len(self._guesses[i])
-                self.score += _POINTS_PER_SOLVE + remaining * _POINTS_PER_GUESS_LEFT
+                self.score += _POINTS_PER_SOLVE + remaining * (_POINTS_PER_GUESS_LEFT * points_multiplier)
 
         return await self.victory()
 
