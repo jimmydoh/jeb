@@ -536,6 +536,26 @@ MODE_REGISTRY |= {
         "requires": ["INDUSTRIAL"],
         "settings": []
     },
+    "ABYSSAL_ROVER": {
+        "id": "ABYSSAL_ROVER",
+        "name": "ABYSSAL ROVER",
+        "module_path": "modes.abyssal_rover",
+        "class_name": "AbyssalRover",
+        "icon": "ABYSSAL_ROVER",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 85,
+        "requires": ["CORE"],
+        "optional": ["INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
     "ABYSSAL_PING": {
         "id": "ABYSSAL_PING",
         "name": "ABYSSAL PING",
