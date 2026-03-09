@@ -133,6 +133,7 @@ class AbyssalRover(GameMode):
         self._last_encoder_pos = 0
         self._last_sat_enc_pos = 0
         self._last_move_ms = 0
+        self._last_sat_flare_btn = False
 
     # -----------------------------------------------------------------------
     # Maze generation
@@ -291,6 +292,13 @@ class AbyssalRover(GameMode):
 
                 if color != Palette.OFF:
                     self.core.matrix.draw_pixel(mx, my, color)
+
+                # NEW: Draw a 'nose' pixel to show facing direction
+                dx, dy = _DIRECTIONS[self._facing]
+                nose_mx = _MATRIX_CENTER_X + dx
+                nose_my = _MATRIX_CENTER_Y + dy
+                if 0 <= nose_mx < _MATRIX_W and 0 <= nose_my < _MATRIX_H:
+                    self.core.matrix.draw_pixel(nose_mx, nose_my, Palette.YELLOW)
 
     def _render_flare(self):
         """Scale the entire maze to 16×16 and render it (flare overview)."""
@@ -461,6 +469,7 @@ class AbyssalRover(GameMode):
         self.core.display.update_status("TURN DIAL", "ROTATE FACING")
         for new_facing in [2, 3, 0, 1]:   # S, W, N, E
             self._facing = new_facing
+            self._update_oled()
             self._render_viewport()
             self.core.matrix.show_frame()
             self.core.synth.play_note(800.0, "UI_SELECT", duration=0.02)
@@ -561,6 +570,8 @@ class AbyssalRover(GameMode):
         move_count  = 0
         start_ms    = ticks_ms()
 
+        self._last_sat_flare_btn = False
+
         # ----------------------------------------------------------------
         # Main loop
         # ----------------------------------------------------------------
@@ -601,6 +612,8 @@ class AbyssalRover(GameMode):
                 self._update_oled()
                 self._update_segment()
                 self.core.synth.play_note(800.0, "UI_SELECT", duration=0.02)
+                self._render_viewport()
+                self.core.matrix.show_frame()
 
             # 4. Movement control
             moved    = False
@@ -640,9 +653,11 @@ class AbyssalRover(GameMode):
             # 5. Flare control
             b_flare = self.core.hid.is_button_pressed(_BTN_FLARE, action="tap")
 
-            # Satellite: guarded arm toggle + big button
-            if self._sat_latching(_SW_ARM) and self._sat_button(_BTN_SAT_FLARE):
+            # Satellite: guarded arm toggle + big button (with edge detection)
+            sat_flare_now = self._sat_button(_BTN_SAT_FLARE)
+            if self._sat_latching(_SW_ARM) and sat_flare_now and not self._last_sat_flare_btn:
                 b_flare = True
+            self._last_sat_flare_btn = sat_flare_now
 
             if b_flare:
                 if self._flares_remaining > 0:
