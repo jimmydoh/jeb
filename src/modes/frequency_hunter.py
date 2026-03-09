@@ -23,7 +23,6 @@ from utilities.icons import Icons
 from utilities.synth_registry import Patches
 from .game_mode import GameMode
 
-
 class FrequencyHunterMode(GameMode):
     """Frequency Hunter – tune the rotary encoder to lock a hidden signal.
 
@@ -82,6 +81,133 @@ class FrequencyHunterMode(GameMode):
         self._target_freq = 100.0
         self._drift_dir = 1.0
         self._running = False
+
+    async def run_tutorial(self):
+        """
+        A guided, non-interactive demonstration of Frequency Hunter.
+
+        The Voiceover Script (audio/tutes/freq_tute.wav) ~ 33 seconds:
+            [0:00] "Welcome to Frequency Hunter. You must intercept and lock onto rogue transmissions."
+            [0:06] "Turn the dial to sweep across the radio spectrum."
+            [0:10] "Listen to the audio and watch the signal strength on the matrix."
+            [0:16] "When the waveform peaks and the tone is pure, you've found the target."
+            [0:22] "Press button one to lock in the frequency before the signal fades."
+            [0:27] "Intercept as many transmissions as you can before time runs out. Good luck!"
+            [0:33] (End of file)
+        """
+        await self.core.clean_slate()
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/freq_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # [0:00 - 0:06] "Welcome to Frequency Hunter..."
+        self.core.display.update_status("FREQ HUNTER", "INTERCEPT SIGNALS")
+
+        # Draw a static "searching" pulse
+        for _ in range(12):
+            self.core.matrix.clear()
+            h = 8 + int(4 * math.sin(ticks_ms() / 200))
+            for x in range(16):
+                self.core.matrix.draw_pixel(x, h, Palette.CYAN, show=False)
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.5)
+
+        # [0:06 - 0:10] "Turn the dial to sweep across the radio spectrum."
+        self.core.display.update_status("TUNING", "TURN DIAL TO SWEEP")
+        await asyncio.sleep(4.0)
+
+        # [0:10 - 0:16] "Listen to the audio and watch the signal strength..."
+        self.core.display.update_status("TUNING", "WATCH & LISTEN")
+
+        # Simulate sweeping toward a target frequency
+        target_freq = 50
+        current_freq = 10
+
+        # We will puppeteer the current_freq moving towards the target
+        while current_freq < target_freq:
+            current_freq += 1
+            distance = abs(target_freq - current_freq)
+
+            # 1. Visual Feedback: Waveform gets taller and less "noisy" as distance decreases
+            self.core.matrix.clear()
+            amplitude = 7 - min(7, int(distance / 5)) # Peaks at 7 when distance is 0
+            noise_level = min(4, int(distance / 8))
+
+            for x in range(16):
+                # Base sine wave
+                y = 8 + int(amplitude * math.sin(x * 0.8 + (ticks_ms() / 100)))
+                # Add static/noise based on distance
+                if noise_level > 0:
+                    y += random.randint(-noise_level, noise_level)
+
+                # Keep within bounds
+                y = max(0, min(15, y))
+
+                # Color shifts from Red (far) to Yellow (close) to Green (locked)
+                if distance == 0:
+                    color = Palette.GREEN
+                elif distance < 15:
+                    color = Palette.YELLOW
+                else:
+                    color = Palette.RED
+
+                self.core.matrix.draw_pixel(x, y, color, show=False)
+
+            self.core.matrix.show_frame()
+
+            # 2. Audio Feedback: Pitch gets closer to a target pitch (e.g., 880Hz)
+            # You might use your SynthManager here if you have one, or just the buzzer
+            if distance % 3 == 0: # Don't spam the I2C bus every frame
+                pitch = 880 - (distance * 10)
+                # Play a short blip that rises in pitch
+                self.core.buzzer.play_sequence([(pitch, 0.05)])
+
+            await asyncio.sleep(0.15) # Speed of the dial sweeping
+
+        # [0:16 - 0:22] "When the waveform peaks and the tone is pure..."
+        self.core.display.update_status("SIGNAL FOUND!", "HOLD POSITION")
+
+        # Hold the "Perfect Lock" visual and audio for a few seconds
+        for _ in range(30):
+            self.core.matrix.clear()
+            for x in range(16):
+                y = 8 + int(7 * math.sin(x * 0.8 + (ticks_ms() / 100)))
+                self.core.matrix.draw_pixel(x, max(0, min(15, y)), Palette.GREEN, show=False)
+            self.core.matrix.show_frame()
+
+            if _ % 10 == 0:
+                self.core.buzzer.play_sequence([(880, 0.1)]) # Pure, steady target tone
+
+            await asyncio.sleep(0.2)
+
+        # [0:22 - 0:27] "Press button one to lock in the frequency..."
+        self.core.display.update_status("LOCK SIGNAL", "PRESS B1 TO LOCK")
+
+        # Flash B1 LED using your updated LED manager method
+        self.core.leds.flash_led(0, Palette.GREEN, duration=3.0, speed=0.15)
+        await asyncio.sleep(2.0)
+
+        # Simulate button press and success state
+        self.core.buzzer.play_sequence(tones.SAVE_OK)
+        self.core.matrix.fill(Palette.GREEN, show=True)
+        self.core.display.update_header("SIGNAL LOCKED!")
+        self.core.display.update_status("SCORE +100", "")
+        await asyncio.sleep(2.0)
+
+        # [0:27 - 0:33] "Intercept as many transmissions... Good luck!"
+        self.core.display.update_header("-FREQ HUNTER-")
+        self.core.display.update_status("WATCH THE CLOCK", "GOOD LUCK!")
+        self.core.matrix.show_icon("CLOCK", anim_mode="PULSE", speed=1.0)
+
+        # Wait out the rest of the audio
+        await asyncio.sleep(6.0)
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
 
     # ------------------------------------------------------------------
     # Main entry point

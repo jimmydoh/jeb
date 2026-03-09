@@ -152,6 +152,168 @@ class AbyssalPing(GameMode):
         self._last_tick_ms       = 0
         self._depth_charges_fired = 0
 
+    async def run_tutorial(self):
+        """
+        A guided, non-interactive demonstration of an Abyssal Ping hunt.
+
+        The Voiceover Script (audio/tutes/abyss_tute.wav) ~ 45 seconds:
+            [0:00] "Welcome to Abyssal Ping. You must hunt a rogue submarine by ear."
+            [0:05] "Phase one: Hunt. Turn the base dial to sweep the sonar frequency."
+            [0:10] "Turn the satellite dial to pan the hydrophone azimuth. Listen closely."
+            [0:15] "As the static fades and the signal strength rises, you are closing in."
+            [0:21] "When you achieve acoustic lock, Phase two begins. Configure your depth charge payload."
+            [0:28] "Match the eight toggles to the binary yield pattern shown on the screen."
+            [0:34] "Phase three: Execute. Engage the Master Arm and hit the big red button to fire."
+            [0:40] "Sink as many subs as you can before time runs out. Happy hunting."
+            [0:45] (End of file)
+        """
+        await self.core.clean_slate()
+
+        # Ensure satellite is connected
+        if not self.sat or not self.sat.is_active:
+            self.core.display.update_status("ABYSSAL PING", "SAT OFFLINE - ABORT")
+            await asyncio.sleep(2)
+            return "TUTORIAL_FAILED"
+
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/abyss_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # [0:00 - 0:05] "Welcome to Abyssal Ping. You must hunt a rogue submarine by ear."
+        self.core.display.update_header("ABYSSAL PING")
+        self.core.display.update_status("SONAR ONLINE", "STAND BY")
+        self.core.matrix.show_icon("ABYSSAL_PING", clear=True)
+
+        # Background drone
+        drone_note = self.core.synth.play_note(55.0, Patches.ENGINE_HUM)
+        await asyncio.sleep(5.0)
+
+        # [0:05 - 0:10] "Phase one: Hunt. Turn the base dial to sweep..."
+        self.core.display.update_status("PHASE 1: HUNT", "TURN BASE DIAL")
+
+        # Puppeteer Frequency (Pitch) changes
+        for step in range(10):
+            freq_pct = step / 10.0
+            scan_pitch = 200.0 + (freq_pct * 600.0)
+
+            self.core.display.update_status(f"F:{100.0 + (step*2):.1f} AZ:50.0", "SIG: ||------")
+            self._send_segment("SIG  25%")
+            self._render_sweep(step % self.core.matrix.width)
+            self.core.matrix.show_frame()
+
+            self.core.synth.play_note(scan_pitch, Patches.SONAR, duration=0.15)
+            await asyncio.sleep(0.5)
+
+        # [0:10 - 0:15] "Turn the satellite dial to pan... Listen closely."
+        self.core.display.update_status("PHASE 1: HUNT", "TURN SATELLITE DIAL")
+
+        # Puppeteer Azimuth (Noise) changes
+        for step in range(10):
+            self.core.display.update_status(f"F:120.0 AZ:{50.0 + (step*3):.1f}", "SIG: |||-----")
+            self._send_segment("SIG  35%")
+            self._render_sweep(step % self.core.matrix.width)
+            self.core.matrix.show_frame()
+
+            self.core.synth.play_note(500.0, Patches.SONAR, duration=0.15)
+            # Lots of static
+            self.core.synth.play_note(400.0, Patches.get_noise_patch(), duration=0.1)
+            await asyncio.sleep(0.5)
+
+        # [0:15 - 0:21] "As the static fades and the signal strength rises..."
+        self.core.display.update_status("CLOSING IN", "WATCH SIGNAL STRENGTH")
+
+        # Rapid convergence - Pitch stabilizes, static fades, % rises
+        for step in range(1, 10):
+            prox = 0.35 + (step * 0.065) # Rises to ~0.93
+            sig_bars = int(prox * 8)
+            strength_pct = int(prox * 100)
+
+            self.core.display.update_status(f"F:125.5 AZ:78.0", f"SIG: {'|' * sig_bars}{'-' * (8 - sig_bars)}")
+            self._send_segment(f"SIG  {strength_pct}%")
+            self._render_sweep(step % self.core.matrix.width)
+            self.core.matrix.show_frame()
+
+            self.core.synth.play_note(600.0, Patches.SONAR, duration=0.15)
+
+            # Less static as we get closer
+            if random.random() > prox:
+                self.core.synth.play_note(400.0, Patches.get_noise_patch(), duration=0.05)
+
+            await asyncio.sleep(0.6)
+
+        # [0:21 - 0:28] "When you achieve acoustic lock, Phase two begins..."
+        # Achieve Lock!
+        self.core.display.update_status("F:125.5 AZ:78.5", "SIG: ||||||||")
+        self._send_segment("SIG 100%")
+        self.core.synth.play_note(1760.0, Patches.SONAR, duration=0.4)
+        self._render_lock_flash()
+        self.core.matrix.show_frame()
+        await asyncio.sleep(_LOCK_FLASH_MS / 1000.0)
+        self.core.matrix.clear()
+        self.core.matrix.show_frame()
+
+        await asyncio.sleep(1.5)
+        self.core.display.update_status("PHASE 2: PAYLOAD", "SET DEPTH CHARGE")
+        self._send_segment("YIELD   ")
+        await asyncio.sleep(4.0)
+
+        # [0:28 - 0:34] "Match the eight toggles to the binary yield pattern..."
+        demo_pattern = "10101100"
+        self.core.display.update_status("PHASE 2: PAYLOAD", f"YIELD: {demo_pattern}")
+        self._send_segment(f"Y{demo_pattern}")
+
+        # Flash physical LEDs green/red to simulate matching
+        try:
+            for i, bit in enumerate(demo_pattern):
+                color = Palette.GREEN.index if bit == "1" else Palette.RED.index
+                self.sat.send("LED", f"{i},{color},0.0,1.0,2")
+        except: pass
+
+        await asyncio.sleep(3.0)
+        self.core.display.update_status(f"YIELD: {demo_pattern}", f"HAVE:  {demo_pattern}")
+        self.core.synth.play_note(1000.0, Patches.SUCCESS, duration=0.1)
+        await asyncio.sleep(2.0)
+
+        # [0:34 - 0:40] "Phase three: Execute. Engage the Master Arm and hit..."
+        self.core.display.update_status("PHASE 3: EXECUTE", "ARM:ON | BTN:ON")
+        self._send_segment("FIRE    ")
+        await asyncio.sleep(2.0)
+
+        # BOOM!
+        self._render_explosion()
+        self.core.matrix.show_frame()
+        self.core.synth.stop_note(drone_note)
+        self.core.synth.play_note(80.0, Patches.PUNCH, duration=0.5)
+        await asyncio.sleep(0.1)
+        self.core.synth.play_note(55.0, Patches.ALARM, duration=0.3)
+
+        self.core.display.update_status("DEPTH CHARGE HIT!", "KILLS: 1")
+        self._send_segment("BOOM    ")
+        await asyncio.sleep(1.0)
+        self.core.matrix.clear()
+        self.core.matrix.show_frame()
+        await asyncio.sleep(2.0)
+
+        # [0:40 - 0:45] "Sink as many subs as you can before time runs out. Happy hunting."
+        self.core.display.update_status("HAPPY HUNTING", "WATCH THE CLOCK")
+        self._send_segment("STAND BY")
+
+        try:
+            for i in range(8):
+                self.sat.send("LED", f"{i},{Palette.OFF.index},0.0,0.0,2")
+        except: pass
+
+        # Wait for the audio track to finish naturally
+        await tute_audio
+        self.core.synth.release_all()
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
+
     # ------------------------------------------------------------------
     # Satellite helpers
     # ------------------------------------------------------------------

@@ -35,10 +35,11 @@ MODE_REGISTRY = {
     "ZERO_PLAYER_MENU": {
         "id": "ZERO_PLAYER_MENU",
         "name": "ZERO PLAYER",
-        "module_path": "",
-        "class_name": "",
+        "module_path": "modes.zero_player",
+        "class_name": "ZeroPlayerMode",
         "icon": "ZERO_PLAYER",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 500,
         "submenu": "ZERO_PLAYER",
         "requires": ["CORE"],
@@ -297,6 +298,7 @@ MODE_REGISTRY |= {
         "class_name": "RhythmMode",
         "icon": "RHYTHM",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 999,
         "requires": ["CORE"],
         "settings": [
@@ -321,6 +323,7 @@ MODE_REGISTRY |= {
         "class_name": "EmojiRevealMode",
         "icon": "EMOJI_REVEAL",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 90,
         "requires": ["CORE"],
         "settings": [
@@ -345,6 +348,7 @@ MODE_REGISTRY |= {
         "class_name": "FrequencyHunterMode",
         "icon": "FREQ_HUNTER",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 100,
         "requires": ["CORE"],
         "settings": [
@@ -520,6 +524,7 @@ MODE_REGISTRY |= {
         "class_name": "AbyssalPing",
         "icon": "ABYSSAL_PING",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 2,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
@@ -538,6 +543,7 @@ MODE_REGISTRY |= {
         "class_name": "OrbitalStrike",
         "icon": "ORBITAL_STRIKE",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 3,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
@@ -556,6 +562,7 @@ MODE_REGISTRY |= {
         "class_name": "IronCanopy",
         "icon": "IRON_CANOPY",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 4,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
@@ -574,6 +581,7 @@ MODE_REGISTRY |= {
         "class_name": "DefconCommander",
         "icon": "DEFCON_COMMANDER",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 5,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
