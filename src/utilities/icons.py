@@ -683,6 +683,32 @@ class Icons:
     ])
 
     # -------------------------------------------------------------------------
+    # Enigma Byte icon (16x16)
+    # A padlock with 8 binary-bit dots on the body and a glowing keyhole.
+    # Colour key:
+    #   0=OFF  51=CYAN  64=NAVY  41=GREEN  31=YELLOW
+    # -------------------------------------------------------------------------
+    ENIGMA_BYTE = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  0
+         0,   0,   0,   0,   0,  51,  51,  51,  51,  51,   0,   0,   0,   0,   0,   0,  # Row  1  arch top
+         0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  # Row  2  arch sides
+         0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  # Row  3  arch sides
+         0,   0,  64,  64,  64,  64,  64,  64,  64,  64,  64,  64,  64,  64,   0,   0,  # Row  4  lock body top
+         0,   0,  64,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  64,   0,   0,  # Row  5
+         0,   0,  64,   0,  51,   0,  51,   0,  51,   0,  51,   0,   0,  64,   0,   0,  # Row  6  8 bit dots (top)
+         0,   0,  64,   0,  51,   0,  51,   0,  51,   0,  51,   0,   0,  64,   0,   0,  # Row  7  8 bit dots (top)
+         0,   0,  64,   0,   0,   0,   0,  41,  41,   0,   0,   0,   0,  64,   0,   0,  # Row  8  keyhole top
+         0,   0,  64,   0,   0,   0,   0,  41,  41,   0,   0,   0,   0,  64,   0,   0,  # Row  9  keyhole mid
+         0,   0,  64,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  64,   0,   0,  # Row 10
+         0,   0,  64,   0,  51,   0,  51,   0,  51,   0,  51,   0,   0,  64,   0,   0,  # Row 11  8 bit dots (bot)
+         0,   0,  64,   0,  51,   0,  51,   0,  51,   0,  51,   0,   0,  64,   0,   0,  # Row 12  8 bit dots (bot)
+         0,   0,  64,  64,  64,  64,  64,  64,  64,  64,  64,  64,  64,  64,   0,   0,  # Row 13  lock body bot
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 14
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15
+    ])
+
+    # -------------------------------------------------------------------------
     # Virtual Pet cat sprites (16x16)
     # Colour key:
     #   0=OFF  1=CHARCOAL  2=GRAY  3=SILVER  4=WHITE
@@ -1054,6 +1080,7 @@ class Icons:
         "ABYSSAL_PING": ABYSSAL_PING,
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
         "ARTILLERY_COMMAND": ARTILLERY_COMMAND,
+        "ENIGMA_BYTE": ENIGMA_BYTE,
         "VIRTUAL_PET": VIRTUAL_PET,
         "CAT_IDLE": CAT_IDLE,
         "CAT_EAT": CAT_EAT,
