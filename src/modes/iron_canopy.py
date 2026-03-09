@@ -92,21 +92,6 @@ class IronCanopy(GameMode):
             - Big Button: CIWS panic (index 0)
     """
 
-    METADATA = {
-        "id": "IRON_CANOPY",
-        "name": "IRON CANOPY",
-        "icon": "IRON_CANOPY",
-        "requires": ["CORE", "INDUSTRIAL"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["NORMAL", "HARD", "INSANE"],
-                "default": "NORMAL"
-            }
-        ]
-    }
-
     def __init__(self, core):
         super().__init__(core, "IRON CANOPY", "Tactical SAM Battery Defense")
         self.sat = None
@@ -155,6 +140,175 @@ class IronCanopy(GameMode):
         # Difficulty parameters (set in run())
         self._max_bogeys         = 6
         self._bogey_speed_scale  = 1.0
+
+    async def run_tutorial(self):
+        """
+        A guided operator orientation for Iron Canopy.
+
+        The Voiceover Script (audio/tutes/iron_tute.wav) ~ 36 seconds:
+            [0:00] "Commander, welcome to Iron Canopy. You must defend the central base from incoming bogeys."
+            [0:06] "Turn the dial to select a target on the threat board."
+            [0:10] "To fire, flip a tube toggle up, engage the Master Arm, and hold the firing switch."
+            [0:18] "Your tubes will not reload in Active Radar mode. Turn the rotary switch to Auto Loader to restock."
+            [0:25] "If bogeys breach your perimeter, hit the big button to fire the CIWS, clearing the airspace but damaging the base."
+            [0:32] "Manage your power routing and defend the canopy!"
+            [0:36] (End of file)
+        """
+        await self.core.clean_slate()
+
+        # Ensure satellite is connected
+        if not self.sat or not self.sat.is_active:
+            self.core.display.update_status("IRON CANOPY", "SAT OFFLINE - ABORT")
+            await asyncio.sleep(2)
+            return "TUTORIAL_FAILED"
+
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/iron_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # Initial clean state
+        self.bogeys.clear()
+        self.interceptors.clear()
+        self.tube_states = [TUBE_READY] * 8
+        self.base_health = _BASE_HEALTH_MAX
+        self._sweep_angle = 0.0
+        self.locked_idx = 0
+        power_mode = POWER_ACTIVE_RADAR
+
+        # [0:00 - 0:06] "Commander, welcome to Iron Canopy. Defend the central base..."
+        self.core.display.update_status("IRON CANOPY", "DEFEND THE BASE")
+
+        # Spawn a slow bogey for the demo
+        self.bogeys.append({
+            "id": 1,
+            "x": 0.1,
+            "y": 0.1,
+            "speed": 0.02,
+            "jammed": False
+        })
+
+        # Let the radar sweep run for a bit
+        for _ in range(30):
+            self._sweep_angle = (self._sweep_angle + self._sweep_speed_normal * 0.2) % 360.0
+            self._update_bogeys(0.2, power_mode)
+            self._render_radar(power_mode)
+            self.core.matrix.show_frame()
+            self._update_segment_display(power_mode)
+            await asyncio.sleep(0.2)
+
+        # [0:06 - 0:10] "Turn the dial to select a target on the threat board."
+        self.core.display.update_status("TARGETING", "TURN DIAL TO SELECT")
+
+        for _ in range(4):
+            self._sweep_angle = (self._sweep_angle + self._sweep_speed_normal * 1.0) % 360.0
+            self._render_radar(power_mode)
+            self.core.matrix.show_frame()
+            self._render_threat_board(power_mode)
+            await asyncio.sleep(1.0)
+
+        # [0:10 - 0:18] "To fire, flip a tube toggle up, engage the Master Arm..."
+        self.core.display.update_status("ENGAGE TARGET", "ARM AND FIRE!")
+
+        # Simulate Arming Tube 0
+        self.tube_states[0] = TUBE_ARMED
+        try:
+            self.sat.send("LEDFLASH", f"0,{Palette.ORANGE.index},0.0,0.5,3,0.3,0.3")
+        except: pass
+        self.core.buzzer.play_sequence(tones.UI_TICK)
+        await asyncio.sleep(2.0)
+
+        # Simulate Launch
+        self.tube_states[0] = TUBE_FIRED
+        try:
+            self.sat.send("LED", f"0,{Palette.RED.index},0.0,1.0,2")
+        except: pass
+
+        self.interceptors.append({
+            'x': 0.5, 'y': 0.5, 'target_id': 1
+        })
+        self.core.buzzer.play_sequence(tones.LAUNCH)
+
+        # Watch the interceptor fly and hit
+        while self.bogeys and self.interceptors:
+            self._sweep_angle = (self._sweep_angle + self._sweep_speed_normal * 0.1) % 360.0
+            self._update_bogeys(0.1, power_mode)
+            self._update_interceptors(0.1)
+            self._render_radar(power_mode)
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.1)
+
+        # Target destroyed!
+        self.core.buzzer.play_sequence(tones.SUCCESS)
+        await asyncio.sleep(2.0)
+
+        # [0:18 - 0:25] "Your tubes will not reload in Active Radar mode. Turn the rotary switch..."
+        self.core.display.update_status("AMMUNITION LOW", "SWITCH TO AUTO LOADER")
+
+        # Set tube 0 to reloading
+        self.tube_states[0] = TUBE_RELOADING
+        self.tube_reload_timers[0] = _RELOAD_TIME_SLOW
+
+        # Simulate switching to Auto Loader (radar slows down, reload starts)
+        power_mode = POWER_AUTO_LOADER
+        self._update_segment_display(power_mode)
+
+        for _ in range(35):
+            self._sweep_angle = (self._sweep_angle + self._sweep_speed_slow * 0.2) % 360.0
+            self._update_reload(0.2, power_mode)
+
+            # Flash red LED while reloading
+            try:
+                self.sat.send("LEDFLASH", f"0,{Palette.RED.index},0.0,0.3,3,0.8,0.8")
+            except: pass
+
+            self._render_radar(power_mode)
+            self.core.matrix.show_frame()
+            await asyncio.sleep(0.2)
+
+        self.tube_states[0] = TUBE_READY
+        try:
+            self.sat.send("LED", f"0,{Palette.GREEN.index},0.0,1.0,2")
+        except: pass
+
+        # [0:25 - 0:32] "If bogeys breach your perimeter, hit the big button to fire the CIWS..."
+        self.core.display.update_status("THREAT IMMINENT!", "PRESS BIG BUTTON (CIWS)")
+
+        # Spawn bogeys very close to the center
+        self.bogeys.append({"id": 2, "x": 0.45, "y": 0.45, "speed": 0.0, "jammed": False})
+        self.bogeys.append({"id": 3, "x": 0.55, "y": 0.52, "speed": 0.0, "jammed": False})
+
+        power_mode = POWER_ACTIVE_RADAR
+        self._update_segment_display(power_mode)
+        self._render_radar(power_mode)
+        self.core.matrix.show_frame()
+        self.core.buzzer.play_sequence(tones.WARNING)
+        await asyncio.sleep(3.0)
+
+        # Simulate CIWS Blast
+        self.core.buzzer.play_sequence(tones.POWER_UP)
+        self.core.matrix.fill(Palette.WHITE, show=True)
+        await asyncio.sleep(0.1)
+
+        self.bogeys.clear()
+        self.base_health -= _CIWS_HEALTH_DRAIN # Drains 25% health
+        self._update_segment_display(power_mode)
+        self._render_radar(power_mode)
+        self.core.matrix.show_frame()
+        await asyncio.sleep(2.0)
+
+        # [0:32 - 0:36] "Manage your power routing and defend the canopy!"
+        self.core.display.update_status("ORIENTATION COMPLETE", "GOOD LUCK")
+        await asyncio.sleep(4.0)
+
+        # Wait for the audio track to finish naturally
+        await tute_audio
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
 
     # ------------------------------------------------------------------
     # Power routing helpers

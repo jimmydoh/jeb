@@ -321,6 +321,7 @@ MODE_REGISTRY |= {
         "class_name": "EmojiRevealMode",
         "icon": "EMOJI_REVEAL",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 90,
         "requires": ["CORE"],
         "settings": [
@@ -345,6 +346,7 @@ MODE_REGISTRY |= {
         "class_name": "FrequencyHunterMode",
         "icon": "FREQ_HUNTER",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 100,
         "requires": ["CORE"],
         "settings": [
@@ -556,6 +558,7 @@ MODE_REGISTRY |= {
         "class_name": "IronCanopy",
         "icon": "IRON_CANOPY",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 4,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
@@ -574,6 +577,7 @@ MODE_REGISTRY |= {
         "class_name": "DefconCommander",
         "icon": "DEFCON_COMMANDER",
         "menu": "MAIN",
+        "has_tutorial": True,
         "order": 5,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [

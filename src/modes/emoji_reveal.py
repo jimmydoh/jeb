@@ -18,7 +18,6 @@ from utilities.icons import Icons
 from utilities.palette import Palette
 from .game_mode import GameMode
 
-
 class EmojiRevealMode(GameMode):
     """Trivia game mode: identify an icon as it reveals itself pixel by pixel.
 
@@ -53,6 +52,95 @@ class EmojiRevealMode(GameMode):
 
     def __init__(self, core):
         super().__init__(core, "EMOJI REVEAL", "Pixel Reveal Trivia")
+
+    async def run_tutorial(self):
+        """
+        A guided, non-interactive demonstration of Emoji Reveal.
+
+        The Voiceover Script (audio/tutes/emoji_tute.wav) ~ 31 seconds:
+            [0:00] "Welcome to Emoji Reveal. A test of speed and recognition."
+            [0:05] "Watch the LED matrix closely as an image slowly fades in, pixel by pixel."
+            [0:10] "Check the screen for four possible answers."
+            [0:14] "Press the physical buttons one through four to lock in your guess."
+            [0:19] "The faster you answer correctly, the more points you score!"
+            [0:24] "But be careful... one wrong guess, and the game is over."
+            [0:29] "Good luck!"
+            [0:31] (End of file)
+        """
+        await self.core.clean_slate()
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/emoji_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # [0:00 - 0:05] "Welcome to Emoji Reveal. A test of speed and recognition."
+        self.core.display.update_status("EMOJI REVEAL", "SPEED & RECOGNITION")
+        self.core.matrix.show_icon("EMOJI_REVEAL", anim_mode="PULSE", speed=2.0)
+        await asyncio.sleep(5.0)
+
+        # [0:05 - 0:10] "Watch the LED matrix closely as an image slowly fades in..."
+        self.core.display.update_status("REVEAL", "WATCH THE MATRIX")
+        self.core.matrix.clear()
+
+        # Start a slow reveal of the SKULL icon in the background
+        icon_data = Icons.get("SKULL")
+        reveal_task = asyncio.create_task(
+            matrix_animations.animate_random_pixel_reveal(
+                self.core.matrix,
+                icon_data,
+                duration=12.0,  # Slow reveal duration
+                brightness=1.0
+            )
+        )
+        await asyncio.sleep(5.0)
+
+        # [0:10 - 0:14] "Check the screen for four possible answers."
+        self.core.display.update_header("RND 1/5")
+        self.core.display.update_status("A:GHOST   B:SKULL", "C:SWORD   D:SHIELD")
+        await asyncio.sleep(4.0)
+
+        # [0:14 - 0:19] "Press the physical buttons one through four..."
+        self.core.display.update_footer("PRESS B2 FOR 'SKULL'")
+
+        # Flash the LED for Button 2 (Index 1), which maps to Option B
+        self.core.leds.flash_led(1, Palette.WHITE, duration=4.0, speed=0.2)
+        await asyncio.sleep(4.0)
+
+        # [0:19 - 0:24] "The faster you answer correctly, the more points..."
+        # Cancel the background reveal task to simulate the player locking in an answer
+        if not reveal_task.done():
+            reveal_task.cancel()
+            try:
+                await reveal_task
+            except asyncio.CancelledError:
+                pass
+
+        # Simulate instant success
+        self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+        self.core.matrix.show_icon("SKULL", anim_mode="PULSE", speed=2.0, border_color=Palette.GREEN)
+        self.core.display.update_header("CORRECT! +450")
+        self.core.display.update_footer("")
+        await asyncio.sleep(5.0)
+
+        # [0:24 - 0:29] "But be careful... one wrong guess, and the game is over."
+        self.core.display.update_header("WRONG GUESS =")
+        self.core.display.update_status("GAME OVER!", "")
+        self.core.matrix.show_icon("SKULL", anim_mode="PULSE", speed=2.0, border_color=Palette.RED)
+        self.core.buzzer.play_sequence(tones.ERROR)
+        await asyncio.sleep(5.0)
+
+        # [0:29 - 0:31] "Good luck!"
+        self.core.display.update_header("-EMOJI REVEAL-")
+        self.core.display.update_status("GOOD LUCK!", "")
+
+        # Wait for the audio track to finish naturally
+        await tute_audio
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
 
     # ------------------------------------------------------------------
     # Main game entry point
