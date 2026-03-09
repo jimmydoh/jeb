@@ -741,6 +741,43 @@ class Icons:
     #  11=RED  13=PINK     22=GOLD 31=YELLOW 61=BLUE
     # -------------------------------------------------------------------------
 
+    # PIPELINE_OVERLOAD – pipe maze with descending fluid blob
+    # Navy(60) background, Teal(50) pipes, Cyan(51) junctions, Orange(21) fluid
+    PIPELINE_OVERLOAD = bytes([
+        # Row  0 – top border
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+        # Row  1 – pipe columns with fluid entry (orange) in section 1
+        60, 60, 21, 21, 60, 60, 50, 50, 60, 60, 50, 50, 60, 60, 50, 50,
+        # Row  2
+        60, 60, 21, 21, 60, 60, 50, 50, 60, 60, 50, 50, 60, 60, 50, 50,
+        # Row  3
+        60, 60, 21, 21, 60, 60, 50, 50, 60, 60, 50, 50, 60, 60, 50, 50,
+        # Row  4 – junction: fluid bends right (orange connector)
+        60, 60, 21, 21, 21, 21, 51, 51, 60, 60, 50, 50, 60, 60, 50, 50,
+        # Row  5 – fluid continues in section 2 (cols 4-5)
+        60, 60, 60, 60, 60, 60, 21, 21, 60, 60, 50, 50, 60, 60, 50, 50,
+        # Row  6
+        60, 60, 60, 60, 60, 60, 21, 21, 60, 60, 50, 50, 60, 60, 50, 50,
+        # Row  7 – junction: fluid bends right (cols 6-9)
+        60, 60, 60, 60, 60, 60, 21, 21, 21, 21, 51, 51, 60, 60, 50, 50,
+        # Row  8 – fluid in section 4 (cols 8-9)
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 21, 21, 60, 60, 50, 50,
+        # Row  9
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 21, 21, 60, 60, 50, 50,
+        # Row 10
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 21, 21, 60, 60, 50, 50,
+        # Row 11 – junction: fluid bends right (cols 10-13)
+        60, 60, 60, 60, 60, 60, 60, 60, 51, 51, 21, 21, 21, 21, 51, 51,
+        # Row 12 – fluid at section 6 (cols 12-13) heading to exit
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 21, 21,
+        # Row 13
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 21, 21,
+        # Row 14 – fluid exits at bottom right
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 21, 21,
+        # Row 15 – bottom border
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+    ])
+
     # VIRTUAL_PET – mode menu / idle face: cute cat with happy open eyes
     VIRTUAL_PET = bytes([
         # Row  0
@@ -1109,6 +1146,7 @@ class Icons:
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
         "ARTILLERY_COMMAND": ARTILLERY_COMMAND,
         "ENIGMA_BYTE": ENIGMA_BYTE,
+        "PIPELINE_OVERLOAD": PIPELINE_OVERLOAD,
         "VIRTUAL_PET": VIRTUAL_PET,
         "CAT_IDLE": CAT_IDLE,
         "CAT_EAT": CAT_EAT,
