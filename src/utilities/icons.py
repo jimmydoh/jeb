@@ -637,6 +637,32 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # Abyssal Rover – top-down dark maze with a 5×5 spotlight centered on rover.
+    # Background: black (0) with faint charcoal (1) corridor glimpses.
+    # Viewport halo: teal (50) 5×5 square centered at (7,7).
+    # Rover at (7,7): cyan (51) body with navy (60) cockpit dot.
+    # Exit marker at bottom-right corner: gold (22).
+    # Visible corridor: slim charcoal lines above and below viewport.
+    ABYSSAL_ROVER = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  0  corridor glimpse north
+         0,   1,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   1,   0,  # Row  1  dim walls
+         0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  2
+         0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  3  corridor to viewport top
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  4  gap before viewport
+         0,   0,   0,   0,   0,  50,  50,  50,  50,  50,   0,   0,   0,   0,   0,   0,  # Row  5  viewport top edge (teal)
+         0,   0,   0,   0,   0,  50,  51,  51,  51,  50,   0,   0,   0,   0,   0,   0,  # Row  6  rover top half
+         0,   0,   0,   0,   0,  50,  51,  60,  51,  50,   0,   0,   0,   0,   0,   0,  # Row  7  rover core (navy cockpit)
+         0,   0,   0,   0,   0,  50,  51,  51,  51,  50,   0,   0,   0,   0,   0,   0,  # Row  8  rover bottom half
+         0,   0,   0,   0,   0,  50,  50,  50,  50,  50,   0,   0,   0,   0,   0,   0,  # Row  9  viewport bottom edge (teal)
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 10  gap after viewport
+         0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 11  corridor south of viewport
+         0,   1,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   1,   0,  # Row 12  dim walls
+         0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 13
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  22,  22,   0,  # Row 14  exit marker (gold)
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  22,  22,   0,  # Row 15  exit marker (gold)
+    ])
+
     # DEFCON Commander – 10-silo missile complex viewed from above
     # Dark background with 10 small silo dots (Yellow) and a key symbol
     DEFCON_COMMANDER = bytes([
@@ -1105,6 +1131,7 @@ class Icons:
         "IRON_CANOPY": IRON_CANOPY,
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,
+        "ABYSSAL_ROVER": ABYSSAL_ROVER,
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
         "ARTILLERY_COMMAND": ARTILLERY_COMMAND,
         "ENIGMA_BYTE": ENIGMA_BYTE,
