@@ -670,6 +670,25 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "NUMBERS_STATION": {
+        "id": "NUMBERS_STATION",
+        "name": "NMBRS STN",
+        "module_path": "modes.numbers_station",
+        "class_name": "NumbersStation",
+        "icon": "NUMBERS_STATION",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
 }
 
 __all__ = ["MODE_REGISTRY"]
