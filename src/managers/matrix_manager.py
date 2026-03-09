@@ -370,7 +370,7 @@ class MatrixManager(BasePixelManager):
                         else:
                             self.draw_pixel(bx1, by, border_color, brightness=brightness)
 
-    def show_frame(self, frame, clear=True, color=None, brightness=1.0):
+    def show_frame(self, frame=None, clear=True, color=None, brightness=1.0):
         """Renders a palette-encoded frame buffer directly to the matrix.
 
         Uses the same palette-index encoding as show_icon: each byte is
@@ -380,8 +380,14 @@ class MatrixManager(BasePixelManager):
 
         Args:
             frame: bytearray or bytes of length width*height, palette indices.
+                   If frame is None, do nothing maybe?
             clear: If True, clears all animation slots first. Default True.
         """
+        if frame is None:
+            # The render loop should handle the animation step
+            # Not sure why all the modes are still calling show_frame() at all
+            return
+
         if clear:
             self.clear()
 

@@ -462,7 +462,7 @@ def test_reset_phase_clears_toggles_and_arm():
 def test_artillery_command_icon_exists():
     """Test that ARTILLERY_COMMAND icon attribute exists in Icons."""
     src = _source()
-    with open(_ICONS_PATH) as fh:
+    with open(_ICONS_PATH, encoding="utf-8") as fh:
         icons_src = fh.read()
     assert "ARTILLERY_COMMAND" in icons_src, \
         "ARTILLERY_COMMAND icon missing from icons.py"

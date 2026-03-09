@@ -153,26 +153,31 @@ class Patches:
     """Named combinations of Waveforms and Envelopes."""
 
     SELECT = {
+        "name": "SELECT",
         "wave": Waveforms.SQUARE,
         "envelope": Envelopes.CLICK
     }
 
     ERROR = {
+        "name": "ERROR",
         "wave": Waveforms.SAW,
         "envelope": Envelopes.PUNCHY
     }
 
     CLICK = {
+        "name": "CLICK",
         "wave": Waveforms.SQUARE,
         "envelope": Envelopes.CLICK
     }
 
     BEEP = {
+        "name": "BEEP",
         "wave": Waveforms.SINE,
         "envelope": Envelopes.BEEP
     }
 
     BEEP_SQUARE = {
+        "name": "BEEP_SQUARE",
         "wave": Waveforms.SQUARE,
         "envelope": Envelopes.BEEP
     }
@@ -186,20 +191,27 @@ class Patches:
         Safe under CircuitPython's cooperative asyncio scheduler.
         """
         if cls.NOISE is None:
-            cls.NOISE = {"wave": Waveforms.get_noise(), "envelope": Envelopes.PERCUSSION}
+            cls.NOISE = {
+                "name": "NOISE",
+                "wave": Waveforms.get_noise(),
+                "envelope": Envelopes.PERCUSSION
+            }
         return cls.NOISE
 
     PAD = {
+        "name": "PAD",
         "wave": Waveforms.TRIANGLE,
         "envelope": Envelopes.PAD
     }
 
     PUNCH = {
+        "name": "PUNCH",
         "wave": Waveforms.SAW,
         "envelope": Envelopes.PUNCHY
     }
 
     SUCCESS = {
+        "name": "SUCCESS",
         "wave": Waveforms.SINE,
         "envelope": synthio.Envelope(
             attack_time=0.01,
@@ -211,11 +223,13 @@ class Patches:
     }
 
     ALARM = {
+        "name": "ALARM",
         "wave": Waveforms.SAW,
         "envelope": Envelopes.BEEP
     }
 
     SONAR = {
+        "name": "SONAR",
         "wave": Waveforms.SINE,
         "envelope": synthio.Envelope(
             attack_time=0.001,
@@ -228,16 +242,19 @@ class Patches:
 
     # Classic NES Melody
     RETRO_LEAD = {
+        "name": "RETRO_LEAD",
         "wave": Waveforms.SQUARE, # The authentic Mario waveform
         "envelope": Envelopes.GAME_LEAD
     }
 
     RETRO_SFX = {
+        "name": "RETRO_SFX",
         "wave": Waveforms.PULSE,
         "envelope": Envelopes.GAME_SFX
     }
 
     RETRO_COIN = {
+        "name": "RETRO_COIN",
         "wave": Waveforms.PULSE,
         "envelope": Envelopes.GAME_SFX
     }
@@ -245,6 +262,7 @@ class Patches:
 
 
     TEXT_SCROLL = {
+        "name": "TEXT_SCROLL",
         "wave": Waveforms.TRIANGLE,
         "envelope": synthio.Envelope(
             attack_time=0.001,
@@ -256,6 +274,7 @@ class Patches:
     }
 
     ETHEREAL = {
+        "name": "ETHEREAL",
         "wave": Waveforms.TRIANGLE,
         "envelope": synthio.Envelope(
             attack_time=1.0,  # Slow fade in
@@ -267,16 +286,19 @@ class Patches:
     }
 
     IDLE_HUM = {
+        "name": "IDLE_HUM",
         "wave": Waveforms.SINE,
         "envelope": Envelopes.PAD
     }
 
     SCANNER = {
+        "name": "SCANNER",
         "wave": Waveforms.TRIANGLE,
         "envelope": Envelopes.BEEP
     }
 
     ENGINE_HUM = {
+        "name": "ENGINE_HUM",
         "wave": Waveforms.TRIANGLE, # Triangle has slightly more 'grit' than Sine
         "envelope": synthio.Envelope(
             attack_time=1.5,    # Takes 1.5s to reach full volume (Smooth)
@@ -288,6 +310,7 @@ class Patches:
     }
 
     DATA_STREAM = {
+        "name": "DATA_STREAM",
         "wave": Waveforms.SQUARE,
         "envelope": synthio.Envelope(
             attack_time=0.05,
@@ -300,6 +323,7 @@ class Patches:
 
     # 3-channel chiptune: bass channel (Triangle, instant response)
     RETRO_BASS = {
+        "name": "RETRO_BASS",
         "wave": Waveforms.TRIANGLE,
         "envelope": Envelopes.GAME_LEAD
     }
@@ -315,6 +339,7 @@ class Patches:
         """
         if cls.RETRO_NOISE is None:
             cls.RETRO_NOISE = {
+                "name": "RETRO_NOISE",
                 "wave": Waveforms.get_noise(),
                 "envelope": synthio.Envelope(
                     attack_time=0.001,
