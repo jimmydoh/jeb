@@ -540,6 +540,18 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "MECHA_FORGE": {
+        "id": "MECHA_FORGE",
+        "name": "MECHA FORGE",
+        "module_path": "modes.mecha_forge",
+        "class_name": "MechaForge",
+        "icon": "MECHA_FORGE",
+        "menu": "ZERO_PLAYER",
+        "order": 610,
+        "requires": ["CORE"],
+        "optional": ["INDUSTRIAL"],
+        "settings": []
+    },
 }
 
 # Sat Type 01 INDUSTRIAL Game Modes
