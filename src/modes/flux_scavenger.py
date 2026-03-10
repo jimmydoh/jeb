@@ -294,27 +294,135 @@ class FluxScavenger(GameMode):
     # ------------------------------------------------------------------
 
     async def run_tutorial(self):
-        """Text-only slide-show orientation for Flux Scavenger.
+        """
+        Guided, animated demonstration of Flux Scavenger mechanics.
 
-        Walks the player through all five hardware interactions:
-        encoder scrubbing, jump, toggle hacking, gravity shift, and
-        the time-rewind momentary toggle.
+        The Voiceover Script (audio/tutes/flux_tute.wav) ~34 seconds:
+            [0:00] "Welcome to Flux Scavenger. You must reach the golden pixel to escape."
+            [0:05] "Turn the core dial to scrub your character left and right. Press button zero to jump."
+            [0:12] "The eight toggle switches hack the environment. Flip them to solidify platforms or disable hazards."
+            [0:19] "The rotary switch controls gravity. You can walk on the ceiling, or float in zero-G."
+            [0:25] "If you make a fatal mistake, hold the momentary switch UP to rewind time."
+            [0:31] "Good luck, Scavenger."
+            [0:34] (End of file)
         """
         await self.core.clean_slate()
 
-        slides = [
-            ("FLUX SCAVENGER",  "DIAL = MOVE 1 PX"),
-            ("BUTTON 0",        "= JUMP"),
-            ("8 TOGGLES",       "HACK ENVIRONMENT"),
-            ("ROTARY SWITCH",   "SHIFT GRAVITY"),
-            ("MOMENTARY UP",    "= REWIND TIME"),
-            ("REACH THE GOLD",  "PIXEL TO ESCAPE!"),
-        ]
+        if not self.sat or not self.sat.is_active:
+            self.core.display.update_status("FLUX SCAVENGER", "SAT OFFLINE - ABORT")
+            await asyncio.sleep(2)
+            return "TUTORIAL_FAILED"
 
-        for line1, line2 in slides:
-            self.core.display.update_status(line1, line2)
-            self.core.matrix.show_icon("FLUX_SCAVENGER", anim_mode="PULSE", speed=2.0)
-            await asyncio.sleep(2.0)
+        self.game_state = "TUTORIAL"
+
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/flux_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # Setup mock state using Level 1
+        level = _LV1
+        self._px = float(_LV1_START[0])
+        self._py = float(_LV1_START[1])
+        self._vy = 0.0
+        toggles = [False] * 8
+        grav_mode = GRAV_NORMAL
+
+        self.core.display.use_standard_layout()
+
+        def _refresh(rewinding=False):
+            self._render(level, toggles)
+            self.core.matrix.show_frame()
+            self._update_oled(0, grav_mode, toggles, rewinding)
+
+        # --- [0:00 - 0:05] Welcome ---
+        self.core.display.update_status("FLUX SCAVENGER", "REACH THE GOLD PIXEL")
+        _refresh()
+        await asyncio.sleep(5.0)
+
+        # --- [0:05 - 0:12] Move and Jump ---
+        self.core.display.update_status("DIAL = SCRUB", "BUTTON 0 = JUMP")
+
+        # Simulate encoder scrubbing
+        for _ in range(8):
+            self._px += 0.5
+            _refresh()
+            self.core.synth.play_note(440.0, "CLICK", duration=0.01)
+            await asyncio.sleep(0.15)
+
+        # Simulate jump
+        self.core.synth.play_note(660.0, "UI_SELECT", duration=0.05)
+        self._vy = _JUMP_FLOOR
+        for _ in range(16):
+            self._px += 0.2
+            self._vy += _GRAV_NORMAL
+            self._py += self._vy
+            # Floor collision
+            if self._py >= 14.0:
+                self._py = 14.0
+                self._vy = 0.0
+            _refresh()
+            await asyncio.sleep(0.04)
+
+        await asyncio.sleep(2.0)
+
+        # --- [0:12 - 0:19] Toggles (Hack Environment) ---
+        self.core.display.update_status("8 TOGGLES", "HACK ENVIRONMENT")
+        await asyncio.sleep(1.0)
+
+        # Flip toggle 0 to activate the Cyan bridge
+        toggles[0] = True
+        self.core.buzzer.play_sequence(tones.COIN)
+        self._update_sat_leds(toggles, True)
+        _refresh()
+        await asyncio.sleep(5.0)
+
+        # --- [0:19 - 0:25] Gravity Shift ---
+        self.core.display.update_status("ROTARY SWITCH", "SHIFT GRAVITY")
+        await asyncio.sleep(1.0)
+
+        # Switch to ceiling gravity
+        grav_mode = GRAV_CEILING
+        self.core.buzzer.play_sequence(tones.UI_TICK)
+        self._update_sat_display(0, grav_mode)
+
+        # Simulate falling UP to the ceiling
+        self._vy = 0.0
+        for _ in range(25):
+            self._vy += _GRAV_CEILING
+            self._py += self._vy
+            # Ceiling collision
+            if self._py <= 1.0:
+                self._py = 1.0
+                self._vy = 0.0
+            _refresh()
+            await asyncio.sleep(0.04)
+
+        await asyncio.sleep(3.0)
+
+        # --- [0:25 - 0:31] Time Rewind ---
+        self.core.display.update_status("MOMENTARY UP", "REWIND TIME!")
+        await asyncio.sleep(1.0)
+
+        # Simulate scrubbing backward
+        for _ in range(30):
+            self._py += 0.43 # Smoothly interpolate back to the floor
+            if self._py >= 14.0:
+                self._py = 14.0
+            _refresh(rewinding=True)
+            self.core.synth.play_note(300.0, "UI_SELECT", duration=0.02)
+            await asyncio.sleep(0.04)
+
+        grav_mode = GRAV_NORMAL
+        _refresh(rewinding=False)
+        self._update_sat_display(0, grav_mode)
+
+        # --- [0:31 - 0:34] Outro ---
+        self.core.display.update_status("GOOD LUCK", "SCAVENGER")
+
+        if hasattr(self.core.audio, 'wait_for_bus'):
+            await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+        else:
+            await asyncio.sleep(3.0)
 
         await self.core.clean_slate()
         return "TUTORIAL_COMPLETE"
@@ -463,6 +571,7 @@ class FluxScavenger(GameMode):
         """Move player dx pixels laterally (one pixel per encoder click)."""
         if dx == 0:
             return
+
         steps = int(dx)
         if steps == 0:
             steps = 1 if dx > 0 else -1
@@ -471,8 +580,15 @@ class FluxScavenger(GameMode):
         for _ in range(abs(steps)):
             new_x = int(self._px) + direction
             new_x = max(0, min(15, new_x))
-            if not self._tile_is_solid(
-                    self._get_tile(level, new_x, int(self._py)), toggles):
+
+            # Check both the floor-row and ceil-row to prevent corner clipping!
+            py_floor = int(self._py)
+            py_ceil = int(math.ceil(self._py))
+
+            floor_solid = self._tile_is_solid(self._get_tile(level, new_x, py_floor), toggles)
+            ceil_solid = self._tile_is_solid(self._get_tile(level, new_x, py_ceil), toggles)
+
+            if not floor_solid and not ceil_solid:
                 self._px = float(new_x)
             else:
                 break  # Blocked by wall; stop
@@ -499,14 +615,22 @@ class FluxScavenger(GameMode):
     # Satellite feedback
     # ------------------------------------------------------------------
 
-    def _update_sat_leds(self, toggles):
+    def _update_sat_leds(self, toggles, blink_on):
         """Light the 8 satellite LEDs to mirror each toggle's live state."""
         if not self.sat:
             return
         for i, on in enumerate(toggles):
             if on:
                 color = _TOGGLE_LED_COLOR.get(i, Palette.WHITE)
-                self.sat.send("LED", f"{i},{color.index},0.0,1.0,2")
+
+                # Check if this toggle is mapped to a hazard
+                is_hazard = any(v[0] == i and v[1] for v in _TILE_TOGGLE_MAP.values())
+
+                if is_hazard and not blink_on:
+                    # Dim the LED during the off-blink
+                    self.sat.send("LED", f"{i},{color.index},0.0,0.1,2")
+                else:
+                    self.sat.send("LED", f"{i},{color.index},0.0,1.0,2")
             else:
                 self.sat.send("LED", f"{i},{Palette.CHARCOAL.index},0.0,0.3,2")
 
@@ -696,7 +820,8 @@ class FluxScavenger(GameMode):
 
                 # 8. Satellite feedback (every 3 frames to reduce chatter)
                 if self._tick % 3 == 0:
-                    self._update_sat_leds(toggles)
+                    blink_on = (self._tick % 6) < 3 # compute blink state
+                    self._update_sat_leds(toggles, blink_on) # pass it
                     self._update_sat_display(level_idx, grav_mode)
 
                 # 9. Render and OLED

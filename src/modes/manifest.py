@@ -721,7 +721,6 @@ MODE_REGISTRY |= {
             }
         ]
     },
-  
     "VANGUARD_OVERRIDE": {
         "id": "VANGUARD_OVERRIDE",
         "name": "VANGUARD OVR",
