@@ -74,15 +74,15 @@ _SAFE_DOCK_SPEED    = 0.5     # m/s max approach speed for hard capture
 _CLAMP_DISTANCE     = 10.0    # metres: start clamp-sequence phase
 _CRASH_SPEED        = 3.0     # m/s: collision speed causes mission failure
 
-_RCS_IMPULSE        = 0.04    # m/s per encoder tick (lateral)
-_OMS_THRUST         = 0.06    # m/s per physics tick (z-axis thrust)
+_RCS_IMPULSE        = 0.05    # m/s per encoder tick (lateral)
+_OMS_THRUST         = 1.8     # m/s² (Acceleration)
 _SAS_DECAY          = 0.85    # velocity multiplier per frame when SAS active
 _MAX_LAT_VELOCITY   = 1.5     # m/s: cap on X/Y velocity
 _MAX_Z_VELOCITY     = 2.5     # m/s: cap on Z approach velocity
 
 _FUEL_COST_RCS      = 1.0     # fuel units per encoder tick
-_FUEL_COST_OMS      = 0.4     # fuel units per physics tick (OMS)
-_FUEL_COST_SAS      = 0.5     # fuel units per physics tick (SAS)
+_FUEL_COST_OMS      = 12.0    # fuel units per second
+_FUEL_COST_SAS      = 15.0    # fuel units per second
 
 # Station lateral drift (units per tick) for HARD/INSANE
 _DRIFT_SLOW         = 0.008
@@ -282,39 +282,40 @@ class OrbitalDocking(GameMode):
         self._vel_y *= _SAS_DECAY
         self._fuel = max(0.0, self._fuel - _FUEL_COST_SAS)
 
-    def _update_physics(self, oms_forward, oms_brake, sas_active):
+    def _update_physics(self, delta_s,oms_forward, oms_brake, sas_active):
         """Integrate velocities and positions for one physics tick."""
         # Z-axis (approach / braking)
         if oms_forward and self._fuel > 0:
-            self._vel_z += _OMS_THRUST
+            self._vel_z += _OMS_THRUST * delta_s
             self._vel_z = min(_MAX_Z_VELOCITY, self._vel_z)
-            self._fuel = max(0.0, self._fuel - _FUEL_COST_OMS)
+            self._fuel = max(0.0, self._fuel - (_FUEL_COST_OMS * delta_s)) # scale fuel drain
+
         if oms_brake and self._fuel > 0:
-            self._vel_z -= _OMS_THRUST
+            self._vel_z -= _OMS_THRUST * delta_s
             self._vel_z = max(-_MAX_Z_VELOCITY, self._vel_z)
-            self._fuel = max(0.0, self._fuel - _FUEL_COST_OMS)
+            self._fuel = max(0.0, self._fuel - (_FUEL_COST_OMS * delta_s))
 
-        # SAS (lateral stabilisation)
-        if sas_active:
-            self._apply_sas()
+        # SAS (lateral stabilisation) using exponential decay for framerate independence
+        if sas_active and self._fuel > 0:
+            decay = math.exp(-4.0 * delta_s) # e.g. decay rate of 4.0
+            self._vel_x *= decay
+            self._vel_y *= decay
+            self._fuel = max(0.0, self._fuel - (_FUEL_COST_SAS * delta_s))
 
-        # Station drift (HARD / INSANE difficulty)
+        # Station drift
         if self._drift:
-            self._align_x += self._drift_dir_x * self._drift_speed
-            self._align_y += self._drift_dir_y * self._drift_speed
+            self._align_x += self._drift_dir_x * (self._drift_speed * delta_s * 30)
+            self._align_y += self._drift_dir_y * (self._drift_speed * delta_s * 30)
             # Bounce station drift direction at edges
             if abs(self._align_x) > 8.0:
                 self._drift_dir_x = -self._drift_dir_x
             if abs(self._align_y) > 8.0:
                 self._drift_dir_y = -self._drift_dir_y
 
-        # Integrate X/Y lateral position
-        self._align_x += self._vel_x
-        self._align_y += self._vel_y
-
-        # Integrate Z
-        self._z_dist -= self._vel_z
-        self._z_dist = max(0.0, self._z_dist)
+        # Integrate velocity into position (Euler)
+        self._align_x += self._vel_x * delta_s
+        self._align_y += self._vel_y * delta_s
+        self._z_dist -= self._vel_z * delta_s
 
         self._frame += 1
 
@@ -361,30 +362,51 @@ class OrbitalDocking(GameMode):
         """Render the current docking state onto the LED matrix."""
         self.core.matrix.clear()
 
-        # --- Docking ring ---
-        # Radius grows from 0 to _RING_MAX_RADIUS as distance closes.
+        # --- Distance Progress (0.0 at 200m, 1.0 at 0m) ---
         progress = 1.0 - (self._z_dist / _INITIAL_DISTANCE)
         progress = max(0.0, min(1.0, progress))
-        ring_r = progress * _RING_MAX_RADIUS
 
-        # Ring centre shifts with alignment error (clamped to matrix)
+        # Target centre shifts with alignment error (clamped to matrix)
         ring_cx = int(round(_CENTRE - self._align_x))
         ring_cy = int(round(_CENTRE - self._align_y))
 
-        # Ring colour: green when aligned, orange when drifted
-        if self._is_aligned():
-            ring_color = Palette.GREEN
-        else:
-            ring_color = Palette.ORANGE
+        # --- 1. The Physical Station (Solid Body + Outer Edge) ---
+        phys_r = int(round(progress * _RING_MAX_RADIUS))
+        if phys_r > 0:
+            # Draw the filled interior (Dim Gray Hull)
+            r_sq = phys_r * phys_r
+            for dx in range(-phys_r, phys_r + 1):
+                for dy in range(-phys_r, phys_r + 1):
+                    # Check if the pixel is inside the circle's radius
+                    if dx * dx + dy * dy <= r_sq:
+                        px, py = ring_cx + dx, ring_cy + dy
+                        if 0 <= px < _MATRIX_SIZE and 0 <= py < _MATRIX_SIZE:
+                            self.core.matrix.draw_pixel(px, py, Palette.GRAY, brightness=0.2)
 
-        # Flash ring when in CLAMP_SEQ or HARD_CAPTURE phase
+            # Draw the bright white outer hull edge
+            self._draw_ring(ring_cx, ring_cy, phys_r, Palette.WHITE)
+        else:
+            # At exactly 0 radius, just draw a distant white dot
+            if 0 <= ring_cx < _MATRIX_SIZE and 0 <= ring_cy < _MATRIX_SIZE:
+                self.core.matrix.draw_pixel(ring_cx, ring_cy, Palette.WHITE)
+
+        # --- 2. The HUD Targeting Bracket (Shrinks to lock on) ---
+        hud_r = int(round((1.0 - progress) * _RING_MAX_RADIUS))
+
+        if self._is_aligned():
+            hud_color = Palette.GREEN
+        else:
+            hud_color = Palette.ORANGE
+
         if self._phase in (_PHASE_CLAMP_SEQ, _PHASE_HARD_CAPTURE):
             if (self._frame // 4) % 2 == 0:
-                ring_color = Palette.CYAN
+                hud_color = Palette.CYAN
 
-        self._draw_ring(ring_cx, ring_cy, ring_r, ring_color)
+        # Draw HUD ring (drawn AFTER physical so it overlays the hull)
+        if hud_r != phys_r:
+            self._draw_ring(ring_cx, ring_cy, hud_r, hud_color)
 
-        # --- Crosshair (player centre) ---
+        # --- 3. Crosshair (player centre) ---
         cx, cy = _CENTRE, _CENTRE
         # Horizontal arms
         for dx in (-3, -2, -1, 1, 2, 3):
@@ -703,7 +725,7 @@ class OrbitalDocking(GameMode):
                 self._apply_rcs_y(enc_dy)
 
             # --- Physics tick ---
-            self._update_physics(oms_forward, oms_brake, sas_active)
+            self._update_physics(delta_ms, oms_forward, oms_brake, sas_active)
 
             # --- Crash check: too fast Z collision ---
             if self._z_dist <= 0.0:
@@ -811,6 +833,13 @@ class OrbitalDocking(GameMode):
                 if now_ms - getattr(self, '_last_rcs_audio', 0) > 80:
                     self.core.synth.play_note(520.0, "BLIP", duration=0.04)
                     self._last_rcs_audio = now_ms
+
+            # --- SAS engine sound ---
+            if sas_active and self._fuel > 0:
+                now_ms = ticks_ms()
+                if now_ms - getattr(self, '_last_sas_audio', 0) > 100:
+                    self.core.synth.play_note(120.0, "ENGINE_HUM", duration=0.1)
+                    self._last_sas_audio = now_ms
 
             # --- Low fuel warning ---
             if self._fuel <= 10.0 and (self._frame % 30) == 0:
