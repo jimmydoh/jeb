@@ -255,6 +255,35 @@ class MockApp:
         self.relay = MockRelay()
         self.hid = MockHID()
         self.i2c = MockI2CBus()
+        self.mode = "DASHBOARD"
+        self._pending_mode_variant = None
+        self.mode_registry = {
+            "SIMON": {
+                "id": "SIMON",
+                "name": "SIMON SAYS",
+                "menu": "MAIN",
+                "has_tutorial": True,
+                "order": 100,
+                "requires": ["CORE"],
+                "settings": [],
+            },
+            "PIPELINE": {
+                "id": "PIPELINE",
+                "name": "PIPELINE OVERLOAD",
+                "menu": "MAIN",
+                "has_tutorial": False,
+                "order": 200,
+                "requires": ["CORE"],
+                "settings": [],
+            },
+            "MAINMENU": {
+                "id": "MAINMENU",
+                "name": "MAIN MENU",
+                "menu": "SYSTEM",
+                "requires": ["CORE"],
+                "settings": [],
+            },
+        }
 
     async def start(self):
         while True:
@@ -684,6 +713,145 @@ def test_invalid_menu_selection():
     asyncio.run(run())
 
 
+@pytest.mark.asyncio
+async def test_mode_launcher_no_app():
+    """test_mode_launcher prints an error and returns when app is None."""
+    cm = ConsoleManager("CORE", "00")
+    # Should not raise even with no app
+    await cm.test_mode_launcher()
+
+
+@pytest.mark.asyncio
+async def test_mode_launcher_lists_main_modes():
+    """test_mode_launcher shows only MAIN-menu modes and backs out on '0'."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["0"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "0"
+
+    cm.get_input = fake_input
+    await cm.test_mode_launcher()
+
+    # No mode switch should have occurred
+    assert app.mode == "DASHBOARD"
+    assert app._pending_mode_variant is None
+
+
+@pytest.mark.asyncio
+async def test_mode_launcher_main_game():
+    """test_mode_launcher sets app.mode when '1' (Main Game) is selected."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    # SIMON is index 1 (first MAIN mode); pick main game
+    input_queue = ["1", "1"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "0"
+
+    cm.get_input = fake_input
+    await cm.test_mode_launcher()
+
+    assert app.mode == "SIMON"
+    assert app._pending_mode_variant is None
+
+
+@pytest.mark.asyncio
+async def test_mode_launcher_tutorial():
+    """test_mode_launcher sets _pending_mode_variant='TUTORIAL' when '2' is selected."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    # SIMON is index 1 (first MAIN mode); pick tutorial
+    input_queue = ["1", "2"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "0"
+
+    cm.get_input = fake_input
+    await cm.test_mode_launcher()
+
+    assert app.mode == "SIMON"
+    assert app._pending_mode_variant == "TUTORIAL"
+
+
+@pytest.mark.asyncio
+async def test_mode_launcher_no_tutorial_skips_variant_prompt():
+    """test_mode_launcher skips variant prompt for modes without a tutorial."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    # PIPELINE is index 2 (second MAIN mode) and has no tutorial
+    input_queue = ["2"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "0"
+
+    cm.get_input = fake_input
+    await cm.test_mode_launcher()
+
+    assert app.mode == "PIPELINE"
+    assert app._pending_mode_variant is None
+
+
+@pytest.mark.asyncio
+async def test_mode_launcher_invalid_index():
+    """test_mode_launcher handles out-of-range mode selection gracefully."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["99"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "0"
+
+    cm.get_input = fake_input
+    await cm.test_mode_launcher()
+
+    assert app.mode == "DASHBOARD"
+    assert app._pending_mode_variant is None
+
+
+@pytest.mark.asyncio
+async def test_mode_launcher_non_numeric_input():
+    """test_mode_launcher handles non-numeric mode selection gracefully."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["abc"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "0"
+
+    cm.get_input = fake_input
+    await cm.test_mode_launcher()
+
+    assert app.mode == "DASHBOARD"
+    assert app._pending_mode_variant is None
+
+
+@pytest.mark.asyncio
+async def test_mode_launcher_invalid_variant_choice():
+    """test_mode_launcher handles an invalid variant choice without switching mode."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    # SIMON has tutorial; pick an invalid variant
+    input_queue = ["1", "9"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "0"
+
+    cm.get_input = fake_input
+    await cm.test_mode_launcher()
+
+    assert app.mode == "DASHBOARD"
+    assert app._pending_mode_variant is None
+
+
 # ---------------------------------------------------------------------------
 # Runner for direct execution
 # ---------------------------------------------------------------------------
@@ -726,6 +894,14 @@ def run_all_tests():
         test_test_hid_no_manager,
         test_test_i2c_scan_uses_app_i2c,
         test_test_i2c_scan_standalone,
+        test_mode_launcher_no_app,
+        test_mode_launcher_lists_main_modes,
+        test_mode_launcher_main_game,
+        test_mode_launcher_tutorial,
+        test_mode_launcher_no_tutorial_skips_variant_prompt,
+        test_mode_launcher_invalid_index,
+        test_mode_launcher_non_numeric_input,
+        test_mode_launcher_invalid_variant_choice,
     ]
 
     passed = 0

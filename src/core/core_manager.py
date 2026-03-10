@@ -246,6 +246,8 @@ class CoreManager:
         self.mode_registry = MODE_REGISTRY
         self.loaded_modes = {} # Cache for instantiated mode classes
         self.mode = "DASHBOARD" # Start in main menu mode
+        # Optional variant flag set by ConsoleManager to request tutorial instead of run()
+        self._pending_mode_variant = None
 
         # Fail-safe mode tracking to prevent infinite error loops
         self.dashboard_failure_count = 0
@@ -846,6 +848,23 @@ class CoreManager:
                     self.dashboard_failure_count = 0
 
                     mode_instance = mode_class(self)
+
+                    # Check if the developer console requested a tutorial run.
+                    # _pending_mode_variant is consumed once (single-use flag) and
+                    # is always cleared in the finally block so it cannot persist
+                    # across mode transitions.
+                    if self._pending_mode_variant == "TUTORIAL":
+                        try:
+                            JEBLogger.info("CORE", f"Console requested tutorial for '{self.mode}'")
+                            await mode_instance.enter()
+                            await mode_instance.run_tutorial()
+                        except Exception as e:
+                            JEBLogger.error("CORE", f"Tutorial error for '{self.mode}': {e}")
+                        finally:
+                            self._pending_mode_variant = None
+                            await mode_instance.exit()
+                        self.mode = "DASHBOARD"
+                        continue
 
                     run_robust = True
                     while run_robust:
