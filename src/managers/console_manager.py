@@ -615,6 +615,82 @@ class ConsoleManager():
 
         await asyncio.sleep(1)
 
+    async def test_mode_launcher(self):
+        """Dynamically launch a game mode or its tutorial from the console.
+
+        Reads the available game modes directly from the app's mode registry so
+        the list is never hardcoded and stays in sync with the manifest
+        automatically.  Gracefully aborts when no app is attached.
+        """
+        print("\n--- MODE LAUNCHER ---")
+
+        if self.app is None:
+            print("No app instance available. Mode Launcher requires a running app.")
+            return
+
+        # mode_registry is a required attribute of the app; guard against stripped-down
+        # test stubs that may not have it initialised yet.
+        if not hasattr(self.app, 'mode_registry') or not self.app.mode_registry:
+            print("App has no mode registry. Cannot list modes.")
+            return
+
+        # Collect launchable game modes (MAIN menu only)
+        game_modes = [
+            meta for meta in self.app.mode_registry.values()
+            if meta.get("menu") == "MAIN"
+        ]
+
+        if not game_modes:
+            print("No launchable game modes found in registry.")
+            return
+
+        # Sort by order then name for a stable display
+        game_modes.sort(key=lambda m: (m.get("order", 9999), m.get("name", "")))
+
+        print("\nAvailable Game Modes:")
+        for i, meta in enumerate(game_modes, 1):
+            tutorial_tag = " [+T]" if meta.get("has_tutorial", False) else ""
+            print(f"  {i}. {meta['name']}{tutorial_tag}")
+        print("  0. Back to Main Menu")
+
+        raw = await self.get_input("Select mode number >> ")
+
+        if raw == "0":
+            return
+
+        try:
+            idx = int(raw) - 1
+        except ValueError:
+            print("Invalid input. Please enter a number.")
+            return
+
+        if idx < 0 or idx >= len(game_modes):
+            print("Selection out of range.")
+            return
+
+        selected_meta = game_modes[idx]
+        mode_id = selected_meta["id"]
+        has_tutorial = selected_meta.get("has_tutorial", False)
+
+        if has_tutorial:
+            print(f"\nLaunch '{selected_meta['name']}':")
+            print("  1. Main Game")
+            print("  2. Tutorial")
+            variant_choice = await self.get_input(">> ")
+        else:
+            # No tutorial available - launch main game directly without prompting
+            variant_choice = "1"
+
+        if variant_choice == "1":
+            self.app.mode = mode_id
+            print(f"Mode switch requested: {selected_meta['name']} (main game)")
+        elif variant_choice == "2":
+            self.app._pending_mode_variant = "TUTORIAL"
+            self.app.mode = mode_id
+            print(f"Mode switch requested: {selected_meta['name']} (tutorial)")
+        else:
+            print("Invalid selection. Returning to main menu.")
+
     async def start(self):
         """Main interactive loop for the Console Manager."""
 
@@ -642,6 +718,7 @@ class ConsoleManager():
             print("9. Test Relays")
             print("H. Monitor HID Inputs")
             print("I. I2C Bus Scan")
+            print("M. Launch Game Mode")
             print("R. Reboot")
 
             choice = await self.get_input("Select Option >> ")
@@ -668,6 +745,8 @@ class ConsoleManager():
                 await self.test_hid()
             elif choice.upper() == "I":
                 await self.test_i2c_scan()
+            elif choice.upper() == "M":
+                await self.test_mode_launcher()
             elif choice.upper() == "R":
                 supervisor.reload()
             else:
