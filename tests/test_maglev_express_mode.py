@@ -401,18 +401,15 @@ def test_vanishing_point_logic():
     import importlib.util
     import types
 
+    # Use the real Palette so we don't corrupt sys.modules for later tests.
+    from utilities.palette import Palette as _Palette
+
     # Provide stub modules required by matrix_animations
     palette_stub = types.ModuleType("utilities.palette")
-
-    class _Palette:
-        OFF   = (0, 0, 0)
-        RED   = (255, 0, 0)
-        WHITE = (255, 255, 255)
-        BLUE  = (0, 0, 255)
-        GREEN = (0, 255, 0)
-
     palette_stub.Palette = _Palette
     sys.modules.setdefault("utilities", types.ModuleType("utilities"))
+    # Only inject the stub if utilities.palette isn't already loaded correctly.
+    _prev_palette = sys.modules.get("utilities.palette")
     sys.modules["utilities.palette"] = palette_stub
     sys.modules.setdefault("adafruit_ticks", types.ModuleType("adafruit_ticks"))
     sys.modules["adafruit_ticks"].ticks_ms   = lambda: 0
@@ -421,6 +418,10 @@ def test_vanishing_point_logic():
     spec = importlib.util.spec_from_file_location("matrix_animations", _ANIM_PATH)
     mod  = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+
+    # Restore the original palette module to avoid polluting later tests.
+    if _prev_palette is not None:
+        sys.modules["utilities.palette"] = _prev_palette
 
     mm = _MockMM(16, 16)
     mod.animate_vanishing_point(mm, arch_offset=0.0, speed_fraction=0.5, fault_flash=False)
