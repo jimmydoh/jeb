@@ -254,6 +254,101 @@ class MechaForge(BaseMode):
         # Redraw flag: set True whenever robot state changes
         self._dirty = True
 
+    async def run_tutorial(self):
+        """
+        A guided demonstration of the Mecha Forge sandbox.
+
+        The Voiceover Script (audio/tutes/mecha_tute.wav) ~31 seconds:
+            [0:00] "Welcome to Mecha Forge! Time to build your ultimate robot."
+            [0:05] "Turn the core dial to change the head and torso."
+            [0:09] "Turn the satellite dial to change the legs."
+            [0:13] "Flip the eight toggle switches to equip different weapons and accessories."
+            [0:18] "Type a three-digit code on the keypad to paint your mech."
+            [0:23] "Hold the momentary switch UP to fire your lasers!"
+            [0:27] "And press the Big Red Button to launch! Have fun!"
+            [0:31] (End of file)
+        """
+        await self.core.clean_slate()
+        self.game_state = "TUTORIAL"
+
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/mecha_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
+        # Reset to a blank slate for the demo
+        self._ht_idx = 0
+        self._lg_idx = 0
+        self._acc = [False] * _ACC_COUNT
+        self._body_color = _DEFAULT_COLOR
+        self._kp_buf = []
+
+        # Helper to force a frame draw during the tutorial
+        def _refresh():
+            self.core.matrix.clear()
+            self._draw_robot()
+            self.core.matrix.show_frame()
+
+        # [0:00 - 0:05] "Welcome to Mecha Forge..."
+        self.core.display.update_status("MECHA FORGE", "ROBOT BUILDER")
+        _refresh()
+        await asyncio.sleep(5.0)
+
+        # [0:05 - 0:09] "Turn the core dial to change the head and torso."
+        self.core.display.update_status("CORE DIAL", "CHANGE HEAD/TORSO")
+        for _ in range(3):
+            self._ht_idx = (self._ht_idx + 1) % len(_HT)
+            _refresh()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await asyncio.sleep(1.3)
+
+        # [0:09 - 0:13] "Turn the satellite dial to change the legs."
+        self.core.display.update_status("SATELLITE DIAL", "CHANGE LEGS")
+        for _ in range(3):
+            self._lg_idx = (self._lg_idx + 1) % len(_LG)
+            _refresh()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await asyncio.sleep(1.3)
+
+        # [0:13 - 0:18] "Flip the eight toggle switches to equip..."
+        self.core.display.update_status("TOGGLE SWITCHES", "EQUIP ACCESSORIES")
+        for toggle_idx in [0, 6, 1]:  # Cannon, Wings, Radar
+            self._acc[toggle_idx] = True
+            _refresh()
+            self.core.buzzer.play_sequence(tones.COIN)
+            await asyncio.sleep(1.6)
+
+        # [0:18 - 0:23] "Type a three-digit code on the keypad to paint..."
+        self.core.display.update_status("9-DIGIT KEYPAD", "PAINT YOUR MECH")
+        # Simulate typing 9-1-1 for a bright red
+        for digit in ["9", "1", "1"]:
+            self._kp_buf.append(int(digit))
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await asyncio.sleep(0.8)
+
+        self._body_color = (255, 20, 20)  # Apply the red paint
+        self._kp_buf = []
+        _refresh()
+        self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+        await asyncio.sleep(2.6)
+
+        # [0:23 - 0:27] "Hold the momentary switch UP to fire your lasers!"
+        self.core.display.update_status("MOMENTARY UP", "LASER ATTACK!")
+        await self._attack_animation()
+        await asyncio.sleep(1.5)
+
+        # [0:27 - 0:31] "And press the Big Red Button to launch! Have fun!"
+        self.core.display.update_status("BIG RED BUTTON", "LAUNCH!")
+        await self._launch_animation()
+
+        # Wait for the audio track to finish naturally
+        if hasattr(self.core.audio, 'wait_for_bus'):
+            await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+        else:
+            await asyncio.sleep(2.0)
+
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
+
     # ------------------------------------------------------------------
     # Satellite helpers
     # ------------------------------------------------------------------
@@ -525,6 +620,9 @@ class MechaForge(BaseMode):
             if self.core.hid.is_encoder_button_pressed(long=True, duration=2000):
                 gc.collect()
                 return "SUCCESS"
+            elif self.core.hid.is_encoder_button_pressed(action="tap"):
+                self.core.display.update_status("HOLD TO EXIT", "PRESS FOR 2s")
+                self.core.buzzer.play_sequence(tones.ERROR)
 
             # ---- Redraw only when state changed ----
             if self._dirty and not self._animating:

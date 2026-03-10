@@ -1285,11 +1285,8 @@ class Icons:
         "PLASMA": PLASMA,
         "WIREWORLD": WIREWORLD,
         "STARFIELD": STARFIELD,
-<<<<<<< copilot/add-mecha-forge-mode
         "MECHA_FORGE": MECHA_FORGE,
-=======
         "GROOVEBOX": GROOVEBOX,
->>>>>>> v0.8.1-rc
         "IRON_CANOPY": IRON_CANOPY,
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,
