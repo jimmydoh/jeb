@@ -691,6 +691,290 @@ class ConsoleManager():
         else:
             print("Invalid selection. Returning to main menu.")
 
+    async def live_debug_console(self):
+        """Live Debug Console for injecting virtual HID inputs and manipulating game state.
+
+        Runs an interactive command loop alongside the active game mode.  Two
+        categories of command are supported:
+
+        **HID Spoofing** – inject virtual inputs into the core or satellite HID
+        arrays so that the running mode sees them on its next poll cycle:
+
+            enc <index> <delta>          – adjust core encoder *index* by *delta* ticks
+            btn <index>                  – simulate a tap on core button *index*
+            tog <index> <0|1>            – set core latching toggle *index* ON/OFF
+            mom <index> <U|D|C>          – set core momentary toggle *index* (Up/Down/Centre)
+            sat enc <index> <delta>      – adjust first satellite encoder *index* by *delta*
+            sat btn <index>              – simulate a tap on first satellite button *index*
+            sat tog <index> <0|1>        – set first satellite latching toggle *index*
+            sat mom <index> <U|D|C>      – set first satellite momentary toggle *index*
+
+        **God Mode** – directly modify attributes on the active mode instance:
+
+            <attr> = <value>             – set *attr* on the active mode; value is
+                                           auto-cast to int, then float, then kept as str
+
+        Type ``exit`` to return to the main diagnostic menu.
+        """
+        print("\n--- LIVE DEBUG CONSOLE ---")
+        print("Commands: enc/btn/tog/mom, sat enc/btn/tog/mom, <attr>=<value>, exit")
+        print("Type 'help' for command reference.")
+
+        if self.app is None:
+            print("No app instance available. Live Debug Console requires a running app.")
+            return
+
+        while True:
+            raw = await self.get_input("debug> ")
+            cmd = raw.strip()
+
+            if not cmd:
+                continue
+
+            if cmd.lower() == "exit":
+                print("Exiting Live Debug Console.")
+                break
+
+            if cmd.lower() == "help":
+                print("  enc <index> <delta>     - core encoder (relative ticks)")
+                print("  btn <index>             - core button tap")
+                print("  tog <index> <0|1>       - core latching toggle")
+                print("  mom <index> <U|D|C>     - core momentary toggle")
+                print("  sat enc <i> <delta>     - satellite encoder (relative ticks)")
+                print("  sat btn <i>             - satellite button tap")
+                print("  sat tog <i> <0|1>       - satellite latching toggle")
+                print("  sat mom <i> <U|D|C>     - satellite momentary toggle")
+                print("  <attr> = <value>        - set attribute on active mode")
+                print("  exit                    - return to main menu")
+                continue
+
+            # ------------------------------------------------------------------
+            # God Mode: assignment parser  (e.g. "score = 5000")
+            # ------------------------------------------------------------------
+            if "=" in cmd:
+                parts = cmd.split("=", 1)
+                attr = parts[0].strip()
+                val_str = parts[1].strip()
+
+                active = getattr(self.app, 'active_mode', None)
+                if active is None:
+                    print("No active game mode running. God Mode is unavailable.")
+                    continue
+
+                # Auto-cast: try int, then float, then keep as string
+                try:
+                    value = int(val_str)
+                except ValueError:
+                    try:
+                        value = float(val_str)
+                    except ValueError:
+                        value = val_str
+
+                try:
+                    setattr(active, attr, value)
+                    print(f"Set {attr} = {repr(value)}")
+                except Exception as e:
+                    print(f"Error setting attribute: {e}")
+                continue
+
+            # ------------------------------------------------------------------
+            # HID spoofing
+            # ------------------------------------------------------------------
+            tokens = cmd.split()
+
+            if tokens[0].lower() == "sat":
+                # Satellite HID commands
+                self._debug_cmd_sat(tokens[1:])
+            else:
+                # Core HID commands
+                self._debug_cmd_core(tokens)
+
+    def _debug_cmd_core(self, tokens):
+        """Parse and apply a core HID debug command."""
+        hid = getattr(self.app, 'hid', None)
+        if hid is None:
+            print("No core HID manager available.")
+            return
+
+        verb = tokens[0].lower() if tokens else ""
+
+        if verb == "enc":
+            if len(tokens) < 3:
+                print("Usage: enc <index> <delta>")
+                return
+            try:
+                idx = int(tokens[1])
+                delta = int(tokens[2])
+            except ValueError:
+                print("enc: index and delta must be integers.")
+                return
+            if idx < 0 or idx >= len(hid.encoder_positions):
+                print(f"enc: index {idx} out of range (0-{len(hid.encoder_positions)-1}).")
+                return
+            hid.encoder_positions[idx] += delta
+            print(f"Core encoder[{idx}] adjusted by {delta:+d} -> {hid.encoder_positions[idx]}")
+
+        elif verb == "btn":
+            if len(tokens) < 2:
+                print("Usage: btn <index>")
+                return
+            try:
+                idx = int(tokens[1])
+            except ValueError:
+                print("btn: index must be an integer.")
+                return
+            if idx < 0 or idx >= len(hid.buttons_values):
+                print(f"btn: index {idx} out of range (0-{len(hid.buttons_values)-1}).")
+                return
+            hid.buttons_tapped[idx] = True
+            print(f"Core button[{idx}] tapped.")
+
+        elif verb == "tog":
+            if len(tokens) < 3:
+                print("Usage: tog <index> <0|1>")
+                return
+            try:
+                idx = int(tokens[1])
+                val = int(tokens[2])
+            except ValueError:
+                print("tog: index and value must be integers.")
+                return
+            if idx < 0 or idx >= len(hid.latching_values):
+                print(f"tog: index {idx} out of range (0-{len(hid.latching_values)-1}).")
+                return
+            hid.latching_values[idx] = bool(val)
+            print(f"Core toggle[{idx}] set to {'ON' if val else 'OFF'}.")
+
+        elif verb == "mom":
+            if len(tokens) < 3:
+                print("Usage: mom <index> <U|D|C>")
+                return
+            try:
+                idx = int(tokens[1])
+            except ValueError:
+                print("mom: index must be an integer.")
+                return
+            direction = tokens[2].upper()
+            if direction not in ("U", "D", "C"):
+                print("mom: direction must be U, D, or C.")
+                return
+            if idx < 0 or idx >= len(hid.momentary_values):
+                print(f"mom: index {idx} out of range (0-{len(hid.momentary_values)-1}).")
+                return
+            if direction == "U":
+                hid.momentary_tapped[idx][0] = True
+            elif direction == "D":
+                hid.momentary_tapped[idx][1] = True
+            # C (centre) - no tap, just ensure both directions are cleared
+            else:
+                hid.momentary_values[idx][0] = False
+                hid.momentary_values[idx][1] = False
+            label = {"U": "UP", "D": "DOWN", "C": "CENTRE"}[direction]
+            print(f"Core momentary[{idx}] set to {label}.")
+
+        else:
+            print(f"Unknown HID command: '{verb}'. Type 'help' for usage.")
+
+    def _debug_cmd_sat(self, tokens):
+        """Parse and apply a satellite HID debug command."""
+        satellites = getattr(self.app, 'satellites', None)
+        if not satellites:
+            print("No satellites connected.")
+            return
+
+        # Use the first active satellite
+        sat = None
+        for s in satellites.values():
+            if getattr(s, 'is_active', False):
+                sat = s
+                break
+        if sat is None:
+            print("No active satellite found.")
+            return
+
+        hid = getattr(sat, 'hid', None)
+        if hid is None:
+            print("Satellite has no HID manager.")
+            return
+
+        verb = tokens[0].lower() if tokens else ""
+
+        if verb == "enc":
+            if len(tokens) < 3:
+                print("Usage: sat enc <index> <delta>")
+                return
+            try:
+                idx = int(tokens[1])
+                delta = int(tokens[2])
+            except ValueError:
+                print("sat enc: index and delta must be integers.")
+                return
+            if idx < 0 or idx >= len(hid.encoder_positions):
+                print(f"sat enc: index {idx} out of range (0-{len(hid.encoder_positions)-1}).")
+                return
+            hid.encoder_positions[idx] += delta
+            print(f"Sat encoder[{idx}] adjusted by {delta:+d} -> {hid.encoder_positions[idx]}")
+
+        elif verb == "btn":
+            if len(tokens) < 2:
+                print("Usage: sat btn <index>")
+                return
+            try:
+                idx = int(tokens[1])
+            except ValueError:
+                print("sat btn: index must be an integer.")
+                return
+            if idx < 0 or idx >= len(hid.buttons_values):
+                print(f"sat btn: index {idx} out of range (0-{len(hid.buttons_values)-1}).")
+                return
+            hid.buttons_tapped[idx] = True
+            print(f"Sat button[{idx}] tapped.")
+
+        elif verb == "tog":
+            if len(tokens) < 3:
+                print("Usage: sat tog <index> <0|1>")
+                return
+            try:
+                idx = int(tokens[1])
+                val = int(tokens[2])
+            except ValueError:
+                print("sat tog: index and value must be integers.")
+                return
+            if idx < 0 or idx >= len(hid.latching_values):
+                print(f"sat tog: index {idx} out of range (0-{len(hid.latching_values)-1}).")
+                return
+            hid.latching_values[idx] = bool(val)
+            print(f"Sat toggle[{idx}] set to {'ON' if val else 'OFF'}.")
+
+        elif verb == "mom":
+            if len(tokens) < 3:
+                print("Usage: sat mom <index> <U|D|C>")
+                return
+            try:
+                idx = int(tokens[1])
+            except ValueError:
+                print("sat mom: index must be an integer.")
+                return
+            direction = tokens[2].upper()
+            if direction not in ("U", "D", "C"):
+                print("sat mom: direction must be U, D, or C.")
+                return
+            if idx < 0 or idx >= len(hid.momentary_values):
+                print(f"sat mom: index {idx} out of range (0-{len(hid.momentary_values)-1}).")
+                return
+            if direction == "U":
+                hid.momentary_tapped[idx][0] = True
+            elif direction == "D":
+                hid.momentary_tapped[idx][1] = True
+            else:
+                hid.momentary_values[idx][0] = False
+                hid.momentary_values[idx][1] = False
+            label = {"U": "UP", "D": "DOWN", "C": "CENTRE"}[direction]
+            print(f"Sat momentary[{idx}] set to {label}.")
+
+        else:
+            print(f"Unknown satellite HID command: '{verb}'. Type 'help' for usage.")
+
     async def start(self):
         """Main interactive loop for the Console Manager."""
 
@@ -718,6 +1002,7 @@ class ConsoleManager():
             print("9. Test Relays")
             print("H. Monitor HID Inputs")
             print("I. I2C Bus Scan")
+            print("L. Live Debug Console")
             print("M. Launch Game Mode")
             print("R. Reboot")
 
@@ -745,6 +1030,8 @@ class ConsoleManager():
                 await self.test_hid()
             elif choice.upper() == "I":
                 await self.test_i2c_scan()
+            elif choice.upper() == "L":
+                await self.live_debug_console()
             elif choice.upper() == "M":
                 await self.test_mode_launcher()
             elif choice.upper() == "R":
