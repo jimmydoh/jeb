@@ -415,9 +415,9 @@ class NumbersStation(GameMode):
         self.core.display.update_header("-NMBRS STN-")
         self.core.display.update_status(
             f"ROUND {self._round + 1}  TUNE RADIO",
-            f"TARGET: {target_abbr}"
+            "FIND CLEAR SIGNAL"
         )
-        self._send_segment(f"BND:{target_abbr[:4]}")
+        self._send_segment("SCANNING")
 
         jammed = False
         while True:
@@ -439,15 +439,14 @@ class NumbersStation(GameMode):
                 await asyncio.sleep(0.4)
                 return True
             else:
-                if not jammed:
-                    await self._play_jam_noise()
-                    jammed = True
+                jammed = True
+                self.core.synth.play_note(150.0, "NOISE", duration=0.15)
                 self._render_static()
                 cur_abbr = band_abbr.get(current_band, "????")
                 self._send_segment(f"JAMMED  ")
                 self.core.display.update_status(
-                    f"JAMMED: {cur_abbr}",
-                    f"FIND: {target_abbr}"
+                    "SIGNAL JAMMED",
+                    "SWITCH BANDS!"
                 )
 
             await asyncio.sleep(0.1)
@@ -495,8 +494,12 @@ class NumbersStation(GameMode):
                 if self._enc_button_pressed():
                     if self._replays_left > 0:
                         self._replays_left -= 1
+
+                        self._time_remaining -= 2.0
+                        self.core.synth.play_note(300.0, "ALARM", duration=0.2)
+
                         self.core.display.update_status(
-                            f"REPLAYING  RPL:{self._replays_left}",
+                            f"REPLAY (-2s)  RPL:{self._replays_left}",
                             "LISTENING..."
                         )
                         await self._play_digit_sequence(self._sequence)
@@ -660,7 +663,19 @@ class NumbersStation(GameMode):
     # ------------------------------------------------------------------
 
     async def run_tutorial(self):
-        """Walk the player through a single guided round with commentary."""
+        """
+        Walk the player through a single guided round with commentary.
+
+        The Voiceover Script (audio/tutes/numbers_tute.wav) ~38 seconds
+            [0:00] "Welcome to Numbers Station. Your mission is to intercept and decode covert transmissions."
+            [0:06] "Step one: Tune the radio. Turn the rotary switch to find the clear channel."
+            [0:11] "Step two: Listen. The station will broadcast a sequence of digits. Press the dial to replay the audio if needed."
+            [0:19] "Step three: Decode. Check the satellite display for the active cipher, and apply the shift to your numbers."
+            [0:26] "Type the decrypted sequence into the keypad."
+            [0:30] "Step four: Submit. Press the big red button to transmit your answer."
+            [0:35] "Good luck, agent."
+            [0:38] (End of file)
+        """
         await self.core.clean_slate()
 
         if not self.sat or not self.sat.is_active:
@@ -668,59 +683,64 @@ class NumbersStation(GameMode):
             await asyncio.sleep(2)
             return "TUTORIAL_FAILED"
 
+        self.game_state = "TUTORIAL"
+
+        # Start the voiceover track
+        tute_audio = asyncio.create_task(
+            self.core.audio.play("audio/tutes/numbers_tute.wav", bus_id=self.core.audio.CH_VOICE)
+        )
+
         self.core.display.update_header("-NMBRS STN-")
         self.core.matrix.show_icon("NUMBERS_STATION", clear=True)
         asyncio.create_task(
             self.core.synth.play_sequence(tones.WARP_CORE_IDLE, patch="PAD")
         )
 
-        # --- Step 1: Overview ---
-        self.core.display.update_status(
-            "NUMBERS STATION", "COLD WAR CIPHER"
-        )
+        # --- [0:00 - 0:06] Overview ---
+        self.core.display.update_status("NUMBERS STATION", "COLD WAR CIPHER")
         self._send_segment("STNDBY  ")
-        await asyncio.sleep(2.5)
+        await asyncio.sleep(6.0)
 
-        # --- Step 2: Tune the band ---
-        self.core.display.update_status(
-            "STEP 1: TUNE BAND", "ROTATE SWITCH"
-        )
-        self._send_segment("BND:ALPH")
-        await self._play_jam_noise()
-        await asyncio.sleep(1.5)
+        # --- [0:06 - 0:11] Tune the band ---
+        self.core.display.update_status("STEP 1: TUNE BAND", "ROTATE SWITCH")
+        self._send_segment("SCANNING")
+
+        # Simulate static/jamming (Using the new continuous noise fix)
+        self.core.synth.play_note(150.0, "NOISE", duration=1.5)
         self._render_static()
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(1.5)
 
+        # Clear signal found
         self._render_signal_bars(level=4)
-        self.core.display.update_status(
-            "TUNED: ALPHA", "SIGNAL CLEAR"
-        )
+        self.core.display.update_status("TUNED: ALPHA", "SIGNAL CLEAR")
         self._send_segment("TUNED   ")
         self.core.synth.play_note(tones.note('G5'), "SUCCESS", duration=0.1)
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(3.5)
 
-        # --- Step 3: Listen to digits ---
+        # --- [0:11 - 0:19] Listen to digits ---
         demo_seq = ['4', '9', '2']
-        self.core.display.update_status(
-            "STEP 2: LISTEN", "DIGIT TONES PLAY"
-        )
+        self.core.display.update_status("STEP 2: LISTEN", "DIGIT TONES PLAY")
         self._send_segment("SHFT+3  ")
         await asyncio.sleep(1.0)
-        await self._play_digit_sequence(demo_seq)
-        await asyncio.sleep(0.5)
 
-        # --- Step 4: Decode and type ---
+        # The audio playback takes exactly 1.8s ((0.35 + 0.25) * 3)
+        await self._play_digit_sequence(demo_seq)
+
+        self.core.display.update_status("REPLAY?", "PRESS CORE DIAL")
+        await asyncio.sleep(5.2)
+
+        # --- [0:19 - 0:26] Decode ---
         demo_cipher  = 3
         demo_answer  = [str((int(d) + demo_cipher) % 10) for d in demo_seq]
         self.core.display.update_status(
             "STEP 3: DECODE",
-            ", ".join(
-                f"{d}+{demo_cipher}={(int(d)+demo_cipher)%10}"
-                for d in demo_seq
-            )
+            ", ".join(f"{d}+{demo_cipher}={(int(d)+demo_cipher)%10}" for d in demo_seq)
         )
         self._send_segment("SHFT+3  ")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(7.0)
+
+        # --- [0:26 - 0:30] Type ---
+        self.core.display.update_status("TYPE ON KEYPAD", "")
         typed = ""
         for ch in demo_answer:
             typed += ch
@@ -731,16 +751,14 @@ class NumbersStation(GameMode):
             )
             self.core.synth.play_note(tones.note('C5'), "CLICK", duration=0.03)
             self._render_input_progress(typed, len(demo_seq))
-            await asyncio.sleep(0.4)
+            await asyncio.sleep(1.0)
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1.0)
 
-        # --- Step 5: Submit ---
-        self.core.display.update_status(
-            "STEP 4: SUBMIT", "PRESS BIG RED BTN"
-        )
+        # --- [0:30 - 0:35] Submit ---
+        self.core.display.update_status("STEP 4: SUBMIT", "PRESS BIG RED BTN")
         self._send_segment("SEND?   ")
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(2.0)
 
         asyncio.create_task(
             self.core.synth.play_sequence(tones.SUCCESS, patch="SUCCESS")
@@ -748,7 +766,16 @@ class NumbersStation(GameMode):
         self.core.display.update_status("DECRYPTED! +50", "TRANSMISSION SENT")
         self._send_segment("CORRECT!")
         self.core.matrix.show_icon("SUCCESS", anim_mode="PULSE", speed=3.0)
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(3.0)
+
+        # --- [0:35 - 0:38] Outro ---
+        self.core.display.update_status("GOOD LUCK", "AGENT")
+
+        # Wait for the voice track to finish naturally
+        if hasattr(self.core.audio, 'wait_for_bus'):
+            await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+        else:
+            await asyncio.sleep(3.0)
 
         await self.core.clean_slate()
         return "TUTORIAL_COMPLETE"
