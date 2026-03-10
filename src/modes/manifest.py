@@ -702,6 +702,25 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "FLUX_SCAVENGER": {
+        "id": "FLUX_SCAVENGER",
+        "name": "FLUX SCAVENGER",
+        "module_path": "modes.flux_scavenger",
+        "class_name": "FluxScavenger",
+        "icon": "FLUX_SCAVENGER",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD"],
+                "default": "NORMAL"
+            }
+        ]
+    },
     "VANGUARD_OVERRIDE": {
         "id": "VANGUARD_OVERRIDE",
         "name": "VANGUARD OVR",
