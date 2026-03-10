@@ -544,7 +544,7 @@ class Icons:
         63, 63, 63, 71, 64, 64, 51, 51, 51, 51, 64, 64, 71, 63, 63, 63,
         63, 63, 63, 63, 71, 71, 71, 71, 71, 71, 71, 71, 63, 63, 63, 63,
     ])
-    
+
     # Wireworld: copper loop (21=ORANGE) with electron head (61=BLUE) and
     # electron tail (51=CYAN) on a black background.  Mirrors Pattern 1.
     WIREWORLD = bytes([
@@ -758,7 +758,7 @@ class Icons:
          0,   0,   0,   0,   0,  51,   0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  # Row 14  SW/SE field dots
          0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15
     ])
-      
+
     # Bunker Defuse icon (16x16)
     # A classic round bomb with a lit fuse and toggle-switch silhouettes.
     # Colour key:
@@ -1132,7 +1132,7 @@ class Icons:
          3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
          3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
     ])
-    
+
     # Starfield / Warp Core – stars radiating from a bright centre point.
     # Black background (0), dim distant stars (1=CHARCOAL), medium stars
     # (3=SILVER), and bright close stars / warp-core centre (4=WHITE).
@@ -1155,7 +1155,6 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
-<<<<<<< copilot/add-mecha-forge-mode
     # Mecha Forge – 16×16 pixel-art robot icon
     # Body: CYAN (51), Eyes: WHITE (4), Chest accents: GOLD (22)
     MECHA_FORGE = bytes([
@@ -1175,7 +1174,8 @@ class Icons:
          0,  0,  0,  0,  0, 51, 51,  0,  0, 51, 51,  0,  0,  0,  0,  0,  # row 13  lower legs
          0,  0,  0,  0, 51, 51, 51,  0,  0, 51, 51, 51,  0,  0,  0,  0,  # row 14  feet
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  # row 15
-=======
+    ])
+
     # Numbers Station – Cold War shortwave radio tower with signal waves.
     # Antenna tip = WHITE (4), antenna mast = SILVER (3),
     # signal waves = GOLD (22), radio body = GRAY (2),
@@ -1214,7 +1214,7 @@ class Icons:
         # Row 15 – ground
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
-    
+
     # 16×16 icon for the JEB-808 Groovebox sequencer mode.
     # Each pair of rows represents one of the 8 instrument tracks; columns are
     # time steps.  A handful of steps per track are lit in that track's colour
@@ -1249,7 +1249,6 @@ class Icons:
         # Track 7 – FX    (WHITE 4): steps 2, 10
          0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,
          0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,
->>>>>>> v0.8.1-rc
     ])
 
     ICON_LIBRARY = {
