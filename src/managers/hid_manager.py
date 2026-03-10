@@ -658,10 +658,22 @@ class HIDManager:
     #endregion
 
     #region --- Matrix Keypad Handling ---
+    @property
+    def keypad_values(self, index=0):
+        """Returns the current queued key values for a matrix keypad as a string."""
+        if 0 <= index < len(self.matrix_keypads_queues):
+            value = "".join(self.matrix_keypads_queues[index])
+            self.matrix_keypads_queues[index].clear()  # Clear after reading
+            return value
+        return ""
+
     def get_keypad_next_key(self, index=0):
         """Get the latest key event from the matrix keypad."""
         if len(self.matrix_keypads_queues[index]) > 0:
-            return self.matrix_keypads_queues[index].pop(0)
+            JEBLogger.info("HIDM", f"Dequeuing keypad {index} event: {self.matrix_keypads_queues[index][0]}")
+            popped = self.matrix_keypads_queues[index].pop(0)
+            JEBLogger.info("HIDM", f"Remaining keypad {index} queue: {self.matrix_keypads_queues[index]}")
+            return popped
         return None
 
     def flush_keypad_queue(self, index=0):
@@ -702,14 +714,17 @@ class HIDManager:
                     break # Break the while loop when queue is empty
 
                 if event.pressed:
+                    JEBLogger.info("HIDM", f"Raw keypad {i} PRESSED event index: {event.key_number}")
                     changed = True # State changed
-                    raw_idx = event.key_number
+                    raw_idx = event.key_number                   
 
                     # Safe check for key map existence
                     if i < len(self.matrix_keypads_maps):
                         key_map = self.matrix_keypads_maps[i]
                         if 0 <= raw_idx < len(key_map):
                             self.matrix_keypads_queues[i].append(key_map[raw_idx])
+                elif event.released:
+                    JEBLogger.info("HIDM", f"Raw keypad {i} RELEASE event index: {event.key_number}")
         return changed
 
     def _matrix_keypads_string(self):
@@ -961,7 +976,7 @@ class HIDManager:
                 JEBLogger.debug("HIDM", f"Driver - E-Stop: {estop}", src=sid)
         return dirty
 
-    def get_status_bytes(self, order=None):
+    def get_status_bytes(self, order=None, flush=False):
         """
         Read inputs and format status packet as bytes with custom ordering and selection.
         Uses pre-allocated buffer to minimize heap fragmentation.
@@ -1008,6 +1023,9 @@ class HIDManager:
         # 4. Add newline
         self._status_buffer[offset] = ord('\n')
         offset += 1
+
+        if flush:
+            self.flush()  # Clear states after reading if flush is requested
 
         # Return only the used portion of the buffer as bytes
         # This avoids the string allocation that occurs with decode()

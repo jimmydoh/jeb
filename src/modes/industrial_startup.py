@@ -652,8 +652,8 @@ class IndustrialStartup(GameMode):
         executed in a random order before the victory sequence.
         """
 
-        # Initial check to confirm Satellite is connected
-        if not self.sat or not self.sat.is_connected:
+        # Initial check to confirm Satellite is active
+        if not self.sat or not self.sat.is_active:
             self.core.display.update_status("ERROR", "SATELLITE OFFLINE")
             await asyncio.sleep(2)
             return "FAILURE"
@@ -688,8 +688,8 @@ class IndustrialStartup(GameMode):
                             level=narration_vol,
                             wait=True)
         while True:
-            core_press = self.core.hid.is_pressed(0, Long=True, Duration=2000)
-            sat_press = self.sat.is_momentary_toggled(0, "D", Long=True, Duration=2000)
+            core_press = self.core.hid.is_button_pressed(0, long=True, duration=2000)
+            sat_press = self.sat.hid.is_momentary_toggled(0, "D", long=True, duration=2000)
             if core_press and sat_press:
                 break
             await asyncio.sleep(0.1)

@@ -179,8 +179,8 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             orientation='horizontal',
         )
 
-    def _get_status_bytes(self):
-        return self.hid.get_status_bytes()
+    def _get_status_bytes(self, flush=False):
+        return self.hid.get_status_bytes(flush=flush)
 
     async def on_mode_change(self, new_mode):
         """React to mode changes by cleaning up local hardware state."""

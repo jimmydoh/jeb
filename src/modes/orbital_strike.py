@@ -21,6 +21,7 @@ import random
 
 from adafruit_ticks import ticks_ms, ticks_diff
 
+from utilities.logger import JEBLogger
 from utilities.palette import Palette
 from utilities import tones
 
@@ -430,6 +431,7 @@ class OrbitalStrike(GameMode):
 
     async def _run_phase_grid(self):
         """Phase 1 – Player types the grid code on the satellite keypad."""
+        JEBLogger.debug("MODE", f"Orbital Strike - Phase 1 GRID started. Code to enter: {self._grid_code}")
         self.core.display.update_status(
             f"MISSION RECV #{self._mission_count + 1}",
             f"GRID: {self._grid_code}"
@@ -440,28 +442,26 @@ class OrbitalStrike(GameMode):
         )
         self.core.matrix.show_icon("ORBITAL_STRIKE", clear=True)
         self._last_keypad_snapshot = ""
+        _current_keypad = ""
 
         while True:
             # Read keypad from satellite
             if self.sat:
                 try:
-                    keypads = self.sat.hid.keypad_values
-                    if keypads:
-                        current = "".join(
-                            str(k) for k in keypads[0] if k is not None and str(k).isdigit()
-                        )
-                    else:
-                        current = ""
-                except (IndexError, AttributeError):
-                    current = ""
-            else:
-                current = ""
+                    next_key = self.sat.hid.get_keypad_next_key()
+                    if next_key:
+                        _current_keypad += next_key
+                        JEBLogger.debug("MODE", f"Orbital Strike - Keypad snapshot: {_current_keypad}")
+                except (IndexError, AttributeError) as e:
+                    JEBLogger.error("MODE", f"Orbital Strike - Error reading keypad: {e}")
+                except Exception as e:
+                    JEBLogger.error("MODE", f"Orbital Strike - Error reading keypad: {e}")
 
             # Detect new keypresses
-            if len(current) > len(self._last_keypad_snapshot):
-                new_chars = current[len(self._last_keypad_snapshot):]
+            if len(_current_keypad) > len(self._last_keypad_snapshot):
+                new_chars = _current_keypad[len(self._last_keypad_snapshot):]
                 self._grid_entered += new_chars
-                self._last_keypad_snapshot = current
+                self._last_keypad_snapshot = _current_keypad
 
                 # Trim to code length
                 if len(self._grid_entered) > self._code_len:
@@ -478,11 +478,14 @@ class OrbitalStrike(GameMode):
             if len(self._grid_entered) >= self._code_len:
                 if self._grid_entered[-self._code_len:] == self._grid_code:
                     self.core.synth.play_note(1200.0, "SUCCESS", duration=0.1)
+                    self.sat.hid.flush_keypad_queue()  # Clear any extra keys
                     return True
                 else:
                     # Wrong code – reset entry silently
                     self._grid_entered = ""
-                    self._last_keypad_snapshot = current
+                    self.sat.hid.flush_keypad_queue()  # Clear any extra keys
+                    self._last_keypad_snapshot = ""
+                    _current_keypad = ""
                     self._send_segment("ERR     ")
                     self.core.display.update_status("GRID ERROR", f"RE-ENTER: {self._grid_code}")
                     asyncio.create_task(

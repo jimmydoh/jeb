@@ -850,6 +850,8 @@ class CoreManager:
                     run_robust = True
                     while run_robust:
                         if target_sat:
+                            # Send command to the sat to go ACTIVE
+                            target_sat.send(CMD_MODE, "ACTIVE")
                             result = await self.run_mode_with_safety(
                                 mode_instance, target_sat=target_sat
                             )

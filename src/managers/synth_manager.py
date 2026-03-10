@@ -58,16 +58,21 @@ class SynthManager:
             duration (float): If set, note auto-releases after seconds.
                               If None, note holds until stop_note is called.
         """
-        JEBLogger.debug("SYNTH", f"Playing note - frequency: {frequency}, patch: {patch}, duration: {duration}")
-        patch = patch or Patches.SELECT
-        wave = self.override if self.override else patch["wave"]
+        active_patch = patch or Patches.SELECT
+
+        if isinstance(active_patch, str):
+            active_patch = getattr(Patches, active_patch, Patches.SELECT)
+
+        JEBLogger.debug("SYNTH", f"Playing note - Frequency: {frequency}, Duration: {duration}, Patch: {active_patch['name']}")
+
+        wave = self.override if self.override else active_patch["wave"]
 
         # Create the note object
         # We assume standard amplitude; ADSR handles the rest
         n = synthio.Note(
             frequency=frequency,
             waveform=wave,
-            envelope=patch["envelope"]
+            envelope=active_patch["envelope"]
         )
 
         # Press the note (start playing)
