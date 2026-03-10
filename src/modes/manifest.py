@@ -702,6 +702,25 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "VANGUARD_OVERRIDE": {
+        "id": "VANGUARD_OVERRIDE",
+        "name": "VANGUARD OVR",
+        "module_path": "modes.vanguard_override",
+        "class_name": "VanguardOverride",
+        "icon": "VANGUARD_OVERRIDE",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
     "PIPELINE_OVERLOAD": {
         "id": "PIPELINE_OVERLOAD",
         "name": "PIPELINE OVLD",

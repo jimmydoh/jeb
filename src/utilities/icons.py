@@ -735,6 +735,31 @@ class Icons:
     ])
 
     # -------------------------------------------------------------------------
+    # Vanguard Override – top-down vertical shooter splash.
+    # Colour key:
+    #   0=OFF  4=WHITE(stars)  11=RED(enemies)  21=ORANGE(enemy bullets)
+    #  31=YELLOW(player laser)  51=CYAN(player ship)  61=BLUE(ship wings)
+    # -------------------------------------------------------------------------
+    VANGUARD_OVERRIDE = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   4,   0,   0,   0,   0,   0,   0,   4,   0,   0,   0,   4,   0,  # Row  0  stars
+         0,   0,  11,  11,  11,   0,   0,   0,   0,   0,  11,  11,  11,   0,   0,   0,  # Row  1  enemies
+         0,   0,  11,   0,  11,   0,   0,   0,   0,   0,  11,   0,  11,   0,   0,   0,  # Row  2  enemies
+         0,   0,  11,  11,  11,   0,   0,   0,   0,   0,  11,  11,  11,   0,   0,   0,  # Row  3  enemies
+         0,   0,   0,  21,   0,   0,   0,   0,   0,   0,   0,  21,   0,   0,   0,   0,  # Row  4  enemy bullets
+         0,   0,   0,  21,   0,   0,   0,   0,   0,   0,   0,  21,   0,   0,   0,   0,  # Row  5  enemy bullets
+         0,   0,   0,   0,   0,   0,  11,  11,  11,   0,   0,   0,   0,   0,   0,   0,  # Row  6  centre enemy
+         0,   0,   0,   0,   0,   0,  11,   0,  11,   0,   0,   0,   0,   0,   0,   0,  # Row  7  centre enemy
+         0,   0,   0,   0,   0,   0,   0,  21,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  8  enemy bullet
+         0,   0,   0,   0,   0,   0,   0,  31,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  9  player laser
+         0,   0,   0,   0,   0,   0,   0,  31,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 10  player laser
+         0,   4,   0,   0,   0,   0,   0,  31,   0,   0,   0,   0,   0,   0,   0,   4,  # Row 11  stars + laser
+         0,   0,   0,   0,   0,   0,   0,  31,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 12  player laser
+         0,   0,   0,   0,   0,  61,   0,   0,   0,  61,   0,   0,   0,   0,   0,   0,  # Row 13  ship wings
+         0,   0,   0,   0,  61,  51,  51,  51,  51,  51,  61,   0,   0,   0,   0,   0,  # Row 14  ship body
+         0,   0,   0,   0,   0,  51,   0,  51,   0,  51,   0,   0,   0,   0,   0,   0,  # Row 15  ship engines
+    ])
+    
     # Magnetic Containment: plasma ball enclosed in a magnetic field coil.
     # Colour key:
     #   0=OFF  51=CYAN (field lines)  61=BLUE (coil ring)  71=MAGENTA (plasma core)
@@ -1294,6 +1319,7 @@ class Icons:
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
         "ARTILLERY_COMMAND": ARTILLERY_COMMAND,
         "ENIGMA_BYTE": ENIGMA_BYTE,
+        "VANGUARD_OVERRIDE": VANGUARD_OVERRIDE,
         "PIPELINE_OVERLOAD": PIPELINE_OVERLOAD,
         "NUMBERS_STATION": NUMBERS_STATION,
         "MAGNETIC_CONTAINMENT": MAGNETIC_CONTAINMENT,
