@@ -1118,6 +1118,45 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # Numbers Station – Cold War shortwave radio tower with signal waves.
+    # Antenna tip = WHITE (4), antenna mast = SILVER (3),
+    # signal waves = GOLD (22), radio body = GRAY (2),
+    # VFD screen = BLUE (61), indicator LEDs = ORANGE (21).
+    NUMBERS_STATION = bytes([
+        # Row  0 – antenna beacon (white)
+         0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  1 – inner signal wave (gold)
+         0,  0,  0,  0, 22,  0,  0,  3,  0,  0, 22,  0,  0,  0,  0,  0,
+        # Row  2 – outer signal wave
+         0,  0, 22,  0,  0,  0,  0,  3,  0,  0,  0,  0, 22,  0,  0,  0,
+        # Row  3 – antenna mast
+         0,  0,  0,  0,  0,  0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  4 – antenna mast
+         0,  0,  0,  0,  0,  0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  5 – antenna meets radio body
+         0,  0,  0,  0,  0,  0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,
+        # Row  6 – radio top edge
+         0,  0,  0,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  0,  0,  0,
+        # Row  7 – radio body top
+         0,  0,  0,  3,  2,  2,  2,  2,  2,  2,  2,  2,  3,  0,  0,  0,
+        # Row  8 – VFD display top
+         0,  0,  0,  3,  2, 61, 61, 61, 61, 61, 61,  2,  3,  0,  0,  0,
+        # Row  9 – VFD display centre (bright)
+         0,  0,  0,  3,  2, 61,  4,  4,  4,  4, 61,  2,  3,  0,  0,  0,
+        # Row 10 – VFD display bottom
+         0,  0,  0,  3,  2, 61, 61, 61, 61, 61, 61,  2,  3,  0,  0,  0,
+        # Row 11 – indicator lights (orange LEDs)
+         0,  0,  0,  3,  2,  2, 21,  2,  2, 21,  2,  2,  3,  0,  0,  0,
+        # Row 12 – tuning dial (gold)
+         0,  0,  0,  3,  3, 22, 22, 22, 22, 22,  3,  3,  3,  0,  0,  0,
+        # Row 13 – radio base top
+         0,  0,  0,  0,  3,  3,  3,  3,  3,  3,  3,  3,  0,  0,  0,  0,
+        # Row 14 – radio base bottom
+         0,  0,  0,  0,  0,  3,  3,  3,  3,  3,  3,  0,  0,  0,  0,  0,
+        # Row 15 – ground
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+    
     # 16×16 icon for the JEB-808 Groovebox sequencer mode.
     # Each pair of rows represents one of the 8 instrument tracks; columns are
     # time steps.  A handful of steps per track are lit in that track's colour
@@ -1196,6 +1235,7 @@ class Icons:
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
         "ARTILLERY_COMMAND": ARTILLERY_COMMAND,
         "ENIGMA_BYTE": ENIGMA_BYTE,
+        "NUMBERS_STATION": NUMBERS_STATION,
         "MAGNETIC_CONTAINMENT": MAGNETIC_CONTAINMENT,
         "BUNKER_DEFUSE": BUNKER_DEFUSE,
         "SEISMIC_STABILIZER": DEFAULT,
