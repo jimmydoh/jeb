@@ -690,6 +690,25 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "PIPELINE_OVERLOAD": {
+        "id": "PIPELINE_OVERLOAD",
+        "name": "PIPELINE OVLD",
+        "module_path": "modes.pipeline_overload",
+        "class_name": "PipelineOverload",
+        "icon": "PIPELINE_OVERLOAD",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
     "NUMBERS_STATION": {
         "id": "NUMBERS_STATION",
         "name": "NMBRS STN",
