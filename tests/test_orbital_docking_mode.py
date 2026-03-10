@@ -419,7 +419,7 @@ def test_oms_forward_increases_vel_z():
     mode = _make_mode()
     mode._vel_z = 0.0
     mode._fuel = 100.0
-    mode._update_physics(oms_forward=True, oms_brake=False, sas_active=False)
+    mode._update_physics(1.0, oms_forward=True, oms_brake=False, sas_active=False)
     assert mode._vel_z > 0.0, "OMS forward should increase vel_z"
     assert abs(mode._vel_z - _OMS_THRUST) < 1e-9, \
         f"vel_z should be {_OMS_THRUST}, got {mode._vel_z}"
@@ -432,23 +432,25 @@ def test_oms_brake_decreases_vel_z():
     mode._vel_z = 0.5
     mode._fuel = 100.0
     prev_vz = mode._vel_z
-    mode._update_physics(oms_forward=False, oms_brake=True, sas_active=False)
+    mode._update_physics(1.0, oms_forward=False, oms_brake=True, sas_active=False)
     assert mode._vel_z < prev_vz, "OMS brake should reduce vel_z"
     print(f"✓ OMS brake decreases vel_z: {prev_vz:.2f} → {mode._vel_z:.4f}")
 
 
 def test_sas_decays_lateral_velocity():
     """SAS must decay X/Y velocity toward zero."""
-    from modes.orbital_docking import _SAS_DECAY
+    import math
+    _DELTA_S = 1.0
     mode = _make_mode()
     mode._vel_x = 1.0
     mode._vel_y = -0.8
     mode._fuel = 100.0
-    mode._update_physics(oms_forward=False, oms_brake=False, sas_active=True)
+    mode._update_physics(_DELTA_S, oms_forward=False, oms_brake=False, sas_active=True)
     assert abs(mode._vel_x) < 1.0, "SAS should reduce |vel_x|"
     assert abs(mode._vel_y) < 0.8, "SAS should reduce |vel_y|"
-    assert abs(mode._vel_x - 1.0 * _SAS_DECAY) < 1e-9, \
-        f"vel_x after SAS should be {1.0 * _SAS_DECAY}"
+    expected_vel_x = 1.0 * math.exp(-4.0 * _DELTA_S)
+    assert abs(mode._vel_x - expected_vel_x) < 1e-9, \
+        f"vel_x after SAS should be {expected_vel_x}"
     print(f"✓ SAS decays velocity: vel_x = {mode._vel_x:.4f}")
 
 
@@ -458,7 +460,7 @@ def test_sas_consumes_fuel():
     mode._vel_x = 0.5
     mode._fuel = 50.0
     initial_fuel = mode._fuel
-    mode._update_physics(oms_forward=False, oms_brake=False, sas_active=True)
+    mode._update_physics(1.0, oms_forward=False, oms_brake=False, sas_active=True)
     assert mode._fuel < initial_fuel, "SAS should consume fuel"
     print(f"✓ SAS consumes fuel: {initial_fuel:.1f} → {mode._fuel:.4f}")
 
@@ -468,7 +470,7 @@ def test_physics_integrates_z_distance():
     mode = _make_mode()
     mode._z_dist = 100.0
     mode._vel_z = 1.0
-    mode._update_physics(oms_forward=False, oms_brake=False, sas_active=False)
+    mode._update_physics(1.0, oms_forward=False, oms_brake=False, sas_active=False)
     assert abs(mode._z_dist - 99.0) < 1e-9, \
         f"z_dist should be 99.0 after one tick, got {mode._z_dist}"
     print(f"✓ Z-distance integrated: {mode._z_dist:.4f}")
@@ -481,7 +483,7 @@ def test_physics_integrates_lateral_position():
     mode._align_y = 0.0
     mode._vel_x = 0.5
     mode._vel_y = -0.3
-    mode._update_physics(oms_forward=False, oms_brake=False, sas_active=False)
+    mode._update_physics(1.0, oms_forward=False, oms_brake=False, sas_active=False)
     assert abs(mode._align_x - 0.5) < 1e-9, \
         f"align_x should be 0.5, got {mode._align_x}"
     assert abs(mode._align_y - (-0.3)) < 1e-9, \
@@ -496,7 +498,7 @@ def test_velocity_capped_at_max():
     # Set vel_z very close to the cap and apply one more OMS forward tick
     mode._vel_z = _MAX_Z_VELOCITY - 0.001
     mode._fuel = 100.0
-    mode._update_physics(oms_forward=True, oms_brake=False, sas_active=False)
+    mode._update_physics(1.0, oms_forward=True, oms_brake=False, sas_active=False)
     assert mode._vel_z <= _MAX_Z_VELOCITY, \
         f"vel_z {mode._vel_z} exceeded cap {_MAX_Z_VELOCITY}"
     print(f"✓ Z velocity capped at {_MAX_Z_VELOCITY} (got {mode._vel_z:.4f})")
@@ -632,7 +634,7 @@ def test_render_draws_crosshair_centre():
 
     pixels = {}
 
-    def _draw_pixel(x, y, color):
+    def _draw_pixel(x, y, color, **kwargs):
         pixels[(x, y)] = color
 
     mode.core.matrix.clear.side_effect = lambda: pixels.clear()
