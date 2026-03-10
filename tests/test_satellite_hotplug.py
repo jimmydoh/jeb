@@ -425,8 +425,11 @@ def test_main_menu_topology_change_detection(main_menu_content):
     
     print("  ✓ last_sat_keys is updated on topology change")
     
-    # Verify menu_items is rebuilt
-    assert 'menu_items = self._build_menu_items()' in topology_block or \
+    # Verify menu items are rebuilt (new category-based calls)
+    assert '_build_menu_items("CORE")' in topology_block or \
+           "_build_menu_items('CORE')" in topology_block or \
+           '_build_menu_items("EXP1")' in topology_block or \
+           'menu_items = self._build_menu_items()' in topology_block or \
            '_build_menu_items()' in topology_block, \
         "Topology change block should rebuild menu_items via _build_menu_items()"
     

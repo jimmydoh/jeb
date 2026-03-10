@@ -72,7 +72,7 @@ def test_frequency_hunter_in_manifest():
     assert entry["class_name"] == "FrequencyHunterMode"
     assert entry["icon"] == "FREQ_HUNTER"
     assert "CORE" in entry["requires"]
-    assert entry.get("menu") == "MAIN"
+    assert entry.get("menu") == "CORE"
 
 
 def test_frequency_hunter_manifest_settings():
