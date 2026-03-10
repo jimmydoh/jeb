@@ -702,6 +702,25 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "MAGLEV_EXPRESS": {
+        "id": "MAGLEV_EXPRESS",
+        "name": "MAGLEV EXPRESS",
+        "module_path": "modes.maglev_express",
+        "class_name": "MaglevExpress",
+        "icon": "MAGLEV_EXPRESS",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
     "ORBITAL_DOCKING": {
         "id": "ORBITAL_DOCKING",
         "name": "ORBITAL DOCKING",
