@@ -132,6 +132,8 @@ class VanguardOverride(GameMode):
         self._spawn_scale = 1.0
         self._shoot_scale = 1.0
 
+        self._last_seg_text = ""
+
     # ------------------------------------------------------------------
     # Tutorial
     # ------------------------------------------------------------------
@@ -492,9 +494,18 @@ class VanguardOverride(GameMode):
     # ------------------------------------------------------------------
 
     def _update_ship_position(self):
-        """Read encoder and update ship X (wraps 0..MATRIX_WIDTH-1)."""
+        """Read encoder and update ship X (clamped 0..MATRIX_WIDTH-1)."""
         enc = self.core.hid.encoder_positions[_ENC_SHIP]
-        self.ship_x = enc % _MATRIX_WIDTH
+
+        # Clamp the hardware tracking to prevent wind-up and screen-wrapping
+        if enc < 0:
+            self.core.hid.encoder_positions[_ENC_SHIP] = 0
+            enc = 0
+        elif enc >= _MATRIX_WIDTH:
+            self.core.hid.encoder_positions[_ENC_SHIP] = _MATRIX_WIDTH - 1
+            enc = _MATRIX_WIDTH - 1
+
+        self.ship_x = enc
 
     def _update_bullets(self, delta_s):
         """Move all player bullets; remove off-screen ones."""
@@ -716,9 +727,11 @@ class VanguardOverride(GameMode):
 
     def _send_segment(self, text):
         """Send a string to the satellite 14-segment display."""
-        if self.sat:
+        safe = text[:8]
+        if self.sat and self._last_seg_text != safe:
             try:
-                self.sat.send("DSP", text[:8])
+                self.sat.send("DSP", safe)
+                self._last_seg_text = safe
             except Exception:
                 pass
 
@@ -728,17 +741,20 @@ class VanguardOverride(GameMode):
             return
 
         shield_active = self._shield_cooldown_timer <= 0.0
+
+        # Shield LEDs
         for i in range(4):
-            toggle_up = i < shield_power
+            try:
+                toggle_up = bool(self.sat.hid.latching_values[_SHIELD_TOGGLE_START + i])
+            except (IndexError, AttributeError):
+                toggle_up = False
+
             if toggle_up and shield_active:
-                color_name = "GREEN"
-                color_idx  = Palette.GREEN.index
+                color_name, color_idx = "GREEN", Palette.GREEN.index
             elif toggle_up and not shield_active:
-                color_name = "YELLOW"
-                color_idx  = Palette.YELLOW.index
+                color_name, color_idx = "YELLOW", Palette.YELLOW.index
             else:
-                color_name = "OFF"
-                color_idx  = Palette.OFF.index
+                color_name, color_idx = "OFF", Palette.OFF.index
 
             if self._last_led_shield[i] != color_name:
                 try:
@@ -747,17 +763,19 @@ class VanguardOverride(GameMode):
                 except Exception:
                     pass
 
+        # Weapon LEDs
         for i in range(4):
-            toggle_up = i < weapon_power
+            try:
+                toggle_up = bool(self.sat.hid.latching_values[_WEAPON_TOGGLE_START + i])
+            except (IndexError, AttributeError):
+                toggle_up = False
+
             if toggle_up and self._overloaded:
-                color_name = "RED"
-                color_idx  = Palette.RED.index
+                color_name, color_idx = "RED", Palette.RED.index
             elif toggle_up:
-                color_name = "ORANGE"
-                color_idx  = Palette.ORANGE.index
+                color_name, color_idx = "ORANGE", Palette.ORANGE.index
             else:
-                color_name = "OFF"
-                color_idx  = Palette.OFF.index
+                color_name, color_idx = "OFF", Palette.OFF.index
 
             if self._last_led_weapon[i] != color_name:
                 try:
