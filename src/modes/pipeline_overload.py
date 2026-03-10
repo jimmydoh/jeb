@@ -102,6 +102,7 @@ class PipelineOverload(GameMode):
         self.next_junc_idx = 0    # Index of the next uncleared junction
         self.speed = _DIFF_PARAMS["NORMAL"]["speed"]  # Current flow speed (rows/sec)
         self.base_speed = self.speed                  # Difficulty base speed
+        self._trail_history = [] # Tracks (col, row) tuples
 
     # -----------------------------------------------------------------------
     # Satellite helpers
@@ -212,6 +213,10 @@ class PipelineOverload(GameMode):
     async def run(self):
         """Outer game loop: manage levels until GAME OVER."""
         self._init_satellite()
+        if not self.sat:
+            self.core.display.update_status("PIPELINE OVERLOAD", "SAT OFFLINE - ABORT")
+            await asyncio.sleep(2)
+            return "FAILURE"
 
         self.difficulty = self.core.data.get_setting(
             "PIPELINE_OVERLOAD", "difficulty", "NORMAL"
@@ -269,12 +274,18 @@ class PipelineOverload(GameMode):
             delta_ms = ticks_diff(now, last_tick)
 
             if delta_ms >= 16:  # ~60 FPS target
-                # Compute current speed from encoder position
-                enc_pos = max(0, self.core.hid.encoder_positions[_ENC_SPEED])
-                self.speed = min(
-                    self.base_speed + enc_pos * _ENC_SPEED_STEP,
-                    _MAX_SPEED
-                )
+               # NEW: Clamp hardware tracking to prevent wind-up debt
+                max_enc = int((_MAX_SPEED - self.base_speed) / _ENC_SPEED_STEP)
+                current_enc = self.core.hid.encoder_positions[_ENC_SPEED]
+
+                if current_enc > max_enc:
+                    self.core.hid.encoder_positions[_ENC_SPEED] = max_enc
+                    current_enc = max_enc
+                elif current_enc < 0:
+                    self.core.hid.encoder_positions[_ENC_SPEED] = 0
+                    current_enc = 0
+
+                self.speed = self.base_speed + current_enc * _ENC_SPEED_STEP
 
                 # Advance fluid
                 self.fluid_y += (delta_ms / 1000.0) * self.speed
@@ -316,6 +327,13 @@ class PipelineOverload(GameMode):
                     f"SCORE: {self.score}",
                     f"LVL:{self.level} SPD:{self.speed:.1f}"
                 )
+
+                # Track the fluid path for continuous trail rendering
+                current_head = (self.fluid_section * _SECTION_W, int(self.fluid_y))
+                if not self._trail_history or self._trail_history[0] != current_head:
+                    self._trail_history.insert(0, current_head)
+                    if len(self._trail_history) > 3: # Keep head + 2 trail steps
+                        self._trail_history.pop()
 
                 # Draw frame
                 self._render(now)
@@ -390,18 +408,16 @@ class PipelineOverload(GameMode):
                 self.core.matrix.draw_pixel(tc,     jrow + 1, color)
                 self.core.matrix.draw_pixel(tc + 1, jrow + 1, color)
 
-        # --- Fluid blob (pulsing gold/white) with orange trail ---
-        fluid_col = self.fluid_section * _SECTION_W
+        # --- Fluid blob and trailing path ---
+        for i, (f_col, f_row) in enumerate(self._trail_history):
+            if 0 <= f_row < _MATRIX_H:
+                if i == 0: # The Head
+                    fluid_color = Palette.WHITE if pulse else Palette.GOLD
+                else:      # The Trail
+                    fluid_color = Palette.ORANGE
 
-        if 0 <= fluid_row < _MATRIX_H:
-            fluid_color = Palette.WHITE if pulse else Palette.GOLD
-            self.core.matrix.draw_pixel(fluid_col,     fluid_row, fluid_color)
-            self.core.matrix.draw_pixel(fluid_col + 1, fluid_row, fluid_color)
-
-            # One-row trail
-            if fluid_row > 0:
-                self.core.matrix.draw_pixel(fluid_col,     fluid_row - 1, Palette.ORANGE)
-                self.core.matrix.draw_pixel(fluid_col + 1, fluid_row - 1, Palette.ORANGE)
+                self.core.matrix.draw_pixel(f_col,     f_row, fluid_color)
+                self.core.matrix.draw_pixel(f_col + 1, f_row, fluid_color)
 
         self.core.matrix.show_frame()
 
