@@ -507,20 +507,19 @@ class MaglevExpress(GameMode):
     # =========================================================================
 
     def _check_branch(self, wp):
-        """Activate the switch window when approaching a branch waypoint."""
-        if wp["type"] != WP_BRANCH:
-            return
+        """Activate the switch window and return warning text if approaching a branch."""
+        if wp["type"] != WP_BRANCH: return None
         dist_remaining = wp["distance"] - self.distance_m
-        if dist_remaining <= SWITCH_WINDOW_M and not self._switch_active:
-            self._switch_active    = True
-            self._switch_direction = wp["direction"]
-            self._last_sat_enc     = self._sat_encoder_pos()
-            direction_str = "← LEFT" if self._switch_direction == "LEFT" else "RIGHT →"
-            self.core.display.update_status(
-                f"BRANCH IN {int(dist_remaining)}M",
-                f"SAT ENC {direction_str}"
-            )
-            asyncio.create_task(self.core.synth.play_sequence(tones.NOTIFY_INBOX))
+        if dist_remaining <= SWITCH_WINDOW_M:
+            if not self._switch_active:
+                self._switch_active    = True
+                self._switch_direction = wp["direction"]
+                self._last_sat_enc     = self._sat_encoder_pos()
+                asyncio.create_task(self.core.synth.play_sequence(tones.NOTIFY_INBOX))
+
+            direction_str = "<- LEFT" if self._switch_direction == "LEFT" else "RIGHT ->"
+            return f"BRANCH {direction_str} {int(dist_remaining)}m"
+        return None
 
     def _read_switch_encoder(self):
         """Return delta from the satellite encoder relative to snapshot."""
@@ -547,15 +546,12 @@ class MaglevExpress(GameMode):
     # =========================================================================
 
     def _check_station_coast(self, wp):
-        """Enter coast-mode warning when close to a station."""
-        if wp["type"] != WP_STATION:
-            return
+        """Return warning text when close to a station."""
+        if wp["type"] != WP_STATION: return None
         dist_remaining = wp["distance"] - self.distance_m
         if dist_remaining <= STATION_COAST_M:
-            self.core.display.update_status(
-                f"STATION: {wp['name']}",
-                f"COAST   {int(dist_remaining):4d}M  {self.velocity:.1f}u/s"
-            )
+            return f"COAST STA: {int(dist_remaining)}m"
+        return None
 
     def _score_station_stop(self):
         """Award or penalise based on arrival speed."""
@@ -590,31 +586,37 @@ class MaglevExpress(GameMode):
             fault_flash=self._fault_flash
         )
 
-    def _update_oled_running(self, wp):
-        """Update OLED display during normal running."""
-        if wp is None:
+    def _update_oled_running(self, wp, warning_text):
+        """Update OLED display with priority given to warnings."""
+        if warning_text:
+            # Override line 2 with the urgent warning
             self.core.display.update_status(
-                f"SPEED {self.velocity:.1f}",
-                f"SCORE {self.score} CR"
+                f"SPD {self.velocity:4.1f}  HEAT {int(self.heat)}%",
+                warning_text
             )
-            return
-        dist_remaining = max(0, wp["distance"] - self.distance_m)
-        if wp["type"] == WP_STATION:
-            label = f"STA {wp['name'][:6]} {int(dist_remaining)}M"
+        elif wp is not None:
+            # Standard upcoming waypoint info
+            dist_remaining = max(0, wp["distance"] - self.distance_m)
+            label = f"NXT: {wp['name'][:8]} {int(dist_remaining)}m"
+            self.core.display.update_status(
+                f"SPD {self.velocity:4.1f}  HEAT {int(self.heat)}%",
+                label
+            )
         else:
-            direction_str = "L" if wp["direction"] == "LEFT" else "R"
-            label = f"BRANCH {direction_str}  {int(dist_remaining)}M"
-        self.core.display.update_status(
-            f"SPD {self.velocity:4.1f}u/s  HEAT {int(self.heat)}%",
-            label
-        )
+            self.core.display.update_status(
+                f"SPEED {self.velocity:.1f}", f"SCORE {self.score} CR"
+            )
 
     def _update_segment_display(self):
         """Push speed + heat to the satellite 14-segment display."""
         if not self.sat:
             return
         try:
-            self.sat.send("DSP", f"S{self.velocity:4.1f}H{int(self.heat):3d}")
+            if not hasattr(self, "_last_seg_text"): self._last_seg_text = ""
+            text = f"S{self.velocity:4.1f}H{int(self.heat):3d}"
+            if text != self._last_seg_text:
+                self.sat.send("DSP", text)
+                self._last_seg_text = text
         except Exception:
             pass
 
@@ -629,6 +631,16 @@ class MaglevExpress(GameMode):
             2. Guarded Toggle ON  (latching index 8)
         Returns "RUNNING" on success or "ABORT" if mode exit is triggered.
         """
+        # Phase 0: Ensure dashboard is physically reset
+        if self._key_is_on() or self._guard_is_up():
+            self.core.display.update_status("SYSTEM LOCK", "RESET KEY & GUARD TO OFF")
+            while self._key_is_on() or self._guard_is_up():
+                self._render_windshield()
+                self.core.matrix.show_frame()
+                await asyncio.sleep(0.1)
+                if getattr(self, "_exit_requested", False): return "ABORT"
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+
         self.core.display.update_status("SYSTEM OFFLINE", "TURN KEY TO START")
 
         # Phase 1: Wait for Key Switch
@@ -848,9 +860,11 @@ class MaglevExpress(GameMode):
 
                 # -- Waypoint logic --
                 wp = self._next_waypoint()
+                warning_text = None
                 if wp is not None:
-                    self._check_branch(wp)
-                    self._check_station_coast(wp)
+                    warning_text = self._check_branch(wp)
+                    if warning_text is None:
+                        warning_text = self._check_station_coast(wp)
 
                     if self.distance_m >= wp["distance"]:
                         if wp["type"] == WP_BRANCH:
@@ -887,7 +901,7 @@ class MaglevExpress(GameMode):
                 # -- Render --
                 self._render_windshield()
                 self.core.matrix.show_frame()
-                self._update_oled_running(wp)
+                self._update_oled_running(wp, warning_text)
                 self._update_segment_display()
 
             # ──────────────────────────────────────────────────────────────
