@@ -310,6 +310,26 @@ MODE_REGISTRY |= {
         "requires": ["CORE"],
         "settings": []
     },
+    "GROOVEBOX": {
+        "id": "GROOVEBOX",
+        "name": "JEB-808",
+        "module_path": "modes.groovebox",
+        "class_name": "GrooveboxMode",
+        "icon": "GROOVEBOX",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 120,
+        "requires": ["CORE"],
+        "optional": ["INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "bpm",
+                "label": "BPM",
+                "options": ["80", "100", "120", "140", "160"],
+                "default": "120"
+            }
+        ]
+    },
     "RHYTHM": {
         "id": "RHYTHM",
         "name": "NEON BEATS",
@@ -520,6 +540,18 @@ MODE_REGISTRY |= {
             }
         ]
     },
+    "MECHA_FORGE": {
+        "id": "MECHA_FORGE",
+        "name": "MECHA FORGE",
+        "module_path": "modes.mecha_forge",
+        "class_name": "MechaForge",
+        "icon": "MECHA_FORGE",
+        "menu": "ZERO_PLAYER",
+        "order": 610,
+        "requires": ["CORE"],
+        "optional": ["INDUSTRIAL"],
+        "settings": []
+    },
 }
 
 # Sat Type 01 INDUSTRIAL Game Modes
@@ -685,6 +717,139 @@ MODE_REGISTRY |= {
                 "key": "difficulty",
                 "label": "DIFF",
                 "options": ["EASY", "NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "FLUX_SCAVENGER": {
+        "id": "FLUX_SCAVENGER",
+        "name": "FLUX SCAVENGER",
+        "module_path": "modes.flux_scavenger",
+        "class_name": "FluxScavenger",
+        "icon": "FLUX_SCAVENGER",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "VANGUARD_OVERRIDE": {
+        "id": "VANGUARD_OVERRIDE",
+        "name": "VANGUARD OVR",
+        "module_path": "modes.vanguard_override",
+        "class_name": "VanguardOverride",
+        "icon": "VANGUARD_OVERRIDE",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "PIPELINE_OVERLOAD": {
+        "id": "PIPELINE_OVERLOAD",
+        "name": "PIPELINE OVLD",
+        "module_path": "modes.pipeline_overload",
+        "class_name": "PipelineOverload",
+        "icon": "PIPELINE_OVERLOAD",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "NUMBERS_STATION": {
+        "id": "NUMBERS_STATION",
+        "name": "NMBRS STN",
+        "module_path": "modes.numbers_station",
+        "class_name": "NumbersStation",
+        "icon": "NUMBERS_STATION",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "MAGNETIC_CONTAINMENT": {
+        "id": "MAGNETIC_CONTAINMENT",
+        "name": "MAG CONTAINMENT",
+        "module_path": "modes.magnetic_containment",
+        "class_name": "MagneticContainment",
+        "icon": "MAGNETIC_CONTAINMENT",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "BUNKER_DEFUSE": {
+        "id": "BUNKER_DEFUSE",
+        "name": "BUNKER DEFUSE",
+        "module_path": "modes.bunker_defuse",
+        "class_name": "BunkerDefuse",
+        "icon": "BUNKER_DEFUSE",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "SEISMIC_STABILIZER": {
+        "id": "SEISMIC_STABILIZER",
+        "name": "SEISMIC STAB",
+        "module_path": "modes.seismic_stabilizer",
+        "class_name": "SeismicStabilizer",
+        "icon": "SEISMIC_STABILIZER",
+        "menu": "MAIN",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
                 "default": "NORMAL"
             }
         ]
