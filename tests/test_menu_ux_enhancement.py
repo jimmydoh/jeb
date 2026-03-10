@@ -1,7 +1,7 @@
 """Tests for Menu UX Enhancement – tabbed category pagination system.
 
 Verifies that:
-- manifest.py correctly categorises modes as CORE, EXP1, or ZERO_PLAYER
+- manifest.py correctly categorizes modes as CORE, EXP1, or ZERO_PLAYER
 - main_menu.py builds separate item lists per category
 - main_menu.py maps B1 (button index 0 tap) to a category-cycle function
 - The OLED category header and B1 footer hint are rendered

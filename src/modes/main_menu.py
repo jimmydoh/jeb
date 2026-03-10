@@ -521,10 +521,12 @@ class MainMenu(UtilityMode):
                             else:
                                 high_score = self.core.data.get_high_score(mode_id)
                                 self.core.display.update_status(f"> {mode_meta['name']} <", f"Hi: {high_score}")
-                            settings_hint = "B1:NEXT "
-                            settings_hint += "B3:Tute " if mode_meta.get("has_tutorial", False) else ""
-                            settings_hint += "B4:Sett" if len(mode_meta.get("settings", [])) > 0 else ""
-                            self.core.display.update_footer(settings_hint)
+                            hints = ["B1:NEXT"]
+                            if mode_meta.get("has_tutorial", False):
+                                hints.append("B3:Tute")
+                            if len(mode_meta.get("settings", [])) > 0:
+                                hints.append("B4:Sett")
+                            self.core.display.update_footer(" ".join(hints))
                             self.core.display.show_settings_menu(False)
 
                             # Only re-trigger the slide animation if the game or category changed
