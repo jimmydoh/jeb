@@ -900,7 +900,8 @@ class ConsoleManager():
                 hid.momentary_values[idx][0] = False
                 hid.momentary_values[idx][1] = False
 
-            label = {"U": "UP", "D": "DOWN", "C": "CENTRE"}[d
+            label = {"U": "UP", "D": "DOWN", "C": "CENTRE"}[direction]
+            print(f"Core momentary[{idx}] held at {label}.")
 
         else:
             print(f"Unknown HID command: '{verb}'. Type 'help' for usage.")
@@ -1014,7 +1015,8 @@ class ConsoleManager():
                 hid.momentary_values[idx][0] = False
                 hid.momentary_values[idx][1] = False
 
-            label = {"U": "UP", "D": "DOWN", "C": "CENTRE"}[d
+            label = {"U": "UP", "D": "DOWN", "C": "CENTRE"}[direction]
+            print(f"Core momentary[{idx}] held at {label}.")
 
         else:
             print(f"Unknown satellite HID command: '{verb}'. Type 'help' for usage.")
