@@ -98,6 +98,138 @@ class LissajousMode(BaseMode):
         self._note_a = None
         self._note_b = None
 
+    async def run_tutorial(self):
+        """
+        Guided demonstration of the Lissajous Curve Generator.
+
+        The Voiceover Script (audio/tutes/lissajous_tute.wav) ~46 seconds:
+            [0:00] "Welcome to the Lissajous Curve Generator."
+            [0:04] "Named after physicist Jules Antoine Lissajous, these curves visualize the intersection of two complex harmonic waveforms."
+            [0:12] "In the analog era, they were frequently generated on oscilloscopes to calibrate frequencies and test radar equipment."
+            [0:20] "Turn the main dial to cycle through common preset frequency ratios."
+            [0:25] "Press button three to enter custom edit mode, allowing you to dial in your own X and Y variables."
+            [0:32] "Button one changes the phase-shift speed, controlling how fast the shape morphs in three-dimensional space."
+            [0:39] "And button two instantly clears the phosphor trail buffer."
+            [0:43] "Enjoy the mathematics."
+            [0:46] (End of file)
+        """
+        await self.core.clean_slate()
+
+        self.game_state = "TUTORIAL"
+
+        self.core.audio.play(
+            "audio/tutes/lissajous_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
+        )
+
+        # Setup standard display state for the tutorial
+        self.width = self.core.matrix.width
+        self.height = self.core.matrix.height
+        size = self.width * self.height
+        self._buf = [[0.0, 0.0, 0.0] for _ in range(size)]
+
+        self._ratio_idx = 0
+        self._phase_speed_idx = 2
+        self._phase = 0.0
+        self._hue = 0.0
+        self._edit_mode = 0
+        self._custom_a = 1
+        self._custom_b = 2
+
+        self.core.display.use_standard_layout()
+        self.core.display.update_header("LISSAJOUS")
+        self.core.display.update_footer("B1:Spd B2:Rst B3:Mode")
+
+        def _refresh_ui():
+            line1, line2 = self._status_line()
+            self.core.display.update_status(line1, line2)
+
+        _refresh_ui()
+        self._start_audio()
+
+        # Helper to step the visual simulation smoothly while waiting
+        async def _sim_frames(frames, dt_ms=33):
+            dt_s = dt_ms / 1000.0
+            for _ in range(frames):
+                self._phase += _PHASE_SPEEDS_MS[self._phase_speed_idx] * dt_ms
+                self._hue = (self._hue + _HUE_SPEED * dt_s) % 360.0
+                r_dot, g_dot, b_dot = Palette.hsv_to_rgb(self._hue, 1.0, 1.0)
+
+                self._fade_buf()
+
+                a, b = self._get_current_ab()
+                half_x = (self.width - 1) / 2.0
+                half_y = (self.height - 1) / 2.0
+                step = (2.0 * math.pi) / _PLOT_STEPS
+                for i in range(_PLOT_STEPS):
+                    t = i * step
+                    fx = half_x * math.sin(a * t + self._phase) + half_x
+                    fy = half_y * math.sin(b * t) + half_y
+                    self._plot(fx, fy, r_dot, g_dot, b_dot)
+
+                self._render_to_matrix()
+                self.core.matrix.show_frame()
+                await asyncio.sleep(dt_s)
+
+        try:
+            # [0:00 - 0:20] Intro, history, and base drawing
+            self.core.display.update_status("LISSAJOUS CURVES", "MATHEMATICAL ART")
+            await _sim_frames(20 * 30) # ~20 seconds at 30fps
+
+            # [0:20 - 0:25] Preset cycling
+            self.core.display.update_status("MAIN DIAL", "CYCLE PRESETS")
+            for _ in range(3):
+                self._ratio_idx = (self._ratio_idx + 1) % len(_RATIOS)
+                self._clear_buf()
+                self._phase = 0.0
+                self._start_audio()
+                _refresh_ui()
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_frames(50) # ~1.6 seconds per preset
+
+            # [0:25 - 0:32] Custom edit mode
+            self.core.display.update_status("BUTTON 3", "CUSTOM VARIABLES")
+            self._edit_mode = 1 # Switch to Edit A
+            self._custom_a, self._custom_b = _RATIOS[self._ratio_idx]
+            _refresh_ui()
+            self.core.buzzer.play_sequence(tones.COIN)
+            await _sim_frames(60)
+
+            # Simulate turning the dial to bump custom variable A
+            self._custom_a += 2
+            self._clear_buf()
+            self._phase = 0.0
+            self._start_audio()
+            _refresh_ui()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_frames(90)
+
+            # [0:32 - 0:39] Speed change
+            self.core.display.update_status("BUTTON 1", "CHANGE SPEED")
+            self._phase_speed_idx = 4 # Kick it to TURBO
+            _refresh_ui()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_frames(180)
+
+            # [0:39 - 0:43] Buffer clear
+            self.core.display.update_status("BUTTON 2", "CLEAR BUFFER")
+            self._clear_buf()
+            self._phase = 0.0
+            self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+            await _sim_frames(120)
+
+            # Wait for audio to finish out if it's still running
+            if hasattr(self.core.audio, 'wait_for_bus'):
+                await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+            else:
+                await asyncio.sleep(2.0)
+
+        finally:
+            self._stop_audio()
+            await self.core.clean_slate()
+
+        return "TUTORIAL_COMPLETE"
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
