@@ -96,6 +96,118 @@ class StarfieldMode(BaseMode):
         self._warp_idx = _DEFAULT_WARP_IDX
         self._star_idx = _DEFAULT_STAR_IDX
 
+    async def run_tutorial(self):
+        """
+        Guided demonstration of the Parallax Starfield.
+
+        The Voiceover Script (audio/tutes/starfield_tute.wav) ~45 seconds:
+            [0:00] "Welcome to the Parallax Starfield."
+            [0:04] "This simulation uses a true three-dimensional coordinate system to project stars onto the matrix."
+            [0:12] "As stars move toward the camera, their depth is mapped to brightness."
+            [0:18] "Distant stars are dim, while close stars blaze bright white, creating the illusion of infinite space."
+            [0:26] "Turn the main dial to adjust your warp speed."
+            [0:32] "Press button one to cycle the density of the starfield."
+            [0:37] "And press button two to randomly re-scatter the stars."
+            [0:42] "Engage warp drive."
+            [0:45] (End of file)
+        """
+        await self.core.clean_slate()
+
+        self.game_state = "TUTORIAL"
+
+        # Trigger audio synchronously (fire-and-forget)
+        self.core.audio.play(
+            "audio/tutes/starfield_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
+        )
+
+        # Setup standard display state for the tutorial
+        self.width  = self.core.matrix.width
+        self.height = self.core.matrix.height
+        self._zero_frame = b'\x00' * (self.width * self.height)
+
+        self._warp_idx = 1 # Start slower than default (Speed 2) to show the depth clearly
+        self._star_idx = 1 # NORMAL density
+        self._reset_stars()
+
+        self.core.display.use_standard_layout()
+        self.core.display.update_header("STARFIELD")
+        self.core.display.update_footer("B1:Stars  B2:Reset")
+
+        def _refresh_ui():
+            line1, line2 = self._status_line()
+            self.core.display.update_status(line1, line2)
+
+        _refresh_ui()
+
+        async def _sim_wait(duration_s):
+            """Runs the starfield simulation continuously for the specified duration."""
+            start_time = ticks_ms()
+            last_tick = start_time
+            target_ms = int(duration_s * 1000)
+
+            while ticks_diff(ticks_ms(), start_time) < target_ms:
+                now = ticks_ms()
+                if ticks_diff(now, last_tick) >= _TICK_MS:
+                    self._step()
+                    self.core.matrix.show_frame(self._frame)
+                    last_tick = now
+                await asyncio.sleep(0.01)
+
+        try:
+            # [0:00 - 0:12] Intro & 3D Math
+            self.core.display.update_status("PARALLAX", "3D PROJECTION")
+            await _sim_wait(12.0)
+
+            # [0:12 - 0:26] Depth / Brightness explanation
+            self.core.display.update_status("DEPTH MAPPING", "DIM TO BRIGHT")
+            await _sim_wait(14.0)
+
+            # [0:26 - 0:32] Main Dial: Warp speed demo
+            self.core.display.update_status("MAIN DIAL", "WARP SPEED")
+            for speed in [2, 3, 4, 5]: # Cycle up to MAX speed
+                await _sim_wait(1.0)
+                self._warp_idx = speed
+                _refresh_ui()
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(2.0)
+
+            # [0:32 - 0:37] Button 1: Star Density
+            self.core.display.update_status("BUTTON 1", "STAR DENSITY")
+            for density in [2, 0, 1]: # DENSE -> SPARSE -> NORMAL
+                await _sim_wait(1.5)
+                self._star_idx = density
+                self._reset_stars()
+                _refresh_ui()
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(0.5)
+
+            # [0:37 - 0:42] Button 2: Reset Demo
+            self.core.display.update_status("BUTTON 2", "SCATTER STARS")
+            await _sim_wait(1.0)
+            self._reset_stars()
+            self.core.display.update_status("BUTTON 2", "SCATTERED!")
+            self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+            await _sim_wait(4.0)
+
+            # Wait for audio to finish out if it's still running
+            if hasattr(self.core.audio, 'wait_for_bus'):
+                await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+            else:
+                await asyncio.sleep(2.0)
+
+            # --- SEAMLESS HANDOFF TO MAIN LOOP ---
+            self.core.display.update_status("TUTORIAL COMPLETE", "HANDING OVER CONTROL")
+            await asyncio.sleep(1.5)
+
+            self.core.hid.flush()
+
+            self.game_state = "RUNNING"
+            return await self.run()
+
+        finally:
+            await self.core.clean_slate()
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
