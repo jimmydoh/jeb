@@ -290,6 +290,8 @@ class MockApp:
         self.mode = "DASHBOARD"
         self._pending_mode_variant = None
         self.active_mode = None
+        self.active_mode_task = None
+        self.console_override_mode = None
         self.satellites = {"0101": MockSatellite()}
         self.mode_registry = {
             "SIMON": {
@@ -776,7 +778,7 @@ async def test_mode_launcher_lists_main_modes():
 
 @pytest.mark.asyncio
 async def test_mode_launcher_main_game():
-    """test_mode_launcher sets app.mode when '1' (Main Game) is selected."""
+    """test_mode_launcher sets app.console_override_mode when '1' (Main Game) is selected."""
     app = MockApp()
     cm = ConsoleManager("CORE", "00", app=app)
 
@@ -789,7 +791,7 @@ async def test_mode_launcher_main_game():
     cm.get_input = fake_input
     await cm.test_mode_launcher()
 
-    assert app.mode == "SIMON"
+    assert app.console_override_mode == "SIMON"
     assert app._pending_mode_variant is None
 
 
@@ -808,7 +810,7 @@ async def test_mode_launcher_tutorial():
     cm.get_input = fake_input
     await cm.test_mode_launcher()
 
-    assert app.mode == "SIMON"
+    assert app.console_override_mode == "SIMON"
     assert app._pending_mode_variant == "TUTORIAL"
 
 
@@ -827,7 +829,7 @@ async def test_mode_launcher_no_tutorial_skips_variant_prompt():
     cm.get_input = fake_input
     await cm.test_mode_launcher()
 
-    assert app.mode == "PIPELINE"
+    assert app.console_override_mode == "PIPELINE"
     assert app._pending_mode_variant is None
 
 
