@@ -828,8 +828,15 @@ class ConsoleManager():
             if idx < 0 or idx >= len(hid.encoder_positions):
                 print(f"enc: index {idx} out of range (0-{len(hid.encoder_positions)-1}).")
                 return
-            hid.encoder_positions[idx] += delta
-            print(f"Core encoder[{idx}] adjusted by {delta:+d} -> {hid.encoder_positions[idx]}")
+            encoder_str = ""
+            for i, _ in enumerate(hid.encoder_positions):
+                if i == idx:
+                    encoder_str += str(hid.encoder_positions[i] + delta)
+                    JEBLogger.debug("CONS", f"Core encoder[{idx}] adjusted by {delta:+d} -> {hid.encoder_positions[i] + delta}")
+                else:
+                    encoder_str += str(hid.encoder_positions[i])
+            hid._sw_set_encoders(f"{encoder_str}", override=True)
+            JEBLogger.debug("CONS", f"Core encoders set to: {encoder_str}")
 
         elif verb == "btn":
             if len(tokens) < 2:
@@ -844,17 +851,23 @@ class ConsoleManager():
                 print(f"btn: index {idx} out of range.")
                 return
 
+            buttons = hid.buttons_values.copy()  # Copy to avoid mutating original if it's a property
+
             # If a 3rd argument is provided, HOLD the button in that state
             if len(tokens) >= 3:
                 state = bool(int(tokens[2]))
-                hid.buttons_values[idx] = state
-                print(f"Core button[{idx}] held {'DOWN' if state else 'UP'}.")
+                buttons[idx] = state
+                buttons_str = "".join(['1' if b else '0' for b in buttons])
+                hid._sw_set_buttons(buttons_str, override=True)
             else:
                 # Otherwise, simulate a quick physical tap
-                hid.buttons_values[idx] = True
+                buttons[idx] = True
+                buttons_str = "".join(['1' if b else '0' for b in buttons])
+                hid._sw_set_buttons(buttons_str, override=True)
                 await asyncio.sleep(0.1)
-                hid.buttons_values[idx] = False
-                print(f"Core button[{idx}] tapped.")
+                buttons[idx] = False
+                buttons_str = "".join(['1' if b else '0' for b in buttons])
+                hid._sw_set_buttons(buttons_str, override=True)
 
         elif verb == "tog":
             if len(tokens) < 3:
@@ -959,17 +972,23 @@ class ConsoleManager():
                 print(f"btn: index {idx} out of range.")
                 return
 
+            buttons = hid.buttons_values.copy()  # Copy to avoid mutating original if it's a property
+
             # If a 3rd argument is provided, HOLD the button in that state
             if len(tokens) >= 3:
                 state = bool(int(tokens[2]))
-                hid.buttons_values[idx] = state
-                print(f"Core button[{idx}] held {'DOWN' if state else 'UP'}.")
+                buttons[idx] = state
+                buttons_str = "".join(['1' if b else '0' for b in buttons])
+                hid._sw_set_buttons(buttons_str, override=True)
             else:
                 # Otherwise, simulate a quick physical tap
-                hid.buttons_values[idx] = True
+                buttons[idx] = True
+                buttons_str = "".join(['1' if b else '0' for b in buttons])
+                hid._sw_set_buttons(buttons_str, override=True)
                 await asyncio.sleep(0.1)
-                hid.buttons_values[idx] = False
-                print(f"Core button[{idx}] tapped.")
+                buttons[idx] = False
+                buttons_str = "".join(['1' if b else '0' for b in buttons])
+                hid._sw_set_buttons(buttons_str, override=True)
 
         elif verb == "tog":
             if len(tokens) < 3:
