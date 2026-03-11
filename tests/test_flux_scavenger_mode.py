@@ -76,7 +76,7 @@ def test_flux_scavenger_manifest_metadata():
     assert "INDUSTRIAL" in meta["requires"], (
         "FLUX_SCAVENGER must require INDUSTRIAL satellite"
     )
-    assert meta.get("menu") == "MAIN", "FLUX_SCAVENGER should appear in MAIN menu"
+    assert meta.get("menu") == "EXP1", "FLUX_SCAVENGER should appear in EXP1 menu"
     assert meta.get("has_tutorial") is True, "FLUX_SCAVENGER should have a tutorial"
     print("✓ FLUX_SCAVENGER manifest metadata is correct")
 

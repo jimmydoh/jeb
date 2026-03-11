@@ -72,7 +72,7 @@ def test_emoji_reveal_in_manifest():
     assert entry["class_name"] == "EmojiRevealMode"
     assert entry["icon"] == "EMOJI_REVEAL"
     assert "CORE" in entry["requires"]
-    assert entry.get("menu") == "MAIN"
+    assert entry.get("menu") == "CORE"
 
 
 def test_emoji_reveal_manifest_settings():

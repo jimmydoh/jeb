@@ -74,7 +74,7 @@ def test_vanguard_override_manifest_metadata():
     assert meta["icon"] == "VANGUARD_OVERRIDE"
     assert "CORE" in meta["requires"], "Must require CORE"
     assert "INDUSTRIAL" in meta["requires"], "Must require INDUSTRIAL satellite"
-    assert meta.get("menu") == "MAIN", "Should appear in MAIN menu"
+    assert meta.get("menu") == "EXP1", "Should appear in EXP1 menu"
     assert meta.get("has_tutorial") is True, "Should have a tutorial"
     print("✓ VANGUARD_OVERRIDE manifest metadata is correct")
 

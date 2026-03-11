@@ -25,7 +25,13 @@ class MainMenu(UtilityMode):
         self.core.display.update_status("MAIN MENU", "LOADING...")
         await asyncio.sleep(0.1)
 
-    def _build_menu_items(self, menu="MAIN"):
+    _CATEGORY_TITLES = {
+        "CORE": "[ CORE GAMES ]",
+        "EXP1": "[ EXPANSION 1 ]",
+        "ZERO": "[ ZERO PLAYER ]",
+    }
+
+    def _build_menu_items(self, menu="CORE"):
         """Dynamically build menu based on mode registry and connected hardware.
 
         This method accesses self.core.mode_registry which is a Dict[str, dict]
@@ -112,10 +118,35 @@ class MainMenu(UtilityMode):
 
         focus_mode = "GAME" # "GAME" or "SETTINGS"
 
+        # Category Variables
+        current_category = getattr(self.core, "_last_menu_category", "CORE")
+
         # Data Variables
-        menu_items = self._build_menu_items()
+        core_items = self._build_menu_items("CORE")
+        exp1_items = self._build_menu_items("EXP1")
         admin_items = self._build_menu_items("ADMIN")
         zero_player_items = self._build_menu_items("ZERO_PLAYER")
+
+        def _items_for_category(cat):
+            if cat == "CORE":
+                return core_items
+            if cat == "EXP1":
+                return exp1_items
+            return zero_player_items  # "ZERO"
+
+        def _get_valid_categories():
+            cats = ["CORE"]
+            if exp1_items:
+                cats.append("EXP1")
+            cats.append("ZERO")
+            return cats
+
+        # Validate restored category is still available (e.g. satellite may have been removed)
+        valid_cats = _get_valid_categories()
+        if current_category not in valid_cats:
+            current_category = "CORE"
+
+        menu_items = _items_for_category(current_category)
 
         selected_game_idx = getattr(self.core, "_last_menu_idx", 0)
 
@@ -136,6 +167,7 @@ class MainMenu(UtilityMode):
         last_rendered_zero_player = -1
         last_rendered_state = None
         last_rendered_focus = None
+        last_rendered_category = None
         slide_direction = "SLIDE_LEFT"
 
         # Turn off all button LEDs
@@ -162,6 +194,7 @@ class MainMenu(UtilityMode):
             curr_pos = self.core.hid.encoder_position()
             encoder_diff = curr_pos - last_pos
             encoder_pressed = self.core.hid.is_encoder_button_pressed(action="tap")
+            btn_a_pressed = self.core.hid.is_button_pressed(0, action="tap")
             btn_c_pressed = self.core.hid.is_button_pressed(2, action="tap")
             btn_d_pressed = self.core.hid.is_button_pressed(3, action="tap")
             btn_a_long = self.core.hid.is_button_pressed(0, long=True, duration=2000)
@@ -180,9 +213,18 @@ class MainMenu(UtilityMode):
             curr_sat_keys = frozenset(self.core.satellites.keys())
             if curr_sat_keys != last_sat_keys:
                 last_sat_keys = curr_sat_keys
-                menu_items = self._build_menu_items()
+                core_items = self._build_menu_items("CORE")
+                exp1_items = self._build_menu_items("EXP1")
                 admin_items = self._build_menu_items("ADMIN")
                 zero_player_items = self._build_menu_items("ZERO_PLAYER")
+                # If current category is no longer valid (e.g. satellite removed), fall back to CORE
+                valid_cats = _get_valid_categories()
+                if current_category not in valid_cats:
+                    current_category = "CORE"
+                    selected_game_idx = 0
+                    self.core.hid.reset_encoder(0)
+                    curr_pos = 0
+                menu_items = _items_for_category(current_category)
                 if menu_items and selected_game_idx >= len(menu_items):
                     selected_game_idx = len(menu_items) - 1
                 needs_render = True
@@ -196,7 +238,11 @@ class MainMenu(UtilityMode):
                 if encoder_diff != 0 or encoder_pressed:
                     JEBLogger.info("MENU", f"Encoder activity detected on DASHBOARD: diff={encoder_diff}, pressed={encoder_pressed}")
                     self.touch()
-                    menu_items = self._build_menu_items()
+                    core_items = self._build_menu_items("CORE")
+                    exp1_items = self._build_menu_items("EXP1")
+                    admin_items = self._build_menu_items("ADMIN")
+                    zero_player_items = self._build_menu_items("ZERO_PLAYER")
+                    menu_items = _items_for_category(current_category)
                     self._set_state("MENU")
                     needs_render = True
                     self.core.buzzer.play_sequence(tones.MENU_OPEN)
@@ -278,6 +324,23 @@ class MainMenu(UtilityMode):
                     needs_render = True
                     continue
 
+                # Handle Category Cycle (B1 tap)
+                if focus_mode == "GAME" and btn_a_pressed and not btn_a_long:
+                    JEBLogger.info("MENU", f"B1 pressed, cycling category from {current_category}")
+                    self.touch()
+                    valid_cats = _get_valid_categories()
+                    cat_idx = valid_cats.index(current_category) if current_category in valid_cats else 0
+                    current_category = valid_cats[(cat_idx + 1) % len(valid_cats)]
+                    menu_items = _items_for_category(current_category)
+                    selected_game_idx = 0
+                    self.core.hid.reset_encoder(0)
+                    curr_pos = 0
+                    self.core.buzzer.play_sequence(tones.MENU_OPEN)
+                    needs_render = True
+                    last_rendered_game = -1
+                    last_rendered_category = None
+                    JEBLogger.info("MENU", f"Switched to category: {current_category}, items: {menu_items}")
+
                 # Handle Focus Toggle ('D' Button)
                 if btn_d_pressed:
                     JEBLogger.info("MENU", f"'D' button pressed, toggling focus from {focus_mode}")
@@ -356,6 +419,7 @@ class MainMenu(UtilityMode):
 
                             self.core._menu_return_state = "MENU"
                             self.core._last_menu_idx = selected_game_idx
+                            self.core._last_menu_category = current_category
 
                             self.core.mode = mode_id
                             return "MENU_CHOICE"
@@ -395,7 +459,7 @@ class MainMenu(UtilityMode):
             # 3. RENDER STAGE
             # =========================================
             # Only push updates to hardware if something visually changed!
-            if needs_render or self.state != last_rendered_state or focus_mode != last_rendered_focus or selected_setting_idx != last_rendered_setting:
+            if needs_render or self.state != last_rendered_state or focus_mode != last_rendered_focus or selected_setting_idx != last_rendered_setting or current_category != last_rendered_category:
                 JEBLogger.debug("MENU", f"Rendering... needs={needs_render}, state={self.state}, focus={focus_mode}, sett={selected_setting_idx}")
                 JEBLogger.debug("MENU", f"Last - state={last_rendered_state}, focus={last_rendered_focus}, sett={last_rendered_setting}")
                 if self.state == "DASHBOARD":
@@ -451,29 +515,42 @@ class MainMenu(UtilityMode):
                         self.core.matrix.show_icon("DEFAULT")
 
                 elif self.state == "MENU":
-                    mode_id = menu_items[selected_game_idx]
-                    mode_meta = self.core.mode_registry[mode_id]
+                    category_title = self._CATEGORY_TITLES.get(current_category, f"[ {current_category} ]")
 
                     if focus_mode == "GAME":
-                        self.core.display.update_header(f"-{mode_meta['name']}-")
-                        if mode_meta.get("submenu"):
-                            self.core.display.update_status("> SUBMENU <", "Push to Open")
-                            self.core.display.update_footer("")
+                        if menu_items:
+                            mode_id = menu_items[selected_game_idx]
+                            mode_meta = self.core.mode_registry[mode_id]
+
+                            self.core.display.update_header(category_title)
+                            if mode_meta.get("submenu"):
+                                self.core.display.update_status(f"> {mode_meta['name']} <", "Push to Open")
+                            else:
+                                high_score = self.core.data.get_high_score(mode_id)
+                                self.core.display.update_status(f"> {mode_meta['name']} <", f"Hi: {high_score}")
+                            hints = ["B1:NEXT"]
+                            if mode_meta.get("has_tutorial", False):
+                                hints.append("B3:Tute")
+                            if len(mode_meta.get("settings", [])) > 0:
+                                hints.append("B4:Sett")
+                            self.core.display.update_footer(" ".join(hints))
+                            self.core.display.show_settings_menu(False)
+
+                            # Only re-trigger the slide animation if the game or category changed
+                            if selected_game_idx != last_rendered_game or current_category != last_rendered_category:
+                                self.core.matrix.show_icon(mode_meta["icon"], anim_mode=slide_direction, speed=2.0)
+
+                            last_rendered_game = selected_game_idx
+                            last_rendered_category = current_category
                         else:
-                            high_score = self.core.data.get_high_score(mode_id)
-                            self.core.display.update_status(f"HIGH SCORE: {high_score}", "Push to Select")
-                            settings_hint = "B3: Tute " if mode_meta.get("has_tutorial", False) else ""
-                            settings_hint += "B4: Sett " if len(mode_meta.get("settings", [])) > 0 else ""
-                            self.core.display.update_footer(settings_hint)
-                        self.core.display.show_settings_menu(False)
-
-                        # Only re-trigger the slide animation if the game actually changed
-                        if selected_game_idx != last_rendered_game:
-                            self.core.matrix.show_icon(mode_meta["icon"], anim_mode=slide_direction, speed=2.0)
-
-                        last_rendered_game = selected_game_idx
+                            self.core.display.update_header(category_title)
+                            self.core.display.update_status("NO MODES AVAILABLE", "")
+                            self.core.display.update_footer("B1: NEXT MENU")
+                            self.core.matrix.show_icon("DEFAULT")
 
                     elif focus_mode == "SETTINGS":
+                        mode_id = menu_items[selected_game_idx]
+                        mode_meta = self.core.mode_registry[mode_id]
                         mode_settings = mode_meta.get("settings", [])
                         settings_strings = []
                         for s in mode_settings:

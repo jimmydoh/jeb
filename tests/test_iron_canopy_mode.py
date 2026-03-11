@@ -74,7 +74,7 @@ def test_iron_canopy_manifest_metadata():
     assert meta["icon"] == "IRON_CANOPY"
     assert "CORE" in meta["requires"], "IRON_CANOPY must require CORE"
     assert "INDUSTRIAL" in meta["requires"], "IRON_CANOPY must require INDUSTRIAL satellite"
-    assert meta.get("menu") == "MAIN", "IRON_CANOPY should appear in MAIN menu"
+    assert meta.get("menu") == "EXP1", "IRON_CANOPY should appear in EXP1 menu"
     print("✓ IRON_CANOPY manifest metadata is correct")
 
 

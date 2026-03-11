@@ -78,7 +78,7 @@ def test_artillery_command_manifest_metadata():
     assert meta["icon"] == "ARTILLERY_COMMAND"
     assert "CORE" in meta["requires"], "Must require CORE"
     assert "INDUSTRIAL" in meta["requires"], "Must require INDUSTRIAL satellite"
-    assert meta.get("menu") == "MAIN", "Should appear in MAIN menu"
+    assert meta.get("menu") == "EXP1", "Should appear in EXP1 menu"
     print("✓ ARTILLERY_COMMAND manifest metadata is correct")
 
 

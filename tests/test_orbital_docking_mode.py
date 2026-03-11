@@ -95,7 +95,7 @@ def test_orbital_docking_manifest_metadata():
     assert meta["icon"] == "ORBITAL_DOCKING"
     assert "CORE" in meta["requires"], "Must require CORE"
     assert "INDUSTRIAL" in meta["requires"], "Must require INDUSTRIAL satellite"
-    assert meta.get("menu") == "MAIN", "Should appear in MAIN menu"
+    assert meta.get("menu") == "EXP1", "Should appear in EXP1 menu"
     assert meta.get("has_tutorial") is True, "Must declare has_tutorial=True"
     print("✓ ORBITAL_DOCKING manifest metadata is correct")
 
