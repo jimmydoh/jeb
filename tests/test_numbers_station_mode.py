@@ -345,7 +345,7 @@ def test_satellite_discovery_in_init():
 
 def test_numbers_station_icon_exists():
     """Test that NUMBERS_STATION icon is defined in icons.py."""
-    with open(_ICONS_PATH, 'r') as f:
+    with open(_ICONS_PATH, 'r', encoding='utf-8') as f:
         icons_src = f.read()
     assert "NUMBERS_STATION" in icons_src, \
         "NUMBERS_STATION icon not found in icons.py"

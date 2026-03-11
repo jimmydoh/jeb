@@ -408,7 +408,7 @@ def test_safe_zone_defined():
 
 def test_icon_in_icons_py():
     """Test that MAGNETIC_CONTAINMENT icon is defined in icons.py."""
-    with open(_ICONS_PATH, 'r') as f:
+    with open(_ICONS_PATH, 'r', encoding='utf-8') as f:
         content = f.read()
     assert "MAGNETIC_CONTAINMENT" in content, \
         "MAGNETIC_CONTAINMENT icon not found in icons.py"
@@ -417,7 +417,7 @@ def test_icon_in_icons_py():
 
 def test_icon_correct_size():
     """Test that MAGNETIC_CONTAINMENT icon is exactly 256 bytes."""
-    with open(_ICONS_PATH, 'r') as f:
+    with open(_ICONS_PATH, 'r', encoding='utf-8') as f:
         content = f.read()
 
     start = content.find('MAGNETIC_CONTAINMENT = bytes([')
@@ -443,7 +443,7 @@ def test_icon_correct_size():
 
 def test_icon_in_library():
     """Test that MAGNETIC_CONTAINMENT is registered in the Icons LIBRARY dict."""
-    with open(_ICONS_PATH, 'r') as f:
+    with open(_ICONS_PATH, 'r', encoding='utf-8') as f:
         content = f.read()
 
     lib_start = content.find("LIBRARY = {")

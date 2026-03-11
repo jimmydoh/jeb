@@ -541,7 +541,6 @@ class MainMenu(UtilityMode):
                                 self.core.matrix.show_icon(mode_meta["icon"], anim_mode=slide_direction, speed=2.0)
 
                             last_rendered_game = selected_game_idx
-                            last_rendered_category = current_category
                         else:
                             self.core.display.update_header(category_title)
                             self.core.display.update_status("NO MODES AVAILABLE", "")
@@ -566,6 +565,7 @@ class MainMenu(UtilityMode):
                 last_rendered_state = self.state
                 last_rendered_focus = focus_mode
                 last_rendered_setting = selected_setting_idx
+                last_rendered_category = current_category
 
             last_pos = curr_pos
 
