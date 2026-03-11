@@ -97,7 +97,7 @@ class BuzzerManager:
 
     async def _play_sequence(self, sequence, tempo=1.0, loop=False):
         """Plays a sequence of notes [(freq, dur), ...]."""
-        self.stop()  # Preempt any existing sound
+        self.stop()
         self._current_task = asyncio.create_task(
             self._play_sequence_logic(sequence, tempo, loop)
         )
