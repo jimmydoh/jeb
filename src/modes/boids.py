@@ -101,6 +101,111 @@ class BoidsMode(BaseMode):
         self._speed_idx = 2      # default NORM (50 ms)
         self._tick = 0
 
+    async def run_tutorial(self):
+        """
+        Guided demonstration of the Boids Flocking Simulation.
+
+        The Voiceover Script (audio/tutes/boids_tute.wav) ~38 seconds:
+            [0:00] "Welcome to the Boids Flocking Simulation."
+            [0:05] "Created by Craig Reynolds in 1987, it demonstrates emergent behaviour."
+            [0:11] "Each dot follows three simple rules: separation, alignment, and cohesion."
+            [0:18] "Turn the main dial to adjust the simulation speed."
+            [0:24] "Press button one to cycle the flock's color."
+            [0:29] "And press button two to scatter the flock and watch them regroup."
+            [0:35] "Enjoy the simulation."
+            [0:38] (End of file)
+        """
+        await self.core.clean_slate()
+
+        self.game_state = "TUTORIAL"
+
+        # Trigger audio synchronously (fire-and-forget)
+        self.core.audio.play(
+            "audio/tutes/boids_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
+        )
+
+        # Setup standard display state for the tutorial
+        self.width = self.core.matrix.width
+        self.height = self.core.matrix.height
+        size = self.width * self.height
+
+        self._frame = bytearray(size)
+        self._color_idx = 0
+        self._speed_idx = 2
+        self._tick = 0
+
+        self._reset()
+
+        self.core.display.use_standard_layout()
+        self.core.display.update_header("BOIDS")
+        self.core.display.update_footer("B1:Color  B2:Reset")
+
+        def _refresh_ui():
+            line1, line2 = self._status_line()
+            self.core.display.update_status(line1, line2)
+
+        _refresh_ui()
+
+        async def _sim_wait(duration_s):
+            """Runs the boid simulation continuously for the specified duration."""
+            start_time = ticks_ms()
+            last_step_tick = start_time
+            target_ms = int(duration_s * 1000)
+
+            while ticks_diff(ticks_ms(), start_time) < target_ms:
+                now = ticks_ms()
+                interval = _SPEED_LEVELS_MS[self._speed_idx]
+                if ticks_diff(now, last_step_tick) >= interval:
+                    self._step()
+                    self._build_frame()
+                    self.core.matrix.show_frame(self._frame)
+                    last_step_tick = now
+                await asyncio.sleep(0.01)
+
+        try:
+            # [0:00 - 0:11] Intro & History
+            self.core.display.update_status("BOIDS FLOCKING", "EMERGENT BEHAVIOR")
+            await _sim_wait(11.0)
+
+            # [0:11 - 0:18] The three rules
+            self.core.display.update_status("3 RULES:", "SEP / ALI / COH")
+            await _sim_wait(7.0)
+
+            # [0:18 - 0:24] Speed dial demonstration
+            self.core.display.update_status("MAIN DIAL", "CHANGE SPEED")
+            for speed in [3, 4, 1, 2]: # Cycle FAST -> TURBO -> MED -> NORM
+                self._speed_idx = speed
+                _refresh_ui()
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(1.5)
+
+            # [0:24 - 0:29] Color cycling demonstration
+            self.core.display.update_status("BUTTON 1", "CYCLE COLOR")
+            for _ in range(4):
+                self._color_idx = (self._color_idx + 1) % len(_BOID_COLOR_INDICES)
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(1.25)
+
+            # [0:29 - 0:35] Scatter demonstration
+            self.core.display.update_status("BUTTON 2", "SCATTER FLOCK")
+            await _sim_wait(1.0)
+            self._reset()
+            self.core.display.update_status("BUTTON 2", "SCATTERED!")
+            self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+            await _sim_wait(5.0)
+
+            # Wait for audio to finish out if it's still running
+            if hasattr(self.core.audio, 'wait_for_bus'):
+                await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+            else:
+                await asyncio.sleep(3.0)
+
+        finally:
+            await self.core.clean_slate()
+
+        return "TUTORIAL_COMPLETE"
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
