@@ -109,14 +109,12 @@ class VirtualPet(BaseMode):
             [0:31] (End of file)
         """
         await self.core.clean_slate()
-        
+
         # Suspend normal state machine updates
         self.state = "TUTORIAL"
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/pet_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/pet_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # [0:00 - 0:05] "Welcome to Virtual Pet. Your new digital companion."
         self.core.display.update_status("VIRTUAL PET", "DIGITAL COMPANION")
@@ -127,25 +125,25 @@ class VirtualPet(BaseMode):
         self.core.display.update_status("VIRTUAL PET", "PRESS B1 TO FEED")
         self.core.leds.flash_led(0, Palette.GREEN, duration=2.0, speed=0.2)
         await asyncio.sleep(1.0)
-        
+
         # Reuse your native logic to trigger the eating animation and meow!
-        self._feed(ticks_ms()) 
+        self._feed(ticks_ms())
         await asyncio.sleep(4.0)
 
         # [0:10 - 0:15] "Press button two to play with it and keep it happy."
         self.core.display.update_status("VIRTUAL PET", "PRESS B2 TO PLAY")
         self.core.leds.flash_led(1, Palette.CYAN, duration=2.0, speed=0.2)
         await asyncio.sleep(1.0)
-        
+
         # Reuse native logic for playing
-        self._play(ticks_ms()) 
+        self._play(ticks_ms())
         await asyncio.sleep(4.0)
 
         # [0:15 - 0:21] "Press button three to check its hunger and happiness stats..."
         self.core.display.update_status("VIRTUAL PET", "PRESS B3 FOR STATS")
         self.core.leds.flash_led(2, Palette.YELLOW, duration=2.0, speed=0.2)
         await asyncio.sleep(1.0)
-        
+
         # Force a specific stat readout for the demo
         self.hunger = 25
         self.happiness = 90
@@ -160,7 +158,7 @@ class VirtualPet(BaseMode):
         self._draw_state()
         self.core.buzzer.play_sequence(self._ALERT)
         await asyncio.sleep(3.0)
-        
+
         self.core.display.update_status("VIRTUAL PET", "ZZZ...")
         self.state = self.STATE_SLEEPING
         self._draw_state()
@@ -171,9 +169,6 @@ class VirtualPet(BaseMode):
         self.core.display.update_status("VIRTUAL PET", "TAKE GOOD CARE!")
         self.state = self.STATE_IDLE
         self._draw_state()
-
-        # Wait for the audio track to finish naturally
-        await tute_audio
 
         # Clean up and return to the menu
         await self.core.clean_slate()

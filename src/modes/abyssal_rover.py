@@ -405,13 +405,12 @@ class AbyssalRover(GameMode):
         )
         self._send_segment(f"FLARE {self._flares_remaining}")
 
-        asyncio.create_task(
-            self.core.audio.play(
-                "audio/general/flare.wav",
-                self.core.audio.CH_SFX,
-                interrupt=True
-            )
+        self.core.audio.play(
+            "audio/general/flare.wav",
+            self.core.audio.CH_SFX,
+            interrupt=True
         )
+
 
         self.core.matrix.clear()
         self._render_flare()
@@ -442,11 +441,9 @@ class AbyssalRover(GameMode):
         await self.core.clean_slate()
         self.game_state = "TUTORIAL"
 
-        tute_audio = asyncio.create_task(
-            self.core.audio.play(
-                "audio/tutes/rover_tute.wav",
-                bus_id=self.core.audio.CH_VOICE
-            )
+        self.core.audio.play(
+            "audio/tutes/rover_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
         )
 
         # Set up a small demo maze for illustration
@@ -507,7 +504,6 @@ class AbyssalRover(GameMode):
         self.core.display.update_status("FIND THE EXIT", "GOLDEN CELL = ESCAPE")
         await asyncio.sleep(5.0)
 
-        await tute_audio
         await self.core.clean_slate()
         return "TUTORIAL_COMPLETE"
 

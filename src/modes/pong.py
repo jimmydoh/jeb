@@ -80,9 +80,7 @@ class Pong(GameMode):
         self.game_state = "TUTORIAL"
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/pong_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/pong_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # Initialize safe starting state for the trick shot
         self.player_bat_y = 7
@@ -189,9 +187,6 @@ class Pong(GameMode):
             self.render()
             self.core.matrix.show_frame()
             await asyncio.sleep(0.05)
-
-        # Wait for the audio track to finish naturally
-        await tute_audio
 
         # Clean up and return to the menu
         await self.core.clean_slate()
@@ -570,7 +565,7 @@ class Pong(GameMode):
             anim_mode="PULSE",
             speed=2.0
         )
-        await self.core.audio.play(
+        self.core.audio.play(
             "audio/general/win.wav",
             self.core.audio.CH_SFX,
             level=1.0,
@@ -596,7 +591,7 @@ class Pong(GameMode):
             anim_mode="PULSE",
             speed=2.0
         )
-        await self.core.audio.play(
+        self.core.audio.play(
             "audio/general/fail.wav",
             self.core.audio.CH_SFX,
             level=1.0,

@@ -151,9 +151,7 @@ class GrooveboxMode(BaseMode):
         await self.core.clean_slate()
         self.game_state = "TUTORIAL"
 
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/808_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/808_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # Pre-load a basic "Four-on-the-floor" beat so there's something to look at
         self.notes[0] = [True, False, False, False, True, False, False, False, True, False, False, False, True, False, False, False] # Kick

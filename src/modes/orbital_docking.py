@@ -509,11 +509,9 @@ class OrbitalDocking(GameMode):
         self.game_state = "TUTORIAL"
 
         # Start voiceover
-        tute_audio = asyncio.create_task(
-            self.core.audio.play(
-                "audio/tutes/orbital_docking_tute.wav",
-                bus_id=self.core.audio.CH_VOICE
-            )
+        self.core.audio.play(
+            "audio/tutes/orbital_docking_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
         )
 
         # [0:00 - 0:05] "Welcome to Orbital Docking Simulator..."
@@ -799,13 +797,11 @@ class OrbitalDocking(GameMode):
                         )
                         self.core.matrix.fill(Palette.CYAN, show=True)
                         self._send_segment("DOCKED!!")
-                        asyncio.create_task(
-                            self.core.audio.play(
-                                "audio/general/win.wav",
-                                self.core.audio.CH_SFX,
-                                level=1.0,
-                                interrupt=True
-                            )
+                        self.core.audio.play(
+                            "audio/general/win.wav",
+                            self.core.audio.CH_SFX,
+                            level=1.0,
+                            interrupt=True
                         )
                         self.core.display.update_status(
                             "HARD CAPTURE OK!",

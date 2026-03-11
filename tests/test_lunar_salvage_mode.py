@@ -65,7 +65,7 @@ def test_lunar_salvage_manifest_fields():
     assert meta["class_name"] == "LunarSalvage"
     assert meta["icon"] == "LUNAR_SALVAGE"
     assert "CORE" in meta["requires"], "LUNAR_SALVAGE should only require CORE"
-    assert meta["menu"] == "MAIN", "LUNAR_SALVAGE should appear in the MAIN menu"
+    assert meta["menu"] == "CORE", "LUNAR_SALVAGE should appear in the CORE menu"
     print("✓ LUNAR_SALVAGE manifest fields are correct")
 
 

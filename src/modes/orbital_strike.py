@@ -145,9 +145,7 @@ class OrbitalStrike(GameMode):
         self.game_state = "TUTORIAL"
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/orb_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/orb_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # [0:00 - 0:06] "Weapons Officer, welcome to Orbital Strike..."
         self.core.display.update_header("ORBITAL STRIKE")
@@ -248,9 +246,6 @@ class OrbitalStrike(GameMode):
         await asyncio.sleep(4.0)
         self.core.display.update_status("RESET COMPLETE", "STAND BY")
         self.core.buzzer.play_sequence(tones.SUCCESS)
-
-        # Wait for the audio track to finish naturally
-        await tute_audio
 
         # Clean up and return to the menu
         await self.core.clean_slate()

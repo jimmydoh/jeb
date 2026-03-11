@@ -120,9 +120,7 @@ class JEBris(GameMode):
         self.game_state = "TUTORIAL"
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/jebris_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/jebris_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # [0:00 - 0:04] "Welcome to JEBris. Turn the rotary encoder..."
         self.core.display.update_status("JEBRIS TUTORIAL", "TURN ENCODER TO MOVE")
@@ -217,9 +215,6 @@ class JEBris(GameMode):
 
         # [0:16 - 0:20] "But be careful, if your stack reaches the top..."
         self.core.display.update_status("JEBRIS TUTORIAL", "DON'T TOP OUT!")
-
-        # Wait for the audio track to finish naturally
-        await tute_audio
 
         # Clean up and return to the menu
         await self.core.clean_slate()
@@ -501,9 +496,9 @@ class JEBris(GameMode):
             duration=2.0,
             speed=0.5
         )
-        await self.core.audio.stop_all()
+        self.core.audio.stop_all()
         self.core.synth.stop_chiptune()
-        await self.core.buzzer.stop()
-        await self.core.buzzer.play_sequence(tones.GAME_OVER)
+        self.core.buzzer.stop()
+        self.core.buzzer.play_sequence(tones.GAME_OVER)
         await asyncio.sleep(2)
         return await self.game_over()

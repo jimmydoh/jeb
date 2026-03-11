@@ -186,7 +186,7 @@ def test_groovebox_manifest_metadata():
     assert meta["class_name"]  == "GrooveboxMode"
     assert meta["icon"]        == "GROOVEBOX"
     assert "CORE" in meta["requires"], "GROOVEBOX must require CORE"
-    assert meta.get("menu")    == "MAIN", "GROOVEBOX should appear in the MAIN menu"
+    assert meta.get("menu")    == "CORE", "GROOVEBOX should appear in the CORE menu"
 
 
 def test_groovebox_manifest_settings():

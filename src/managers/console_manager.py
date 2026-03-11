@@ -616,32 +616,37 @@ class ConsoleManager():
         await asyncio.sleep(1)
 
     async def test_mode_launcher(self):
-        """Dynamically launch a game mode or its tutorial from the console.
-
-        Reads the available game modes directly from the app's mode registry so
-        the list is never hardcoded and stays in sync with the manifest
-        automatically.  Gracefully aborts when no app is attached.
-        """
+        """Dynamically launch a game mode or its tutorial from the console."""
         print("\n--- MODE LAUNCHER ---")
 
         if self.app is None:
             print("No app instance available. Mode Launcher requires a running app.")
             return
 
-        # mode_registry is a required attribute of the app; guard against stripped-down
-        # test stubs that may not have it initialised yet.
         if not hasattr(self.app, 'mode_registry') or not self.app.mode_registry:
             print("App has no mode registry. Cannot list modes.")
             return
 
-        # Collect launchable game modes (MAIN menu only)
-        game_modes = [
-            meta for meta in self.app.mode_registry.values()
-            if meta.get("menu") == "MAIN"
-        ]
+        # 1. Determine if the Industrial Satellite is physically connected
+        has_industrial = False
+        if hasattr(self.app, 'satellites'):
+            for sat in self.app.satellites.values():
+                if getattr(sat, 'sat_type_name', '') == "INDUSTRIAL" and getattr(sat, 'is_active', False):
+                    has_industrial = True
+                    break
+
+        # 2. Collect modes, filtering out those missing hardware requirements
+        game_modes = []
+        for meta in self.app.mode_registry.values():
+            # Check old menu flag or new category flag
+            if meta.get("menu") == "MAIN" or meta.get("category") in ["CORE", "EXP1", "ZERO"]:
+                reqs = meta.get("requires", [])
+                if "INDUSTRIAL" in reqs and not has_industrial:
+                    continue  # Skip this mode, missing hardware
+                game_modes.append(meta)
 
         if not game_modes:
-            print("No launchable game modes found in registry.")
+            print("No launchable game modes found (or missing hardware).")
             return
 
         # Sort by order then name for a stable display
@@ -678,16 +683,29 @@ class ConsoleManager():
             print("  2. Tutorial")
             variant_choice = await self.get_input(">> ")
         else:
-            # No tutorial available - launch main game directly without prompting
             variant_choice = "1"
 
-        if variant_choice == "1":
-            self.app.mode = mode_id
-            print(f"Mode switch requested: {selected_meta['name']} (main game)")
-        elif variant_choice == "2":
-            self.app._pending_mode_variant = "TUTORIAL"
-            self.app.mode = mode_id
-            print(f"Mode switch requested: {selected_meta['name']} (tutorial)")
+        if variant_choice in ("1", "2"):
+            if variant_choice == "2":
+                self.app._pending_mode_variant = "TUTORIAL"
+                print(f"Mode switch requested: {selected_meta['name']} (tutorial)")
+            else:
+                self.app._pending_mode_variant = None
+                print(f"Mode switch requested: {selected_meta['name']} (main game)")
+
+            # 3. Set the HIGH PRIORITY OVERRIDE flag (NOT self.app.mode!)
+            self.app.console_override_mode = mode_id
+
+            # 4. Forcefully interrupt the CURRENT mode so the app loop can transition
+            if hasattr(self.app, 'active_mode') and self.app.active_mode:
+                # Trigger the graceful exit flag in BaseMode / UtilityMode
+                self.app.active_mode._exit_requested = True
+
+                # If the app runner stores the asyncio.Task, cancel it directly to be safe
+                if hasattr(self.app, 'active_mode_task') and self.app.active_mode_task:
+                    self.app.active_mode_task.cancel()
+
+            print(">>> Injection sent. Waiting for active mode to yield...")
         else:
             print("Invalid selection. Returning to main menu.")
 

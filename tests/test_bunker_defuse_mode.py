@@ -78,7 +78,7 @@ def test_bunker_defuse_manifest_metadata():
     assert meta["icon"] == "BUNKER_DEFUSE", f"icon mismatch"
     assert "CORE" in meta["requires"], "Must require CORE"
     assert "INDUSTRIAL" in meta["requires"], "Must require INDUSTRIAL satellite"
-    assert meta.get("menu") == "MAIN", "Should appear in MAIN menu"
+    assert meta.get("menu") == "EXP1", "Should appear in EXP1 menu"
     assert meta.get("has_tutorial") is True, "Should have a tutorial"
     print("✓ BUNKER_DEFUSE manifest metadata is correct")
 

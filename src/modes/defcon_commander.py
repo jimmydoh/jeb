@@ -158,9 +158,7 @@ class DefconCommander(GameMode):
         self.game_state = "TUTORIAL"
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/defcon_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/defcon_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # Setup initial clean state
         self.silo_states = [SILO_IDLE] * _NUM_SILOS
@@ -280,9 +278,6 @@ class DefconCommander(GameMode):
         self.core.matrix.show_frame()
         self.core.buzzer.play_sequence(tones.LAUNCH)
         self.core.display.update_status("MISSILE AWAY", "DISARM PANEL")
-
-        # Wait for the audio track to finish naturally
-        await tute_audio
 
         # Clean up and return to the menu
         await self.core.clean_slate()

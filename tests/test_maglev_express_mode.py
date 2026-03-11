@@ -99,7 +99,7 @@ def test_maglev_express_manifest_metadata():
     assert meta["icon"] == "MAGLEV_EXPRESS"
     assert "CORE" in meta["requires"], "MAGLEV_EXPRESS must require CORE"
     assert "INDUSTRIAL" in meta["requires"], "MAGLEV_EXPRESS must require INDUSTRIAL satellite"
-    assert meta.get("menu") == "MAIN", "MAGLEV_EXPRESS should appear in MAIN menu"
+    assert meta.get("menu") == "EXP1", "MAGLEV_EXPRESS should appear in EXP1 menu"
     print("✓ MAGLEV_EXPRESS manifest metadata is correct")
 
 

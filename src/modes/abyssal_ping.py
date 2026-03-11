@@ -178,9 +178,7 @@ class AbyssalPing(GameMode):
         self.game_state = "TUTORIAL"
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/abyss_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/abyss_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # [0:00 - 0:05] "Welcome to Abyssal Ping. You must hunt a rogue submarine by ear."
         self.core.display.update_header("ABYSSAL PING")
@@ -306,8 +304,7 @@ class AbyssalPing(GameMode):
                 self.sat.send("LED", f"{i},{Palette.OFF.index},0.0,0.0,2")
         except: pass
 
-        # Wait for the audio track to finish naturally
-        await tute_audio
+        await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
         self.core.synth.release_all()
 
         # Clean up and return to the menu

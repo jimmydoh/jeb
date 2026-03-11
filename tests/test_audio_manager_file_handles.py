@@ -5,6 +5,7 @@ import sys
 import os
 import tempfile
 import asyncio
+import pytest
 
 # Mock audiocore and related modules since they're CircuitPython specific
 class MockRawSample:
@@ -146,7 +147,8 @@ def create_test_file(directory, filename, size):
     return filepath
 
 
-def test_stream_file_tracking():
+@pytest.mark.asyncio
+async def test_stream_file_tracking():
     """Test that streaming files are tracked in _stream_files."""
     print("Testing stream file tracking...")
 
@@ -158,7 +160,8 @@ def test_stream_file_tracking():
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
 
         # Play the file on CH_SFX (bus_id=1), which maps to pool [4, 5, 6]; first free = voice 4
-        asyncio.run(manager.play("stream.wav", bus_id=1))
+        manager.play("stream.wav", bus_id=1)
+        await asyncio.sleep(0)  # Yield to let the async task run
 
         # Verify file handle is tracked at the physical voice index (4)
         assert 4 in manager._stream_files, "File handle should be tracked for physical voice 4 (CH_SFX pool)"
@@ -172,7 +175,8 @@ def test_stream_file_tracking():
     print("✓ Stream file tracking test passed")
 
 
-def test_close_on_new_stream():
+@pytest.mark.asyncio
+async def test_close_on_new_stream():
     """Test that old file handles are closed when playing new files on the same bus."""
     print("\nTesting file handle closure on new stream...")
 
@@ -186,11 +190,13 @@ def test_close_on_new_stream():
 
         # Use CH_VOICE (bus_id=2), which has a single-voice pool [2].
         # Both plays will reuse the same physical voice (2).
-        asyncio.run(manager.play("stream1.wav", bus_id=2))
+        manager.play("stream1.wav", bus_id=2)
+        await asyncio.sleep(0)  # Yield to let the async task run
         first_handle = manager._stream_files[2]
 
         # Play second file on same bus — pool [2] is fully occupied, round-robin returns voice 2
-        asyncio.run(manager.play("stream2.wav", bus_id=2))
+        manager.play("stream2.wav", bus_id=2)
+        await asyncio.sleep(0)  # Yield to let the async task run
         second_handle = manager._stream_files[2]
 
         # Verify first handle was closed
@@ -206,7 +212,8 @@ def test_close_on_new_stream():
     print("✓ File handle closure test passed")
 
 
-def test_close_on_stop():
+@pytest.mark.asyncio
+async def test_close_on_stop():
     """Test that file handles are closed when stop() is called."""
     print("\nTesting file handle closure on stop()...")
 
@@ -218,7 +225,8 @@ def test_close_on_stop():
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
 
         # Play file on CH_SFX (bus_id=1), pool [4, 5, 6]; first free = voice 4
-        asyncio.run(manager.play("stream.wav", bus_id=1))
+        manager.play("stream.wav", bus_id=1)
+        await asyncio.sleep(0)  # Yield to let the async task run
         file_handle = manager._stream_files[4]
 
         # Stop the CH_SFX bus
@@ -234,7 +242,8 @@ def test_close_on_stop():
     print("✓ Stop() test passed")
 
 
-def test_close_on_stop_all():
+@pytest.mark.asyncio
+async def test_close_on_stop_all():
     """Test that all file handles are closed when stop_all() is called."""
     print("\nTesting file handle closure on stop_all()...")
 
@@ -251,9 +260,12 @@ def test_close_on_stop_all():
         # CH_ATMO (bus_id=0) -> pool [0, 1], first free = voice 0
         # CH_VOICE (bus_id=2) -> pool [2]  -> voice 2
         # CH_SYNTH (bus_id=3) -> pool [3]  -> voice 3
-        asyncio.run(manager.play("stream1.wav", bus_id=0))
-        asyncio.run(manager.play("stream2.wav", bus_id=2))
-        asyncio.run(manager.play("stream3.wav", bus_id=3))
+        manager.play("stream1.wav", bus_id=0)
+        await asyncio.sleep(0)
+        manager.play("stream2.wav", bus_id=2)
+        await asyncio.sleep(0)
+        manager.play("stream3.wav", bus_id=3)
+        await asyncio.sleep(0)
 
         handle1 = manager._stream_files[0]
         handle2 = manager._stream_files[2]
@@ -274,7 +286,8 @@ def test_close_on_stop_all():
     print("✓ Stop_all() test passed")
 
 
-def test_cached_vs_streamed():
+@pytest.mark.asyncio
+async def test_cached_vs_streamed():
     """Test that cached files don't create file handles but streamed files do."""
     print("\nTesting cached vs streamed file handling...")
 
@@ -289,11 +302,13 @@ def test_cached_vs_streamed():
 
         try:
             # Use CH_VOICE (bus_id=2), pool [2] -> physical voice 2
-            asyncio.run(manager.play("small.wav", bus_id=2))
+            manager.play("small.wav", bus_id=2)
+            await asyncio.sleep(0)
             assert 2 not in manager._stream_files, "Cached file should not create stream file handle"
 
             # Play streamed file on the same bus
-            asyncio.run(manager.play("large.wav", bus_id=2))
+            manager.play("large.wav", bus_id=2)
+            await asyncio.sleep(0)
             assert 2 in manager._stream_files, "Streamed file should create stream file handle"
             assert not manager._stream_files[2].closed, "Streamed file handle should be open"
 
@@ -306,7 +321,8 @@ def test_cached_vs_streamed():
     print("✓ Cached vs streamed test passed")
 
 
-def test_close_stream_when_playing_cached():
+@pytest.mark.asyncio
+async def test_close_stream_when_playing_cached():
     """Test that streaming file handles are closed when playing cached audio."""
     print("\nTesting stream closure when switching to cached audio...")
 
@@ -320,11 +336,13 @@ def test_close_stream_when_playing_cached():
         manager.preload(["small.wav"])
 
         # Use CH_VOICE (bus_id=2), pool [2] -> physical voice 2
-        asyncio.run(manager.play("large.wav", bus_id=2))
+        manager.play("large.wav", bus_id=2)
+        await asyncio.sleep(0)
         stream_handle = manager._stream_files[2]
 
         # Play cached file on same bus
-        asyncio.run(manager.play("small.wav", bus_id=2))
+        manager.play("small.wav", bus_id=2)
+        await asyncio.sleep(0)
 
         # Verify stream handle was closed
         assert stream_handle.closed, "Stream file handle should be closed when playing cached audio"
@@ -335,7 +353,8 @@ def test_close_stream_when_playing_cached():
     print("✓ Stream-to-cached switch test passed")
 
 
-def test_multiple_channels():
+@pytest.mark.asyncio
+async def test_multiple_channels():
     """Test that file handles are managed independently per bus."""
     print("\nTesting independent bus management...")
 
@@ -354,9 +373,12 @@ def test_multiple_channels():
             # CH_ATMO (bus_id=0) -> pool [0, 1], first free = voice 0
             # CH_VOICE (bus_id=2) -> pool [2]  -> voice 2
             # CH_SYNTH (bus_id=3) -> pool [3]  -> voice 3
-            asyncio.run(manager.play("stream1.wav", bus_id=0))
-            asyncio.run(manager.play("stream2.wav", bus_id=2))
-            asyncio.run(manager.play("stream3.wav", bus_id=3))
+            manager.play("stream1.wav", bus_id=0)
+            await asyncio.sleep(0)
+            manager.play("stream2.wav", bus_id=2)
+            await asyncio.sleep(0)
+            manager.play("stream3.wav", bus_id=3)
+            await asyncio.sleep(0)
 
             handle1 = manager._stream_files[0]
             handle2 = manager._stream_files[2]
@@ -421,7 +443,8 @@ def test_per_voice_buffers_are_independent():
     print("✓ Per-voice buffer independence test passed")
 
 
-def test_polyphonic_streaming_uses_dedicated_buffers():
+@pytest.mark.asyncio
+async def test_polyphonic_streaming_uses_dedicated_buffers():
     """Test that simultaneous streams on different voices each use their own buffer."""
     print("\nTesting polyphonic streaming uses dedicated per-voice buffers...")
 
@@ -433,9 +456,12 @@ def test_polyphonic_streaming_uses_dedicated_buffers():
         manager = AudioManager(None, None, None, root_data_dir=tmpdir + "/")
 
         # Start three simultaneous streams on CH_SFX (pool [4, 5, 6])
-        asyncio.run(manager.play("sfx1.wav", bus_id=1))
-        asyncio.run(manager.play("sfx2.wav", bus_id=1))
-        asyncio.run(manager.play("sfx3.wav", bus_id=1))
+        manager.play("sfx1.wav", bus_id=1)
+        await asyncio.sleep(0)
+        manager.play("sfx2.wav", bus_id=1)
+        await asyncio.sleep(0)
+        manager.play("sfx3.wav", bus_id=1)
+        await asyncio.sleep(0)
 
         # All three SFX voices should be streaming
         for voice_idx in [4, 5, 6]:

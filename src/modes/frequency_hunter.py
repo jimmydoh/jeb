@@ -99,9 +99,7 @@ class FrequencyHunterMode(GameMode):
         self.game_state = "TUTORIAL"
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/freq_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/freq_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # [0:00 - 0:06] "Welcome to Frequency Hunter..."
         self.core.display.update_status("FREQ HUNTER", "INTERCEPT SIGNALS")

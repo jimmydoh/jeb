@@ -129,9 +129,7 @@ class RhythmMode(GameMode):
         self.game_state = "TUTORIAL"
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/rhythm_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/rhythm_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # Build a perfectly timed mock beatmap synced to the voiceover
         cols = self.button_columns
@@ -192,7 +190,6 @@ class RhythmMode(GameMode):
 
             await asyncio.sleep(0.016)
 
-        await tute_audio
         await self.core.clean_slate()
         return "TUTORIAL_COMPLETE"
 
@@ -345,7 +342,7 @@ class RhythmMode(GameMode):
         await asyncio.sleep(0.5)
 
         audio_path = f"{self.SONGS_PATH}/{self.selected_song}.wav"
-        await self.core.audio.play(audio_path, self.core.audio.CH_ATMO, level=0.8)
+        self.core.audio.play(audio_path, self.core.audio.CH_ATMO, level=0.8)
 
         # Master time anchor – set immediately after play() is called
         self.start_anchor = ticks_ms()

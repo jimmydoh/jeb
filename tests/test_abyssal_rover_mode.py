@@ -228,7 +228,7 @@ def test_abyssal_rover_manifest_metadata():
     assert meta["class_name"]  == "AbyssalRover"
     assert meta["icon"]        == "ABYSSAL_ROVER"
     assert "CORE" in meta["requires"], "Must require CORE"
-    assert meta.get("menu")    == "MAIN", "Should appear in MAIN menu"
+    assert meta.get("menu")    == "CORE", "Should appear in CORE menu"
     assert meta.get("has_tutorial") is True, "Should have a tutorial"
     print("✓ ABYSSAL_ROVER manifest metadata is correct")
 
