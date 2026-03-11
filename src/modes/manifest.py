@@ -623,6 +623,18 @@ MODE_REGISTRY |= {
         "requires": ["CORE"],
         "settings": []
     },
+    "SORTING_VISUALIZER": {
+        "id": "SORTING_VISUALIZER",
+        "name": "SORTING VISUALIZER",
+        "module_path": "modes.sorting_visualizer",
+        "class_name": "SortingVisualizerMode",
+        "icon": "SORTING_VISUALIZER",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 670,
+        "requires": ["CORE"],
+        "settings": []
+    },
 }
 
 # Sat Type 01 INDUSTRIAL Game Modes
