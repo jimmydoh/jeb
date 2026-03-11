@@ -138,7 +138,10 @@ async def test_buzzer_stop():
     buzzer._current_task = asyncio.create_task(asyncio.sleep(10))
 
     # Stop should cancel the task
-    await buzzer.stop()
+    buzzer.stop()
+
+    # Yield control to allow the cancellation to propagate
+    await asyncio.sleep(0)
 
     assert buzzer._current_task.done(), "Task should be cancelled"
     assert buzzer._current_task.cancelled(), "Task should be marked as cancelled"
@@ -193,7 +196,7 @@ async def test_play_note_without_duration():
     assert buzzer.buzzer.duty_cycle == buzzer.VOLUME_ON, "Duty cycle should be on"
 
     # Stop manually
-    await buzzer.stop()
+    buzzer.stop()
     assert buzzer.buzzer.duty_cycle == buzzer.VOLUME_OFF, "Duty cycle should be off after stop"
 
     print("✓ Play note without duration test passed")
@@ -226,7 +229,7 @@ async def test_play_sequence():
     assert buzzer._current_task is not None, "Task should exist"
 
     # Stop to clean up
-    await buzzer.stop()
+    buzzer.stop()
 
     print("✓ Play sequence test passed")
 
@@ -255,7 +258,7 @@ async def test_play_sequence_with_rest():
     await asyncio.sleep(0.4)
 
     # Stop to clean up
-    await buzzer.stop()
+    buzzer.stop()
 
     print("✓ Sequence with rest test passed")
 
@@ -275,7 +278,7 @@ async def test_play_sequence_by_name():
     await asyncio.sleep(0.1)
 
     # Stop to clean up
-    await buzzer.stop()
+    buzzer.stop()
 
     print("✓ Play sequence by name test passed")
 
@@ -337,7 +340,7 @@ async def test_stop_clears_task():
     assert buzzer._current_task is not None, "Task should exist"
 
     # Stop should cancel and wait for the task
-    await buzzer.stop()
+    buzzer.stop()
 
     assert buzzer._current_task.done(), "Task should be done after stop"
     assert buzzer.buzzer.duty_cycle == 0, "Buzzer should be silent"
