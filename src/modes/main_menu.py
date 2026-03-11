@@ -235,6 +235,8 @@ class MainMenu(UtilityMode):
                     self.touch()
                     core_items = self._build_menu_items("CORE")
                     exp1_items = self._build_menu_items("EXP1")
+                    admin_items = self._build_menu_items("ADMIN")
+                    zero_player_items = self._build_menu_items("ZERO_PLAYER")
                     menu_items = _items_for_category(current_category)
                     self._set_state("MENU")
                     needs_render = True
