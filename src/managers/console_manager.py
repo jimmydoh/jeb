@@ -41,7 +41,7 @@ class ConsoleManager():
         if app is None:
             Pins.initialize(profile=role, type_id=type_id)
         else:
-            JEBLogger.info("CONS", f"Attaching to {app} hardware instances")
+            JEBLogger.debug("CONS", f"Attaching to {app}")
 
     # ------------------------------------------------------------------
     # Internal helpers

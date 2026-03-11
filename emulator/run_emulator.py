@@ -23,7 +23,6 @@ import importlib.util
 
 # Setup JEBLogger
 from utilities.logger import JEBLogger, LogLevel
-JEBLogger.set_level(LogLevel.DEBUG)
 JEBLogger.enable_file_logging(False)
 
 # Patch JEBLogger for emulation
@@ -694,6 +693,11 @@ async def main():
     NOSAT = "--no-sat" in sys.argv
     HEADLESS = "--headless" in sys.argv
     HEADLESS_SAT = "--headless-sat" in sys.argv
+    LOG_LEVEL = "DEBUG" if "--debug" in sys.argv else "INFO"
+    EMUL_LOG = True if "--emul-log" in sys.argv else False
+
+    JEBLogger.set_emul(EMUL_LOG)
+
 
     # Setup Pygame if not in headless mode
     screen = None
