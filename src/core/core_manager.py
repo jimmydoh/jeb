@@ -253,6 +253,8 @@ class CoreManager:
 
         # Optional variant flag set by ConsoleManager to request tutorial instead of run()
         self._pending_mode_variant = None
+        # Reference to the currently running mode instance (set during execution, None otherwise)
+        self.active_mode = None
 
         # Fail-safe mode tracking to prevent infinite error loops
         self.dashboard_failure_count = 0
@@ -868,6 +870,7 @@ class CoreManager:
                             JEBLogger.error("CORE", f"Tutorial error for '{self.mode}': {e}")
                         finally:
                             self._pending_mode_variant = None
+                            self.active_mode = None
                             await mode_instance.exit()
                         self.mode = "DASHBOARD"
                         continue
@@ -942,6 +945,7 @@ class CoreManager:
                             break # Break the while loop to instantly load the new mode!
 
                         self.mode = "DASHBOARD"  # Return to dashboard after mode exit or error
+                    self.active_mode = None
                 else:
                     JEBLogger.warning("CORE", f"Cannot start {self.mode}: Missing Dependency")
 

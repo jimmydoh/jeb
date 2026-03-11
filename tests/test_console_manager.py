@@ -233,12 +233,44 @@ class MockRelay:
 
 
 class MockHID:
+    def __init__(self):
+        self.encoder_positions = [0, 0]
+        self.buttons_values = [False, False]
+        self.buttons_tapped = [False, False]
+        self.latching_values = [False] * 8
+        self.momentary_values = [[False, False]]
+        self.momentary_tapped = [[False, False]]
+
     def get_status_string(self, order=None):
         return "BTN:0000,ENC:0"
 
 
+class MockSatelliteHID:
+    def __init__(self):
+        self.encoder_positions = [0]
+        self.buttons_values = [False]
+        self.buttons_tapped = [False]
+        self.latching_values = [False] * 12
+        self.momentary_values = [[False, False]]
+        self.momentary_tapped = [[False, False]]
+
+
+class MockSatellite:
+    def __init__(self, is_active=True):
+        self.is_active = is_active
+        self.hid = MockSatelliteHID()
+
+
 class MockI2CBus:
     pass
+
+
+class MockActiveMode:
+    """Mock game mode with some state variables."""
+    def __init__(self):
+        self.score = 0
+        self.ship_hp = 100
+        self._fuel = 1.0
 
 
 class MockApp:
@@ -257,6 +289,10 @@ class MockApp:
         self.i2c = MockI2CBus()
         self.mode = "DASHBOARD"
         self._pending_mode_variant = None
+        self.active_mode = None
+        self.active_mode_task = None
+        self.console_override_mode = None
+        self.satellites = {"0101": MockSatellite()}
         self.mode_registry = {
             "SIMON": {
                 "id": "SIMON",
@@ -742,7 +778,7 @@ async def test_mode_launcher_lists_main_modes():
 
 @pytest.mark.asyncio
 async def test_mode_launcher_main_game():
-    """test_mode_launcher sets app.mode when '1' (Main Game) is selected."""
+    """test_mode_launcher sets app.console_override_mode when '1' (Main Game) is selected."""
     app = MockApp()
     cm = ConsoleManager("CORE", "00", app=app)
 
@@ -755,7 +791,7 @@ async def test_mode_launcher_main_game():
     cm.get_input = fake_input
     await cm.test_mode_launcher()
 
-    assert app.mode == "SIMON"
+    assert app.console_override_mode == "SIMON"
     assert app._pending_mode_variant is None
 
 
@@ -774,7 +810,7 @@ async def test_mode_launcher_tutorial():
     cm.get_input = fake_input
     await cm.test_mode_launcher()
 
-    assert app.mode == "SIMON"
+    assert app.console_override_mode == "SIMON"
     assert app._pending_mode_variant == "TUTORIAL"
 
 
@@ -793,7 +829,7 @@ async def test_mode_launcher_no_tutorial_skips_variant_prompt():
     cm.get_input = fake_input
     await cm.test_mode_launcher()
 
-    assert app.mode == "PIPELINE"
+    assert app.console_override_mode == "PIPELINE"
     assert app._pending_mode_variant is None
 
 
@@ -853,6 +889,391 @@ async def test_mode_launcher_invalid_variant_choice():
 
 
 # ---------------------------------------------------------------------------
+# Live Debug Console tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_live_debug_console_no_app():
+    """live_debug_console prints an error and returns when no app is attached."""
+    cm = ConsoleManager("CORE", "00")
+    # Should return immediately without raising
+    await cm.live_debug_console()
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_exit():
+    """live_debug_console exits cleanly when 'exit' is typed."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()  # Should return without raising
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_help():
+    """live_debug_console prints help text without raising."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["help", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_enc_core():
+    """live_debug_console adjusts core encoder position by the given delta."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+    app.hid.encoder_positions[0] = 10
+
+    input_queue = ["enc 0 5", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.hid.encoder_positions[0] == 15
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_enc_negative_delta():
+    """live_debug_console can apply a negative encoder delta."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+    app.hid.encoder_positions[0] = 10
+
+    input_queue = ["enc 0 -3", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.hid.encoder_positions[0] == 7
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_btn_core():
+    """live_debug_console sets buttons_tapped for a core button tap."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["btn 0", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.hid.buttons_tapped[0] is True
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_tog_core_on():
+    """live_debug_console sets a core latching toggle to ON."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["tog 2 1", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.hid.latching_values[2] is True
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_tog_core_off():
+    """live_debug_console sets a core latching toggle to OFF."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+    app.hid.latching_values[2] = True
+
+    input_queue = ["tog 2 0", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.hid.latching_values[2] is False
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_mom_core_up():
+    """live_debug_console sets momentary_tapped UP for a core momentary toggle."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["mom 0 U", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.hid.momentary_tapped[0][0] is True
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_mom_core_down():
+    """live_debug_console sets momentary_tapped DOWN for a core momentary toggle."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["mom 0 D", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.hid.momentary_tapped[0][1] is True
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_mom_core_centre():
+    """live_debug_console clears both momentary values for centre position."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+    app.hid.momentary_values[0] = [True, False]
+
+    input_queue = ["mom 0 C", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.hid.momentary_values[0][0] is False
+    assert app.hid.momentary_values[0][1] is False
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_sat_enc():
+    """live_debug_console adjusts a satellite encoder position."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["sat enc 0 7", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.satellites["0101"].hid.encoder_positions[0] == 7
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_sat_btn():
+    """live_debug_console taps a satellite button."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["sat btn 0", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.satellites["0101"].hid.buttons_tapped[0] is True
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_sat_tog():
+    """live_debug_console sets a satellite latching toggle (the example from the issue)."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    # Mirrors the issue example: sat tog 3 1
+    input_queue = ["sat tog 3 1", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.satellites["0101"].hid.latching_values[3] is True
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_sat_mom():
+    """live_debug_console taps a satellite momentary toggle UP."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["sat mom 0 U", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.satellites["0101"].hid.momentary_tapped[0][0] is True
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_god_mode_int():
+    """live_debug_console sets an integer attribute on the active mode."""
+    app = MockApp()
+    app.active_mode = MockActiveMode()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["score = 5000", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.active_mode.score == 5000
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_god_mode_float():
+    """live_debug_console sets a float attribute on the active mode."""
+    app = MockApp()
+    app.active_mode = MockActiveMode()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["_fuel = 0.0", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    await cm.live_debug_console()
+
+    assert app.active_mode._fuel == 0.0
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_god_mode_no_active_mode():
+    """live_debug_console prints an error when no mode is running."""
+    app = MockApp()
+    app.active_mode = None
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["score = 100", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    # Should not raise even without an active mode
+    await cm.live_debug_console()
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_enc_out_of_range():
+    """live_debug_console handles out-of-range encoder index gracefully."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["enc 99 5", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    # Should print an error but not raise
+    await cm.live_debug_console()
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_unknown_command():
+    """live_debug_console prints an error for unknown commands."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["unknowncmd foo", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    # Should not raise
+    await cm.live_debug_console()
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_sat_no_satellites():
+    """live_debug_console handles missing satellites gracefully."""
+    app = MockApp()
+    app.satellites = {}
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    input_queue = ["sat tog 3 1", "exit"]
+
+    async def fake_input(prompt):
+        return input_queue.pop(0) if input_queue else "exit"
+
+    cm.get_input = fake_input
+    # Should not raise
+    await cm.live_debug_console()
+
+
+@pytest.mark.asyncio
+async def test_live_debug_console_menu_entry():
+    """The start() main menu includes the 'L' option for Live Debug Console."""
+    app = MockApp()
+    cm = ConsoleManager("CORE", "00", app=app)
+
+    # 'L' should route to live_debug_console; immediately exit from it
+    calls = []
+
+    async def fake_live_debug():
+        calls.append("live_debug_console")
+
+    cm.live_debug_console = fake_live_debug
+
+    input_count = [0]
+
+    async def fake_input(prompt):
+        input_count[0] += 1
+        if input_count[0] == 1:
+            return "L"
+        raise asyncio.CancelledError()
+
+    cm.get_input = fake_input
+    try:
+        await cm.start()
+    except asyncio.CancelledError:
+        pass
+
+    assert "live_debug_console" in calls
+
+
+# ---------------------------------------------------------------------------
 # Runner for direct execution
 # ---------------------------------------------------------------------------
 
@@ -902,6 +1323,28 @@ def run_all_tests():
         test_mode_launcher_invalid_index,
         test_mode_launcher_non_numeric_input,
         test_mode_launcher_invalid_variant_choice,
+        test_live_debug_console_no_app,
+        test_live_debug_console_exit,
+        test_live_debug_console_help,
+        test_live_debug_console_enc_core,
+        test_live_debug_console_enc_negative_delta,
+        test_live_debug_console_btn_core,
+        test_live_debug_console_tog_core_on,
+        test_live_debug_console_tog_core_off,
+        test_live_debug_console_mom_core_up,
+        test_live_debug_console_mom_core_down,
+        test_live_debug_console_mom_core_centre,
+        test_live_debug_console_sat_enc,
+        test_live_debug_console_sat_btn,
+        test_live_debug_console_sat_tog,
+        test_live_debug_console_sat_mom,
+        test_live_debug_console_god_mode_int,
+        test_live_debug_console_god_mode_float,
+        test_live_debug_console_god_mode_no_active_mode,
+        test_live_debug_console_enc_out_of_range,
+        test_live_debug_console_unknown_command,
+        test_live_debug_console_sat_no_satellites,
+        test_live_debug_console_menu_entry,
     ]
 
     passed = 0

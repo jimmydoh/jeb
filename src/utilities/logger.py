@@ -22,6 +22,7 @@ class JEBLogger:
 
     # Global Configuration
     LEVEL = LogLevel.INFO
+    EMUL = False  # Set to True when running in the emulator to enable EMULATOR log level
     SOURCE = "CORE"  # Default source tag for log messages
     PRINT_TO_CONSOLE = True
     WRITE_TO_FILE = False
@@ -57,6 +58,10 @@ class JEBLogger:
     @classmethod
     def set_level(cls, level):
         cls.LEVEL = level
+
+    @classmethod
+    def set_emul(cls, emul):
+        cls.EMUL = emul
 
     @classmethod
     def set_source(cls, source):
@@ -153,31 +158,38 @@ class JEBLogger:
             if len(cls.LOG_BUFFER) > cls.LOG_BUFFER_MAX:
                 cls.LOG_BUFFER = cls.LOG_BUFFER[-cls.LOG_BUFFER_MAX:]
 
-    # Convenience Wrappers
+    # Log Wrappers
     @classmethod
     def debug(cls, tag, msg, src=None, file=None):
-        cls._log(LogLevel.DEBUG, tag, msg, source_tag=src, file_override=file)
+        if cls.LEVEL <= LogLevel.DEBUG:
+            cls._log(LogLevel.DEBUG, tag, msg, source_tag=src, file_override=file)
 
     @classmethod
     def info(cls, tag, msg, src=None, file=None):
-        cls._log(LogLevel.INFO, tag, msg, source_tag=src, file_override=file)
+        if cls.LEVEL <= LogLevel.INFO:
+            cls._log(LogLevel.INFO, tag, msg, source_tag=src, file_override=file)
 
     @classmethod
     def note(cls, tag, msg, src=None, file=None):
-        cls._log(LogLevel.NOTE, tag, msg, source_tag=src, file_override=file)
+        if cls.LEVEL <= LogLevel.NOTE:
+            cls._log(LogLevel.NOTE, tag, msg, source_tag=src, file_override=file)
 
     @classmethod
     def warning(cls, tag, msg, src=None, file=None):
-        cls._log(LogLevel.WARNING, tag, msg, source_tag=src, file_override=file)
+        if cls.LEVEL <= LogLevel.WARNING:
+            cls._log(LogLevel.WARNING, tag, msg, source_tag=src, file_override=file)
 
     @classmethod
     def critical(cls, tag, msg, src=None, file=None):
-        cls._log(LogLevel.CRITICAL, tag, msg, source_tag=src, file_override=file)
+        if cls.LEVEL <= LogLevel.CRITICAL:
+            cls._log(LogLevel.CRITICAL, tag, msg, source_tag=src, file_override=file)
 
     @classmethod
     def error(cls, tag, msg, src=None, file=None):
-        cls._log(LogLevel.ERROR, tag, msg, source_tag=src, file_override=file)
+        if cls.LEVEL <= LogLevel.ERROR:
+            cls._log(LogLevel.ERROR, tag, msg, source_tag=src, file_override=file)
 
     @classmethod
     def emulator(cls, tag, msg, src=None, file=None):
-        cls._log(LogLevel.EMULATOR, tag, msg, source_tag=src, file_override=file)
+        if cls.EMUL:
+            cls._log(LogLevel.EMULATOR, tag, msg, source_tag=src, file_override=file)

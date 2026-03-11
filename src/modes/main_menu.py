@@ -74,7 +74,7 @@ class MainMenu(UtilityMode):
                 items.append(mode_id)
                 items.sort(key=lambda mid: (self.core.mode_registry[mid].get("order", 9999), self.core.mode_registry[mid]["name"]))
 
-        JEBLogger.info("MENU", f"Built menu items: {items}")
+        JEBLogger.debug("MENU", f"Built menu items: {items}")
         return items
 
     def _set_state(self, new_state):

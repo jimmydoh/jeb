@@ -65,6 +65,7 @@ def load_config():
         "mount_sd_card": False,  # Whether to initialize SD card
         "debug_mode": False,  # Debug mode off by default
         "test_mode": True,  # Test mode on by default (real hardware should set to False)
+        "log_level": "INFO",  # Default log level
         "web_server_enabled": False,  # Web server disabled by default
         "web_server_port": 80,  # Default HTTP port
         "hardware_features": {}  # Empty dict means all hardware enabled
@@ -179,6 +180,19 @@ type_name = config.get("type_name", "UNKNOWN")
 debug_mode = config.get("debug_mode", False)
 test_mode = config.get("test_mode", False)
 resource_monitor = config.get("resource_monitor", {})
+
+if debug_mode:
+    JEBLogger.set_level(LogLevel.DEBUG)
+    JEBLogger.warning("CODE", "⚠️ DEBUG MODE ENABLED: Verbose logging active. ⚠️")
+else:
+    if config.get("log_level", "").upper() in JEBLogger.LEVEL_TAGS:
+        level_str = config["log_level"].upper()
+        level = getattr(LogLevel, level_str, LogLevel.INFO)
+        JEBLogger.set_level(level)
+        JEBLogger.info("CODE", f"Log level set to {level_str} from config")
+    else:
+        JEBLogger.set_level(LogLevel.INFO)
+        JEBLogger.info("CODE", "Default INFO log level active. Set 'log_level' in config.json to change.")
 
 JEBLogger.info("CODE", f"ROLE: {role}, ID: {type_id}, NAME: {type_name}")
 
