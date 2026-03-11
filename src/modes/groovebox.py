@@ -135,134 +135,194 @@ class GrooveboxMode(BaseMode):
 
     async def run_tutorial(self):
         """
-        A guided demonstration of the JEB-808 Groovebox.
+        Guided demonstration of the JEB-808 Groovebox.
 
-        The Voiceover Script (audio/tutes/808_tute.wav) ~36 seconds:
-            [0:00] "Welcome to the JEB-808 Groovebox. A sixteen-step live sequencer."
-            [0:05] "The matrix displays eight tracks. Turn the core dial to move your edit cursor."
-            [0:10] "Press the dial to place or remove a note on the grid."
-            [0:14] "Use buttons one and two to move your cursor up and down between instruments."
-            [0:19] "Button three plays and stops the sequence."
-            [0:23] "On the satellite, use the latching toggles to mute individual tracks."
-            [0:28] "Type a new tempo on the keypad and press star to lock it in."
-            [0:33] "Have fun and make some music."
-            [0:36] (End of file)
+        The Voiceover Script (audio/tutes/808_tute.wav) ~82 seconds:
+            [0:00] "Welcome to the JEB-808 Groovebox."
+            [0:04] "Inspired by the legendary Roland TR-808 from 1980, this machine demonstrates step sequencing."
+            [0:10] "It's a concept that revolutionized electronic music and hip-hop."
+            [0:15] "The matrix displays eight instruments, with time flowing from left to right across sixteen steps."
+            [0:22] "Let's build a beat layer by layer. We'll start with a classic four-on-the-floor kick drum."
+            [0:33] "Next, we'll move down to the hi-hat track and add some off-beats to drive the rhythm."
+            [0:44] "Now, a sharp snare drum on beats two and four to provide the backbeat."
+            [0:53] "Turn the dial to move your edit cursor, and press it to toggle notes."
+            [0:58] "Buttons one and two change the selected instrument track."
+            [1:03] "If connected, the satellite's latching toggles act as track mutes."
+            [1:09] "Use the keypad to punch in a new tempo and press star."
+            [1:14] "Or hold the momentary toggle to pitch-shift the audio."
+            [1:18] "Press button three to play or pause. The grid is yours."
+            [1:22] (End of file)
         """
         await self.core.clean_slate()
         self.game_state = "TUTORIAL"
 
         self.core.audio.play("audio/tutes/808_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
-        # Pre-load a basic "Four-on-the-floor" beat so there's something to look at
-        self.notes[0] = [True, False, False, False, True, False, False, False, True, False, False, False, True, False, False, False] # Kick
-        self.notes[2] = [True, False, True, False, True, False, True, False, True, False, True, False, True, False, True, False] # HiHat
-        self.notes[4] = [False, False, True, False, False, False, True, True, False, False, True, False, False, False, True, False] # Bass
-
+        # Start with a completely blank slate
+        self.notes = [[False] * NUM_STEPS for _ in range(NUM_TRACKS)]
         self.bpm = 120
         self.is_playing = False
         self.cursor_track = 0
         self.cursor_step = 0
-
-        # [0:00 - 0:05] "Welcome to the JEB-808 Groovebox..."
-        self.core.display.update_status("JEB-808", "LIVE SEQUENCER")
-        self._render()
-        self.core.matrix.show_frame()
-        await asyncio.sleep(5.0)
-
-        # [0:05 - 0:10] "The matrix displays eight tracks. Turn the core dial..."
-        self.core.display.update_status("EDIT CURSOR", "TURN DIAL TO MOVE")
-        for _ in range(8):
-            self.cursor_step += 1
-            self._render()
-            self.core.matrix.show_frame()
-            self.core.buzzer.play_sequence(tones.UI_TICK)
-            await asyncio.sleep(0.5)
-
-        # [0:10 - 0:14] "Press the dial to place or remove a note on the grid."
-        self.core.display.update_status("EDIT GRID", "PRESS DIAL TO TOGGLE")
-        self.notes[0][self.cursor_step] = True # Place a kick
-        self._render()
-        self.core.matrix.show_frame()
-        self.core.synth.play_note(_TRACK_INFO[0][1], patch=self._get_patch(0), duration=0.1)
-        await asyncio.sleep(3.5)
-
-        # [0:14 - 0:19] "Use buttons zero and one to move your cursor up and down..."
-        self.core.display.update_status("CHANGE TRACK", "PRESS B1 OR B2")
-        for _ in range(4):
-            self.cursor_track += 1
-            self._render()
-            self.core.matrix.show_frame()
-            self.core.buzzer.play_sequence(tones.UI_TICK)
-            await asyncio.sleep(1.0)
-
-        # [0:19 - 0:23] "Button two plays and stops the sequence."
-        self.core.display.update_status("PLAY / STOP", "PRESS B3")
-        self.is_playing = True
-        self._last_step_ms = ticks_ms()
-
-        # Let the sequencer run for a few seconds!
-        end_time = ticks_ms() + 4000
-        while ticks_ms() < end_time:
-            now = ticks_ms()
-            if ticks_diff(now, self._last_step_ms) >= self._step_interval_ms:
-                self._last_step_ms += self._step_interval_ms
-                self._fire_step()
-                self.current_step = (self.current_step + 1) % NUM_STEPS
-                self._render()
-                self.core.matrix.show_frame()
-            await asyncio.sleep(0.01)
-
-        # [0:23 - 0:28] "On the satellite, use the latching toggles to mute..."
-        self.core.display.update_status("TRACK MUTES", "USE SAT TOGGLES")
-        # Visual only, simulate muting track 0 and 2
-        self.notes[0] = [False] * 16
-        self.notes[2] = [False] * 16
-
-        end_time = ticks_ms() + 5000
-        while ticks_ms() < end_time:
-            now = ticks_ms()
-            if ticks_diff(now, self._last_step_ms) >= self._step_interval_ms:
-                self._last_step_ms += self._step_interval_ms
-                self._fire_step()
-                self.current_step = (self.current_step + 1) % NUM_STEPS
-                self._render()
-                self.core.matrix.show_frame()
-            await asyncio.sleep(0.01)
-
-        # [0:28 - 0:33] "Type a new tempo on the keypad and press star..."
-        self.core.display.update_status("TEMPO", "USE SATELLITE KEYPAD")
-        self.is_playing = False
-        self._render()
-        self.core.matrix.show_frame()
-
-        # Simulate typing 1-4-5-*
-        self._bpm_buf = "1"
-        self._send_segment_display()
-        self.core.buzzer.play_sequence(tones.UI_TICK)
-        await asyncio.sleep(0.5)
-        self._bpm_buf = "14"
-        self._send_segment_display()
-        self.core.buzzer.play_sequence(tones.UI_TICK)
-        await asyncio.sleep(0.5)
-        self._bpm_buf = "145"
-        self._send_segment_display()
-        self.core.buzzer.play_sequence(tones.UI_TICK)
-        await asyncio.sleep(1.0)
-
-        self.bpm = 145
         self._bpm_buf = ""
-        self._send_segment_display()
-        self.core.buzzer.play_sequence(tones.UI_CONFIRM)
-        await asyncio.sleep(3.0)
+        self._pitch_mult = 1.0
 
-        # Wait for the audio track to finish naturally
-        if hasattr(self.core.audio, 'wait_for_bus'):
-            await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
-        else:
-            await asyncio.sleep(3.0)
+        # --- MOCK HARDWARE STATE FOR TUTORIAL ---
+        # Temporarily redirect the mute checks to a fake array so we can simulate
+        # physical toggle switches being flipped by the user.
+        self._tutorial_mutes = [False] * NUM_TRACKS
+        original_is_muted = self._is_muted
+        self._is_muted = lambda track: self._tutorial_mutes[track]
 
-        await self.core.clean_slate()
-        return "TUTORIAL_COMPLETE"
+        self.core.display.use_standard_layout()
+        self.core.display.update_header("JEB-808")
+        self.core.display.update_footer("B1:Up B2:Dn B3:Play")
+        self.core.display.update_status("JEB-808", f"BPM:{self.bpm}")
+
+        async def _sim_wait(duration_s):
+            """Runs the sequencer clock and updates the matrix continuously."""
+            start_time = ticks_ms()
+            target_ms = int(duration_s * 1000)
+
+            while ticks_diff(ticks_ms(), start_time) < target_ms:
+                now = ticks_ms()
+                if self.is_playing and ticks_diff(now, self._last_step_ms) >= self._step_interval_ms:
+                    self._last_step_ms += self._step_interval_ms
+                    self._fire_step()
+                    self.current_step = (self.current_step + 1) % NUM_STEPS
+
+                self._render()
+                self.core.matrix.show_frame()
+                self._send_segment_display()
+                await asyncio.sleep(0.01)
+
+        async def _place_note(track, step):
+            """Helper to visually jump the cursor, place a note, and preview it."""
+            self.cursor_track = track
+            self.cursor_step = step
+            self.notes[track][step] = True
+
+            self.core.synth.play_note(
+                _TRACK_INFO[track][1] * self._pitch_mult,
+                patch=self._get_patch(track),
+                duration=0.08,
+            )
+            self.core.display.update_status(_TRACK_INFO[track][0], f"NOTE ON: {step}")
+            await _sim_wait(0.4)
+
+        try:
+            # [0:00 - 0:15] Intro & History
+            self.core.display.update_status("JEB-808 GROOVEBOX", "ROLAND TR-808 (1980)")
+            await _sim_wait(15.0)
+
+            # [0:15 - 0:22] UI Orientation
+            self.core.display.update_status("STEP SEQUENCER", "8 TRACKS x 16 STEPS")
+            await _sim_wait(7.0)
+
+            # [0:22 - 0:33] Kick drum
+            self.core.display.update_status("KICK DRUM", "FOUR ON THE FLOOR")
+            self.is_playing = True
+            self._last_step_ms = ticks_ms()
+            for step in [0, 4, 8, 12]:
+                await _place_note(0, step) # KICK
+            await _sim_wait(9.4)
+
+            # [0:33 - 0:44] Hi-hats
+            self.core.display.update_status("HI-HAT", "OFF-BEAT RHYTHM")
+            for step in [2, 6, 10, 14]:
+                await _place_note(2, step) # HIHAT
+            await _sim_wait(9.4)
+
+            # [0:44 - 0:53] Snare drum
+            self.core.display.update_status("SNARE DRUM", "THE BACKBEAT")
+            for step in [4, 12]:
+                await _place_note(1, step) # SNARE
+            await _sim_wait(8.2)
+
+            # [0:53 - 1:03] UI Controls
+            self.core.display.update_status("EDIT CONTROLS", "DIAL MOVES CURSOR")
+            for _ in range(8):
+                self.cursor_step = (self.cursor_step + 1) % NUM_STEPS
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(0.5)
+
+            self.core.display.update_status("EDIT CONTROLS", "BUTTONS CHANGE TRACK")
+            for _ in range(4):
+                self.cursor_track = (self.cursor_track + 1) % NUM_TRACKS
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(1.0)
+
+            # [1:03 - 1:09] Satellite features - MUTES
+            self.core.display.update_status("SATELLITE", "LATCHING MUTES")
+            self._tutorial_mutes[0] = True # Mute Kick
+            self._tutorial_mutes[2] = True # Mute HiHat
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(3.0)
+            self._tutorial_mutes[0] = False
+            self._tutorial_mutes[2] = False
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(3.0)
+
+            # [1:09 - 1:14] Satellite features - TEMPO
+            self.core.display.update_status("SATELLITE", "TEMPO KEYPAD")
+            self._bpm_buf = "1"
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(0.5)
+            self._bpm_buf = "14"
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(0.5)
+            self._bpm_buf = "145"
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(1.0)
+            self.bpm = 145
+            self._bpm_buf = ""
+            self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+            self.core.display.update_status("JEB-808", f"BPM:{self.bpm}")
+            await _sim_wait(3.0)
+
+            # [1:14 - 1:18] Satellite features - PITCH
+            self.core.display.update_status("SATELLITE", "MOMENTARY PITCH")
+            self._pitch_mult = _PITCH_UP_FACTOR
+            await _sim_wait(2.0)
+            self._pitch_mult = 1.0
+            await _sim_wait(2.0)
+
+            # [1:18 - 1:22] Outro
+            self.core.display.update_status("PLAY / PAUSE", "BUTTON 3")
+            await _sim_wait(1.0)
+            self.is_playing = False
+            self.core.display.update_status("JEB-808", "STOPPED")
+            await _sim_wait(1.5)
+            self.is_playing = True
+            self._last_step_ms = ticks_ms()
+            self.core.display.update_status("JEB-808", "PLAYING")
+            await _sim_wait(1.5)
+
+            if hasattr(self.core.audio, 'wait_for_bus'):
+                await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+            else:
+                await asyncio.sleep(2.0)
+
+            # --- SEAMLESS HANDOFF TO MAIN LOOP ---
+            self.core.display.update_status("TUTORIAL COMPLETE", "HANDING OVER CONTROL")
+            await asyncio.sleep(1.5)
+
+            # Restore the real hardware mute mapping
+            self._is_muted = original_is_muted
+
+            self._bpm_buf = ""
+            self._send_segment_display()
+            self.core.hid.flush()
+
+            self.game_state = "RUNNING"
+            return await self.run()
+
+        finally:
+            # Ensure safety override is cleared even if user aborts mid-tute
+            self._is_muted = original_is_muted
+            self._bpm_buf = ""
+            self._send_segment_display()
+            await self.core.clean_slate()
 
     # ------------------------------------------------------------------
     # Timing

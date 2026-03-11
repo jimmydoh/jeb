@@ -151,6 +151,141 @@ class Wireworld(BaseMode):
         self._speed_idx  = 2      # default NORM (200 ms)
         self._generation = 0
 
+    async def run_tutorial(self):
+        """
+        Guided demonstration of Wireworld.
+
+        The Voiceover Script (audio/tutes/wire_tute.wav) ~52 seconds:
+            [0:00] "Welcome to Wireworld."
+            [0:04] "Created by Brian Silverman in 1987, it simulates electrons flowing through conductive tracks."
+            [0:12] "The grid uses four states. Empty space is dark, while orange represents copper wire."
+            [0:21] "A blue electron head travels through the copper, immediately followed by a cyan tail."
+            [0:28] "Copper becomes a new electron head if it touches exactly one or two existing heads. This simple rule enables complex logic gates."
+            [0:39] "Press button one to cycle through the built-in circuit patterns."
+            [0:44] "And turn the main dial to adjust the simulation clock speed."
+            [0:49] "Observe the flow."
+            [0:52] (End of file)
+        """
+        await self.core.clean_slate()
+
+        self.game_state = "TUTORIAL"
+
+        # Trigger audio synchronously (fire-and-forget)
+        self.core.audio.play(
+            "audio/tutes/wire_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
+        )
+
+        # Setup standard display state for the tutorial
+        self.width = self.core.matrix.width
+        self.height = self.core.matrix.height
+        size = self.width * self.height
+
+        self._grid = bytearray(size)
+        self._next = bytearray(size)
+        self._frame = bytearray(size)
+        self._pattern_idx = 0
+        self._speed_idx = 0 # Start SLOW
+        self._generation = 0
+
+        self.core.display.use_standard_layout()
+        self.core.display.update_header("WIREWORLD")
+        self.core.display.update_footer("B1:Pattern  ENC:Speed")
+
+        def _refresh_ui():
+            line1, line2 = self._status_line()
+            self.core.display.update_status(line1, line2)
+
+        async def _sim_wait(duration_s, run_sim=True):
+            """Wait, optionally running the simulation clock."""
+            start_time = ticks_ms()
+            last_step_tick = start_time
+            target_ms = int(duration_s * 1000)
+
+            while ticks_diff(ticks_ms(), start_time) < target_ms:
+                now = ticks_ms()
+                interval = _SPEED_LEVELS_MS[self._speed_idx]
+                if run_sim and ticks_diff(now, last_step_tick) >= interval:
+                    self._step()
+                    self._build_frame()
+                    self.core.matrix.show_frame(self._frame)
+                    last_step_tick = now
+                await asyncio.sleep(0.01)
+
+        def _setup_manual_wire():
+            """Draw a simple horizontal wire with an electron for the explanation."""
+            for i in range(size):
+                self._grid[i] = _EMPTY
+
+            # Draw a 10-pixel copper wire across the middle
+            for x in range(3, 13):
+                self._grid[7 * self.width + x] = _COPPER
+
+            # Place an electron on the left side
+            self._grid[7 * self.width + 4] = _TAIL
+            self._grid[7 * self.width + 5] = _HEAD
+
+            self._generation = 0
+            self._build_frame()
+            self.core.matrix.show_frame(self._frame)
+            _refresh_ui()
+
+        try:
+            # [0:00 - 0:12] Intro & History
+            self.core.display.update_status("WIREWORLD", "BRIAN SILVERMAN 1987")
+            self._setup_manual_wire() # Start with a paused manual wire
+            await _sim_wait(12.0, run_sim=False)
+
+            # [0:12 - 0:21] The states (Empty/Copper)
+            self.core.display.update_status("STATES", "EMPTY / COPPER")
+            await _sim_wait(9.0, run_sim=False)
+
+            # [0:21 - 0:28] Electron head/tail
+            self.core.display.update_status("ELECTRON", "BLUE HEAD, CYAN TAIL")
+            await _sim_wait(7.0, run_sim=False)
+
+            # [0:28 - 0:39] The propagation rule (unpause the simulation!)
+            self.core.display.update_status("PROPAGATION", "LOGIC GATES")
+            self._speed_idx = 1 # MED speed
+            _refresh_ui()
+            await _sim_wait(11.0, run_sim=True)
+
+            # [0:39 - 0:44] Button 1: Load Patterns
+            self.core.display.update_status("BUTTON 1", "LOAD PATTERNS")
+            for _ in range(2):
+                self._pattern_idx = (self._pattern_idx + 1) % len(_PATTERNS)
+                self._load_pattern()
+                _refresh_ui()
+                self._build_frame()
+                self.core.matrix.show_frame(self._frame)
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(2.5, run_sim=True)
+
+            # [0:44 - 0:49] Speed dial
+            self.core.display.update_status("MAIN DIAL", "CLOCK SPEED")
+            for speed in [2, 3, 4, 5]: # NORM -> MAX
+                self._speed_idx = speed
+                _refresh_ui()
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(1.25, run_sim=True)
+
+            # Wait for audio to finish out if it's still running
+            if hasattr(self.core.audio, 'wait_for_bus'):
+                await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+            else:
+                await asyncio.sleep(2.0)
+
+            # --- SEAMLESS HANDOFF TO MAIN LOOP ---
+            self.core.display.update_status("TUTORIAL COMPLETE", "HANDING OVER CONTROL")
+            await asyncio.sleep(1.5)
+
+            self.core.hid.flush()
+            self.game_state = "RUNNING"
+            return await self.run()
+
+        finally:
+            await self.core.clean_slate()
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------

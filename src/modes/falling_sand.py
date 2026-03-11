@@ -92,6 +92,147 @@ class FallingSandMode(BaseMode):
         self._speed_idx = 2      # default NORM (100 ms)
         self._tick      = 0
 
+    async def run_tutorial(self):
+        """
+        Guided demonstration of the Falling Sand Simulation.
+
+        The Voiceover Script (audio/tutes/sand_tute.wav) ~40 seconds:
+            [0:00] "Welcome to Falling Sand."
+            [0:03] "This is a micro-particle simulation driven by cellular physics."
+            [0:09] "Yellow sand falls and stacks. Blue water flows to seek the lowest point."
+            [0:16] "Brown wood acts as a static barrier, while red fire rises and consumes the wood."
+            [0:24] "Turn the dial to adjust the speed of the simulation."
+            [0:29] "Press button one or two to generate a new random diorama."
+            [0:35] "Watch the elements interact."
+            [0:38] (End of file)
+        """
+        await self.core.clean_slate()
+
+        self.game_state = "TUTORIAL"
+
+        # Trigger audio synchronously (fire-and-forget)
+        self.core.audio.play(
+            "audio/tutes/sand_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
+        )
+
+        # Setup standard display state for the tutorial
+        self.width = self.core.matrix.width
+        self.height = self.core.matrix.height
+        size = self.width * self.height
+
+        self._grid = bytearray(size)
+        self._next_grid = bytearray(size)
+        self._speed_idx = 2 # NORM speed
+        self._tick = 0
+
+        self.core.display.use_standard_layout()
+        self.core.display.update_header("FALLING SAND")
+        self.core.display.update_footer("B1:Seed  B2:Reset")
+
+        def _refresh_ui():
+            line1, line2 = self._status_line()
+            self.core.display.update_status(line1, line2)
+
+        async def _sim_wait(duration_s):
+            """Runs the particle simulation continuously for the specified duration."""
+            start_time = ticks_ms()
+            last_step_tick = start_time
+            target_ms = int(duration_s * 1000)
+
+            while ticks_diff(ticks_ms(), start_time) < target_ms:
+                now = ticks_ms()
+                interval = _SPEED_LEVELS_MS[self._speed_idx]
+                if ticks_diff(now, last_step_tick) >= interval:
+                    self._step()
+                    self.core.matrix.show_frame(self._grid)
+                    _refresh_ui()
+                    last_step_tick = now
+                await asyncio.sleep(0.01)
+
+        # --- Choreography Helpers ---
+        def _clear_grid():
+            for i in range(len(self._grid)): self._grid[i] = _EMPTY
+
+        def _draw_wood_cup():
+            _clear_grid()
+            # Draw a U-shape cup out of wood
+            for x in range(4, 12): self._grid[12 * self.width + x] = _WOOD
+            for y in range(8, 12):
+                self._grid[y * self.width + 4] = _WOOD
+                self._grid[y * self.width + 11] = _WOOD
+
+        def _drop_sand():
+            # Spawn a block of sand above the cup
+            for y in range(2, 5):
+                for x in range(6, 10):
+                    self._grid[y * self.width + x] = _SAND
+
+        def _drop_water():
+            # Spawn a block of water above the cup
+            for y in range(0, 3):
+                for x in range(5, 11):
+                    if self._grid[y * self.width + x] == _EMPTY:
+                        self._grid[y * self.width + x] = _WATER
+
+        def _ignite_cup():
+            # Spark fire at the bottom corners of the wood cup
+            self._grid[13 * self.width + 5] = _FIRE
+            self._grid[13 * self.width + 10] = _FIRE
+
+        try:
+            # [0:00 - 0:09] Intro & Setup
+            self.core.display.update_status("FALLING SAND", "MICRO PHYSICS")
+            _draw_wood_cup()
+            self.core.matrix.show_frame(self._grid)
+            await _sim_wait(9.0)
+
+            # [0:09 - 0:16] Sand & Water
+            self.core.display.update_status("GRAVITY", "SAND AND WATER")
+            _drop_sand()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(3.0)
+            _drop_water() # Water will hit the sand and spill over the edges
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(4.0)
+
+            # [0:16 - 0:24] Wood & Fire
+            self.core.display.update_status("COMBUSTION", "FIRE BURNS WOOD")
+            _ignite_cup() # Fire will burn the cup, dropping the sand/water
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(8.0)
+
+            # [0:24 - 0:29] Speed dial
+            self.core.display.update_status("MAIN DIAL", "CLOCK SPEED")
+            for speed in [3, 4, 1, 2]: # Cycle speeds
+                self._speed_idx = speed
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(1.25)
+
+            # [0:29 - 0:38] Randomize
+            self.core.display.update_status("BUTTON 1 & 2", "RANDOM DIORAMA")
+            await _sim_wait(1.0)
+            self._randomize()
+            self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+            await _sim_wait(8.0)
+
+            # Wait for audio to finish out if it's still running
+            if hasattr(self.core.audio, 'wait_for_bus'):
+                await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+            else:
+                await asyncio.sleep(2.0)
+
+            # --- SEAMLESS HANDOFF TO MAIN LOOP ---
+            self.core.display.update_status("TUTORIAL COMPLETE", "HANDING OVER CONTROL")
+            await asyncio.sleep(1.5)
+
+            self.core.hid.flush()
+            self.game_state = "RUNNING"
+            return await self.run()
+
+        finally:
+            await self.core.clean_slate()
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------

@@ -416,6 +416,7 @@ MODE_REGISTRY |= {
         "class_name": "ConwaysLife",
         "icon": "CONWAYS_LIFE",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
         "order": 510,
         "requires": ["CORE"],
         "settings": []
@@ -427,6 +428,7 @@ MODE_REGISTRY |= {
         "class_name": "LangtonsAnt",
         "icon": "LANGTONS_ANT",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
         "order": 520,
         "requires": ["CORE"],
         "settings": [
@@ -445,6 +447,7 @@ MODE_REGISTRY |= {
         "class_name": "WolframAutomata",
         "icon": "WOLFRAM_AUTOMATA",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
         "order": 530,
         "requires": ["CORE"],
         "settings": [
@@ -463,6 +466,7 @@ MODE_REGISTRY |= {
         "class_name": "LissajousMode",
         "icon": "LISSAJOUS",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
         "order": 540,
         "requires": ["CORE"],
         "settings": []
@@ -474,6 +478,7 @@ MODE_REGISTRY |= {
         "class_name": "BoidsMode",
         "icon": "BOIDS",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
         "order": 550,
         "requires": ["CORE"],
         "settings": []
@@ -485,6 +490,7 @@ MODE_REGISTRY |= {
         "class_name": "PlasmaMode",
         "icon": "PLASMA",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
         "order": 560,
         "requires": ["CORE"],
         "settings": []
@@ -496,6 +502,7 @@ MODE_REGISTRY |= {
         "class_name": "FallingSandMode",
         "icon": "FALLING_SAND",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
         "order": 570,
         "requires": ["CORE"],
         "settings": []
@@ -507,6 +514,7 @@ MODE_REGISTRY |= {
         "class_name": "BouncingSprite",
         "icon": "BOUNCING_SPRITE",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
         "order": 580,
         "requires": ["CORE"],
         "settings": []
@@ -518,6 +526,7 @@ MODE_REGISTRY |= {
         "class_name": "Wireworld",
         "icon": "WIREWORLD",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
         "order": 590,
         "requires": ["CORE"],
         "settings": []
@@ -529,6 +538,7 @@ MODE_REGISTRY |= {
         "class_name": "StarfieldMode",
         "icon": "STARFIELD",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
         "order": 600,
         "requires": ["CORE"],
         "settings": [
@@ -547,9 +557,70 @@ MODE_REGISTRY |= {
         "class_name": "MechaForge",
         "icon": "MECHA_FORGE",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
         "order": 610,
         "requires": ["CORE"],
         "optional": ["INDUSTRIAL"],
+        "settings": []
+    },
+    "LAVA_LAMP": {
+        "id": "LAVA_LAMP",
+        "name": "LAVA LAMP",
+        "module_path": "modes.lava_lamp",
+        "class_name": "LavaLampMode",
+        "icon": "LAVA_LAMP",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 620,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "REACTION_DIFFUSION": {
+        "id": "REACTION_DIFFUSION",
+        "name": "REACTION DIFFUSION",
+        "module_path": "modes.reaction_diffusion",
+        "class_name": "ReactionDiffusion",
+        "icon": "REACTION_DIFFUSION",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 630,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "LORENZ_ATTRACTOR": {
+        "id": "LORENZ_ATTRACTOR",
+        "name": "LORENZ ATTRACTOR",
+        "module_path": "modes.lorenz_attractor",
+        "class_name": "LorenzAttractor",
+        "icon": "LORENZ_ATTRACTOR",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 640,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "PERLIN_FLOW": {
+        "id": "PERLIN_FLOW",
+        "name": "PERLIN FLOW",
+        "module_path": "modes.perlin_flow",
+        "class_name": "VectorFlowMode",
+        "icon": "PERLIN_FLOW",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 650,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "DIGITAL_RAIN": {
+        "id": "DIGITAL_RAIN",
+        "name": "DIGITAL RAIN",
+        "module_path": "modes.digital_rain",
+        "class_name": "DigitalRainMode",
+        "icon": "DIGITAL_RAIN",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 660,
+        "requires": ["CORE"],
         "settings": []
     },
 }
