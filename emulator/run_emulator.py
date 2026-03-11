@@ -746,6 +746,12 @@ async def main():
     if role == "CORE":
         core = primary_app
         tag_managers(core, 'CORE')
+
+        # Override logging if debug flag is set
+        if LOG_LEVEL == "DEBUG":
+            JEBLogger.set_level(LogLevel.DEBUG)
+            JEBLogger.emulator("EMUL", "Debug logging enabled.")
+
         if not NOSAT and (not HEADLESS or (HEADLESS and HEADLESS_SAT)):
             JEBLogger.emulator("EMUL", " --- BOOTING SECONDARY SAT_01 FIRMWARE --- ")
             HardwareMocks.set_context("SAT_01")
