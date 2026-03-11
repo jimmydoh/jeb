@@ -638,8 +638,7 @@ class ConsoleManager():
         # 2. Collect modes, filtering out those missing hardware requirements
         game_modes = []
         for meta in self.app.mode_registry.values():
-            # Check old menu flag or new category flag
-            if meta.get("menu") == "MAIN" or meta.get("category") in ["CORE", "EXP1", "ZERO"]:
+            if meta.get("menu") in ["MAIN", "CORE", "EXP1", "ZERO_PLAYER"]:
                 reqs = meta.get("requires", [])
                 if "INDUSTRIAL" in reqs and not has_industrial:
                     continue  # Skip this mode, missing hardware
