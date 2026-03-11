@@ -23,9 +23,12 @@ _RATIOS = [
     (2, 5),   # Five-loop
     (1, 4),   # Four-lobed
     (1, 1),   # Circle / lemniscate (phase-dependent)
+    (5, 7),   # Complex knot
+    (7, 5),   # Complex knot (inverse ratio)
+    (4, 9),   # Nine-lobed
 ]
 
-_RATIO_NAMES = ["1:2", "1:3", "2:3", "3:4", "3:5", "2:5", "1:4", "1:1"]
+_RATIO_NAMES = ["1:2", "1:3", "2:3", "3:4", "3:5", "2:5", "1:4", "1:1", "5:7", "7:5", "4:9"]
 
 # Base audio frequency for the synth drone channels (Hz).
 _BASE_FREQ = 110.0   # A2
@@ -69,10 +72,10 @@ class LissajousMode(BaseMode):
     matrix into a live XY-oscilloscope audio visualiser.
 
     Controls:
-        Encoder turn       : cycle through a:b frequency ratios
+        Encoder turn       : cycle through a:b frequency ratios or edit custom values
         Button 1 (tap)     : cycle phase-shift speed (SLOW → TURBO)
         Button 2 (tap)     : clear the phosphor buffer (instant reset)
-        Encoder long press : return to Zero Player menu
+        Button 3 (tap)     : cycle encoder focus (PRESET -> EDIT A -> EDIT B)
     """
 
     def __init__(self, core):
@@ -85,6 +88,12 @@ class LissajousMode(BaseMode):
         self._phase_speed_idx = 2    # Default: NORM
         self._phase = 0.0            # Current phase offset δ (radians)
         self._hue = 0.0              # Current hue angle (degrees)
+
+        # Custom Ratio State
+        self._edit_mode = 0          # 0: Presets, 1: Custom A, 2: Custom B
+        self._custom_a = 1
+        self._custom_b = 2
+
         # Synth note handles for audio sync
         self._note_a = None
         self._note_b = None
@@ -140,12 +149,18 @@ class LissajousMode(BaseMode):
                 cell = self._buf[y * w + x]
                 self.core.matrix.draw_pixel(x, y, (int(cell[0]), int(cell[1]), int(cell[2])))
 
+    def _get_current_ab(self):
+        """Return the current (a, b) values based on edit mode."""
+        if self._edit_mode == 0:
+            return _RATIOS[self._ratio_idx]
+        return (self._custom_a, self._custom_b)
+
     def _start_audio(self):
         """Start two synth drone notes matching the current a:b ratio."""
         self._stop_audio()
         try:
             from utilities.synth_registry import Patches
-            a, b = _RATIOS[self._ratio_idx]
+            a, b = self._get_current_ab()
             self._note_a = self.core.synth.play_note(_BASE_FREQ * a, Patches.ENGINE_HUM)
             self._note_b = self.core.synth.play_note(_BASE_FREQ * b, Patches.ENGINE_HUM)
         except Exception:
@@ -165,9 +180,16 @@ class LissajousMode(BaseMode):
 
     def _status_line(self):
         """Return the two status strings for the current state."""
+        if self._edit_mode == 0:
+            ratio_str = f"PRESET: {_RATIO_NAMES[self._ratio_idx]}"
+        elif self._edit_mode == 1:
+            ratio_str = f"CUSTOM: >{self._custom_a}< : {self._custom_b}"
+        else:
+            ratio_str = f"CUSTOM: {self._custom_a} : >{self._custom_b}<"
+
         return (
-            f"RATIO {_RATIO_NAMES[self._ratio_idx]}",
-            f"SPEED {_PHASE_SPEED_NAMES[self._phase_speed_idx]}",
+            ratio_str,
+            f"SPEED:  {_PHASE_SPEED_NAMES[self._phase_speed_idx]}",
         )
 
     # ------------------------------------------------------------------
@@ -188,13 +210,14 @@ class LissajousMode(BaseMode):
         self._phase_speed_idx = 2
         self._phase = 0.0
         self._hue = 0.0
+        self._edit_mode = 0
 
         # UI setup
         self.core.display.use_standard_layout()
         self.core.display.update_header("LISSAJOUS")
         line1, line2 = self._status_line()
         self.core.display.update_status(line1, line2)
-        self.core.display.update_footer("B1:Speed  B2:Reset")
+        self.core.display.update_footer("B1:Spd  B2:Rst  B3:Mode")
 
         self.core.hid.flush()
         self.core.hid.reset_encoder(self._ratio_idx)
@@ -215,14 +238,27 @@ class LissajousMode(BaseMode):
                 last_tick = now
                 dt_s = dt_ms / 1000.0
 
-                # --- Encoder: cycle frequency ratio ---
+                # --- Encoder: cycle frequency ratio or edit custom values ---
                 enc = self.core.hid.encoder_position()
                 diff = enc - last_enc
                 if diff != 0:
                     delta = 1 if diff > 0 else -1
-                    self._ratio_idx = (self._ratio_idx + delta) % len(_RATIOS)
-                    self.core.hid.reset_encoder(self._ratio_idx)
-                    last_enc = self._ratio_idx
+
+                    if self._edit_mode == 0:
+                        self._ratio_idx = (self._ratio_idx + delta) % len(_RATIOS)
+                        self.core.hid.reset_encoder(self._ratio_idx)
+                        last_enc = self._ratio_idx
+                    elif self._edit_mode == 1:
+                        # Clamp custom 'a' between 1 and 20
+                        self._custom_a = max(1, min(20, self._custom_a + delta))
+                        self.core.hid.reset_encoder(self._custom_a)
+                        last_enc = self._custom_a
+                    elif self._edit_mode == 2:
+                        # Clamp custom 'b' between 1 and 20
+                        self._custom_b = max(1, min(20, self._custom_b + delta))
+                        self.core.hid.reset_encoder(self._custom_b)
+                        last_enc = self._custom_b
+
                     self._clear_buf()
                     self._phase = 0.0
                     self._start_audio()
@@ -245,10 +281,30 @@ class LissajousMode(BaseMode):
                     self.core.display.update_status(line1, "CLEARED!")
                     self.core.buzzer.play_sequence(tones.UI_CONFIRM)
 
-                # --- Encoder long press (2 s): exit to Zero Player menu ---
-                if self.core.hid.is_encoder_button_pressed(long=True, duration=2000):
-                    JEBLogger.info("LISS", "[EXIT] Returning to Zero Player menu")
-                    return "SUCCESS"
+                # --- Button 3: cycle edit mode (Preset -> Edit A -> Edit B) ---
+                if self.core.hid.is_button_pressed(2, action="tap"):
+                    old_mode = self._edit_mode
+                    self._edit_mode = (self._edit_mode + 1) % 3
+
+                    # If transitioning from Presets to Custom, copy current preset as a starting point
+                    if self._edit_mode == 1 and old_mode == 0:
+                        self._custom_a, self._custom_b = _RATIOS[self._ratio_idx]
+
+                    # Reset the hardware encoder tracking to match the new focus
+                    if self._edit_mode == 0:
+                        self.core.hid.reset_encoder(self._ratio_idx)
+                        last_enc = self._ratio_idx
+                    elif self._edit_mode == 1:
+                        self.core.hid.reset_encoder(self._custom_a)
+                        last_enc = self._custom_a
+                    elif self._edit_mode == 2:
+                        self.core.hid.reset_encoder(self._custom_b)
+                        last_enc = self._custom_b
+
+                    self._start_audio()
+                    line1, line2 = self._status_line()
+                    self.core.display.update_status(line1, line2)
+                    self.core.buzzer.play_sequence(tones.COIN)
 
                 # --- Simulation: fade → hue advance → plot → render ---
 
