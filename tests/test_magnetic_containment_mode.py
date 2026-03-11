@@ -86,7 +86,7 @@ def test_magnetic_containment_manifest_metadata():
     assert meta["icon"] == "MAGNETIC_CONTAINMENT"
     assert "CORE" in meta["requires"], "Must require CORE"
     assert "INDUSTRIAL" in meta["requires"], "Must require INDUSTRIAL satellite"
-    assert meta.get("menu") == "MAIN", "Should appear in MAIN menu"
+    assert meta.get("menu") == "EXP1", "Should appear in EXP1 menu"
     assert meta.get("has_tutorial") is True, "Should have a tutorial"
     print("✓ MAGNETIC_CONTAINMENT manifest metadata is correct")
 

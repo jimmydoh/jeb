@@ -466,8 +466,8 @@ def test_zero_player_menu_in_manifest():
             f"ZERO_PLAYER_MENU missing required field '{field}'"
 
     assert meta["id"] == "ZERO_PLAYER_MENU"
-    assert meta["menu"] == "MAIN", \
-        "ZERO_PLAYER_MENU should appear in the MAIN menu"
+    assert meta["menu"] == "CORE", \
+        "ZERO_PLAYER_MENU should appear in the CORE menu"
     assert meta["icon"] == "ZERO_PLAYER", \
         "ZERO_PLAYER_MENU should reference the ZERO_PLAYER icon"
     assert meta.get("submenu") == "ZERO_PLAYER", \

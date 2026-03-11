@@ -73,7 +73,7 @@ def test_manifest_metadata():
     assert "CORE" in meta["requires"], "Must require CORE"
     assert "INDUSTRIAL" in meta["requires"], \
         "Must require INDUSTRIAL satellite (latching toggles live there)"
-    assert meta.get("menu") == "MAIN", "Should appear in the MAIN menu"
+    assert meta.get("menu") == "EXP1", "Should appear in the EXP1 menu"
     assert meta.get("has_tutorial") is True, "Should declare a tutorial"
     print("✓ PIPELINE_OVERLOAD manifest metadata is correct")
 

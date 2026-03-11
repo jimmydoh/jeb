@@ -103,7 +103,7 @@ def test_abyssal_ping_manifest_metadata():
     assert meta["icon"]        == "ABYSSAL_PING"
     assert "CORE"       in meta["requires"], "Must require CORE"
     assert "INDUSTRIAL" in meta["requires"], "Must require INDUSTRIAL satellite"
-    assert meta.get("menu") == "MAIN", "Should appear in MAIN menu"
+    assert meta.get("menu") == "EXP1", "Should appear in EXP1 menu"
     print("✓ ABYSSAL_PING manifest metadata is correct")
 
 

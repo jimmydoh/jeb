@@ -78,7 +78,7 @@ def test_numbers_station_manifest_metadata():
     assert meta["icon"] == "NUMBERS_STATION"
     assert "CORE" in meta["requires"], "Must require CORE"
     assert "INDUSTRIAL" in meta["requires"], "Must require INDUSTRIAL satellite"
-    assert meta.get("menu") == "MAIN", "Should appear in MAIN menu"
+    assert meta.get("menu") == "EXP1", "Should appear in EXP1 menu"
     assert meta.get("has_tutorial") is True, "Should have a tutorial"
     print("✓ NUMBERS_STATION manifest metadata is correct")
 

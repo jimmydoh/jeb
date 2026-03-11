@@ -75,7 +75,7 @@ def test_defcon_commander_manifest_metadata():
     assert meta["icon"] == "DEFCON_COMMANDER"
     assert "CORE" in meta["requires"], "DEFCON_COMMANDER must require CORE"
     assert "INDUSTRIAL" in meta["requires"], "DEFCON_COMMANDER must require INDUSTRIAL satellite"
-    assert meta.get("menu") == "MAIN", "DEFCON_COMMANDER should appear in MAIN menu"
+    assert meta.get("menu") == "EXP1", "DEFCON_COMMANDER should appear in EXP1 menu"
     print("✓ DEFCON_COMMANDER manifest metadata is correct")
 
 
