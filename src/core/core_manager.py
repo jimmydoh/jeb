@@ -246,6 +246,11 @@ class CoreManager:
         self.mode_registry = MODE_REGISTRY
         self.loaded_modes = {} # Cache for instantiated mode classes
         self.mode = "DASHBOARD" # Start in main menu mode
+
+        # --- NEW: Console Injection Tracking ---
+        self.active_mode = None
+        self.console_override_mode = None
+
         # Optional variant flag set by ConsoleManager to request tutorial instead of run()
         self._pending_mode_variant = None
 
@@ -848,6 +853,7 @@ class CoreManager:
                     self.dashboard_failure_count = 0
 
                     mode_instance = mode_class(self)
+                    self.active_mode = mode_instance
 
                     # Check if the developer console requested a tutorial run.
                     # _pending_mode_variant is consumed once (single-use flag) and
@@ -927,6 +933,13 @@ class CoreManager:
                             break
                         else:
                             run_robust = False
+
+                        # --- NEW: Check for Console Injection Override ---
+                        if getattr(self, 'console_override_mode', None):
+                            JEBLogger.info("CORE", f"Console override detected! Routing to {self.console_override_mode}")
+                            self.mode = self.console_override_mode
+                            self.console_override_mode = None # Clear the flag
+                            break # Break the while loop to instantly load the new mode!
 
                         self.mode = "DASHBOARD"  # Return to dashboard after mode exit or error
                 else:

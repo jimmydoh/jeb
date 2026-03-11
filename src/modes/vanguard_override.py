@@ -160,9 +160,7 @@ class VanguardOverride(GameMode):
             return "TUTORIAL_FAILED"
 
         self.game_state = "TUTORIAL"
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/vanguard_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/vanguard_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # Reset state for demo
         self.ship_x = 8
@@ -266,8 +264,6 @@ class VanguardOverride(GameMode):
         self.emp_charge = 0.0
         self._render()
         await asyncio.sleep(1.5)
-
-        await tute_audio
 
         await self.core.clean_slate()
         return "TUTORIAL_COMPLETE"

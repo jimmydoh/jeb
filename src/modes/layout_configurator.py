@@ -191,7 +191,7 @@ class LayoutConfigurator(UtilityMode):
                 self.touch()
                 axis = "Y" if axis == "X" else "X"
                 needs_render = True
-                await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.6)
+                self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.6)
 
             # --- BUTTON D TAP: cycle to next satellite ---
             if btn_d_tap:
@@ -200,7 +200,7 @@ class LayoutConfigurator(UtilityMode):
                 sat_idx = (sat_idx + 1) % len(sat_ids)
                 _highlight_satellite(_current_sat())
                 needs_render = True
-                await self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.6)
+                self.core.audio.play("audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.6)
 
             # --- ENCODER LONG PRESS: save and exit ---
             if encoder_long:
@@ -215,7 +215,7 @@ class LayoutConfigurator(UtilityMode):
                 else:
                     self.core.display.update_status("SAVE FAILED", "Filesystem read-only?")
                 self.core.display.update_footer("")
-                await self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
+                self.core.audio.play("audio/menu/select.wav", self.core.audio.CH_SFX, level=0.8)
                 await asyncio.sleep(2)
                 self.core.mode = "DASHBOARD"
                 return "SAVED" if saved else "SAVE_FAILED"
@@ -225,7 +225,7 @@ class LayoutConfigurator(UtilityMode):
                 _unhighlight_satellite(_current_sat())
                 self.core.matrix.clear()
                 self.core.mode = "DASHBOARD"
-                await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
+                self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
                 return "CANCELLED"
 
             if needs_render:

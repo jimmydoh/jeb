@@ -421,11 +421,9 @@ class MagneticContainment(GameMode):
 
         self.game_state = "TUTORIAL"
 
-        tute_audio = asyncio.create_task(
-            self.core.audio.play(
-                "audio/tutes/mag_tute.wav",
-                bus_id=self.core.audio.CH_VOICE
-            )
+        self.core.audio.play(
+            "audio/tutes/mag_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
         )
 
         # [0:00 - 0:06] Welcome
@@ -504,7 +502,6 @@ class MagneticContainment(GameMode):
             await asyncio.sleep(0.05)
         self._stasis_active = False
 
-        await tute_audio
         await self.core.clean_slate()
         return "TUTORIAL_COMPLETE"
 

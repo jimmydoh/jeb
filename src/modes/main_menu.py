@@ -151,6 +151,11 @@ class MainMenu(UtilityMode):
         last_pos = self.core.hid.encoder_position()
 
         while True:
+            # --- CONSOLE INTERRUPT CHECK ---
+            if getattr(self, "_exit_requested", False):
+                JEBLogger.info("MENU", "Exit requested by external manager.")
+                return "EXIT"
+
             # =========================================
             # 1. GATHER INPUTS
             # =========================================

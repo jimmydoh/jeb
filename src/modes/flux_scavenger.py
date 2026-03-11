@@ -315,9 +315,7 @@ class FluxScavenger(GameMode):
 
         self.game_state = "TUTORIAL"
 
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/flux_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/flux_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # Setup mock state using Level 1
         level = _LV1

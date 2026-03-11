@@ -686,9 +686,7 @@ class NumbersStation(GameMode):
         self.game_state = "TUTORIAL"
 
         # Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/numbers_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/numbers_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         self.core.display.update_header("-NMBRS STN-")
         self.core.matrix.show_icon("NUMBERS_STATION", clear=True)

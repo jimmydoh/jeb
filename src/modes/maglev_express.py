@@ -222,9 +222,7 @@ class MaglevExpress(GameMode):
 
         self.game_state = "TUTORIAL"
 
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/maglev_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/maglev_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # Reset display state
         self.velocity        = 0.0

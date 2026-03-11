@@ -760,6 +760,19 @@ async def main():
         tasks.append(run_hardware_spy_loop(core, satellite, screen))
     else:
         JEBLogger.emulator("EMUL", "Running in HEADLESS mode (No GUI).")
+        if satellite:
+            # Plug in the satellite after everything is stable (for testing hot-plug)
+            HardwareMocks.satellite_plugged_in = not HardwareMocks.satellite_plugged_in
+
+            satbus_detect = HardwareMocks.get("CORE", "satbus_detect_pin")
+            if satbus_detect:
+                # Pull the pin to Ground to simulate the physical connection
+                satbus_detect.value = not HardwareMocks.satellite_plugged_in
+
+                if HardwareMocks.satellite_plugged_in:
+                    JEBLogger.emulator("EMUL", ">>> PHYSICAL ACTION: SATELLITE CABLE PLUGGED IN >>>")
+                else:
+                    JEBLogger.emulator("EMUL", "<<< PHYSICAL ACTION: SATELLITE CABLE UNPLUGGED <<<")
 
     # Run Everything!
     JEBLogger.emulator("EMUL", " --- EMULATOR ONLINE --- ")
