@@ -94,6 +94,115 @@ class BouncingSprite(BaseMode):
         self._color_idx = 0      # index into _COLOR_INDICES
         self._speed_idx = 2      # default: NORM
 
+    async def run_tutorial(self):
+        """
+        Guided demonstration of the Bouncing Sprite screensaver.
+
+        The Voiceover Script (audio/tutes/bouncing_tute.wav) ~37 seconds:
+            [0:00] "Welcome to Bouncing Sprite."
+            [0:04] "Inspired by classic DVD player screensavers, this mode features a tiny spaceship trapped in a 16 by 16 universe."
+            [0:12] "Watch carefully as it hits the walls. A perfect corner bounce is a rare and satisfying event."
+            [0:19] "Turn the main dial to adjust the animation speed."
+            [0:24] "Press button one to manually change the ship's colour."
+            [0:29] "And press button two to scramble its position and velocity."
+            [0:34] "Enjoy the screensaver."
+            [0:37] (End of file)
+        """
+        await self.core.clean_slate()
+
+        self.game_state = "TUTORIAL"
+
+        # Trigger audio synchronously (fire-and-forget)
+        self.core.audio.play(
+            "audio/tutes/bouncing_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
+        )
+
+        # Setup standard display state for the tutorial
+        self.width = self.core.matrix.width
+        self.height = self.core.matrix.height
+
+        self._frame = bytearray(self.width * self.height)
+        self._color_idx = 0
+        self._speed_idx = 2
+
+        self._reset()
+        self._build_frame()
+
+        self.core.display.use_standard_layout()
+        self.core.display.update_header("BOUNCING SPRITE")
+        self.core.display.update_footer("B1:Color  B2:Reset")
+
+        def _refresh_ui():
+            line1, line2 = self._status_line()
+            self.core.display.update_status(line1, line2)
+
+        _refresh_ui()
+
+        async def _sim_wait(duration_s):
+            """Runs the bouncing simulation continuously for the specified duration."""
+            start_time = ticks_ms()
+            last_step_tick = start_time
+            target_ms = int(duration_s * 1000)
+
+            while ticks_diff(ticks_ms(), start_time) < target_ms:
+                now = ticks_ms()
+                interval = _SPEED_LEVELS_MS[self._speed_idx]
+                if ticks_diff(now, last_step_tick) >= interval:
+                    self._step()
+                    self._build_frame()
+                    self.core.matrix.show_frame(self._frame)
+                    _refresh_ui() # Updates the pos coordinates on the screen
+                    last_step_tick = now
+                await asyncio.sleep(0.01)
+
+        try:
+            # [0:00 - 0:12] Intro & DVD context
+            self.core.display.update_status("BOUNCING SPRITE", "DVD SCREENSAVER")
+            await _sim_wait(12.0)
+
+            # [0:12 - 0:19] The elusive corner bounce
+            self.core.display.update_status("CORNER BOUNCE", "A RARE EVENT...")
+            await _sim_wait(7.0)
+
+            # [0:19 - 0:24] Speed dial demonstration
+            self.core.display.update_status("MAIN DIAL", "CHANGE SPEED")
+            for speed in [3, 4, 1, 2]: # Cycle FAST -> TURBO -> MED -> NORM
+                self._speed_idx = speed
+                _refresh_ui()
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(1.25)
+
+            # [0:24 - 0:29] Color cycling demonstration
+            self.core.display.update_status("BUTTON 1", "CYCLE COLOR")
+            for _ in range(4):
+                self._color_idx = (self._color_idx + 1) % len(_COLOR_INDICES)
+                self._build_frame()
+                self.core.matrix.show_frame(self._frame)
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(1.25)
+
+            # [0:29 - 0:34] Reset demonstration
+            self.core.display.update_status("BUTTON 2", "SCRAMBLE")
+            await _sim_wait(1.0)
+            self._reset()
+            self._build_frame()
+            self.core.matrix.show_frame(self._frame)
+            self.core.display.update_status("BUTTON 2", "SCRAMBLED!")
+            self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+            await _sim_wait(4.0)
+
+            # Wait for audio to finish out if it's still running
+            if hasattr(self.core.audio, 'wait_for_bus'):
+                await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+            else:
+                await asyncio.sleep(3.0)
+
+        finally:
+            await self.core.clean_slate()
+
+        return "TUTORIAL_COMPLETE"
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
