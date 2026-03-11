@@ -802,12 +802,12 @@ class ConsoleManager():
 
             if tokens[0].lower() == "sat":
                 # Satellite HID commands
-                self._debug_cmd_sat(tokens[1:])
+                await self._debug_cmd_sat(tokens[1:])
             else:
                 # Core HID commands
-                self._debug_cmd_core(tokens)
+                await self._debug_cmd_core(tokens)
 
-    def _debug_cmd_core(self, tokens):
+    async def _debug_cmd_core(self, tokens):
         """Parse and apply a core HID debug command."""
         hid = getattr(self.app, 'hid', None)
         if hid is None:
@@ -834,7 +834,7 @@ class ConsoleManager():
 
         elif verb == "btn":
             if len(tokens) < 2:
-                print("Usage: btn <index>")
+                print("Usage: btn <index> [0|1]")
                 return
             try:
                 idx = int(tokens[1])
@@ -842,10 +842,20 @@ class ConsoleManager():
                 print("btn: index must be an integer.")
                 return
             if idx < 0 or idx >= len(hid.buttons_values):
-                print(f"btn: index {idx} out of range (0-{len(hid.buttons_values)-1}).")
+                print(f"btn: index {idx} out of range.")
                 return
-            hid.buttons_tapped[idx] = True
-            print(f"Core button[{idx}] tapped.")
+
+            # If a 3rd argument is provided, HOLD the button in that state
+            if len(tokens) >= 3:
+                state = bool(int(tokens[2]))
+                hid.buttons_values[idx] = state
+                print(f"Core button[{idx}] held {'DOWN' if state else 'UP'}.")
+            else:
+                # Otherwise, simulate a quick physical tap
+                hid.buttons_values[idx] = True
+                await asyncio.sleep(0.1)
+                hid.buttons_values[idx] = False
+                print(f"Core button[{idx}] tapped.")
 
         elif verb == "tog":
             if len(tokens) < 3:
@@ -877,23 +887,27 @@ class ConsoleManager():
                 print("mom: direction must be U, D, or C.")
                 return
             if idx < 0 or idx >= len(hid.momentary_values):
-                print(f"mom: index {idx} out of range (0-{len(hid.momentary_values)-1}).")
+                print(f"mom: index {idx} out of range.")
                 return
+
+            # Directly modify the values array to simulate HOLDING the switch
             if direction == "U":
-                hid.momentary_tapped[idx][0] = True
+                hid.momentary_values[idx][0] = True
+                hid.momentary_values[idx][1] = False
             elif direction == "D":
-                hid.momentary_tapped[idx][1] = True
-            # C (centre) - no tap, just ensure both directions are cleared
-            else:
+                hid.momentary_values[idx][0] = False
+                hid.momentary_values[idx][1] = True
+            else: # C (Centre)
                 hid.momentary_values[idx][0] = False
                 hid.momentary_values[idx][1] = False
+
             label = {"U": "UP", "D": "DOWN", "C": "CENTRE"}[direction]
-            print(f"Core momentary[{idx}] set to {label}.")
+            print(f"Core momentary[{idx}] held at {label}.")
 
         else:
             print(f"Unknown HID command: '{verb}'. Type 'help' for usage.")
 
-    def _debug_cmd_sat(self, tokens):
+    async def _debug_cmd_sat(self, tokens):
         """Parse and apply a satellite HID debug command."""
         satellites = getattr(self.app, 'satellites', None)
         if not satellites:
@@ -935,18 +949,28 @@ class ConsoleManager():
 
         elif verb == "btn":
             if len(tokens) < 2:
-                print("Usage: sat btn <index>")
+                print("Usage: btn <index> [0|1]")
                 return
             try:
                 idx = int(tokens[1])
             except ValueError:
-                print("sat btn: index must be an integer.")
+                print("btn: index must be an integer.")
                 return
             if idx < 0 or idx >= len(hid.buttons_values):
-                print(f"sat btn: index {idx} out of range (0-{len(hid.buttons_values)-1}).")
+                print(f"btn: index {idx} out of range.")
                 return
-            hid.buttons_tapped[idx] = True
-            print(f"Sat button[{idx}] tapped.")
+
+            # If a 3rd argument is provided, HOLD the button in that state
+            if len(tokens) >= 3:
+                state = bool(int(tokens[2]))
+                hid.buttons_values[idx] = state
+                print(f"Core button[{idx}] held {'DOWN' if state else 'UP'}.")
+            else:
+                # Otherwise, simulate a quick physical tap
+                hid.buttons_values[idx] = True
+                await asyncio.sleep(0.1)
+                hid.buttons_values[idx] = False
+                print(f"Core button[{idx}] tapped.")
 
         elif verb == "tog":
             if len(tokens) < 3:
@@ -966,29 +990,34 @@ class ConsoleManager():
 
         elif verb == "mom":
             if len(tokens) < 3:
-                print("Usage: sat mom <index> <U|D|C>")
+                print("Usage: mom <index> <U|D|C>")
                 return
             try:
                 idx = int(tokens[1])
             except ValueError:
-                print("sat mom: index must be an integer.")
+                print("mom: index must be an integer.")
                 return
             direction = tokens[2].upper()
             if direction not in ("U", "D", "C"):
-                print("sat mom: direction must be U, D, or C.")
+                print("mom: direction must be U, D, or C.")
                 return
             if idx < 0 or idx >= len(hid.momentary_values):
-                print(f"sat mom: index {idx} out of range (0-{len(hid.momentary_values)-1}).")
+                print(f"mom: index {idx} out of range.")
                 return
+
+            # Directly modify the values array to simulate HOLDING the switch
             if direction == "U":
-                hid.momentary_tapped[idx][0] = True
+                hid.momentary_values[idx][0] = True
+                hid.momentary_values[idx][1] = False
             elif direction == "D":
-                hid.momentary_tapped[idx][1] = True
-            else:
+                hid.momentary_values[idx][0] = False
+                hid.momentary_values[idx][1] = True
+            else: # C (Centre)
                 hid.momentary_values[idx][0] = False
                 hid.momentary_values[idx][1] = False
+
             label = {"U": "UP", "D": "DOWN", "C": "CENTRE"}[direction]
-            print(f"Sat momentary[{idx}] set to {label}.")
+            print(f"Core momentary[{idx}] held at {label}.")
 
         else:
             print(f"Unknown satellite HID command: '{verb}'. Type 'help' for usage.")
