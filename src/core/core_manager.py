@@ -402,7 +402,7 @@ class CoreManager:
         if self.audio:              # Stop all audio
             self.audio.stop_all()
         if self.buzzer:             # Stop buzzer
-            asyncio.create_task(self.buzzer.stop())
+            self.buzzer.stop()
 
     async def run_mode_with_safety(self, mode_instance, target_sat=None):
         """Execute a task while monitoring for interrupts.
