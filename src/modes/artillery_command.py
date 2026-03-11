@@ -226,9 +226,7 @@ class ArtilleryCommand(GameMode):
         self.game_state = "TUTORIAL"
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/arty_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/arty_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # Base mock setup
         self._mission_count = 0

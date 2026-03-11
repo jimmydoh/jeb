@@ -34,9 +34,7 @@ class SafeCracker(GameMode):
         dial_pos = 0
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/safe_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/safe_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         self.core.display.update_status("SAFE CRACKER", "FIND THE COMBO")
         self._draw_safe_dial(dial_pos, False)
@@ -85,12 +83,10 @@ class SafeCracker(GameMode):
         # [0:19 - 0:24] "But be careful. If you turn the wrong way..."
         self.core.display.update_status("WRONG DIRECTION!", "LOCK RESET")
         self.core.matrix.fill(Palette.RED, show=True)
-        asyncio.create_task(self.core.audio.play("audio/safe/sfx/crash.wav", self.core.audio.CH_SFX))
+        self.core.audio.play("audio/safe/sfx/crash.wav", self.core.audio.CH_SFX)
         await asyncio.sleep(0.5)
         self.core.matrix.clear()
 
-        # Wait for audio to finish
-        await tute_audio
         await self.core.clean_slate()
         return "TUTORIAL_COMPLETE"
 
@@ -137,7 +133,7 @@ class SafeCracker(GameMode):
         last_p = self.core.hid.encoder_position()
 
         self.core.display.update_status("SAFE MODE", "LISTEN CLOSELY")
-        await self.core.audio.play("audio/safe/voice/welcome.wav", self.core.audio.CH_VOICE, wait=True)
+        self.core.audio.play("audio/safe/voice/welcome.wav", self.core.audio.CH_VOICE, wait=True)
         await asyncio.sleep(0.5)
 
         while self.step < 3:
@@ -152,7 +148,7 @@ class SafeCracker(GameMode):
 
                 # Check if the move is correct for the current step
                 if move != directions[self.step]:
-                    asyncio.create_task(self.core.audio.play("audio/safe/sfx/crash.wav", self.core.audio.CH_SFX))
+                    self.core.audio.play("audio/safe/sfx/crash.wav", self.core.audio.CH_SFX)
                     self.core.matrix.fill(Palette.RED, show=True)
                     self.core.display.update_status("RESET", "WRONG DIRECTION")
 
@@ -173,7 +169,7 @@ class SafeCracker(GameMode):
                 if self.audio_engine == "SYNTH":
                     self.core.synth.play_note(freq, patch=Patches.CLICK, duration=0.05)
                 else:
-                    await self.core.buzzer.play_note(freq, duration=0.05)
+                    self.core.buzzer.play_note(freq, duration=0.05)
 
                 last_p = curr_p
 
@@ -193,7 +189,7 @@ class SafeCracker(GameMode):
                 if self.core.hid.encoder_position() == curr_p:
                     self._draw_safe_dial(dial_pos, True)
                     self.core.matrix.show_frame()
-                    await self.core.buzzer.play_sequence(tones.SAVE_OK)
+                    self.core.buzzer.play_sequence(tones.SAVE_OK)
 
                     self.step += 1
 

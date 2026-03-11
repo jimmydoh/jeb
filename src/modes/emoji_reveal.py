@@ -71,9 +71,7 @@ class EmojiRevealMode(GameMode):
         self.game_state = "TUTORIAL"
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/emoji_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/emoji_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # [0:00 - 0:05] "Welcome to Emoji Reveal. A test of speed and recognition."
         self.core.display.update_status("EMOJI REVEAL", "SPEED & RECOGNITION")
@@ -134,9 +132,6 @@ class EmojiRevealMode(GameMode):
         # [0:29 - 0:31] "Good luck!"
         self.core.display.update_header("-EMOJI REVEAL-")
         self.core.display.update_status("GOOD LUCK!", "")
-
-        # Wait for the audio track to finish naturally
-        await tute_audio
 
         # Clean up and return to the menu
         await self.core.clean_slate()
@@ -252,7 +247,7 @@ class EmojiRevealMode(GameMode):
                 f"TOTAL: {self.score}"
             )
             self.core.matrix.show_icon(icon_key, anim_mode="PULSE", speed=2.0, border_color=Palette.GREEN)
-            await self.core.audio.play(
+            self.core.audio.play(
                 "audio/general/correct.wav",
                 self.core.audio.CH_SFX,
                 level=0.8,
@@ -267,7 +262,7 @@ class EmojiRevealMode(GameMode):
             f"SCORE: {self.score}"
         )
         self.core.matrix.show_icon(icon_key, anim_mode="PULSE", speed=2.0, border_color=Palette.RED)
-        await self.core.audio.play(
+        self.core.audio.play(
             "audio/general/fail.wav",
             self.core.audio.CH_SFX,
             level=0.8,

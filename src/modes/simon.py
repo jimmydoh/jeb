@@ -58,9 +58,7 @@ class Simon(GameMode):
         self.audio_engine = self.core.data.get_setting("SIMON", "audio_engine", "BUZZER")
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/simon_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/simon_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # Helper method to simulate a button press and release perfectly
         async def _demo_press(val, duration, is_player=False):
@@ -147,7 +145,6 @@ class Simon(GameMode):
 
         # Wait for the audio track to finish naturally
         await asyncio.sleep(10.0)  # Ensure we wait at least until the end of the track if it hasn't finished yet
-        await tute_audio
 
         # Clean up and return to the menu
         await self.core.clean_slate()

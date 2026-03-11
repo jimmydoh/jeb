@@ -351,10 +351,8 @@ class SeismicStabilizer(GameMode):
         self.game_state = "TUTORIAL"
 
         # Start voiceover
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/seismic_tute.wav",
-                                 bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/seismic_tute.wav",
+                                bus_id=self.core.audio.CH_VOICE)
 
         # [0:00 - 0:07] Welcome
         self.core.display.update_header("SEISMIC STAB")
@@ -421,9 +419,6 @@ class SeismicStabilizer(GameMode):
             if self._overheat_pct > 60 and step == 60:
                 self.core.display.update_status("CAUTION!", "OVERHEAT RISK")
             await asyncio.sleep(0.033)
-
-        # Wait for audio to finish
-        await tute_audio
 
         await self.core.clean_slate()
         return "TUTORIAL_COMPLETE"

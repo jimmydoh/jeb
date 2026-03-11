@@ -271,9 +271,7 @@ class MechaForge(BaseMode):
         await self.core.clean_slate()
         self.game_state = "TUTORIAL"
 
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/mecha_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/mecha_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # Reset to a blank slate for the demo
         self._ht_idx = 0

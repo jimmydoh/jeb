@@ -165,7 +165,7 @@ class PowerTelemetryMode(UtilityMode):
                 bus_idx = (bus_idx + enc_diff) % len(bus_names)
                 last_enc_pos = curr_enc
                 needs_render = True
-                await self.core.audio.play(
+                self.core.audio.play(
                     "audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.6
                 )
 
@@ -174,14 +174,14 @@ class PowerTelemetryMode(UtilityMode):
                 self.touch()
                 self._view = "WAVE" if self._view == "TEXT" else "TEXT"
                 needs_render = True
-                await self.core.audio.play(
+                self.core.audio.play(
                     "audio/menu/tick.wav", self.core.audio.CH_SFX, level=0.6
                 )
 
             # Button B long → exit
             if btn_b_long:
                 self.core.mode = "DASHBOARD"
-                await self.core.audio.play(
+                self.core.audio.play(
                     "audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8
                 )
                 return "EXIT"

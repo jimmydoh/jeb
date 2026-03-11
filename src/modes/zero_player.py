@@ -28,9 +28,7 @@ class ZeroPlayerMode(GameMode):
         self.game_state = "TUTORIAL"
 
         # 1. Start the voiceover track
-        tute_audio = asyncio.create_task(
-            self.core.audio.play("audio/tutes/zero_tute.wav", bus_id=self.core.audio.CH_VOICE)
-        )
+        self.core.audio.play("audio/tutes/zero_tute.wav", bus_id=self.core.audio.CH_VOICE)
 
         # Setup a simple mock particle system (Starfield-lite)
         particles = [
@@ -106,9 +104,6 @@ class ZeroPlayerMode(GameMode):
         # [0:28 - 0:31] "Sit back, relax, and enjoy the show!"
         self.core.display.update_status("ENJOY THE SHOW", "")
         self.core.display.update_footer("")
-
-        # Wait for the audio track to finish naturally
-        await tute_audio
 
         # Clean up and return to the menu
         await self.core.clean_slate()
