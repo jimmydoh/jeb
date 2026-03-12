@@ -914,6 +914,7 @@ class WebServerManager:
                 latching_toggles (str, optional): Latching toggle states string (e.g. '10110').
                 momentary_toggles (str, optional): Momentary toggle states string (e.g. 'CUC').
                 encoders (str, optional): Encoder positions string (e.g. '0:25:123').
+                encoder_buttons (str, optional): Encoder button states string (e.g. '1').
             """
             try:
                 data = request.json()
@@ -926,8 +927,9 @@ class WebServerManager:
                 latching_toggles = data.get("latching_toggles")
                 momentary_toggles = data.get("momentary_toggles")
                 encoders = data.get("encoders")
+                encoder_buttons = data.get("encoder_buttons")
 
-                if not any([buttons, latching_toggles, momentary_toggles, encoders]):
+                if not any([buttons, latching_toggles, momentary_toggles, encoders, encoder_buttons]):
                     return Response(request, '{"error": "No HID fields provided"}',
                                   content_type="application/json", status=400)
 
@@ -963,8 +965,11 @@ class WebServerManager:
                 if encoders is not None:
                     if target_hid._sw_set_encoders(encoders, override=True):
                         dirty = True
+                if encoder_buttons is not None:
+                    if target_hid._sw_set_encoder_buttons(encoder_buttons, override=True):
+                        dirty = True
 
-                self.log(f"HID override applied to {sid}: buttons={buttons} latching={latching_toggles} momentary={momentary_toggles} encoders={encoders}")
+                self.log(f"HID override applied to {sid}: buttons={buttons} latching={latching_toggles} momentary={momentary_toggles} encoders={encoders} enc_btns={encoder_buttons}")
                 status = "success" if dirty else "no_change"
                 return Response(request, f'{{"status": "{status}"}}',
                               content_type="application/json")

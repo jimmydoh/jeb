@@ -122,10 +122,12 @@ class MockHIDManager:
         self.latching_values = [False] * 4
         self.momentary_values = [[False, False] for _ in range(2)]
         self.encoder_positions = [0, 0]
+        self.encoder_buttons_values = [False]
         self._sw_set_buttons_calls = []
         self._sw_set_latching_calls = []
         self._sw_set_momentary_calls = []
         self._sw_set_encoders_calls = []
+        self._sw_set_encoder_buttons_calls = []
 
     def _sw_set_buttons(self, buttons, override=False):
         self._sw_set_buttons_calls.append((buttons, override))
@@ -141,6 +143,10 @@ class MockHIDManager:
 
     def _sw_set_encoders(self, encoders, override=False):
         self._sw_set_encoders_calls.append((encoders, override))
+        return True
+
+    def _sw_set_encoder_buttons(self, encoder_buttons, override=False):
+        self._sw_set_encoder_buttons_calls.append((encoder_buttons, override))
         return True
 
 # Mock gc module for CircuitPython compatibility
@@ -2044,6 +2050,7 @@ def test_hid_update_core_all_fields():
         "latching_toggles": "1010",
         "momentary_toggles": "CU",
         "encoders": "5:10",
+        "encoder_buttons": "1",
     }
     response = handler(request)
 
@@ -2051,11 +2058,12 @@ def test_hid_update_core_all_fields():
     data = json.loads(response.body)
     assert data["status"] == "success"
 
-    # All four _sw_set_* methods should have been called with override=True
+    # All five _sw_set_* methods should have been called with override=True
     assert mock_hid._sw_set_buttons_calls[0] == ("01", True)
     assert mock_hid._sw_set_latching_calls[0] == ("1010", True)
     assert mock_hid._sw_set_momentary_calls[0] == ("CU", True)
     assert mock_hid._sw_set_encoders_calls[0] == ("5:10", True)
+    assert mock_hid._sw_set_encoder_buttons_calls[0] == ("1", True)
 
     print("  ✓ HID update all fields (core) test passed")
 
@@ -2218,6 +2226,39 @@ def test_hid_update_invalid_json():
     print("  ✓ HID update invalid JSON test passed")
 
 
+def test_hid_update_encoder_buttons():
+    """Test /api/hid/update routes encoder_buttons to HIDManager with override=True."""
+    print("\nTesting HID update encoder_buttons...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_hid = MockHIDManager()
+    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/hid/update")
+
+    # Press encoder button
+    request = MockRequest()
+    request.json = lambda: {"encoder_buttons": "1"}
+    response = handler(request)
+
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert mock_hid._sw_set_encoder_buttons_calls[0] == ("1", True)
+
+    # Release encoder button
+    request2 = MockRequest()
+    request2.json = lambda: {"encoder_buttons": "0"}
+    response2 = handler(request2)
+
+    assert response2.status == 200
+    assert mock_hid._sw_set_encoder_buttons_calls[1] == ("0", True)
+
+    print("  ✓ HID update encoder_buttons test passed")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -2285,6 +2326,7 @@ def run_all_tests():
         test_hid_update_no_satellite_manager,
         test_hid_update_no_fields,
         test_hid_update_invalid_json,
+        test_hid_update_encoder_buttons,
     ]
 
     try:
