@@ -2,11 +2,11 @@
     "role": "CORE",
     "type_id": "00",
     "type_name": "CORE",
-    "mount_sd_card": false,
+    "mount_sd_card": true,
     "debug_mode": false,
     "test_mode": true,
-    "wifi_ssid": "",
-    "wifi_password": "",
+    "wifi_ssid": "not_a_real_ssid",
+    "wifi_password": "not_a_real_password",
     "update_url": "",
     "uart_baudrate": 921600,
     "uart_buffer_size": 4096,
@@ -15,7 +15,7 @@
         "enabled": false,
         "interval_seconds": 15
     },
-    "web_server_enabled": false,
+    "web_server_enabled": true,
     "web_server_port": 8080,
     "hardware_features": {
         "audio": true,

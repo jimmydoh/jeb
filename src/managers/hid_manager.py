@@ -349,10 +349,13 @@ class HIDManager:
             if val != self.latching_values[i]:
                 self.latching_values[i] = val
                 if val:  # Toggle turned on - record timestamp
+                    JEBLogger.info("HIDM", f"SW set latching toggle[{i}] ON.")
                     self.latching_timestamps[i] = now
                 else:  # Toggle turned off - detect tap
+                    JEBLogger.info("HIDM", f"SW set latching toggle[{i}] OFF.")
                     start_time = self.latching_timestamps[i]
                     if start_time > 0 and ticks_diff(now, start_time) < 500:
+                        JEBLogger.info("HIDM", f"SW set latching toggle[{i}] TAPPED.")
                         self.latching_tapped[i] = True
                 dirty = True
         return dirty
@@ -438,19 +441,25 @@ class HIDManager:
                 if up_val != self.momentary_values[i][0]:
                     self.momentary_values[i][0] = up_val
                     if up_val:  # Pressed up - record timestamp
+                        JEBLogger.info("HIDM", f"SW set momentary toggle[{i}] UP.")
                         self.momentary_timestamps[i][0] = now
                     else:  # Released up - detect tap
+                        JEBLogger.info("HIDM", f"SW set momentary toggle[{i}] UP released.")
                         start_time = self.momentary_timestamps[i][0]
                         if start_time > 0 and ticks_diff(now, start_time) < 500:
+                            JEBLogger.info("HIDM", f"SW set momentary toggle[{i}] UP TAPPED.")
                             self.momentary_tapped[i][0] = True
                 # Down Direction
                 if down_val != self.momentary_values[i][1]:
                     self.momentary_values[i][1] = down_val
                     if down_val:  # Pressed down - record timestamp
+                        JEBLogger.info("HIDM", f"SW set momentary toggle[{i}] DOWN.")
                         self.momentary_timestamps[i][1] = now
                     else:  # Released down - detect tap
+                        JEBLogger.info("HIDM", f"SW set momentary toggle[{i}] DOWN released.")
                         start_time = self.momentary_timestamps[i][1]
                         if start_time > 0 and ticks_diff(now, start_time) < 500:
+                            JEBLogger.info("HIDM", f"SW set momentary toggle[{i}] DOWN TAPPED.")
                             self.momentary_tapped[i][1] = True
         return dirty
 
@@ -619,10 +628,13 @@ class HIDManager:
             if val != self.encoder_buttons_values[i]:
                 self.encoder_buttons_values[i] = val
                 if val:  # Button pressed - record timestamp
+                    JEBLogger.info("HIDM", f"SW set encoder button[{i}] PRESSED.")
                     self.encoder_buttons_timestamps[i] = now
                 else:  # Button released - detect tap
+                    JEBLogger.info("HIDM", f"SW set encoder button[{i}] RELEASED.")
                     start_time = self.encoder_buttons_timestamps[i]
                     if start_time > 0 and ticks_diff(now, start_time) < 500:
+                        JEBLogger.info("HIDM", f"SW set encoder button[{i}] TAPPED.")
                         self.encoder_buttons_tapped[i] = True
                 dirty = True
         return dirty

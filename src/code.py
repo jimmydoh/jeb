@@ -269,7 +269,8 @@ if config.get("wifi_ssid") and config.get("wifi_password"):
                     wifi_manager=wifi_manager,
                     power_manager=app.power if app else None,
                     satellite_manager=app.satellites if app and hasattr(app, "satellites") else None,
-                    matrix_manager=app.matrix if app and hasattr(app, "matrix") else None
+                    matrix_manager=app.matrix if app and hasattr(app, "matrix") else None,
+                    hid=app.hid if app and hasattr(app, "hid") else None
                 )
                 JEBLogger.info("CODE", "Web server manager initialized - will start with app")
             except ImportError:
