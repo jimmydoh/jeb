@@ -338,9 +338,9 @@ class HIDManager:
 
         return True
 
-    def _sw_set_latching_toggles(self, latching_toggles):
+    def _sw_set_latching_toggles(self, latching_toggles, override=False):
         """Set the state of a latching toggle without hardware polling."""
-        if not self.monitor_only:
+        if not self.monitor_only and not override:
             return False
         dirty = False
         now = ticks_ms()
@@ -412,7 +412,7 @@ class HIDManager:
 
         return True
 
-    def _sw_set_momentary_toggles(self, momentary_toggles):
+    def _sw_set_momentary_toggles(self, momentary_toggles, override=False):
         """
         Set the state of momentary toggles without hardware polling.
 
@@ -422,7 +422,7 @@ class HIDManager:
 
         :example: "UD" means first toggle up, second toggle down.
         """
-        if not self.monitor_only:
+        if not self.monitor_only and not override:
             return False
         dirty = False
         now = ticks_ms()
@@ -533,9 +533,12 @@ class HIDManager:
         for i, pos in enumerate(parts):
             if i < len(self.encoder_positions):
                 try:
-                    JEBLogger.info("HIDM", f"SW set encoder[{i}] from {self.encoder_positions[i]} to position {pos}.")
-                    if self.encoder_positions[i] != int(pos):
-                        self.encoder_positions[i] = int(pos)
+                    new_val = int(pos)
+                    JEBLogger.info("HIDM", f"SW set encoder[{i}] from {self.encoder_positions[i]} to position {new_val}.")
+                    if self.encoder_positions[i] != new_val:
+                        self.encoder_positions[i] = new_val
+                        if not self.monitor_only and hasattr(self, '_encoders') and self._encoders and i < len(self._encoders):
+                            self._encoders[i].position = new_val
                         dirty = True
                 except (ValueError, IndexError):
                     continue

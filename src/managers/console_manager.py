@@ -809,115 +809,7 @@ class ConsoleManager():
     async def _debug_cmd_core(self, tokens):
         """Parse and apply a core HID debug command."""
         hid = getattr(self.app, 'hid', None)
-        if hid is None:
-            print("No core HID manager available.")
-            return
-
-        verb = tokens[0].lower() if tokens else ""
-
-        if verb == "enc":
-            if len(tokens) < 3:
-                print("Usage: enc <index> <delta>")
-                return
-            try:
-                idx = int(tokens[1])
-                delta = int(tokens[2])
-            except ValueError:
-                print("enc: index and delta must be integers.")
-                return
-            if idx < 0 or idx >= len(hid.encoder_positions):
-                print(f"enc: index {idx} out of range (0-{len(hid.encoder_positions)-1}).")
-                return
-            encoder_str = ""
-            for i, _ in enumerate(hid.encoder_positions):
-                if i == idx:
-                    encoder_str += str(hid.encoder_positions[i] + delta)
-                    JEBLogger.debug("CONS", f"Core encoder[{idx}] adjusted by {delta:+d} -> {hid.encoder_positions[i] + delta}")
-                else:
-                    encoder_str += str(hid.encoder_positions[i])
-            hid._sw_set_encoders(f"{encoder_str}", override=True)
-            JEBLogger.debug("CONS", f"Core encoders set to: {encoder_str}")
-
-        elif verb == "btn":
-            if len(tokens) < 2:
-                print("Usage: btn <index> [0|1]")
-                return
-            try:
-                idx = int(tokens[1])
-            except ValueError:
-                print("btn: index must be an integer.")
-                return
-            if idx < 0 or idx >= len(hid.buttons_values):
-                print(f"btn: index {idx} out of range.")
-                return
-
-            buttons = hid.buttons_values.copy()  # Copy to avoid mutating original if it's a property
-
-            # If a 3rd argument is provided, HOLD the button in that state
-            if len(tokens) >= 3:
-                state = bool(int(tokens[2]))
-                buttons[idx] = state
-                buttons_str = "".join(['1' if b else '0' for b in buttons])
-                hid._sw_set_buttons(buttons_str, override=True)
-            else:
-                # Otherwise, simulate a quick physical tap
-                buttons[idx] = True
-                buttons_str = "".join(['1' if b else '0' for b in buttons])
-                hid._sw_set_buttons(buttons_str, override=True)
-                await asyncio.sleep(0.1)
-                buttons[idx] = False
-                buttons_str = "".join(['1' if b else '0' for b in buttons])
-                hid._sw_set_buttons(buttons_str, override=True)
-
-        elif verb == "tog":
-            if len(tokens) < 3:
-                print("Usage: tog <index> <0|1>")
-                return
-            try:
-                idx = int(tokens[1])
-                val = int(tokens[2])
-            except ValueError:
-                print("tog: index and value must be integers.")
-                return
-            if idx < 0 or idx >= len(hid.latching_values):
-                print(f"tog: index {idx} out of range (0-{len(hid.latching_values)-1}).")
-                return
-            hid.latching_values[idx] = bool(val)
-            print(f"Core toggle[{idx}] set to {'ON' if val else 'OFF'}.")
-
-        elif verb == "mom":
-            if len(tokens) < 3:
-                print("Usage: mom <index> <U|D|C>")
-                return
-            try:
-                idx = int(tokens[1])
-            except ValueError:
-                print("mom: index must be an integer.")
-                return
-            direction = tokens[2].upper()
-            if direction not in ("U", "D", "C"):
-                print("mom: direction must be U, D, or C.")
-                return
-            if idx < 0 or idx >= len(hid.momentary_values):
-                print(f"mom: index {idx} out of range.")
-                return
-
-            # Directly modify the values array to simulate HOLDING the switch
-            if direction == "U":
-                hid.momentary_values[idx][0] = True
-                hid.momentary_values[idx][1] = False
-            elif direction == "D":
-                hid.momentary_values[idx][0] = False
-                hid.momentary_values[idx][1] = True
-            else: # C (Centre)
-                hid.momentary_values[idx][0] = False
-                hid.momentary_values[idx][1] = False
-
-            label = {"U": "UP", "D": "DOWN", "C": "CENTRE"}[direction]
-            print(f"Core momentary[{idx}] held at {label}.")
-
-        else:
-            print(f"Unknown HID command: '{verb}'. Type 'help' for usage.")
+        await self._process_hid_cmd(hid, tokens, "Core")
 
     async def _debug_cmd_sat(self, tokens):
         """Parse and apply a satellite HID debug command."""
@@ -937,31 +829,46 @@ class ConsoleManager():
             return
 
         hid = getattr(sat, 'hid', None)
+        await self._process_hid_cmd(hid, tokens, "Sat")
+
+    async def _process_hid_cmd(self, hid, tokens, prefix):
+        """Unified HID command processor for both Core and Satellite."""
         if hid is None:
-            print("Satellite has no HID manager.")
+            print(f"No {prefix.lower()} HID manager available.")
             return
 
         verb = tokens[0].lower() if tokens else ""
 
         if verb == "enc":
             if len(tokens) < 3:
-                print("Usage: sat enc <index> <delta>")
+                print(f"Usage: {prefix.lower()} enc <index> <delta>")
                 return
             try:
                 idx = int(tokens[1])
                 delta = int(tokens[2])
             except ValueError:
-                print("sat enc: index and delta must be integers.")
+                print(f"{prefix.lower()} enc: index and delta must be integers.")
                 return
             if idx < 0 or idx >= len(hid.encoder_positions):
-                print(f"sat enc: index {idx} out of range (0-{len(hid.encoder_positions)-1}).")
+                print(f"{prefix.lower()} enc: index {idx} out of range (0-{len(hid.encoder_positions)-1}).")
                 return
-            hid.encoder_positions[idx] += delta
-            print(f"Sat encoder[{idx}] adjusted by {delta:+d} -> {hid.encoder_positions[idx]}")
+
+            # Safely build the colon-separated string
+            encoder_strs = []
+            for i, val in enumerate(hid.encoder_positions):
+                if i == idx:
+                    encoder_strs.append(str(val + delta))
+                    JEBLogger.debug("CONS", f"{prefix} encoder[{idx}] adjusted by {delta:+d} -> {val + delta}")
+                else:
+                    encoder_strs.append(str(val))
+
+            encoder_str = ":".join(encoder_strs)
+            hid._sw_set_encoders(encoder_str, override=True)
+            JEBLogger.debug("CONS", f"{prefix} encoders set to: {encoder_str}")
 
         elif verb == "btn":
             if len(tokens) < 2:
-                print("Usage: btn <index> [0|1]")
+                print(f"Usage: {prefix.lower()} btn <index> [0|1]")
                 return
             try:
                 idx = int(tokens[1])
@@ -972,7 +879,7 @@ class ConsoleManager():
                 print(f"btn: index {idx} out of range.")
                 return
 
-            buttons = hid.buttons_values.copy()  # Copy to avoid mutating original if it's a property
+            buttons = hid.buttons_values.copy()  # Copy to avoid mutating original
 
             # If a 3rd argument is provided, HOLD the button in that state
             if len(tokens) >= 3:
@@ -980,6 +887,7 @@ class ConsoleManager():
                 buttons[idx] = state
                 buttons_str = "".join(['1' if b else '0' for b in buttons])
                 hid._sw_set_buttons(buttons_str, override=True)
+                print(f"{prefix} button[{idx}] held {'DOWN' if state else 'UP'}.")
             else:
                 # Otherwise, simulate a quick physical tap
                 buttons[idx] = True
@@ -989,26 +897,33 @@ class ConsoleManager():
                 buttons[idx] = False
                 buttons_str = "".join(['1' if b else '0' for b in buttons])
                 hid._sw_set_buttons(buttons_str, override=True)
+                print(f"{prefix} button[{idx}] tapped.")
 
         elif verb == "tog":
             if len(tokens) < 3:
-                print("Usage: sat tog <index> <0|1>")
+                print(f"Usage: {prefix.lower()} tog <index> <0|1>")
                 return
             try:
                 idx = int(tokens[1])
                 val = int(tokens[2])
             except ValueError:
-                print("sat tog: index and value must be integers.")
+                print(f"{prefix.lower()} tog: index and value must be integers.")
                 return
             if idx < 0 or idx >= len(hid.latching_values):
-                print(f"sat tog: index {idx} out of range (0-{len(hid.latching_values)-1}).")
+                print(f"{prefix.lower()} tog: index {idx} out of range (0-{len(hid.latching_values)-1}).")
                 return
-            hid.latching_values[idx] = bool(val)
-            print(f"Sat toggle[{idx}] set to {'ON' if val else 'OFF'}.")
+
+            # Reconstruct the latching string
+            toggles = list(hid.latching_values)
+            toggles[idx] = bool(val)
+            tog_str = "".join(['1' if t else '0' for t in toggles])
+
+            hid._sw_set_latching_toggles(tog_str, override=True)
+            print(f"{prefix} toggle[{idx}] set to {'ON' if val else 'OFF'}.")
 
         elif verb == "mom":
             if len(tokens) < 3:
-                print("Usage: mom <index> <U|D|C>")
+                print(f"Usage: {prefix.lower()} mom <index> <U|D|C>")
                 return
             try:
                 idx = int(tokens[1])
@@ -1023,22 +938,27 @@ class ConsoleManager():
                 print(f"mom: index {idx} out of range.")
                 return
 
-            # Directly modify the values array to simulate HOLDING the switch
-            if direction == "U":
-                hid.momentary_values[idx][0] = True
-                hid.momentary_values[idx][1] = False
-            elif direction == "D":
-                hid.momentary_values[idx][0] = False
-                hid.momentary_values[idx][1] = True
-            else: # C (Centre)
-                hid.momentary_values[idx][0] = False
-                hid.momentary_values[idx][1] = False
+            # Reconstruct the momentary string ('U', 'D', or 'C')
+            mom_states = []
+            for i, (up, down) in enumerate(hid.momentary_values):
+                if i == idx:
+                    mom_states.append(direction)
+                else:
+                    if up:
+                        mom_states.append("U")
+                    elif down:
+                        mom_states.append("D")
+                    else:
+                        mom_states.append("C")
+
+            mom_str = "".join(mom_states)
+            hid._sw_set_momentary_toggles(mom_str, override=True)
 
             label = {"U": "UP", "D": "DOWN", "C": "CENTRE"}[direction]
-            print(f"Core momentary[{idx}] held at {label}.")
+            print(f"{prefix} momentary[{idx}] held at {label}.")
 
         else:
-            print(f"Unknown satellite HID command: '{verb}'. Type 'help' for usage.")
+            print(f"Unknown {prefix.lower()} HID command: '{verb}'. Type 'help' for usage.")
 
     async def start(self):
         """Main interactive loop for the Console Manager."""
