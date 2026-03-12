@@ -232,7 +232,40 @@ class MockRelay:
         self.triggered = True
 
 
-class MockHID:
+class MockHIDMixin:
+    """Shared SW-injection methods for mock HID managers."""
+
+    def _sw_set_encoders(self, positions, override=False):
+        parts = positions.split(":")
+        for i, pos in enumerate(parts):
+            if i < len(self.encoder_positions):
+                try:
+                    self.encoder_positions[i] = int(pos)
+                except ValueError:
+                    pass
+
+    def _sw_set_buttons(self, buttons, override=False):
+        for i, char in enumerate(buttons):
+            if i < len(self.buttons_values):
+                val = char == "1"
+                prev = self.buttons_values[i]
+                self.buttons_values[i] = val
+                if prev and not val:
+                    self.buttons_tapped[i] = True
+
+    def _sw_set_latching_toggles(self, latching_toggles, override=False):
+        for i, char in enumerate(latching_toggles):
+            if i < len(self.latching_values):
+                self.latching_values[i] = char == "1"
+
+    def _sw_set_momentary_toggles(self, momentary_toggles, override=False):
+        for i, char in enumerate(momentary_toggles):
+            if i < len(self.momentary_values):
+                self.momentary_values[i][0] = char == "U"
+                self.momentary_values[i][1] = char == "D"
+
+
+class MockHID(MockHIDMixin):
     def __init__(self):
         self.encoder_positions = [0, 0]
         self.buttons_values = [False, False]
@@ -245,7 +278,7 @@ class MockHID:
         return "BTN:0000,ENC:0"
 
 
-class MockSatelliteHID:
+class MockSatelliteHID(MockHIDMixin):
     def __init__(self):
         self.encoder_positions = [0]
         self.buttons_values = [False]
@@ -1020,7 +1053,7 @@ async def test_live_debug_console_tog_core_off():
 
 @pytest.mark.asyncio
 async def test_live_debug_console_mom_core_up():
-    """live_debug_console sets momentary_tapped UP for a core momentary toggle."""
+    """live_debug_console holds a core momentary toggle in the UP position."""
     app = MockApp()
     cm = ConsoleManager("CORE", "00", app=app)
 
@@ -1032,12 +1065,12 @@ async def test_live_debug_console_mom_core_up():
     cm.get_input = fake_input
     await cm.live_debug_console()
 
-    assert app.hid.momentary_tapped[0][0] is True
+    assert app.hid.momentary_values[0][0] is True
 
 
 @pytest.mark.asyncio
 async def test_live_debug_console_mom_core_down():
-    """live_debug_console sets momentary_tapped DOWN for a core momentary toggle."""
+    """live_debug_console holds a core momentary toggle in the DOWN position."""
     app = MockApp()
     cm = ConsoleManager("CORE", "00", app=app)
 
@@ -1049,7 +1082,7 @@ async def test_live_debug_console_mom_core_down():
     cm.get_input = fake_input
     await cm.live_debug_console()
 
-    assert app.hid.momentary_tapped[0][1] is True
+    assert app.hid.momentary_values[0][1] is True
 
 
 @pytest.mark.asyncio
@@ -1125,7 +1158,7 @@ async def test_live_debug_console_sat_tog():
 
 @pytest.mark.asyncio
 async def test_live_debug_console_sat_mom():
-    """live_debug_console taps a satellite momentary toggle UP."""
+    """live_debug_console holds a satellite momentary toggle in the UP position."""
     app = MockApp()
     cm = ConsoleManager("CORE", "00", app=app)
 
@@ -1137,7 +1170,7 @@ async def test_live_debug_console_sat_mom():
     cm.get_input = fake_input
     await cm.live_debug_console()
 
-    assert app.satellites["0101"].hid.momentary_tapped[0][0] is True
+    assert app.satellites["0101"].hid.momentary_values[0][0] is True
 
 
 @pytest.mark.asyncio
