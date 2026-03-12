@@ -624,7 +624,7 @@ class HIDManager:
             return False
         dirty = False
         now = ticks_ms()
-        for i, val in enumerate(encoder_buttons):
+        for i, char in enumerate(encoder_buttons):
             val = char == "1"
             if val != self.encoder_buttons_values[i]:
                 self.encoder_buttons_values[i] = val

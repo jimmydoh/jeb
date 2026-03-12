@@ -167,12 +167,12 @@ def test_sw_encoder_button_tap_on_release():
     hid = _make_hid(encoders=[['dummy_a', 'dummy_b', 'dummy_btn']])
 
     # Press encoder button (True)
-    hid._sw_set_encoder_buttons([True])
+    hid._sw_set_encoder_buttons("1")
     assert hid.encoder_buttons_tapped[0] is False
 
     # Release within 500 ms
     _tick_time = 700
-    hid._sw_set_encoder_buttons([False])
+    hid._sw_set_encoder_buttons("0")
     assert hid.encoder_buttons_tapped[0] is True
 
 
