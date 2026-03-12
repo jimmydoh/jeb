@@ -263,9 +263,9 @@ class HIDManager:
 
         return True
 
-    def _sw_set_buttons(self, buttons):
+    def _sw_set_buttons(self, buttons, override=False):
         """Set the state of buttons without hardware polling."""
-        if not self.monitor_only:
+        if not self.monitor_only and not override:
             return False
         dirty = False
         now = ticks_ms()
@@ -274,10 +274,13 @@ class HIDManager:
             if val != self.buttons_values[i]:
                 self.buttons_values[i] = val
                 if val:  # Button pressed - record timestamp
+                    JEBLogger.info("HIDM", f"SW set button[{i}] PRESSED.")
                     self.buttons_timestamps[i] = now
                 else:  # Button released - detect tap
+                    JEBLogger.info("HIDM", f"SW set button[{i}] RELEASED.")
                     start_time = self.buttons_timestamps[i]
                     if start_time > 0 and ticks_diff(now, start_time) < 500:
+                        JEBLogger.info("HIDM", f"SW set button[{i}] TAPPED.")
                         self.buttons_tapped[i] = True
                 dirty = True
         return dirty
@@ -335,9 +338,9 @@ class HIDManager:
 
         return True
 
-    def _sw_set_latching_toggles(self, latching_toggles):
+    def _sw_set_latching_toggles(self, latching_toggles, override=False):
         """Set the state of a latching toggle without hardware polling."""
-        if not self.monitor_only:
+        if not self.monitor_only and not override:
             return False
         dirty = False
         now = ticks_ms()
@@ -409,7 +412,7 @@ class HIDManager:
 
         return True
 
-    def _sw_set_momentary_toggles(self, momentary_toggles):
+    def _sw_set_momentary_toggles(self, momentary_toggles, override=False):
         """
         Set the state of momentary toggles without hardware polling.
 
@@ -419,7 +422,7 @@ class HIDManager:
 
         :example: "UD" means first toggle up, second toggle down.
         """
-        if not self.monitor_only:
+        if not self.monitor_only and not override:
             return False
         dirty = False
         now = ticks_ms()
@@ -517,21 +520,25 @@ class HIDManager:
         if not self.monitor_only and 0 <= index < len(self._encoders):
             self._encoders[index].position = value
 
-    def _sw_set_encoders(self, positions):
+    def _sw_set_encoders(self, positions, override=False):
         """
         Set the state of encoders without hardware polling.
         :param positions: A string representing the positions of each encoder.
         :example: "0:25:123" sets encoder 0 to 0, encoder 1 to 25, encoder 2 to 123.
         """
-        if not self.monitor_only:
+        if not self.monitor_only and not override:
             return False
         dirty = False
         parts = positions.split(":")
         for i, pos in enumerate(parts):
             if i < len(self.encoder_positions):
                 try:
-                    if self.encoder_positions[i] != int(pos):
-                        self.encoder_positions[i] = int(pos)
+                    new_val = int(pos)
+                    JEBLogger.info("HIDM", f"SW set encoder[{i}] from {self.encoder_positions[i]} to position {new_val}.")
+                    if self.encoder_positions[i] != new_val:
+                        self.encoder_positions[i] = new_val
+                        if not self.monitor_only and hasattr(self, '_encoders') and self._encoders and i < len(self._encoders):
+                            self._encoders[i].position = new_val
                         dirty = True
                 except (ValueError, IndexError):
                     continue
@@ -716,7 +723,7 @@ class HIDManager:
                 if event.pressed:
                     JEBLogger.info("HIDM", f"Raw keypad {i} PRESSED event index: {event.key_number}")
                     changed = True # State changed
-                    raw_idx = event.key_number                   
+                    raw_idx = event.key_number
 
                     # Safe check for key map existence
                     if i < len(self.matrix_keypads_maps):
