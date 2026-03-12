@@ -609,9 +609,9 @@ class HIDManager:
 
         return True
 
-    def _sw_set_encoder_buttons(self, encoder_buttons):
+    def _sw_set_encoder_buttons(self, encoder_buttons, override=False):
         """Set the state of encoder buttons without hardware polling."""
-        if not self.monitor_only:
+        if not self.monitor_only and not override:
             return False
         dirty = False
         now = ticks_ms()

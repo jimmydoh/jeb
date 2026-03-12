@@ -221,6 +221,98 @@
             flex: 1;
             min-width: 200px;
         }
+        /* HID Emulator */
+        .hid-emulator-grid {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+        .hid-section {
+            background: #1a1a1a;
+            border: 1px solid #444;
+            border-radius: 5px;
+            padding: 16px;
+        }
+        .hid-section h3 {
+            color: #4CAF50;
+            margin-bottom: 12px;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        .hid-btn-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        .hid-push-btn {
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            background: #2a2a2a;
+            border: 2px solid #555;
+            color: #e0e0e0;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.05s, border-color 0.05s, color 0.05s;
+        }
+        .hid-push-btn.pressed {
+            background: #4CAF50;
+            border-color: #4CAF50;
+            color: #000;
+        }
+        .hid-encoder-display {
+            font-size: 1.8em;
+            text-align: center;
+            color: #4CAF50;
+            font-family: monospace;
+            min-width: 70px;
+            padding: 6px 10px;
+            background: #0d0d0d;
+            border: 1px solid #444;
+            border-radius: 3px;
+        }
+        .hid-encoder-controls {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+        }
+        .hid-enc-step-btn {
+            width: 36px;
+            height: 36px;
+            font-size: 1.1em;
+            background: #2a2a2a;
+            border: 1px solid #555;
+            color: #e0e0e0;
+            border-radius: 3px;
+            cursor: pointer;
+            padding: 0;
+        }
+        .hid-enc-step-btn:hover { background: #3a3a3a; border-color: #4CAF50; }
+        .hid-enc-btn-wrap { text-align: center; }
+        .hid-enc-push-btn {
+            width: 120px;
+            height: 44px;
+            border-radius: 22px;
+            background: #2a2a2a;
+            border: 2px solid #555;
+            color: #e0e0e0;
+            font-size: 0.85em;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.05s, border-color 0.05s, color 0.05s;
+        }
+        .hid-enc-push-btn.pressed {
+            background: #4CAF50;
+            border-color: #4CAF50;
+            color: #000;
+        }
     </style>
 </head>
 <body>
@@ -237,6 +329,7 @@
             <button class="tab" onclick="showTab('actions')">Actions</button>
             <button class="tab" onclick="showTab('telemetry')">Telemetry</button>
             <button class="tab" onclick="showTab('pixelart')">Pixel Art Studio</button>
+            <button class="tab" onclick="showTab('hidemulator')">HID Emulator</button>
         </div>
 
         <div id="system" class="tab-content active">
@@ -367,6 +460,52 @@
                     <div id="pixelArtStatus" class="status" style="display:none;margin-top:10px;"></div>
                 </div>
             </div>
+        </div>
+
+        <div id="hidemulator" class="tab-content">
+            <h2>🕹️ HID Emulator (CORE)</h2>
+            <p style="color: #b0b0b0; margin-bottom: 20px;">Inject virtual hardware inputs into the live CORE HID state. Hold buttons to simulate tap/hold detection.</p>
+            <div class="hid-emulator-grid">
+
+                <!-- Buttons -->
+                <div class="hid-section">
+                    <h3>Buttons</h3>
+                    <div class="hid-btn-grid">
+                        <button class="hid-push-btn" id="hidBtn0"
+                            onmousedown="hidBtnPress(0)" onmouseup="hidBtnRelease(0)" onmouseleave="hidBtnRelease(0)"
+                            ontouchstart="event.preventDefault(); hidBtnPress(0)" ontouchend="hidBtnRelease(0)" ontouchcancel="hidBtnRelease(0)">B0</button>
+                        <button class="hid-push-btn" id="hidBtn1"
+                            onmousedown="hidBtnPress(1)" onmouseup="hidBtnRelease(1)" onmouseleave="hidBtnRelease(1)"
+                            ontouchstart="event.preventDefault(); hidBtnPress(1)" ontouchend="hidBtnRelease(1)" ontouchcancel="hidBtnRelease(1)">B1</button>
+                        <button class="hid-push-btn" id="hidBtn2"
+                            onmousedown="hidBtnPress(2)" onmouseup="hidBtnRelease(2)" onmouseleave="hidBtnRelease(2)"
+                            ontouchstart="event.preventDefault(); hidBtnPress(2)" ontouchend="hidBtnRelease(2)" ontouchcancel="hidBtnRelease(2)">B2</button>
+                        <button class="hid-push-btn" id="hidBtn3"
+                            onmousedown="hidBtnPress(3)" onmouseup="hidBtnRelease(3)" onmouseleave="hidBtnRelease(3)"
+                            ontouchstart="event.preventDefault(); hidBtnPress(3)" ontouchend="hidBtnRelease(3)" ontouchcancel="hidBtnRelease(3)">B3</button>
+                    </div>
+                </div>
+
+                <!-- Encoder -->
+                <div class="hid-section">
+                    <h3>Encoder</h3>
+                    <div class="hid-encoder-controls">
+                        <button class="hid-enc-step-btn" onclick="hidEncoderStep(-10)" title="-10" aria-label="Decrease by 10">«</button>
+                        <button class="hid-enc-step-btn" onclick="hidEncoderStep(-1)" title="-1" aria-label="Decrease by 1">−</button>
+                        <div class="hid-encoder-display" id="hidEncoderVal" aria-live="polite" aria-label="Encoder position">0</div>
+                        <button class="hid-enc-step-btn" onclick="hidEncoderStep(1)" title="+1" aria-label="Increase by 1">+</button>
+                        <button class="hid-enc-step-btn" onclick="hidEncoderStep(10)" title="+10" aria-label="Increase by 10">»</button>
+                        <button class="hid-enc-step-btn" onclick="hidEncoderReset()" title="Reset to 0" aria-label="Reset to 0" style="font-size:0.7em;">RST</button>
+                    </div>
+                    <div class="hid-enc-btn-wrap">
+                        <button class="hid-enc-push-btn" id="hidEncBtn"
+                            onmousedown="hidEncBtnPress()" onmouseup="hidEncBtnRelease()" onmouseleave="hidEncBtnRelease()"
+                            ontouchstart="event.preventDefault(); hidEncBtnPress()" ontouchend="hidEncBtnRelease()" ontouchcancel="hidEncBtnRelease()">ENC BTN</button>
+                    </div>
+                </div>
+
+            </div>
+            <div id="hidStatus" class="status" style="display:none; margin-top:15px;"></div>
         </div>
     </div>
 
@@ -984,6 +1123,76 @@
             } catch (e) {
                 showStatus('pixelArtStatus', 'Error: ' + e, 'error');
             }
+        }
+
+        // =====================================================================
+        // HID Emulator
+        // =====================================================================
+        const HID_NUM_BUTTONS = 4;
+        let _hidBtnStates = new Array(HID_NUM_BUTTONS).fill(false);
+        let _hidEncoderPos = 0;
+        let _hidEncBtnPressed = false;
+
+        function _hidBuildButtonsStr() {
+            return _hidBtnStates.map(v => v ? '1' : '0').join('');
+        }
+
+        async function _hidSend(payload) {
+            try {
+                const resp = await fetch('/api/hid/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sid: 'CORE', ...payload }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    showStatus('hidStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                } else if (data.status === 'no_hid') {
+                    showStatus('hidStatus', 'HID manager not connected to web server', 'error');
+                }
+            } catch (e) {
+                showStatus('hidStatus', 'Error: ' + e, 'error');
+            }
+        }
+
+        function hidBtnPress(index) {
+            if (_hidBtnStates[index]) return;
+            _hidBtnStates[index] = true;
+            document.getElementById('hidBtn' + index).classList.add('pressed');
+            _hidSend({ buttons: _hidBuildButtonsStr() });
+        }
+
+        function hidBtnRelease(index) {
+            if (!_hidBtnStates[index]) return;
+            _hidBtnStates[index] = false;
+            document.getElementById('hidBtn' + index).classList.remove('pressed');
+            _hidSend({ buttons: _hidBuildButtonsStr() });
+        }
+
+        function hidEncoderStep(delta) {
+            _hidEncoderPos += delta;
+            document.getElementById('hidEncoderVal').textContent = _hidEncoderPos;
+            _hidSend({ encoders: String(_hidEncoderPos) });
+        }
+
+        function hidEncoderReset() {
+            _hidEncoderPos = 0;
+            document.getElementById('hidEncoderVal').textContent = '0';
+            _hidSend({ encoders: '0' });
+        }
+
+        function hidEncBtnPress() {
+            if (_hidEncBtnPressed) return;
+            _hidEncBtnPressed = true;
+            document.getElementById('hidEncBtn').classList.add('pressed');
+            _hidSend({ encoder_buttons: '1' });
+        }
+
+        function hidEncBtnRelease() {
+            if (!_hidEncBtnPressed) return;
+            _hidEncBtnPressed = false;
+            document.getElementById('hidEncBtn').classList.remove('pressed');
+            _hidSend({ encoder_buttons: '0' });
         }
     </script>
 </body>

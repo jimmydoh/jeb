@@ -46,7 +46,7 @@ class WebServerManager:
     MAX_UPLOAD_SIZE_BYTES = 50 * 1024  # Maximum upload size (50KB)
     DEFAULT_MAX_LOGS = 1000  # Default maximum log entries to keep
 
-    def __init__(self, config, wifi_manager, console_buffer=None, power_manager=None, satellite_manager=None, matrix_manager=None, synth_manager=None, testing=False):
+    def __init__(self, config, wifi_manager, console_buffer=None, power_manager=None, satellite_manager=None, matrix_manager=None, synth_manager=None, hid=None, testing=False):
         """
         Initialize the web server manager.
 
@@ -58,6 +58,7 @@ class WebServerManager:
             satellite_manager (SatelliteNetworkManager): Optional SatelliteNetworkManager for link telemetry
             matrix_manager (MatrixManager): Optional MatrixManager for live pixel art preview
             synth_manager (SynthManager): Optional SynthManager for Audio Studio live preview
+            hid (HIDManager): Optional HIDManager for remote HID interaction via web dashboard
         """
         if wifi_manager is None:
             JEBLogger.warning("WEBS", "No WiFiManager provided - WebServerManager cannot start")
@@ -76,6 +77,7 @@ class WebServerManager:
         self.satellite_manager = satellite_manager
         self.matrix_manager = matrix_manager
         self.synth_manager = synth_manager
+        self.hid = hid
 
         self.server = None
         self.pool = None
@@ -888,6 +890,88 @@ class WebServerManager:
                 self.synth_manager.stop_chiptune()
                 self.log("Synth playback stopped")
                 return Response(request, '{"status": "stopped"}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Remote HID state override (web-based interaction)
+        @self.server.route("/api/hid/update", POST)
+        def update_hid_state(request: Request):
+            """Inject virtual HID state changes via web dashboard using override mode.
+
+            Accepts a JSON body with an optional 'sid' field and one or more HID state
+            fields. When 'sid' is 'CORE' or omitted, the command targets the core
+            HIDManager. Otherwise the command is routed to the matching satellite's
+            HIDManager so both core and satellite inputs can be driven remotely.
+
+            All writes use override=True so they bypass the monitor_only guard and
+            do not get clobbered by the next hardware-poll cycle.
+
+            JSON fields:
+                sid (str, optional): Target unit ID. 'CORE' or omitted = core HID.
+                buttons (str, optional): Button states string (e.g. '010').
+                latching_toggles (str, optional): Latching toggle states string (e.g. '10110').
+                momentary_toggles (str, optional): Momentary toggle states string (e.g. 'CUC').
+                encoders (str, optional): Encoder positions string (e.g. '0:25:123').
+                encoder_buttons (str, optional): Encoder button states string (e.g. '1').
+            """
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                sid = data.get("sid", "CORE")
+                buttons = data.get("buttons")
+                latching_toggles = data.get("latching_toggles")
+                momentary_toggles = data.get("momentary_toggles")
+                encoders = data.get("encoders")
+                encoder_buttons = data.get("encoder_buttons")
+
+                if not any([buttons, latching_toggles, momentary_toggles, encoders, encoder_buttons]):
+                    return Response(request, '{"error": "No HID fields provided"}',
+                                  content_type="application/json", status=400)
+
+                # Resolve the target HIDManager
+                if sid == "CORE" or sid is None:
+                    target_hid = self.hid
+                else:
+                    if self.satellite_manager is None:
+                        return Response(request, '{"error": "No satellite manager available"}',
+                                      content_type="application/json", status=503)
+                    sat = self.satellite_manager.satellites.get(sid)
+                    if sat is None:
+                        return Response(request, f'{{"error": "Satellite {sid} not found"}}',
+                                      content_type="application/json", status=404)
+                    target_hid = sat.hid
+
+                if target_hid is None:
+                    return Response(request, '{"status": "no_hid"}',
+                                  content_type="application/json")
+
+                # Apply overrides - each _sw_set_* method accepts override=True to
+                # bypass the monitor_only guard and properly timestamp the interaction.
+                dirty = False
+                if buttons is not None:
+                    if target_hid._sw_set_buttons(buttons, override=True):
+                        dirty = True
+                if latching_toggles is not None:
+                    if target_hid._sw_set_latching_toggles(latching_toggles, override=True):
+                        dirty = True
+                if momentary_toggles is not None:
+                    if target_hid._sw_set_momentary_toggles(momentary_toggles, override=True):
+                        dirty = True
+                if encoders is not None:
+                    if target_hid._sw_set_encoders(encoders, override=True):
+                        dirty = True
+                if encoder_buttons is not None:
+                    if target_hid._sw_set_encoder_buttons(encoder_buttons, override=True):
+                        dirty = True
+
+                self.log(f"HID override applied to {sid}: buttons={buttons} latching={latching_toggles} momentary={momentary_toggles} encoders={encoders} enc_btns={encoder_buttons}")
+                status = "success" if dirty else "no_change"
+                return Response(request, f'{{"status": "{status}"}}',
                               content_type="application/json")
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',

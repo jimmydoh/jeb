@@ -115,6 +115,40 @@ class MockMatrixManager:
     def draw_pixel(self, x, y, color, show=False, anim_mode=None, speed=1.0, duration=None, brightness=1.0):
         self.pixels[(x, y)] = color
 
+class MockHIDManager:
+    """Mock HIDManager for testing remote HID override."""
+    def __init__(self):
+        self.buttons_values = [False] * 3
+        self.latching_values = [False] * 4
+        self.momentary_values = [[False, False] for _ in range(2)]
+        self.encoder_positions = [0, 0]
+        self.encoder_buttons_values = [False]
+        self._sw_set_buttons_calls = []
+        self._sw_set_latching_calls = []
+        self._sw_set_momentary_calls = []
+        self._sw_set_encoders_calls = []
+        self._sw_set_encoder_buttons_calls = []
+
+    def _sw_set_buttons(self, buttons, override=False):
+        self._sw_set_buttons_calls.append((buttons, override))
+        return True
+
+    def _sw_set_latching_toggles(self, latching_toggles, override=False):
+        self._sw_set_latching_calls.append((latching_toggles, override))
+        return True
+
+    def _sw_set_momentary_toggles(self, momentary_toggles, override=False):
+        self._sw_set_momentary_calls.append((momentary_toggles, override))
+        return True
+
+    def _sw_set_encoders(self, encoders, override=False):
+        self._sw_set_encoders_calls.append((encoders, override))
+        return True
+
+    def _sw_set_encoder_buttons(self, encoder_buttons, override=False):
+        self._sw_set_encoder_buttons_calls.append((encoder_buttons, override))
+        return True
+
 # Mock gc module for CircuitPython compatibility
 import gc as _gc
 if not hasattr(_gc, 'mem_free'):
@@ -243,6 +277,27 @@ def test_directory_listing():
         print(f"  ✓ Directory listing test passed (found {len(result['items'])} items)")
     except Exception as e:
         print(f"  ⚠️ Directory listing test warning: {e}")
+
+
+def test_config_save():
+    """Test that _save_config skips file I/O in testing mode."""
+    print("\nTesting config save (testing mode)...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+
+    # In testing mode, _save_config should complete without raising an exception
+    try:
+        manager._save_config()
+    except Exception as e:
+        assert False, f"_save_config raised an exception in testing mode: {e}"
+
+    print("  ✓ Config save (testing mode) test passed")
 
 
 def test_html_generation_with_mock_file():
@@ -712,6 +767,7 @@ def test_route_registration():
         '/api/actions/reorder-satellites',
         '/api/system/status',
         '/api/telemetry/status',
+        '/api/hid/update',
     ]
 
     registered_paths = [path for path, _, _ in manager.server.routes]
@@ -1891,6 +1947,318 @@ def test_synth_stop_no_synth():
     print("  ✓ Synth stop (no synth) test passed")
 
 
+def test_hid_manager_stored():
+    """Test that hid is stored on WebServerManager when provided."""
+    print("\nTesting hid parameter storage...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_hid = MockHIDManager()
+    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+
+    assert manager.hid is mock_hid
+    assert manager.hid is not None
+
+    manager2 = WebServerManager(config, MockWiFiManager(), testing=True)
+    assert manager2.hid is None
+
+    print("  ✓ hid parameter storage test passed")
+
+
+def test_hid_update_route_registered():
+    """Test that /api/hid/update route is registered."""
+    print("\nTesting /api/hid/update route registration...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    registered_paths = [path for path, _, _ in manager.server.routes]
+    assert "/api/hid/update" in registered_paths, "/api/hid/update route not registered"
+
+    print("  ✓ /api/hid/update route registration test passed")
+
+
+def test_hid_update_no_hid_manager():
+    """Test /api/hid/update when no HIDManager is attached."""
+    print("\nTesting HID update with no HID manager...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/hid/update")
+    assert handler is not None
+
+    request = MockRequest()
+    request.json = lambda: {"buttons": "010"}
+    response = handler(request)
+
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "no_hid"
+
+    print("  ✓ HID update (no HID manager) test passed")
+
+
+def test_hid_update_core_buttons():
+    """Test /api/hid/update routes buttons to core HIDManager with override=True."""
+    print("\nTesting HID update buttons on core...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_hid = MockHIDManager()
+    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/hid/update")
+    assert handler is not None
+
+    request = MockRequest()
+    request.json = lambda: {"sid": "CORE", "buttons": "010"}
+    response = handler(request)
+
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+
+    # Verify _sw_set_buttons was called with override=True
+    assert len(mock_hid._sw_set_buttons_calls) == 1
+    buttons_val, override_val = mock_hid._sw_set_buttons_calls[0]
+    assert buttons_val == "010"
+    assert override_val is True
+
+    print("  ✓ HID update buttons (core) test passed")
+
+
+def test_hid_update_core_all_fields():
+    """Test /api/hid/update sets all HID fields on core with override=True."""
+    print("\nTesting HID update all fields on core...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_hid = MockHIDManager()
+    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/hid/update")
+
+    request = MockRequest()
+    request.json = lambda: {
+        "buttons": "01",
+        "latching_toggles": "1010",
+        "momentary_toggles": "CU",
+        "encoders": "5:10",
+        "encoder_buttons": "1",
+    }
+    response = handler(request)
+
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+
+    # All five _sw_set_* methods should have been called with override=True
+    assert mock_hid._sw_set_buttons_calls[0] == ("01", True)
+    assert mock_hid._sw_set_latching_calls[0] == ("1010", True)
+    assert mock_hid._sw_set_momentary_calls[0] == ("CU", True)
+    assert mock_hid._sw_set_encoders_calls[0] == ("5:10", True)
+    assert mock_hid._sw_set_encoder_buttons_calls[0] == ("1", True)
+
+    print("  ✓ HID update all fields (core) test passed")
+
+
+def test_hid_update_implicit_core():
+    """Test /api/hid/update defaults to core HIDManager when sid is omitted."""
+    print("\nTesting HID update with implicit core (no sid)...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_hid = MockHIDManager()
+    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/hid/update")
+
+    request = MockRequest()
+    # No 'sid' key - should default to CORE
+    request.json = lambda: {"encoders": "42"}
+    response = handler(request)
+
+    assert response.status == 200
+    assert mock_hid._sw_set_encoders_calls[0] == ("42", True)
+
+    print("  ✓ HID update implicit core test passed")
+
+
+def test_hid_update_satellite_routing():
+    """Test /api/hid/update routes to satellite HIDManager with override=True."""
+    print("\nTesting HID update satellite routing...")
+
+    class MockSatHID(MockHIDManager):
+        pass
+
+    class MockSatellite:
+        def __init__(self):
+            self.hid = MockSatHID()
+            self.is_active = True
+
+    class MockSatelliteManager:
+        def __init__(self):
+            self.satellites = {"0101": MockSatellite()}
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    sat_manager = MockSatelliteManager()
+    manager = WebServerManager(
+        config, MockWiFiManager(), satellite_manager=sat_manager, testing=True
+    )
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/hid/update")
+
+    request = MockRequest()
+    request.json = lambda: {"sid": "0101", "latching_toggles": "10110001"}
+    response = handler(request)
+
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+
+    # Command should land on the satellite's HIDManager, not core
+    sat_hid = sat_manager.satellites["0101"].hid
+    assert len(sat_hid._sw_set_latching_calls) == 1
+    assert sat_hid._sw_set_latching_calls[0] == ("10110001", True)
+
+    print("  ✓ HID update satellite routing test passed")
+
+
+def test_hid_update_satellite_not_found():
+    """Test /api/hid/update returns 404 for an unknown satellite ID."""
+    print("\nTesting HID update with unknown satellite ID...")
+
+    class MockSatelliteManager:
+        satellites = {}
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    manager = WebServerManager(
+        config, MockWiFiManager(), satellite_manager=MockSatelliteManager(), testing=True
+    )
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/hid/update")
+
+    request = MockRequest()
+    request.json = lambda: {"sid": "9999", "buttons": "1"}
+    response = handler(request)
+
+    assert response.status == 404
+    data = json.loads(response.body)
+    assert "error" in data
+
+    print("  ✓ HID update satellite not found test passed")
+
+
+def test_hid_update_no_satellite_manager():
+    """Test /api/hid/update returns 503 when satellite sid given but no satellite_manager."""
+    print("\nTesting HID update with no satellite manager...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/hid/update")
+
+    request = MockRequest()
+    request.json = lambda: {"sid": "0101", "buttons": "1"}
+    response = handler(request)
+
+    assert response.status == 503
+    data = json.loads(response.body)
+    assert "error" in data
+
+    print("  ✓ HID update no satellite manager test passed")
+
+
+def test_hid_update_no_fields():
+    """Test /api/hid/update returns 400 when no HID fields are provided."""
+    print("\nTesting HID update with no HID fields...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_hid = MockHIDManager()
+    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/hid/update")
+
+    request = MockRequest()
+    request.json = lambda: {"sid": "CORE"}  # No HID state fields
+    response = handler(request)
+
+    assert response.status == 400
+    data = json.loads(response.body)
+    assert "error" in data
+
+    print("  ✓ HID update no fields test passed")
+
+
+def test_hid_update_invalid_json():
+    """Test /api/hid/update returns 400 on invalid JSON."""
+    print("\nTesting HID update with invalid JSON...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_hid = MockHIDManager()
+    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/hid/update")
+
+    request = MockRequest()
+    request.json = lambda: None  # Simulate failed JSON parse
+    response = handler(request)
+
+    assert response.status == 400
+
+    print("  ✓ HID update invalid JSON test passed")
+
+
+def test_hid_update_encoder_buttons():
+    """Test /api/hid/update routes encoder_buttons to HIDManager with override=True."""
+    print("\nTesting HID update encoder_buttons...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_hid = MockHIDManager()
+    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/hid/update")
+
+    # Press encoder button
+    request = MockRequest()
+    request.json = lambda: {"encoder_buttons": "1"}
+    response = handler(request)
+
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert mock_hid._sw_set_encoder_buttons_calls[0] == ("1", True)
+
+    # Release encoder button
+    request2 = MockRequest()
+    request2.json = lambda: {"encoder_buttons": "0"}
+    response2 = handler(request2)
+
+    assert response2.status == 200
+    assert mock_hid._sw_set_encoder_buttons_calls[1] == ("0", True)
+
+    print("  ✓ HID update encoder_buttons test passed")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -1947,6 +2315,18 @@ def run_all_tests():
         test_synth_save_validation,
         test_synth_stop_route,
         test_synth_stop_no_synth,
+        test_hid_manager_stored,
+        test_hid_update_route_registered,
+        test_hid_update_no_hid_manager,
+        test_hid_update_core_buttons,
+        test_hid_update_core_all_fields,
+        test_hid_update_implicit_core,
+        test_hid_update_satellite_routing,
+        test_hid_update_satellite_not_found,
+        test_hid_update_no_satellite_manager,
+        test_hid_update_no_fields,
+        test_hid_update_invalid_json,
+        test_hid_update_encoder_buttons,
     ]
 
     try:
