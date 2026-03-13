@@ -46,13 +46,14 @@ class WebServerManager:
     MAX_UPLOAD_SIZE_BYTES = 50 * 1024  # Maximum upload size (50KB)
     DEFAULT_MAX_LOGS = 1000  # Default maximum log entries to keep
 
-    def __init__(self, config, wifi_manager, console_buffer=None, power_manager=None, satellite_manager=None, matrix_manager=None, synth_manager=None, hid=None, testing=False):
+    def __init__(self, config, wifi_manager, app=None, console_buffer=None, power_manager=None, satellite_manager=None, matrix_manager=None, synth_manager=None, hid=None, testing=False):
         """
         Initialize the web server manager.
 
         Args:
             config (dict): Configuration dictionary
             wifi_manager (WiFiManager): REQUIRED: Shared WiFiManager instance for managing WiFi connectivity.
+            app: Optional CoreManager application instance for mode launching and registry access.
             console_buffer (object): Optional console buffer for output capture
             power_manager (PowerManager): Optional PowerManager for live telemetry
             satellite_manager (SatelliteNetworkManager): Optional SatelliteNetworkManager for link telemetry
@@ -72,6 +73,7 @@ class WebServerManager:
         self.enabled = config.get("web_server_enabled", False)
         self.wifi_manager = wifi_manager
 
+        self.app = app
         self.console_buffer = console_buffer
         self.power_manager = power_manager
         self.satellite_manager = satellite_manager
@@ -481,6 +483,74 @@ class WebServerManager:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
+        # API: Get full mode list from manifest with playable status
+        @self.server.route("/api/modes", GET)
+        def get_modes(request: Request):
+            """Return all game modes from the registry with settings and playable status.
+
+            Playable status is determined by comparing each mode's ``requires``
+            list against the hardware that is currently connected (CORE is always
+            present; satellite types are checked via the satellite_manager).
+            """
+            try:
+                # Resolve mode registry: prefer live app registry, fall back to manifest import
+                mode_registry = None
+                if self.app is not None and hasattr(self.app, 'mode_registry'):
+                    mode_registry = self.app.mode_registry
+                else:
+                    try:
+                        from modes.manifest import MODE_REGISTRY
+                        mode_registry = MODE_REGISTRY
+                    except ImportError:
+                        return Response(request, '{"error": "Mode registry not available"}',
+                                      content_type="application/json", status=503)
+
+                # Determine connected hardware
+                connected_hardware = ["CORE"]
+                if self.satellite_manager is not None:
+                    try:
+                        for sat in self.satellite_manager.satellites.values():
+                            if getattr(sat, 'is_active', False):
+                                sat_type = getattr(sat, 'sat_type_name', '')
+                                if sat_type and sat_type not in connected_hardware:
+                                    connected_hardware.append(sat_type)
+                    except Exception:
+                        pass
+
+                # Game menu categories only (exclude admin/system menus)
+                game_menus = {"CORE", "EXP1", "ZERO_PLAYER"}
+                modes = []
+                for mode_id, meta in mode_registry.items():
+                    if meta.get("menu") not in game_menus:
+                        continue
+                    requires = meta.get("requires", [])
+                    playable = all(hw in connected_hardware for hw in requires)
+                    modes.append({
+                        "id": meta["id"],
+                        "name": meta.get("name", meta["id"]),
+                        "menu": meta.get("menu", ""),
+                        "order": meta.get("order", 9999),
+                        "requires": requires,
+                        "optional": meta.get("optional", []),
+                        "has_tutorial": meta.get("has_tutorial", False),
+                        "playable": playable,
+                        "settings": meta.get("settings", []),
+                    })
+
+                # Sort: menu category, then order, then name
+                menu_order = {"CORE": 0, "ZERO_PLAYER": 1, "EXP1": 2}
+                _unknown_menu_order = len(menu_order)
+                modes.sort(key=lambda m: (menu_order.get(m["menu"], _unknown_menu_order), m["order"], m["name"]))
+
+                return Response(request, json.dumps({
+                    "connected_hardware": connected_hardware,
+                    "modes": modes,
+                }), content_type="application/json")
+            except Exception as e:
+                self.log(f"Error getting modes: {e}")
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
         # API: Get logs
         @self.server.route("/api/logs", GET)
         def get_logs(request: Request):
@@ -622,6 +692,54 @@ class WebServerManager:
                               content_type="application/json")
             except Exception as e:
                 self.log(f"Error reordering satellites: {e}")
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Launch a mode on the device
+        @self.server.route("/api/actions/launch-mode", POST)
+        def launch_mode(request: Request):
+            """Launch a specific game mode on the device.
+
+            Uses the same console-override mechanism as ConsoleManager to
+            request a mode transition from outside the main game loop.
+
+            JSON body fields:
+                mode_id  (str): The mode registry ID to launch (e.g. 'SIMON').
+                tutorial (bool, optional): When true, launch the tutorial variant.
+            """
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                mode_id = data.get("mode_id")
+                if not mode_id:
+                    return Response(request, '{"error": "mode_id required"}',
+                                  content_type="application/json", status=400)
+
+                if self.app is None:
+                    return Response(request, '{"error": "No app instance available"}',
+                                  content_type="application/json", status=503)
+
+                # Request tutorial variant if asked
+                tutorial = data.get("tutorial", False)
+                self.app._pending_mode_variant = "TUTORIAL" if tutorial else None
+
+                # Set high-priority console override (same as ConsoleManager)
+                self.app.console_override_mode = mode_id
+
+                # Interrupt the currently running mode so the app loop transitions
+                if hasattr(self.app, 'active_mode') and self.app.active_mode:
+                    self.app.active_mode._exit_requested = True
+                    if hasattr(self.app, 'active_mode_task') and self.app.active_mode_task:
+                        self.app.active_mode_task.cancel()
+
+                self.log(f"Mode launch requested: {mode_id} (tutorial={tutorial})")
+                return Response(request, f'{{"status": "launching", "mode_id": "{mode_id}"}}',
+                              content_type="application/json")
+            except Exception as e:
+                self.log(f"Error launching mode: {e}")
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 

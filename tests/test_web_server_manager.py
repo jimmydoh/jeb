@@ -757,6 +757,7 @@ def test_route_registration():
         '/',
         '/api/config/global',
         '/api/config/modes',
+        '/api/modes',
         '/api/files',
         '/api/files/download',
         '/api/files/upload',
@@ -765,6 +766,7 @@ def test_route_registration():
         '/api/actions/ota-update',
         '/api/actions/toggle-debug',
         '/api/actions/reorder-satellites',
+        '/api/actions/launch-mode',
         '/api/system/status',
         '/api/telemetry/status',
         '/api/hid/update',
@@ -2259,6 +2261,310 @@ def test_hid_update_encoder_buttons():
     print("  ✓ HID update encoder_buttons test passed")
 
 
+
+
+def test_get_modes_no_app():
+    """Test /api/modes endpoint when no app is provided (falls back to manifest import)."""
+    print("\nTesting GET /api/modes without app...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    assert manager.app is None, "app should default to None"
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    # Find the /api/modes GET route
+    modes_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/modes":
+            modes_route = func
+            break
+
+    assert modes_route is not None, "/api/modes route not found"
+
+    request = MockRequest()
+    response = modes_route(request)
+
+    # Response may be 200 (manifest available) or 503 (manifest not importable in test env)
+    assert response.status in (200, 503), f"Expected 200 or 503, got {response.status}"
+
+    print("  ✓ GET /api/modes without app test passed")
+
+
+def test_get_modes_with_app():
+    """Test /api/modes endpoint when app with mode_registry is provided."""
+    print("\nTesting GET /api/modes with app...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    class MockApp:
+        mode_registry = {
+            "SIMON": {
+                "id": "SIMON",
+                "name": "SIMON SAYS",
+                "menu": "CORE",
+                "order": 10,
+                "requires": ["CORE"],
+                "optional": [],
+                "has_tutorial": True,
+                "settings": [
+                    {"key": "difficulty", "label": "DIFF", "options": ["EASY", "NORMAL"], "default": "NORMAL"}
+                ]
+            },
+            "ARTY": {
+                "id": "ARTY",
+                "name": "ARTY COMMAND",
+                "menu": "EXP1",
+                "order": 6,
+                "requires": ["CORE", "INDUSTRIAL"],
+                "optional": [],
+                "has_tutorial": True,
+                "settings": []
+            },
+        }
+
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(), testing=True)
+    assert manager.app is not None, "app should be stored"
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    modes_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/modes":
+            modes_route = func
+            break
+
+    assert modes_route is not None, "/api/modes route not found"
+
+    request = MockRequest()
+    response = modes_route(request)
+
+    assert response.status == 200, f"Expected 200, got {response.status}: {response.body}"
+
+    data = json.loads(response.body)
+    assert "modes" in data, "Response missing 'modes' key"
+    assert "connected_hardware" in data, "Response missing 'connected_hardware' key"
+    assert "CORE" in data["connected_hardware"], "CORE should always be in connected_hardware"
+
+    # Verify SIMON appears and is playable (only requires CORE)
+    simon = next((m for m in data["modes"] if m["id"] == "SIMON"), None)
+    assert simon is not None, "SIMON not found in modes list"
+    assert simon["playable"] is True, "SIMON should be playable (CORE only)"
+    assert len(simon["settings"]) == 1, "SIMON should have 1 setting"
+
+    # ARTY requires INDUSTRIAL which isn't connected
+    arty = next((m for m in data["modes"] if m["id"] == "ARTY"), None)
+    assert arty is not None, "ARTY not found in modes list"
+    assert arty["playable"] is False, "ARTY should not be playable (INDUSTRIAL missing)"
+
+    print("  ✓ GET /api/modes with app test passed")
+
+
+def test_get_modes_with_industrial_satellite():
+    """Test /api/modes correctly marks INDUSTRIAL modes as playable when sat is connected."""
+    print("\nTesting GET /api/modes with INDUSTRIAL satellite...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    class MockSat:
+        is_active = True
+        sat_type_name = "INDUSTRIAL"
+
+    class MockSatManager:
+        satellites = {"SAT-01": MockSat()}
+
+    class MockApp:
+        mode_registry = {
+            "IND_GAME": {
+                "id": "IND_GAME",
+                "name": "INDUSTRIAL GAME",
+                "menu": "EXP1",
+                "order": 5,
+                "requires": ["CORE", "INDUSTRIAL"],
+                "optional": [],
+                "has_tutorial": False,
+                "settings": []
+            },
+        }
+
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(),
+                               satellite_manager=MockSatManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    modes_route = next((func for path, _, func in manager.server.routes if path == "/api/modes"), None)
+    assert modes_route is not None
+
+    response = modes_route(MockRequest())
+    assert response.status == 200
+    data = json.loads(response.body)
+
+    assert "INDUSTRIAL" in data["connected_hardware"], "INDUSTRIAL should be in connected hardware"
+
+    ind_game = next((m for m in data["modes"] if m["id"] == "IND_GAME"), None)
+    assert ind_game is not None
+    assert ind_game["playable"] is True, "IND_GAME should be playable with INDUSTRIAL satellite"
+
+    print("  ✓ GET /api/modes with INDUSTRIAL satellite test passed")
+
+
+def test_launch_mode_no_app():
+    """Test /api/actions/launch-mode returns 503 when no app is provided."""
+    print("\nTesting POST /api/actions/launch-mode without app...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    launch_route = next((func for path, _, func in manager.server.routes if path == "/api/actions/launch-mode"), None)
+    assert launch_route is not None, "/api/actions/launch-mode route not found"
+
+    request = MockRequest()
+    request.json = lambda: {"mode_id": "SIMON"}
+
+    response = launch_route(request)
+    assert response.status == 503, f"Expected 503 when no app, got {response.status}"
+    assert "No app instance" in response.body or "error" in response.body
+
+    print("  ✓ POST /api/actions/launch-mode without app test passed")
+
+
+def test_launch_mode_standard():
+    """Test /api/actions/launch-mode correctly requests a standard mode switch via app."""
+    print("\nTesting POST /api/actions/launch-mode standard launch...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    class MockMode:
+        _exit_requested = False
+
+    class MockApp:
+        mode_registry = {}
+        console_override_mode = None
+        _pending_mode_variant = None
+        active_mode = MockMode()
+        active_mode_task = None
+
+    app = MockApp()
+    manager = WebServerManager(config, MockWiFiManager(), app=app, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    launch_route = next((func for path, _, func in manager.server.routes if path == "/api/actions/launch-mode"), None)
+    assert launch_route is not None
+
+    request = MockRequest()
+    request.json = lambda: {"mode_id": "SIMON"}
+
+    response = launch_route(request)
+    assert response.status == 200, f"Expected 200, got {response.status}: {response.body}"
+    data = json.loads(response.body)
+    assert data.get("status") == "launching"
+    assert data.get("mode_id") == "SIMON"
+    assert app.console_override_mode == "SIMON"
+    assert app._pending_mode_variant is None
+    assert app.active_mode._exit_requested is True
+
+    print("  ✓ POST /api/actions/launch-mode standard launch test passed")
+
+
+def test_launch_mode_tutorial():
+    """Test /api/actions/launch-mode correctly requests tutorial variant via app."""
+    print("\nTesting POST /api/actions/launch-mode tutorial launch...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    class MockMode:
+        _exit_requested = False
+
+    class MockApp:
+        mode_registry = {}
+        console_override_mode = None
+        _pending_mode_variant = None
+        active_mode = MockMode()
+        active_mode_task = None
+
+    app = MockApp()
+    manager = WebServerManager(config, MockWiFiManager(), app=app, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    launch_route = next((func for path, _, func in manager.server.routes if path == "/api/actions/launch-mode"), None)
+    assert launch_route is not None
+
+    request = MockRequest()
+    request.json = lambda: {"mode_id": "SIMON", "tutorial": True}
+
+    response = launch_route(request)
+    assert response.status == 200, f"Expected 200, got {response.status}: {response.body}"
+    data = json.loads(response.body)
+    assert data.get("status") == "launching"
+    assert app.console_override_mode == "SIMON"
+    assert app._pending_mode_variant == "TUTORIAL"
+    assert app.active_mode._exit_requested is True
+
+    print("  ✓ POST /api/actions/launch-mode tutorial launch test passed")
+
+
+def test_launch_mode_missing_mode_id():
+    """Test /api/actions/launch-mode returns 400 when mode_id is missing."""
+    print("\nTesting POST /api/actions/launch-mode missing mode_id...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    class MockApp:
+        mode_registry = {}
+        console_override_mode = None
+        _pending_mode_variant = None
+        active_mode = None
+
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    launch_route = next((func for path, _, func in manager.server.routes if path == "/api/actions/launch-mode"), None)
+    assert launch_route is not None
+
+    request = MockRequest()
+    request.json = lambda: {"tutorial": False}  # missing mode_id
+
+    response = launch_route(request)
+    assert response.status == 400, f"Expected 400, got {response.status}"
+
+    print("  ✓ POST /api/actions/launch-mode missing mode_id test passed")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -2327,6 +2633,13 @@ def run_all_tests():
         test_hid_update_no_fields,
         test_hid_update_invalid_json,
         test_hid_update_encoder_buttons,
+        test_get_modes_no_app,
+        test_get_modes_with_app,
+        test_get_modes_with_industrial_satellite,
+        test_launch_mode_no_app,
+        test_launch_mode_standard,
+        test_launch_mode_tutorial,
+        test_launch_mode_missing_mode_id,
     ]
 
     try:

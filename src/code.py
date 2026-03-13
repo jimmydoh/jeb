@@ -267,6 +267,7 @@ if config.get("wifi_ssid") and config.get("wifi_password"):
                 WEB_SERVER = WebServerManager(
                     config,
                     wifi_manager=wifi_manager,
+                    app=app,
                     console_buffer=CONSOLE if CONSOLE else None,
                     power_manager=app.power if app else None,
                     satellite_manager=app.satellites if app and hasattr(app, "satellites") else None,
