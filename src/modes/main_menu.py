@@ -362,24 +362,17 @@ class MainMenu(UtilityMode):
                     last_rendered_category = None
                     JEBLogger.info("MENU", f"Switched to category: {current_category}, items: {menu_items}")
 
-                # Handle Focus Toggle ('D' Button)
-                if b4_pressed and not b4_long:
-                    JEBLogger.info("MENU", f"'D' button pressed, toggling focus from {focus_mode}")
+                # Handle Focus Toggle / Settings Entry
+                if focus_mode == "GAME" and b2_pressed and not b2_long:
+                    JEBLogger.info("MENU", f"B2 pressed, entering SETTINGS")
                     self.touch()
-                    if focus_mode == "GAME":
-                        # Only enter settings if the current game HAS settings
-                        current_game = menu_items[selected_game_idx]
-                        if len(self.core.mode_registry[current_game].get("settings", [])) > 0:
-                            JEBLogger.info("MENU", f"Entering SETTINGS focus for game '{current_game}'")
-                            focus_mode = "SETTINGS"
-                            selected_setting_idx = 0
-                            self.core.buzzer.play_sequence(tones.MENU_OPEN)
-                            needs_render = True
-                    else: # Exiting Settings
-                        JEBLogger.info("MENU", "Exiting SETTINGS focus, returning to GAME focus")
-                        focus_mode = "GAME"
-                        curr_pos = selected_game_idx
-                        self.core.buzzer.play_sequence(tones.MENU_CLOSE)
+                    # Only enter settings if the current game HAS settings
+                    current_game = menu_items[selected_game_idx]
+                    if len(self.core.mode_registry[current_game].get("settings", [])) > 0:
+                        JEBLogger.info("MENU", f"Entering SETTINGS focus for game '{current_game}'")
+                        focus_mode = "SETTINGS"
+                        selected_setting_idx = 0
+                        self.core.buzzer.play_sequence(tones.MENU_OPEN)
                         needs_render = True
 
                 # Handle GAME Focus Logic
@@ -470,6 +463,18 @@ class MainMenu(UtilityMode):
                             self.core.buzzer.play_sequence(tones.UI_CONFIRM)
                             needs_render = True
 
+                        if b4_pressed and not b4_long:
+                            JEBLogger.info("MENU", "Exiting SETTINGS")
+                            focus_mode = "GAME"
+                            self.core.buzzer.play_sequence(tones.MENU_CLOSE)
+                            needs_render = True
+
+                    else:
+                        JEBLogger.warning("MENU", "No settings found, exiting SETTINGS")
+                        focus_mode = "GAME"
+                        self.core.buzzer.play_sequence(tones.MENU_CLOSE)
+                        needs_render = True
+
             # =========================================
             # 3. RENDER STAGE
             # =========================================
@@ -544,10 +549,10 @@ class MainMenu(UtilityMode):
                                 high_score = self.core.data.get_high_score(mode_id)
                                 self.core.display.update_status(f"> {mode_meta['name']} <", f"Hi: {high_score}")
                             hints = ["B1:NEXT"]
-                            if mode_meta.get("has_tutorial", False):
-                                hints.append("B3:TUTE")
                             if len(mode_meta.get("settings", [])) > 0:
                                 hints.append("B2:SETT")
+                            if mode_meta.get("has_tutorial", False):
+                                hints.append("B3:TUTE")
                             self.core.display.update_footer(" ".join(hints))
                             self.core.display.show_settings_menu(False)
 
