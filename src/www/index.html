@@ -23,12 +23,12 @@
         }
         .tabs {
             display: flex;
-            gap: 10px;
+            gap: 5px;
             margin-bottom: 20px;
             border-bottom: 2px solid #333;
         }
         .tab {
-            padding: 10px 20px;
+            padding: 5px 10px;
             background: #2a2a2a;
             border: none;
             color: #e0e0e0;
@@ -453,7 +453,7 @@
 
         <div class="tabs">
             <button class="tab active" onclick="showTab('system')">System Status</button>
-            <button class="tab" onclick="showTab('config')">Configuration</button>
+            <button class="tab" onclick="showTab('config')">Config</button>
             <button class="tab" onclick="showTab('modes')">Mode Settings</button>
             <button class="tab" onclick="showTab('files')">File Browser</button>
             <button class="tab" onclick="showTab('logs')">Logs</button>
@@ -686,16 +686,16 @@
                     <div class="hid-btn-grid">
                         <button class="hid-push-btn" id="hidBtn0"
                             onmousedown="hidBtnPress(0)" onmouseup="hidBtnRelease(0)" onmouseleave="hidBtnRelease(0)"
-                            ontouchstart="event.preventDefault(); hidBtnPress(0)" ontouchend="hidBtnRelease(0)" ontouchcancel="hidBtnRelease(0)">B0</button>
+                            ontouchstart="event.preventDefault(); hidBtnPress(0)" ontouchend="hidBtnRelease(0)" ontouchcancel="hidBtnRelease(0)">B1</button>
                         <button class="hid-push-btn" id="hidBtn1"
                             onmousedown="hidBtnPress(1)" onmouseup="hidBtnRelease(1)" onmouseleave="hidBtnRelease(1)"
-                            ontouchstart="event.preventDefault(); hidBtnPress(1)" ontouchend="hidBtnRelease(1)" ontouchcancel="hidBtnRelease(1)">B1</button>
+                            ontouchstart="event.preventDefault(); hidBtnPress(1)" ontouchend="hidBtnRelease(1)" ontouchcancel="hidBtnRelease(1)">B2</button>
                         <button class="hid-push-btn" id="hidBtn2"
                             onmousedown="hidBtnPress(2)" onmouseup="hidBtnRelease(2)" onmouseleave="hidBtnRelease(2)"
-                            ontouchstart="event.preventDefault(); hidBtnPress(2)" ontouchend="hidBtnRelease(2)" ontouchcancel="hidBtnRelease(2)">B2</button>
+                            ontouchstart="event.preventDefault(); hidBtnPress(2)" ontouchend="hidBtnRelease(2)" ontouchcancel="hidBtnRelease(2)">B3</button>
                         <button class="hid-push-btn" id="hidBtn3"
                             onmousedown="hidBtnPress(3)" onmouseup="hidBtnRelease(3)" onmouseleave="hidBtnRelease(3)"
-                            ontouchstart="event.preventDefault(); hidBtnPress(3)" ontouchend="hidBtnRelease(3)" ontouchcancel="hidBtnRelease(3)">B3</button>
+                            ontouchstart="event.preventDefault(); hidBtnPress(3)" ontouchend="hidBtnRelease(3)" ontouchcancel="hidBtnRelease(3)">B4</button>
                     </div>
                 </div>
 
@@ -703,11 +703,11 @@
                 <div class="hid-section">
                     <h3>Encoder</h3>
                     <div class="hid-encoder-controls">
-                        <button class="hid-enc-step-btn" onclick="hidEncoderStep(-10)" title="-10" aria-label="Decrease by 10">«</button>
+                        <button class="hid-enc-step-btn" onclick="hidEncoderStep(-5)" title="-5" aria-label="Decrease by 5">«</button>
                         <button class="hid-enc-step-btn" onclick="hidEncoderStep(-1)" title="-1" aria-label="Decrease by 1">−</button>
                         <div class="hid-encoder-display" id="hidEncoderVal" aria-live="polite" aria-label="Encoder position">0</div>
                         <button class="hid-enc-step-btn" onclick="hidEncoderStep(1)" title="+1" aria-label="Increase by 1">+</button>
-                        <button class="hid-enc-step-btn" onclick="hidEncoderStep(10)" title="+10" aria-label="Increase by 10">»</button>
+                        <button class="hid-enc-step-btn" onclick="hidEncoderStep(5)" title="+5" aria-label="Increase by 5">»</button>
                         <button class="hid-enc-step-btn" onclick="hidEncoderReset()" title="Reset to 0" aria-label="Reset to 0" style="font-size:0.7em;">RST</button>
                     </div>
                     <div class="hid-enc-btn-wrap">
@@ -881,7 +881,7 @@
             if (bytes < 1024 * 1024) return Math.floor(bytes / 1024) + ' KB';
             return Math.floor(bytes / (1024 * 1024)) + ' MB';
         }
-        
+
         const LOG_LEVEL_COLORS = {
             'DBUG': '#888',
             'INFO': '#4fc3f7',
@@ -987,7 +987,7 @@
                 showStatus('consoleStatus', 'Error: ' + error, 'error');
             }
         }
-        
+
         async function triggerOTAUpdate() {
             if (!confirm('Trigger OTA update? Device will update on next boot.')) return;
 

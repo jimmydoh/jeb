@@ -267,9 +267,11 @@ if config.get("wifi_ssid") and config.get("wifi_password"):
                 WEB_SERVER = WebServerManager(
                     config,
                     wifi_manager=wifi_manager,
+                    console_buffer=CONSOLE if CONSOLE else None,
                     power_manager=app.power if app else None,
                     satellite_manager=app.satellites if app and hasattr(app, "satellites") else None,
                     matrix_manager=app.matrix if app and hasattr(app, "matrix") else None,
+                    synth_manager=app.synth if app and hasattr(app, "synth") else None,
                     hid=app.hid if app and hasattr(app, "hid") else None
                 )
                 JEBLogger.info("CODE", "Web server manager initialized - will start with app")
