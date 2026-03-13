@@ -38,10 +38,6 @@ MODE_REGISTRY = {
         "module_path": "modes.zero_player",
         "class_name": "ZeroPlayerMode",
         "icon": "ZERO_PLAYER",
-        "menu": "CORE",
-        "has_tutorial": True,
-        "order": 500,
-        "submenu": "ZERO_PLAYER",
         "requires": ["CORE"],
         "settings": []
     },
