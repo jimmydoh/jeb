@@ -402,20 +402,15 @@ class MainMenu(UtilityMode):
                         # Check the manifest BEFORE loading the class!
                         if mode_meta.get("has_tutorial", False):
                             JEBLogger.info("MENU", f"Starting tutorial for {mode_id}")
+                            mode_id = menu_items[selected_game_idx]
+                            mode_meta = self.core.mode_registry[mode_id]
                             self.core.buzzer.play_sequence(tones.MENU_LAUNCH)
-                            self.core.display.update_status("TUTORIAL", "LOADING...")
-
-                            # Safely load the class and run the sequence
-                            mode_class = self.core._load_mode_class(mode_id)
-                            mode_instance = mode_class(self.core)
-                            await mode_instance.run_tutorial()
-
-                            # Tutorial finished: trigger a full menu re-render
-                            self._set_state("MENU")
-                            needs_render = True
-                            last_pos = self.core.hid.encoder_position()
-
-                            last_rendered_game = -1
+                            self.core._menu_return_state = "MENU"
+                            self.core._last_menu_idx = selected_game_idx
+                            self.core._last_menu_category = current_category
+                            self.core.mode = mode_id
+                            self.core._pending_mode_variant = "TUTORIAL"
+                            return "MENU_CHOICE"
                         else:
                             # Catch-all just in case they press it on a mode without one
                             JEBLogger.info("MENU", f"No tutorial available for {mode_id}")

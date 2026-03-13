@@ -277,9 +277,10 @@ class HIDManager:
                     JEBLogger.info("HIDM", f"SW set button[{i}] PRESSED.")
                     self.buttons_timestamps[i] = now
                 else:  # Button released - detect tap
-                    JEBLogger.info("HIDM", f"SW set button[{i}] RELEASED.")
                     start_time = self.buttons_timestamps[i]
-                    if start_time > 0 and ticks_diff(now, start_time) < 500:
+                    elapsed = ticks_diff(now, start_time)
+                    JEBLogger.info("HIDM", f"SW set button[{i}] RELEASED after {elapsed} ms.")
+                    if start_time > 0 and elapsed < 500:
                         JEBLogger.info("HIDM", f"SW set button[{i}] TAPPED.")
                         self.buttons_tapped[i] = True
                 dirty = True

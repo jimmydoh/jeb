@@ -41,6 +41,10 @@ class BaseMode:
         """Override this method in subclasses."""
         raise NotImplementedError("Subclasses must implement the run() method.")
 
+    async def run_tutorial(self):
+        """Override this method in subclasses."""
+        raise NotImplementedError("Subclasses must implement the run_tutorial() method.")
+
     async def _monitor_exit(self, main_task):
         """
         Monitors for a global exit command (long press Button 3)
@@ -66,11 +70,20 @@ class BaseMode:
         monitor_task = None
         try:
             await self.enter()
-            run_task = asyncio.create_task(self.run())
+
+            if getattr(self, "variant", None) == "TUTORIAL" and hasattr(self, "run_tutorial"):
+                JEBLogger.info("MODE", f"Running tutorial variant of mode: {self.name}")
+                run_task = asyncio.create_task(self.run_tutorial())
+            else:
+                JEBLogger.info("MODE", f"Running main variant of mode: {self.name}")
+                run_task = asyncio.create_task(self.run())
+
             if self.exitable:
+                JEBLogger.info("MODE", f"Starting exit monitor for mode: {self.name}")
                 monitor_task = asyncio.create_task(self._monitor_exit(run_task))
             try:
                 # Await the main mode task
+                JEBLogger.info("MODE", f"Awaiting main task for mode: {self.name}")
                 result = await run_task
             except asyncio.CancelledError:
                 # Handle _monitor_exit cancelling the run task

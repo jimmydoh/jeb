@@ -857,23 +857,15 @@ class CoreManager:
                     mode_instance = mode_class(self)
                     self.active_mode = mode_instance
 
-                    # Check if the developer console requested a tutorial run.
-                    # _pending_mode_variant is consumed once (single-use flag) and
-                    # is always cleared in the finally block so it cannot persist
-                    # across mode transitions.
+                    JEBLogger.debug("CORE", f"Pending mode variant for '{self.active_mode}' = '{self._pending_mode_variant}'")
+
                     if self._pending_mode_variant == "TUTORIAL":
+                        JEBLogger.info("CORE", f"Applying tutorial variant for mode '{self.active_mode}'")
                         try:
-                            JEBLogger.info("CORE", f"Console requested tutorial for '{self.mode}'")
-                            await mode_instance.enter()
-                            await mode_instance.run_tutorial()
+                            mode_instance.variant = "TUTORIAL"  # Set the mode instance to tutorial variant
+                            self._pending_mode_variant = None  # Clear the flag immediately after consuming it
                         except Exception as e:
-                            JEBLogger.error("CORE", f"Tutorial error for '{self.mode}': {e}")
-                        finally:
-                            self._pending_mode_variant = None
-                            self.active_mode = None
-                            await mode_instance.exit()
-                        self.mode = "DASHBOARD"
-                        continue
+                            JEBLogger.error("CORE", f"Tutorial error for '{self.active_mode}': {e}")
 
                     run_robust = True
                     while run_robust:

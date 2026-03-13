@@ -25,10 +25,6 @@ class GameMode(BaseMode):
         """
         return self.variant or "DEFAULT"
 
-    async def run_tutorial(self):
-        """Override this method in subclasses that have tutorials."""
-        pass
-
     def get_high_score(self):
         """Helper to get the high score for the current setup."""
         return self.core.data.get_high_score(self.name, self.score_key)
