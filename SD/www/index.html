@@ -48,6 +48,24 @@
         .tab-content.active {
             display: block;
         }
+        .mode-filter-btn {
+            padding: 4px 12px;
+            background: #2a2a2a;
+            border: 1px solid #555;
+            color: #b0b0b0;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.85em;
+            margin-right: 0;
+        }
+        .mode-filter-btn.active {
+            background: #1e3e1e;
+            border-color: #4CAF50;
+            color: #4CAF50;
+        }
+        .mode-filter-btn:hover {
+            background: #333;
+        }
         .form-group {
             margin-bottom: 15px;
         }
@@ -453,7 +471,7 @@
         <div class="tabs">
             <button class="tab active" onclick="showTab('system')">System Status</button>
             <button class="tab" onclick="showTab('config')">Config</button>
-            <button class="tab" onclick="showTab('modes')">Mode Settings</button>
+            <button class="tab" onclick="showTab('modes')">Modes</button>
             <button class="tab" onclick="showTab('files')">File Browser</button>
             <button class="tab" onclick="showTab('logs')">Logs</button>
             <button class="tab" onclick="showTab('console')">Console</button>
@@ -499,10 +517,17 @@
         </div>
 
         <div id="modes" class="tab-content">
-            <h2>Mode Settings</h2>
-            <p style="color: #b0b0b0; margin-bottom: 15px;">Configure settings for each game mode</p>
+            <h2>Game Modes</h2>
+            <div style="margin-bottom:15px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <span style="color:#b0b0b0; margin-right:4px;">Filter:</span>
+                <button class="mode-filter-btn active" onclick="filterModes('ALL', this)">All</button>
+                <button class="mode-filter-btn" onclick="filterModes('CORE', this)">Core Only</button>
+                <button class="mode-filter-btn" onclick="filterModes('ZERO_PLAYER', this)">Zero Player</button>
+                <button class="mode-filter-btn" onclick="filterModes('EXP1', this)">Industrial</button>
+                <button style="margin-left:auto;" onclick="loadModes()">↺ Refresh</button>
+            </div>
+            <div id="modesHardware" style="margin-bottom:12px;"></div>
             <div id="modesList"></div>
-            <button onclick="loadModeSettings()">Refresh Mode Settings</button>
             <div id="modesStatus" class="status" style="display:none;"></div>
         </div>
 
@@ -735,7 +760,7 @@
             if (tabName === 'files') loadFiles();
             if (tabName === 'logs') loadLogs();
             if (tabName === 'console') loadConsole();
-            if (tabName === 'modes') loadModeSettings();
+            if (tabName === 'modes') loadModes();
             if (tabName === 'telemetry') startTelemetry();
             if (tabName === 'pixelart') initPixelArtStudio();
             if (tabName === 'audiostudio') initAudioStudio();
@@ -1020,43 +1045,129 @@
             }
         }
 
-        async function loadModeSettings() {
+        let _currentModeFilter = 'ALL';
+
+        function filterModes(menu, btn) {
+            _currentModeFilter = menu;
+            // Update filter button styles
+            document.querySelectorAll('.mode-filter-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            // Show/hide mode cards
+            document.querySelectorAll('.mode-card').forEach(card => {
+                card.style.display = (menu === 'ALL' || card.dataset.menu === menu) ? '' : 'none';
+            });
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+        }
+
+        async function loadModes() {
             try {
-                const response = await fetch('/api/config/modes');
-                const modes = await response.json();
+                const response = await fetch('/api/modes');
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const data = await response.json();
+
+                // Show connected hardware
+                const hwDiv = document.getElementById('modesHardware');
+                const hwList = data.connected_hardware || ['CORE'];
+                hwDiv.innerHTML = '<span style="color:#b0b0b0;">Connected hardware: </span>' +
+                    hwList.map(hw => `<span style="padding:1px 8px; background:#1a3a1a; border:1px solid #4CAF50; border-radius:3px; color:#4CAF50; font-size:0.85em; margin-right:4px;">${escapeHtml(hw)}</span>`).join('');
 
                 const modesList = document.getElementById('modesList');
                 modesList.innerHTML = '';
 
-                for (const [modeId, modeData] of Object.entries(modes)) {
+                const menuLabels = { CORE: 'Core', ZERO_PLAYER: 'Zero Player', EXP1: 'Industrial' };
+                let currentMenu = null;
+
+                for (const mode of (data.modes || [])) {
+                    // Menu section header
+                    if (mode.menu !== currentMenu) {
+                        currentMenu = mode.menu;
+                        const header = document.createElement('h3');
+                        header.textContent = menuLabels[currentMenu] || currentMenu;
+                        header.style.cssText = 'color:#888; font-size:0.85em; text-transform:uppercase; letter-spacing:2px; margin:18px 0 8px; padding-bottom:4px; border-bottom:1px solid #333;';
+                        header.dataset.menu = currentMenu;
+                        modesList.appendChild(header);
+                    }
+
                     const modeDiv = document.createElement('div');
-                    modeDiv.style.marginBottom = '20px';
-                    modeDiv.style.padding = '15px';
-                    modeDiv.style.background = '#1a1a1a';
-                    modeDiv.style.borderRadius = '5px';
+                    modeDiv.className = 'mode-card';
+                    modeDiv.dataset.menu = mode.menu;
+                    modeDiv.style.cssText = 'margin-bottom:10px; padding:12px 14px; background:#1a1a1a; border-radius:5px; border-left:3px solid ' + (mode.playable ? '#4CAF50' : '#444') + ';';
 
-                    let html = `<h3 style="color: #4CAF50; margin-bottom: 10px;">${modeId}</h3>`;
-
-                    modeData.settings.forEach(setting => {
-                        const currentValue = modeData.current[setting.key] || setting.default;
-                        html += `
-                            <div class="form-group">
-                                <label>${setting.label}:</label>
-                                <select id="${modeId}_${setting.key}">
-                                    ${setting.options.map(opt =>
-                                        `<option value="${opt}" ${opt === currentValue ? 'selected' : ''}>${opt}</option>`
-                                    ).join('')}
-                                </select>
-                            </div>
-                        `;
+                    // Header row: name + hardware badges + action buttons
+                    let html = '<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">';
+                    html += '<div style="flex:1;">';
+                    html += `<span style="font-weight:bold; color:${mode.playable ? '#e0e0e0' : '#888'};">${escapeHtml(mode.name)}</span>`;
+                    // Requires badges
+                    (mode.requires || []).forEach(hw => {
+                        html += ` <span style="padding:1px 5px; background:#222; border:1px solid ${mode.playable ? '#555' : '#333'}; border-radius:3px; font-size:0.75em; color:#888;">${escapeHtml(hw)}</span>`;
                     });
+                    // Optional badges
+                    (mode.optional || []).forEach(hw => {
+                        html += ` <span style="padding:1px 5px; background:#1a1a1a; border:1px solid #333; border-radius:3px; font-size:0.75em; color:#555;" title="Optional">${escapeHtml(hw)}</span>`;
+                    });
+                    html += '</div>';
 
-                    html += `<button onclick="saveModeSettings('${modeId}')">Save ${modeId} Settings</button>`;
+                    // Action buttons
+                    html += '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">';
+                    if (mode.playable) {
+                        html += `<button onclick="launchMode('${escapeHtml(mode.id)}', false)" style="background:#1e3e1e; border-color:#4CAF50; color:#4CAF50; padding:4px 10px;">▶ Launch</button>`;
+                        if (mode.has_tutorial) {
+                            html += `<button onclick="launchMode('${escapeHtml(mode.id)}', true)" style="background:#12283c; border-color:#4fc3f7; color:#4fc3f7; padding:4px 10px;">📖 Tutorial</button>`;
+                        }
+                    }
+                    if ((mode.settings || []).length > 0) {
+                        html += `<button onclick="saveModeSettings('${escapeHtml(mode.id)}')" style="background:#2a2a2a; padding:4px 10px;">💾 Save</button>`;
+                    }
+                    html += '</div>';
+                    html += '</div>';
+
+                    // Settings row
+                    if ((mode.settings || []).length > 0) {
+                        html += '<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:10px;">';
+                        mode.settings.forEach(setting => {
+                            html += `<div class="form-group" style="margin:0; min-width:120px;">`;
+                            html += `<label style="font-size:0.82em; color:#aaa;">${escapeHtml(setting.label)}:</label>`;
+                            html += `<select id="${escapeHtml(mode.id)}_${escapeHtml(setting.key)}">`;
+                            (setting.options || []).forEach(opt => {
+                                html += `<option value="${escapeHtml(opt)}"${opt === setting.default ? ' selected' : ''}>${escapeHtml(opt)}</option>`;
+                            });
+                            html += '</select></div>';
+                        });
+                        html += '</div>';
+                    }
+
                     modeDiv.innerHTML = html;
                     modesList.appendChild(modeDiv);
                 }
+
+                // Apply active filter
+                filterModes(_currentModeFilter, null);
+
             } catch (error) {
-                showStatus('modesStatus', 'Error loading mode settings: ' + error, 'error');
+                showStatus('modesStatus', 'Error loading modes: ' + error, 'error');
+            }
+        }
+
+        async function launchMode(modeId, tutorial) {
+            const label = tutorial ? 'tutorial' : 'main game';
+            if (!confirm(`Launch "${modeId}" (${label}) on device?`)) return;
+            try {
+                const response = await fetch('/api/actions/launch-mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode_id: modeId, tutorial: tutorial })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showStatus('modesStatus', `Launching ${modeId} (${label}) on device…`, 'success');
+                } else {
+                    showStatus('modesStatus', 'Error: ' + (result.error || 'Unknown'), 'error');
+                }
+            } catch (error) {
+                showStatus('modesStatus', 'Error: ' + error, 'error');
             }
         }
 
@@ -1076,7 +1187,7 @@
                 });
 
                 if (response.ok) {
-                    showStatus('modesStatus', `${modeId} settings saved successfully`, 'success');
+                    showStatus('modesStatus', `${escapeHtml(modeId)} settings saved`, 'success');
                 } else {
                     showStatus('modesStatus', 'Error saving settings', 'error');
                 }
