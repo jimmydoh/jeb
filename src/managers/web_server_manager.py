@@ -541,6 +541,11 @@ class WebServerManager:
                         pass
 
                 # Game menu categories only (exclude admin/system menus)
+                # Resolve DataManager if available
+                data_mgr = None
+                if self.app is not None and hasattr(self.app, 'data'):
+                    data_mgr = self.app.data
+
                 game_menus = {"CORE", "EXP1", "ZERO_PLAYER"}
                 modes = []
                 for mode_id, meta in mode_registry.items():
@@ -548,6 +553,13 @@ class WebServerManager:
                         continue
                     requires = meta.get("requires", [])
                     playable = all(hw in connected_hardware for hw in requires)
+                    settings = meta.get("settings", [])
+                    current = {}
+                    for s in settings:
+                        if data_mgr is not None:
+                            current[s["key"]] = data_mgr.get_setting(mode_id, s["key"], s["default"])
+                        else:
+                            current[s["key"]] = s["default"]
                     modes.append({
                         "id": meta["id"],
                         "name": meta.get("name", meta["id"]),
@@ -557,7 +569,8 @@ class WebServerManager:
                         "optional": meta.get("optional", []),
                         "has_tutorial": meta.get("has_tutorial", False),
                         "playable": playable,
-                        "settings": meta.get("settings", []),
+                        "settings": settings,
+                        "current": current,
                     })
 
                 # Sort: menu category, then order, then name

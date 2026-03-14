@@ -2543,6 +2543,117 @@ def test_get_modes_with_industrial_satellite():
     print("  ✓ GET /api/modes with INDUSTRIAL satellite test passed")
 
 
+def test_get_modes_current_values_from_data_manager():
+    """Test /api/modes includes current setting values from DataManager."""
+    print("\nTesting GET /api/modes current values from DataManager...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    class MockDataManager:
+        def __init__(self):
+            self.data = {
+                "SIMON": {
+                    "CONFIG": {
+                        "difficulty": "HARD",
+                        "mode": "REVERSE"
+                    }
+                }
+            }
+
+        def get_setting(self, mode_name, setting_key, default=None):
+            return self.data.get(mode_name, {}).get("CONFIG", {}).get(setting_key, default)
+
+    class MockApp:
+        data = MockDataManager()
+        mode_registry = {
+            "SIMON": {
+                "id": "SIMON",
+                "name": "SIMON SAYS",
+                "menu": "CORE",
+                "order": 10,
+                "requires": ["CORE"],
+                "optional": [],
+                "has_tutorial": True,
+                "settings": [
+                    {"key": "difficulty", "label": "DIFF", "options": ["EASY", "NORMAL", "HARD"], "default": "NORMAL"},
+                    {"key": "mode", "label": "MODE", "options": ["CLASSIC", "REVERSE", "BLIND"], "default": "CLASSIC"},
+                ]
+            },
+        }
+
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    modes_route = next((func for path, _, func in manager.server.routes if path == "/api/modes"), None)
+    assert modes_route is not None, "/api/modes route not found"
+
+    response = modes_route(MockRequest())
+    assert response.status == 200, f"Expected 200, got {response.status}"
+
+    data = json.loads(response.body)
+    simon = next((m for m in data["modes"] if m["id"] == "SIMON"), None)
+    assert simon is not None, "SIMON not found in modes list"
+    assert "current" in simon, "SIMON mode should include 'current' dict"
+    assert simon["current"]["difficulty"] == "HARD", \
+        f"Expected difficulty 'HARD' from DataManager, got '{simon['current']['difficulty']}'"
+    assert simon["current"]["mode"] == "REVERSE", \
+        f"Expected mode 'REVERSE' from DataManager, got '{simon['current']['mode']}'"
+
+    print("  ✓ GET /api/modes current values from DataManager test passed")
+
+
+def test_get_modes_current_values_fallback_to_default():
+    """Test /api/modes falls back to default when no DataManager available."""
+    print("\nTesting GET /api/modes current values fallback to default...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    class MockApp:
+        # no 'data' attribute - DataManager not available
+        mode_registry = {
+            "SIMON": {
+                "id": "SIMON",
+                "name": "SIMON SAYS",
+                "menu": "CORE",
+                "order": 10,
+                "requires": ["CORE"],
+                "optional": [],
+                "has_tutorial": True,
+                "settings": [
+                    {"key": "difficulty", "label": "DIFF", "options": ["EASY", "NORMAL", "HARD"], "default": "NORMAL"},
+                ]
+            },
+        }
+
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    modes_route = next((func for path, _, func in manager.server.routes if path == "/api/modes"), None)
+    assert modes_route is not None, "/api/modes route not found"
+
+    response = modes_route(MockRequest())
+    assert response.status == 200, f"Expected 200, got {response.status}"
+
+    data = json.loads(response.body)
+    simon = next((m for m in data["modes"] if m["id"] == "SIMON"), None)
+    assert simon is not None, "SIMON not found in modes list"
+    assert "current" in simon, "SIMON mode should include 'current' dict"
+    assert simon["current"]["difficulty"] == "NORMAL", \
+        f"Expected default difficulty 'NORMAL', got '{simon['current']['difficulty']}'"
+
+    print("  ✓ GET /api/modes current values fallback to default test passed")
+
+
 def test_launch_mode_no_app():
     """Test /api/actions/launch-mode returns 503 when no app is provided."""
     print("\nTesting POST /api/actions/launch-mode without app...")
@@ -2759,6 +2870,8 @@ def run_all_tests():
         test_get_modes_no_app,
         test_get_modes_with_app,
         test_get_modes_with_industrial_satellite,
+        test_get_modes_current_values_from_data_manager,
+        test_get_modes_current_values_fallback_to_default,
         test_launch_mode_no_app,
         test_launch_mode_standard,
         test_launch_mode_tutorial,

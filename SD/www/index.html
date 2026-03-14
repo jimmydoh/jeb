@@ -1128,11 +1128,13 @@
                     if ((mode.settings || []).length > 0) {
                         html += '<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:10px;">';
                         mode.settings.forEach(setting => {
+                            const current = mode.current || {};
+                            const currentValue = current[setting.key] !== undefined ? current[setting.key] : setting.default;
                             html += `<div class="form-group" style="margin:0; min-width:120px;">`;
                             html += `<label style="font-size:0.82em; color:#aaa;">${escapeHtml(setting.label)}:</label>`;
                             html += `<select id="${escapeHtml(mode.id)}_${escapeHtml(setting.key)}">`;
                             (setting.options || []).forEach(opt => {
-                                html += `<option value="${escapeHtml(opt)}"${opt === setting.default ? ' selected' : ''}>${escapeHtml(opt)}</option>`;
+                                html += `<option value="${escapeHtml(opt)}"${opt === currentValue ? ' selected' : ''}>${escapeHtml(opt)}</option>`;
                             });
                             html += '</select></div>';
                         });
