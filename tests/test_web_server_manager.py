@@ -167,6 +167,20 @@ spec.loader.exec_module(web_server_module)
 WebServerManager = web_server_module.WebServerManager
 
 
+class MockDataManager:
+    """Minimal DataManager stub for web server tests."""
+    def __init__(self, initial=None):
+        self._store = initial or {}
+
+    def get_setting(self, mode_name, key, default=None):
+        return self._store.get(mode_name, {}).get(key, default)
+
+    def set_setting(self, mode_name, key, value):
+        if mode_name not in self._store:
+            self._store[mode_name] = {}
+        self._store[mode_name][key] = value
+
+
 def test_initialization():
     """Test WebServerManager initialization."""
     print("Testing WebServerManager initialization...")
@@ -443,7 +457,7 @@ def test_config_update_with_invalid_types():
 
 
 def test_mode_settings_update():
-    """Test mode settings update endpoint."""
+    """Test mode settings update endpoint persists to DataManager."""
     print("\nTesting mode settings update...")
 
     config = {
@@ -452,7 +466,12 @@ def test_mode_settings_update():
         "web_server_enabled": True
     }
 
-    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    class MockApp:
+        def __init__(self):
+            self.data = MockDataManager()
+
+    mock_app = MockApp()
+    manager = WebServerManager(config, MockWiFiManager(), app=mock_app, testing=True)
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -465,7 +484,7 @@ def test_mode_settings_update():
 
     assert update_mode_route is not None, "Update mode settings route not found"
 
-    # Test: Valid mode settings update
+    # Test: Valid mode settings update - verify persisted to DataManager
     request = MockRequest()
     update_data = {
         "mode_id": "SIMON",
@@ -480,6 +499,12 @@ def test_mode_settings_update():
     response = update_mode_route(request)
     assert response.status == 200, f"Should accept valid mode settings, got {response.status}"
     assert "success" in response.body, f"Should return success, got {response.body}"
+
+    # Verify settings were actually saved to DataManager
+    assert mock_app.data.get_setting("SIMON", "difficulty") == "HARD", \
+        "difficulty should be saved to DataManager"
+    assert mock_app.data.get_setting("SIMON", "mode") == "BLIND", \
+        "mode should be saved to DataManager"
 
     # Test: Missing mode_id
     request = MockRequest()
@@ -501,7 +526,104 @@ def test_mode_settings_update():
     response = update_mode_route(request)
     assert response.status == 400, "Should reject missing settings"
 
+    # Test: No app available returns 503
+    manager_no_app = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager_no_app.server = MockServer(None, "/static")
+    manager_no_app.setup_routes()
+
+    no_app_route = None
+    for path, method, func in manager_no_app.server.routes:
+        if path == "/api/config/modes" and 'update' in func.__name__:
+            no_app_route = func
+            break
+
+    assert no_app_route is not None, "Update mode settings route not found (no-app manager)"
+
+    request = MockRequest()
+    request.body = json.dumps(update_data).encode()
+    request.json = lambda: update_data
+
+    response = no_app_route(request)
+    assert response.status == 503, "Should return 503 when DataManager is not available"
+
     print("  ✓ Mode settings update test passed")
+
+
+def test_mode_settings_get():
+    """Test GET /api/config/modes reads current values from DataManager."""
+    print("\nTesting GET /api/config/modes with DataManager...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    class MockApp:
+        def __init__(self):
+            self.data = MockDataManager(initial={"SIMON": {"difficulty": "INSANE"}})
+            self.mode_registry = {
+                "SIMON": {
+                    "id": "SIMON",
+                    "name": "SIMON SAYS",
+                    "menu": "CORE",
+                    "order": 10,
+                    "requires": ["CORE"],
+                    "optional": [],
+                    "has_tutorial": True,
+                    "settings": [
+                        {"key": "difficulty", "label": "DIFF",
+                         "options": ["EASY", "NORMAL", "HARD", "INSANE"], "default": "NORMAL"}
+                    ]
+                },
+                "NO_SETTINGS_MODE": {
+                    "id": "NO_SETTINGS_MODE",
+                    "name": "NO SETTINGS",
+                    "menu": "CORE",
+                    "order": 99,
+                    "requires": ["CORE"],
+                    "optional": [],
+                    "has_tutorial": False,
+                    "settings": []
+                }
+            }
+
+    mock_app = MockApp()
+    manager = WebServerManager(config, MockWiFiManager(), app=mock_app, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    # Find the GET mode settings route
+    get_mode_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/api/config/modes" and 'get' in func.__name__:
+            get_mode_route = func
+            break
+
+    assert get_mode_route is not None, "GET mode settings route not found"
+
+    request = MockRequest()
+    response = get_mode_route(request)
+
+    assert response.status == 200, f"Expected 200, got {response.status}: {response.body}"
+
+    data = json.loads(response.body)
+
+    # SIMON has settings, should appear in response
+    assert "SIMON" in data, "SIMON should appear in mode settings response"
+    simon = data["SIMON"]
+    assert "settings" in simon, "SIMON entry missing 'settings'"
+    assert "current" in simon, "SIMON entry missing 'current'"
+
+    # Current value should come from DataManager (INSANE), not the default (NORMAL)
+    assert simon["current"]["difficulty"] == "INSANE", \
+        f"Expected DataManager value 'INSANE', got '{simon['current']['difficulty']}'"
+
+    # Mode without settings should be excluded
+    assert "NO_SETTINGS_MODE" not in data, \
+        "Modes without settings should not appear in /api/config/modes response"
+
+    print("  ✓ GET /api/config/modes with DataManager test passed")
 
 
 def test_ota_update_trigger():
@@ -2582,6 +2704,7 @@ def run_all_tests():
         test_download_file_chunked_reading,
         test_config_update_with_invalid_types,
         test_mode_settings_update,
+        test_mode_settings_get,
         test_ota_update_trigger,
         test_debug_mode_toggle,
         test_system_status,

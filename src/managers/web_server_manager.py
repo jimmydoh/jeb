@@ -432,23 +432,40 @@ class WebServerManager:
         # API: Get mode settings
         @self.server.route("/api/config/modes", GET)
         def get_mode_settings(request: Request):
-            """Return mode settings from data manager."""
+            """Return mode settings from the registry with current values from DataManager."""
             try:
-                # Load mode settings from data manager if available
-                # For now, return example structure showing available modes
-                modes_data = {
-                    "SIMON": {
-                        "settings": [
-                            {"key": "mode", "label": "MODE", "options": ["CLASSIC", "REVERSE", "BLIND"], "default": "CLASSIC"},
-                            {"key": "difficulty", "label": "DIFF", "options": ["EASY", "NORMAL", "HARD", "INSANE"], "default": "NORMAL"}
-                        ],
-                        "current": {
-                            "mode": "CLASSIC",
-                            "difficulty": "NORMAL"
-                        }
-                    },
-                    # Add more modes as needed
-                }
+                # Resolve mode registry: prefer live app registry, fall back to manifest import
+                mode_registry = None
+                if self.app is not None and hasattr(self.app, 'mode_registry'):
+                    mode_registry = self.app.mode_registry
+                else:
+                    try:
+                        from modes.manifest import MODE_REGISTRY
+                        mode_registry = MODE_REGISTRY
+                    except ImportError:
+                        return Response(request, '{"error": "Mode registry not available"}',
+                                      content_type="application/json", status=503)
+
+                # Resolve DataManager if available
+                data_mgr = None
+                if self.app is not None and hasattr(self.app, 'data'):
+                    data_mgr = self.app.data
+
+                modes_data = {}
+                for mode_id, meta in mode_registry.items():
+                    settings = meta.get("settings", [])
+                    if not settings:
+                        continue
+                    current = {}
+                    for s in settings:
+                        if data_mgr is not None:
+                            current[s["key"]] = data_mgr.get_setting(mode_id, s["key"], s["default"])
+                        else:
+                            current[s["key"]] = s["default"]
+                    modes_data[mode_id] = {
+                        "settings": settings,
+                        "current": current,
+                    }
 
                 return Response(request, json.dumps(modes_data),
                               content_type="application/json")
@@ -459,7 +476,7 @@ class WebServerManager:
         # API: Update mode settings
         @self.server.route("/api/config/modes", POST)
         def update_mode_settings(request: Request):
-            """Update settings for a specific mode."""
+            """Update settings for a specific mode and persist to DataManager."""
             try:
                 data = request.json()
                 if not data:
@@ -473,7 +490,13 @@ class WebServerManager:
                     return Response(request, '{"error": "mode_id and settings required"}',
                                   content_type="application/json", status=400)
 
-                # Save settings (would integrate with DataManager in actual implementation)
+                if self.app is None or not hasattr(self.app, 'data'):
+                    return Response(request, '{"error": "DataManager not available"}',
+                                  content_type="application/json", status=503)
+
+                for key, value in settings.items():
+                    self.app.data.set_setting(mode_id, key, value)
+
                 self.log(f"Mode settings updated for {mode_id}")
 
                 return Response(request, '{"status": "success"}',
