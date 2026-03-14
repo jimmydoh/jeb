@@ -541,10 +541,15 @@ class WebServerManager:
                         pass
 
                 # Game menu categories only (exclude admin/system menus)
-                # Resolve DataManager if available
+                # Resolve DataManager if available; reload from disk to ensure fresh data
                 data_mgr = None
                 if self.app is not None and hasattr(self.app, 'data'):
                     data_mgr = self.app.data
+                    if hasattr(data_mgr, 'reload'):
+                        try:
+                            data_mgr.reload()
+                        except Exception:
+                            pass
 
                 game_menus = {"CORE", "EXP1", "ZERO_PLAYER"}
                 modes = []
@@ -649,20 +654,19 @@ class WebServerManager:
                     return Response(request, '{"error": "Console not available"}',
                                   content_type="application/json", status=503)
 
-                # 1. Grab the raw body to make this bulletproof
+                # 1. Grab the raw body
                 raw_body = request.body.decode('utf-8').strip()
                 line = ""
 
-                # 2. Try parsing it as JSON first {"input": "1"}
+                # 2. Try parsing it as JSON {"input": "..."} first
                 if raw_body.startswith("{"):
                     try:
                         data = json.loads(raw_body)
                         line = str(data.get("input", "")).strip()
                     except Exception:
                         pass
-
-                # 3. If JSON parsing failed or wasn't used, treat the raw body as the input
-                if not line:
+                else:
+                    # 3. Not JSON – treat the raw body as the input directly
                     line = raw_body
 
                 if not line:

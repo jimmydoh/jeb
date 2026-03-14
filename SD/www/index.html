@@ -757,6 +757,7 @@
 
             // Auto-load content for some tabs
             if (tabName === 'system') loadSystemStatus();
+            if (tabName === 'config') loadConfig();
             if (tabName === 'files') loadFiles();
             if (tabName === 'logs') loadLogs();
             if (tabName === 'console') loadConsole();
@@ -1190,6 +1191,7 @@
 
                 if (response.ok) {
                     showStatus('modesStatus', `${escapeHtml(modeId)} settings saved`, 'success');
+                    loadModes();
                 } else {
                     showStatus('modesStatus', 'Error saving settings', 'error');
                 }

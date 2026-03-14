@@ -38,6 +38,16 @@ class DataManager:
             JEBLogger.debug("DATA", f"No game data found, creating new state values.")
             self.data = {}
 
+    def reload(self):
+        """Reload data from disk, replacing the in-memory cache with the stored state.
+
+        Any in-memory changes not yet written to disk will be discarded.
+        Since ``set_setting`` always writes to disk immediately, calling
+        ``reload()`` is safe and ensures the cache reflects the current
+        on-disk state (e.g. settings changed via the on-device menu).
+        """
+        self.load()
+
     def save(self):
         """Save data to disk."""
         try:
