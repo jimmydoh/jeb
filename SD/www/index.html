@@ -1191,6 +1191,7 @@
 
                 if (response.ok) {
                     showStatus('modesStatus', `${escapeHtml(modeId)} settings saved`, 'success');
+                    loadModes();
                 } else {
                     showStatus('modesStatus', 'Error saving settings', 'error');
                 }

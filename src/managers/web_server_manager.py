@@ -541,10 +541,15 @@ class WebServerManager:
                         pass
 
                 # Game menu categories only (exclude admin/system menus)
-                # Resolve DataManager if available
+                # Resolve DataManager if available; reload from disk to ensure fresh data
                 data_mgr = None
                 if self.app is not None and hasattr(self.app, 'data'):
                     data_mgr = self.app.data
+                    if hasattr(data_mgr, 'reload'):
+                        try:
+                            data_mgr.reload()
+                        except Exception:
+                            pass
 
                 game_menus = {"CORE", "EXP1", "ZERO_PLAYER"}
                 modes = []

@@ -180,6 +180,10 @@ class MockDataManager:
             self._store[mode_name] = {}
         self._store[mode_name][key] = value
 
+    def reload(self):
+        """No-op in tests – real DataManager re-reads game_data.json."""
+        pass
+
 
 def test_initialization():
     """Test WebServerManager initialization."""
@@ -2659,6 +2663,86 @@ def test_get_modes_current_values_fallback_to_default():
     print("  ✓ GET /api/modes current values fallback to default test passed")
 
 
+def test_get_modes_roundtrip_save_and_load():
+    """Test that settings saved via POST /api/config/modes appear in GET /api/modes."""
+    print("\nTesting Mode tab round-trip: save via POST then verify GET /api/modes...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True
+    }
+
+    class MockApp:
+        def __init__(self):
+            self.data = MockDataManager()
+            self.mode_registry = {
+                "SIMON": {
+                    "id": "SIMON",
+                    "name": "SIMON SAYS",
+                    "menu": "CORE",
+                    "order": 10,
+                    "requires": ["CORE"],
+                    "optional": [],
+                    "has_tutorial": True,
+                    "settings": [
+                        {"key": "difficulty", "label": "DIFF",
+                         "options": ["EASY", "NORMAL", "HARD", "INSANE"], "default": "NORMAL"},
+                        {"key": "mode", "label": "MODE",
+                         "options": ["CLASSIC", "REVERSE", "BLIND"], "default": "CLASSIC"},
+                    ]
+                }
+            }
+
+    mock_app = MockApp()
+    manager = WebServerManager(config, MockWiFiManager(), app=mock_app, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    # Find routes
+    update_route = next(
+        (func for path, _, func in manager.server.routes
+         if path == "/api/config/modes" and "update" in func.__name__),
+        None
+    )
+    modes_route = next(
+        (func for path, _, func in manager.server.routes if path == "/api/modes"),
+        None
+    )
+    assert update_route is not None, "POST /api/config/modes route not found"
+    assert modes_route is not None, "GET /api/modes route not found"
+
+    # 1. Verify initial state shows defaults
+    resp = modes_route(MockRequest())
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    simon = next((m for m in data["modes"] if m["id"] == "SIMON"), None)
+    assert simon is not None, "SIMON not in initial modes list"
+    assert simon["current"]["difficulty"] == "NORMAL", \
+        f"Initial difficulty should be default 'NORMAL', got '{simon['current']['difficulty']}'"
+
+    # 2. Save new settings via POST /api/config/modes
+    save_req = MockRequest()
+    save_data = {"mode_id": "SIMON", "settings": {"difficulty": "INSANE", "mode": "BLIND"}}
+    save_req.body = json.dumps(save_data).encode()
+    save_req.json = lambda: save_data
+    save_resp = update_route(save_req)
+    assert save_resp.status == 200, f"POST should succeed, got {save_resp.status}"
+
+    # 3. Reload via GET /api/modes - saved values must now be returned
+    resp2 = modes_route(MockRequest())
+    assert resp2.status == 200
+    data2 = json.loads(resp2.body)
+    simon2 = next((m for m in data2["modes"] if m["id"] == "SIMON"), None)
+    assert simon2 is not None, "SIMON not in modes list after save"
+    assert simon2["current"]["difficulty"] == "INSANE", \
+        f"GET /api/modes should return saved difficulty 'INSANE', got '{simon2['current']['difficulty']}'"
+    assert simon2["current"]["mode"] == "BLIND", \
+        f"GET /api/modes should return saved mode 'BLIND', got '{simon2['current']['mode']}'"
+
+    print("  ✓ Mode tab round-trip (save → load) test passed")
+
+
 def test_launch_mode_no_app():
     """Test /api/actions/launch-mode returns 503 when no app is provided."""
     print("\nTesting POST /api/actions/launch-mode without app...")
@@ -2877,6 +2961,7 @@ def run_all_tests():
         test_get_modes_with_industrial_satellite,
         test_get_modes_current_values_from_data_manager,
         test_get_modes_current_values_fallback_to_default,
+        test_get_modes_roundtrip_save_and_load,
         test_launch_mode_no_app,
         test_launch_mode_standard,
         test_launch_mode_tutorial,
