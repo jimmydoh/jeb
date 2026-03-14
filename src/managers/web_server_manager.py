@@ -524,7 +524,10 @@ class WebServerManager:
         def get_console(request: Request):
             """Return recent console output."""
             if self.console_buffer:
-                output = self.console_buffer.get_output()
+                # Grab the output and replace \n with HTML line breaks
+                # so the web interface respects the formatting natively!
+                raw_output = self.console_buffer.get_output()
+                output = raw_output.replace('\n', '<br>')
             else:
                 output = "Console buffer not available"
 
@@ -539,18 +542,36 @@ class WebServerManager:
                 if self.console_buffer is None:
                     return Response(request, '{"error": "Console not available"}',
                                   content_type="application/json", status=503)
-                data = request.json()
-                if not data:
-                    return Response(request, '{"error": "Invalid JSON"}',
-                                  content_type="application/json", status=400)
-                line = data.get("input", "").strip()
+
+                # 1. Grab the raw body to make this bulletproof
+                raw_body = request.body.decode('utf-8').strip()
+                line = ""
+
+                # 2. Try parsing it as JSON first {"input": "1"}
+                if raw_body.startswith("{"):
+                    try:
+                        data = json.loads(raw_body)
+                        line = str(data.get("input", "")).strip()
+                    except Exception:
+                        pass
+
+                # 3. If JSON parsing failed or wasn't used, treat the raw body as the input
                 if not line:
-                    return Response(request, '{"error": "input field required"}',
+                    line = raw_body
+
+                if not line:
+                    return Response(request, '{"error": "No input provided"}',
                                   content_type="application/json", status=400)
+
+                # 4. Push to the queue!
                 self.console_buffer.input_queue.append(line)
+                self.log(f"Web Console Input Received: '{line}'") # Added to logs tab for debugging
+
                 return Response(request, '{"status": "queued"}',
                               content_type="application/json")
+
             except Exception as e:
+                self.log(f"Web Console Input Error: {e}")
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
