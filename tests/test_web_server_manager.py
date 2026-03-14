@@ -1778,16 +1778,21 @@ def test_console_input_api():
     assert input_route is not None, "console/input route not found"
 
     req = MockRequest()
-    req.json = lambda: {"input": "1"}
+    req.body = b'{"input": "1"}'
     resp = input_route(req)
     assert resp.status == 200
     assert console.input_queue == ["1"]
 
-    # Missing/empty input field
+    # JSON with empty input field should return 400
     req2 = MockRequest()
-    req2.json = lambda: {"input": ""}
+    req2.body = b'{"input": ""}'
     resp2 = input_route(req2)
     assert resp2.status == 400
+
+    # Truly empty body should also return 400
+    req3 = MockRequest()
+    resp3 = input_route(req3)
+    assert resp3.status == 400
 
     print("  ✓ /api/console/input test passed")
 
