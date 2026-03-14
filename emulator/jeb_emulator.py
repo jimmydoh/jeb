@@ -1133,13 +1133,38 @@ sys.modules['adafruit_ht16k33.segments'] = type('MockHTSegments', (), {'Seg14x4'
 
 import socket as _socket_module
 
+_IP_PROBE_TARGET = "8.8.8.8"  # Used only for routing-table lookup; no data is sent
+
+def _get_emulator_host_ip():
+    """Resolve the local machine's primary non-loopback IP for emulator use.
+
+    Uses a UDP connect trick (no data is sent) to determine which interface
+    the OS would use for outbound traffic, giving the LAN IP rather than
+    loopback so the mock web server is reachable from other devices.
+    Falls back to 127.0.0.1 if the host has no network.
+    """
+    try:
+        s = _socket_module.socket(_socket_module.AF_INET, _socket_module.SOCK_DGRAM)
+        try:
+            s.connect((_IP_PROBE_TARGET, 80))
+            return s.getsockname()[0]
+        finally:
+            s.close()
+    except Exception:
+        return "127.0.0.1"
+
 # --- WIFI RADIO MOCK ---
 class MockWiFiRadio:
-    """Simulates the CircuitPython wifi.radio object. Always 'connects' to 127.0.0.1."""
+    """Simulates the CircuitPython wifi.radio object.
+
+    Reports the host machine's real LAN IP (via _get_emulator_host_ip) so
+    that web-server URLs displayed during emulation are reachable from other
+    devices on the same network.
+    """
     def __init__(self):
         self._connected = False
         self._enabled = True
-        self.ipv4_address = "127.0.0.1"
+        self.ipv4_address = _get_emulator_host_ip()
 
     @property
     def connected(self):
@@ -1180,8 +1205,8 @@ class MockSocketPoolModule:
 sys.modules['socketpool'] = MockSocketPoolModule()
 
 # --- ADAFRUIT_HTTPSERVER MOCK ---
-# A functional HTTP server implementation that binds to a real local TCP socket,
-# so the web UI can be accessed at http://127.0.0.1:<port> during emulation.
+# A functional HTTP server implementation that binds to a real TCP socket on
+# 0.0.0.0 so the web UI is reachable from any interface during emulation.
 
 class GET:
     pass
@@ -1227,8 +1252,8 @@ class MockHTTPServer:
     """
     Functional HTTP server mock for the emulator.
 
-    Binds to a real TCP socket so the web UI can be tested in a browser
-    at http://127.0.0.1:<port>. Matches the adafruit_httpserver.Server API:
+    Binds to 0.0.0.0:<port> so the web UI is reachable from any network
+    interface (localhost, LAN, etc.). Matches the adafruit_httpserver.Server API:
       - route(path, methods) decorator for handler registration
       - start(host, port) to bind and listen
       - poll() for non-blocking request dispatch (called every asyncio tick)
@@ -1257,14 +1282,25 @@ class MockHTTPServer:
         return decorator
 
     def start(self, host, port):
-        """Bind to host:port and start listening for connections."""
+        """Bind to 0.0.0.0:port (all interfaces) and start listening.
+
+        Always binds to 0.0.0.0 regardless of the host argument so the server
+        is reachable via localhost, the LAN IP, or any other interface on the
+        emulator machine.  The log message shows the caller-supplied host (the
+        real IP reported by MockWiFiRadio) for a convenient, clickable URL.
+        """
         try:
             self._sock = _socket_module.socket(_socket_module.AF_INET, _socket_module.SOCK_STREAM)
             self._sock.setsockopt(_socket_module.SOL_SOCKET, _socket_module.SO_REUSEADDR, 1)
             self._sock.setblocking(False)
-            self._sock.bind((host, int(port)))
+            # Intentionally bind to all interfaces so the emulator web UI is
+            # reachable from localhost *and* from other devices on the LAN.
+            # This is emulator-only code; the real firmware runs on CircuitPython
+            # hardware where this mock is never used.
+            self._sock.bind(("0.0.0.0", int(port)))  # noqa: S104
             self._sock.listen(5)
-            JEBLogger.emulator("WEBS", f"[HTTP] Listening on http://{host}:{port}")
+            display_host = host if host not in ("0.0.0.0", "", None) else _get_emulator_host_ip()
+            JEBLogger.emulator("WEBS", f"[HTTP] Listening on http://{display_host}:{port} (bound to 0.0.0.0:{port})")
         except Exception as e:
             JEBLogger.emulator("WEBS", f"[HTTP] Failed to start server: {e}")
 
