@@ -609,8 +609,8 @@
             <h3 style="color: #b0b0b0; margin: 15px 0 10px;">Satellite Links</h3>
             <div id="telemetrySatellites"><em style="color: #666;">No satellites detected</em></div>
             <div class="telemetry-chart-container">
-                <h3>Bus Voltage History</h3>
-                <canvas id="voltageChart" class="sparkline" width="800" height="120"></canvas>
+                <h3>Voltage History</h3>
+                <div id="telemetryCharts" style="display: flex; flex-direction: column; gap: 15px;"></div>
             </div>
         </div>
 
@@ -1297,14 +1297,18 @@
             const power = data.power || {};
             const voltEl = document.getElementById('telemetryVoltages');
             let html = '';
-            for (const [key, label] of Object.entries(VOLTAGE_LABELS)) {
-                const v = power[key] !== undefined ? Number(power[key]).toFixed(2) : '—';
-                html += `<div class="info-card"><h3>${label}</h3><div class="value">${v} V</div></div>`;
-            }
-            // Show any extra voltage rails not in the label map
-            for (const [key, val] of Object.entries(power)) {
-                if (!VOLTAGE_LABELS[key]) {
-                    html += `<div class="info-card"><h3>${key}</h3><div class="value">${Number(val).toFixed(2)} V</div></div>`;
+
+            // Only draw cards for buses that actually exist in the payload
+            const powerKeys = Object.keys(power);
+            if (powerKeys.length === 0) {
+                html = '<em style="color: #666;">No power data available</em>';
+            } else {
+                for (const [key, val] of Object.entries(power)) {
+                    if (val === undefined || val === null) continue;
+
+                    // Look up the pretty label, or default to the raw dictionary key
+                    const label = VOLTAGE_LABELS[key] || key;
+                    html += `<div class="info-card"><h3>${label}</h3><div class="value">${Number(val).toFixed(2)} V</div></div>`;
                 }
             }
             voltEl.innerHTML = html;
@@ -1322,15 +1326,32 @@
                 }).join('');
             }
 
-            // --- Sparkline chart for bus voltage ---
-            const busKey = power['input_20v'] !== undefined ? 'input_20v' : Object.keys(power)[0];
-            if (busKey !== undefined && power[busKey] !== undefined) {
-                if (!_voltageHistory[busKey]) _voltageHistory[busKey] = [];
-                _voltageHistory[busKey].push(Number(power[busKey]));
-                if (_voltageHistory[busKey].length > CHART_MAX_POINTS) {
-                    _voltageHistory[busKey].shift();
+            // --- Sparkline charts for ALL voltages ---
+            const chartsContainer = document.getElementById('telemetryCharts');
+            for (const [key, val] of Object.entries(power)) {
+                if (val === undefined || val === null) continue;
+
+                if (!_voltageHistory[key]) _voltageHistory[key] = [];
+                _voltageHistory[key].push(Number(val));
+                if (_voltageHistory[key].length > CHART_MAX_POINTS) {
+                    _voltageHistory[key].shift();
                 }
-                drawSparkline('voltageChart', _voltageHistory[busKey], busKey);
+
+                let canvasId = 'chart_' + key;
+                let canvas = document.getElementById(canvasId);
+
+                // Dynamically create the canvas if it doesn't exist yet
+                if (!canvas) {
+                    canvas = document.createElement('canvas');
+                    canvas.id = canvasId;
+                    canvas.className = 'sparkline';
+                    canvas.width = 800;
+                    canvas.height = 90; // Slightly shorter to fit multiple cleanly on screen
+                    chartsContainer.appendChild(canvas);
+                }
+
+                const label = VOLTAGE_LABELS[key] || key;
+                drawSparkline(canvasId, _voltageHistory[key], label);
             }
         }
 

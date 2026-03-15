@@ -46,20 +46,15 @@ class WebServerManager:
     MAX_UPLOAD_SIZE_BYTES = 50 * 1024  # Maximum upload size (50KB)
     DEFAULT_MAX_LOGS = 1000  # Default maximum log entries to keep
 
-    def __init__(self, config, wifi_manager, app=None, console_buffer=None, power_manager=None, satellite_manager=None, matrix_manager=None, synth_manager=None, hid=None, testing=False):
+    def __init__(self, config, wifi_manager, app=None, console_buffer=None, testing=False):
         """
         Initialize the web server manager.
 
         Args:
             config (dict): Configuration dictionary
-            wifi_manager (WiFiManager): REQUIRED: Shared WiFiManager instance for managing WiFi connectivity.
-            app: Optional CoreManager application instance for mode launching and registry access.
+            wifi_manager (WiFiManager): REQUIRED: Shared WiFiManager instance.
+            app: Optional CoreManager application instance for hardware and registry access.
             console_buffer (object): Optional console buffer for output capture
-            power_manager (PowerManager): Optional PowerManager for live telemetry
-            satellite_manager (SatelliteNetworkManager): Optional SatelliteNetworkManager for link telemetry
-            matrix_manager (MatrixManager): Optional MatrixManager for live pixel art preview
-            synth_manager (SynthManager): Optional SynthManager for Audio Studio live preview
-            hid (HIDManager): Optional HIDManager for remote HID interaction via web dashboard
         """
         if wifi_manager is None:
             JEBLogger.warning("WEBS", "No WiFiManager provided - WebServerManager cannot start")
@@ -75,20 +70,39 @@ class WebServerManager:
 
         self.app = app
         self.console_buffer = console_buffer
-        self.power_manager = power_manager
-        self.satellite_manager = satellite_manager
-        self.matrix_manager = matrix_manager
-        self.synth_manager = synth_manager
-        self.hid = hid
 
         self.server = None
         self.pool = None
         self.connected = False
         self.logs = []  # Ring buffer for log messages
-        self.max_logs = self.DEFAULT_MAX_LOGS  # Maximum log entries to keep
+        self.max_logs = self.DEFAULT_MAX_LOGS
 
         # Enable JEBLogger ring buffer so all system logs feed the Logging tab
         JEBLogger.enable_buffer(max_entries=self.DEFAULT_MAX_LOGS)
+
+    # --- Hardware Delegation Properties ---
+    # These properties safely fetch the managers from the active app if it exists.
+    # This prevents us from needing to rewrite all the API endpoints!
+
+    @property
+    def power_manager(self):
+        return self.app.power if self.app else None
+
+    @property
+    def satellite_manager(self):
+        return self.app.sat_network if self.app else None
+
+    @property
+    def matrix_manager(self):
+        return self.app.matrix if self.app else None
+
+    @property
+    def synth_manager(self):
+        return self.app.synth if self.app else None
+
+    @property
+    def hid(self):
+        return self.app.hid if self.app else None
 
     async def connect_wifi(self, timeout=30):
         """
@@ -827,7 +841,13 @@ class WebServerManager:
                 power_data = {}
                 if self.power_manager is not None:
                     try:
-                        power_data = self.power_manager.status
+                        # 1. Trigger a fresh hardware read across all buses
+                        _ = self.power_manager.status
+
+                        # 2. Extract the actual voltage floats for the Web UI
+                        for name, bus in self.power_manager.buses.items():
+                            if bus.v_now is not None:
+                                power_data[name] = bus.v_now
                     except Exception:
                         pass
 
