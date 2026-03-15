@@ -252,28 +252,88 @@ class SortingVisualizerMode(BaseMode):
             curr_size -= 1
 
     async def _sort_gravity(self, delay):
-        """Bead sort. Simulates rotating the matrix 90 degrees and letting the pixels fall.
-        It doesn't use `>` or `<` logic at all, it just physically counts heights!"""
-        # Step 1: Count how many "beads" exist at each horizontal level (1 through 16)
-        level_counts = []
-        for h in range(1, 17):
-            count = sum(1 for val in self.array if val >= h)
-            level_counts.append(count)
+        """Bead sort. Visually rotates the matrix 90 degrees and animates the pixels falling.
+        As pixels hit their resting place in the stack, they flash and play a tone."""
 
-        # Visually clear the array to simulate the "drop"
-        for i in range(16):
-            self.array[i] = 0
-        await self._visualize(swp=list(range(16)), tone_val=1, delay=delay)
+        # 1. Convert the 1D array into a 2D boolean grid rotated 90 degrees clockwise.
+        # Original vertical columns become horizontal rows extending from the left.
+        grid = [[False] * 16 for _ in range(16)]
+        for y in range(16):
+            for x in range(self.array[y]):
+                grid[y][x] = True
 
-        # Step 2: Reconstruct the array by stacking the beads back up on the right side
-        for h in range(1, 17):
-            count = level_counts[h-1]
-            active_cols = []
-            # The widest layer forms at the bottom right
-            for c in range(16 - count, 16):
-                self.array[c] += 1
-                active_cols.append(c)
-            await self._visualize(swp=active_cols, tone_val=h, delay=delay)
+        # Pre-calculate how many beads belong in each vertical drop column
+        # so we know when a falling bead has reached the top of its stack.
+        target_counts = [0] * 16
+        for x in range(16):
+            target_counts[x] = sum(1 for val in self.array if val > x)
+
+        current_settled = [0] * 16
+
+        # 2. Draw the initial rotated state and hold for half a second
+        self.core.matrix.clear()
+        for y in range(16):
+            for x in range(16):
+                if grid[y][x]:
+                    self.core.matrix.draw_pixel(x, y, Palette.CYAN)
+        self.core.matrix.show_frame()
+        await asyncio.sleep(0.5)
+
+        # 3. Animate gravity pulling the beads down
+        moved = True
+        while moved:
+            if self._exit_flag:
+                raise asyncio.CancelledError()
+
+            moved = False
+            settled_this_frame = []
+
+            # Process bottom-up so falling beads don't block each other in the same frame
+            for y in range(14, -1, -1):
+                for x in range(16):
+                    if grid[y][x] and not grid[y+1][x]:
+                        grid[y][x] = False
+                        grid[y+1][x] = True
+                        moved = True
+
+                        # Check if this bead has hit the top of the settled pile
+                        resting_y = 15 - current_settled[x]
+                        if (y + 1) == resting_y:
+                            current_settled[x] += 1
+                            settled_this_frame.append(x)
+
+            if moved:
+                self.core.matrix.clear()
+                for py in range(16):
+                    for px in range(16):
+                        if grid[py][px]:
+                            # Flash white if it just landed this frame
+                            if px in settled_this_frame and py == 15 - (current_settled[px] - 1):
+                                self.core.matrix.draw_pixel(px, py, Palette.WHITE)
+                            else:
+                                self.core.matrix.draw_pixel(px, py, Palette.CYAN)
+                self.core.matrix.show_frame()
+
+                if settled_this_frame:
+                    # Play a bright tone mapped to the highest column that settled
+                    highest_x = max(settled_this_frame)
+                    self._play_tone(highest_x + 1, duration=max(0.02, delay))
+                else:
+                    # Play a low, dull thud for beads in freefall
+                    self.core.synth.play_note(60, duration=0.01)
+
+                await asyncio.sleep(delay)
+
+        # 4. Hold the settled pile for a moment so the player can see the sorted shape
+        await asyncio.sleep(0.5)
+
+        # 5. Translate the settled 2D grid back into the 1D sorted array.
+        # In the rotated view, the horizontal rows (y) are now our array elements.
+        for y in range(16):
+            self.array[y] = sum(1 for x in range(16) if grid[y][x])
+
+        # A quick final render ensures the UI state perfectly transitions back to standard vertical
+        self._render()
 
     async def _sort_bogo(self, delay):
         """The ultimate joke algorithm. O(n!) time complexity.
@@ -479,6 +539,8 @@ class SortingVisualizerMode(BaseMode):
         self.core.hid.reset_encoder(self.algo_idx)
         last_enc = self.core.hid.encoder_position()
 
+        self._render()
+
         try:
             while True:
                 # 1. Handle hardware exit
@@ -493,7 +555,7 @@ class SortingVisualizerMode(BaseMode):
                 if self.state == "IDLE":
 
                     # Ensure static array is drawn while waiting
-                    self._render()
+                    #self._render()
 
                     # --- Encoder: cycle algorithm ---
                     enc = self.core.hid.encoder_position()
