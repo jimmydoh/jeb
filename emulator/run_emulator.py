@@ -1,5 +1,8 @@
 import sys
 import os
+import msvcrt
+import asyncio
+import importlib.util
 
 # ==========================================
 # PATH & SD CARD INJECTION
@@ -16,10 +19,6 @@ if SRC_DIR not in sys.path:
 # ==========================================
 import jeb_emulator
 from jeb_emulator import HardwareMocks, MockKeypadEvent
-
-import asyncio
-import importlib.util
-
 
 # Setup JEBLogger
 from utilities.logger import JEBLogger, LogLevel
@@ -726,13 +725,49 @@ async def main():
 
     # Console Manager Asyncio Patch
     from managers.console_manager import ConsoleManager
-    async def patched_get_input(self, prompt):
-        try:
-            return await asyncio.to_thread(input, prompt)
-        except (EOFError, KeyboardInterrupt):
-            await asyncio.sleep(3600)
-            return ""
 
+    async def patched_get_input(self, prompt):
+        self._print(prompt)
+        serial_line = ""
+
+        while True:
+            # 1. Check for web-injected commands
+            if self.input_queue:
+                line = self.input_queue.pop(0)
+                self._print(f"\nWEB>> {line}")
+                return line
+
+            # 2. Check Windows physical keyboard non-blockingly
+            while msvcrt.kbhit():
+                char_bytes = msvcrt.getch()
+
+                # Ignore special keys (arrows, function keys) which return 2 bytes
+                if char_bytes in (b'\x00', b'\xe0'):
+                    msvcrt.getch() # clear the second byte
+                    continue
+
+                char = char_bytes.decode('utf-8', errors='ignore')
+
+                if char in ('\n', '\r'):
+                    self._print("") # Line break for visual clarity
+                    if serial_line:
+                        # self._print(f"SYS>> {serial_line}") # Optional: echo like hardware
+                        line = serial_line
+                        serial_line = ""
+                        return line
+                elif char == '\x08': # Backspace
+                    if serial_line:
+                        serial_line = serial_line[:-1]
+                        sys.stdout.write('\b \b')
+                        sys.stdout.flush()
+                else:
+                    serial_line += char
+                    sys.stdout.write(char)
+                    sys.stdout.flush()
+
+            await asyncio.sleep(0.05)
+
+    # Apply the patch
     ConsoleManager.get_input = patched_get_input
 
     primary_app = jeb_code.app

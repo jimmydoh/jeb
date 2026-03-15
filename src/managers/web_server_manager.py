@@ -635,10 +635,7 @@ class WebServerManager:
         def get_console(request: Request):
             """Return recent console output."""
             if self.console_buffer:
-                # Grab the output and replace \n with HTML line breaks
-                # so the web interface respects the formatting natively!
-                raw_output = self.console_buffer.get_output()
-                output = raw_output.replace('\n', '<br>')
+                output = self.console_buffer.get_output()
             else:
                 output = "Console buffer not available"
 

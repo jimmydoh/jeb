@@ -704,17 +704,17 @@ class MockSynthesizer:
         """Generates a seamless looping buffer using the actual synth_registry waveform."""
         if frequency <= 0 or not pygame.mixer.get_init():
             return None
-            
+
         sample_rate = pygame.mixer.get_init()[0]
-        
+
         # Calculate buffer length for seamless looping
         wavelength_samples = sample_rate / frequency
         num_waves = max(1, int((sample_rate * 0.1) // wavelength_samples))
         buffer_length = int(num_waves * wavelength_samples)
-        
+
         buf = array.array('h', [0] * (buffer_length * 2))
         table_len = len(wavetable) if wavetable else 0
-        
+
         for i in range(buffer_length):
             if wavetable:
                 # Phase Accumulator: Steps through the pre-generated waveform array
@@ -727,13 +727,13 @@ class MockSynthesizer:
                 t = float(i) / sample_rate
                 val = math.sin(2.0 * math.pi * frequency * t)
                 sample = 32000 if val > 0 else -32000
-                
+
             # Apply global mix volume to prevent Pygame distortion on chords
             sample = int(sample * self._master_volume)
-            
+
             buf[i*2]     = sample
             buf[i*2 + 1] = sample
-            
+
         return pygame.mixer.Sound(buffer=buf)
 
     async def _run_adsr(self, sound, env):
@@ -764,16 +764,16 @@ class MockSynthesizer:
     def press(self, note):
         if note in self.active_notes:
             return
-            
+
         sound = self._generate_tone(note.frequency, note.waveform)
         if sound:
             # Start the sound at 0 volume and let the ADSR task fade it in
             sound.set_volume(0.0)
             sound.play(loops=-1)
-            
+
             adsr_task = asyncio.create_task(self._run_adsr(sound, note.envelope))
             self.active_notes[note] = {"sound": sound, "task": adsr_task}
-            
+
         JEBLogger.emulator("MOCK", f"[SYNTH] Pressed:  {note.frequency:>6.1f} Hz")
 
     def release(self, note):
@@ -781,17 +781,17 @@ class MockSynthesizer:
             data = self.active_notes.pop(note)
             sound = data["sound"]
             task = data["task"]
-            
+
             # Stop the Attack/Decay automation if it's still running
             if task:
                 task.cancel()
-                
+
             if sound:
                 # --- RELEASE PHASE ---
                 # Convert envelope seconds to Pygame fadeout milliseconds
                 fade_ms = max(50, int(note.envelope.release_time * 1000))
                 sound.fadeout(fade_ms)
-                
+
             JEBLogger.emulator("MOCK", f"[SYNTH] Released: {note.frequency:>6.1f} Hz")
 
     def release_all(self):
@@ -1238,6 +1238,11 @@ class MockHTTPRequest:
             return _json.loads(self._body) if self._body else None
         except Exception:
             return None
+
+    @property
+    def body(self):
+        """Mock the adafruit_httpserver behavior which returns body as bytes."""
+        return self._body.encode('utf-8') if self._body else b""
 
 class MockHTTPResponse:
     """Represents an HTTP response, matching the adafruit_httpserver.Response API."""
