@@ -248,10 +248,20 @@ class WebServerManager:
             """Serve the compiled CSS stylesheet."""
             return self._stream_file(request, "/sd/www/css/style.css", "text/css")
 
+        @self.server.route("/css/style.min.css", GET)
+        def serve_css_min(request: Request):
+            """Serve the minified CSS stylesheet."""
+            return self._stream_file(request, "/sd/www/css/style.min.css", "text/css")
+
         @self.server.route("/js/app.js", GET)
         def serve_js(request: Request):
             """Serve the frontend JavaScript engine."""
             return self._stream_file(request, "/sd/www/js/app.js", "application/javascript")
+
+        @self.server.route("/js/app.min.js", GET)
+        def serve_js_min(request: Request):
+            """Serve the minified frontend JavaScript engine."""
+            return self._stream_file(request, "/sd/www/js/app.min.js", "application/javascript")
 
         # API: Get global config
         @self.server.route("/api/config/global", GET)
