@@ -10,14 +10,14 @@ from .base_pixel_manager import BasePixelManager, PixelLayout
 class LEDManager(BasePixelManager):
     """Class to control a number of individual LED elements in a 'straight line' format."""
     def __init__(self, jeb_pixel):
-        JEBLogger.info("LED", f"[INIT] LEDManager - {jeb_pixel.n} pixels")
+        JEBLogger.info("LEDM", f"[INIT] LEDManager - {jeb_pixel.n} pixels")
         # Declare LINEAR layout for LED strips/strings
         super().__init__(jeb_pixel, layout_type=PixelLayout.LINEAR, dimensions=(jeb_pixel.n,))
 
     # --- BASIC TRIGGERS ---
     def set_led(self, index, color, brightness=1.0, anim_mode=None, duration=None, priority=2, speed=1.0):
         """Sets a specific LED (or all LEDs) to a color with optional animation."""
-        JEBLogger.debug("LED", f"Setting LED at index {index} with color {color}, brightness {brightness}, anim_mode {anim_mode}, duration {duration}, priority {priority}, speed {speed}")
+        JEBLogger.debug("LEDM", f"Setting LED at index {index} with color {color}, brightness {brightness}, anim_mode {anim_mode}, duration {duration}, priority {priority}, speed {speed}")
         targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
         for i in targets:
             if anim_mode is None:
@@ -31,7 +31,7 @@ class LEDManager(BasePixelManager):
 
     def off_led(self, index, priority=99):
         """Turns off a specific LED (or all LEDs)."""
-        JEBLogger.debug("LED", f"Turning off LED at index {index} with priority {priority}")
+        JEBLogger.debug("LEDM", f"Turning off LED at index {index} with priority {priority}")
         targets = range(self.num_pixels) if index < 0 or index >= self.num_pixels else [index]
         # Stop animation using the base class method
         for i in targets:
@@ -43,7 +43,7 @@ class LEDManager(BasePixelManager):
         Parses and executes a raw protocol command.
         Handles both text (CSV string) and binary (Tuple) payloads.
         """
-        JEBLogger.debug("LED", f"Applying command '{cmd}' with value: {val}")
+        JEBLogger.debug("LEDM", f"Applying command '{cmd}' with value: {val}")
         # robustly handle val whether it's a string, bytes, or tuple
         if isinstance(val, (list, tuple)):
             values = val
