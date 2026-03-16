@@ -271,8 +271,9 @@ if config.get("wifi_ssid") and config.get("wifi_password"):
                     console_buffer=CONSOLE if CONSOLE else None,
                 )
                 JEBLogger.info("CODE", "Web server manager initialized - will start with app")
-            except ImportError:
+            except ImportError as e:
                 JEBLogger.warning("CODE", "⚠️ WebServerManager not available - check dependencies")
+                JEBLogger.error("CODE", f"Web server initialization error: {e}")
             except Exception as e:
                 JEBLogger.error("CODE", f"⚠️ Web server initialization error: {e}")
 

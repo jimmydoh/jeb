@@ -214,8 +214,44 @@ class WebServerManager:
         @self.server.route("/", GET)
         def index(request: Request):
             """Serve the main configuration page."""
-            html = self._generate_html_page()
-            return Response(request, html, content_type="text/html")
+            html_paths = ["/sd/www/index.html", "www/index.html", "src/www/index.html"]
+
+            for path in html_paths:
+                try:
+                    import os
+                    os.stat(path) # Fast check if the file exists in this location
+
+                    # File found! Pass it to our bulletproof streaming helper
+                    return self._stream_file(request, path, "text/html")
+                except OSError:
+                    continue # File not found here, try the next path in the list
+
+            # Fallback: Return minimal error page if HTML file is missing entirely
+            error_html = """<!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8"><title>JEB Field Service - Error</title>
+                <style>body { font-family: Arial; background: #1a1a1a; color: #e0e0e0; padding: 40px; text-align: center; } h1 { color: #ff6b6b; }</style>
+            </head>
+            <body>
+                <h1>Configuration Error</h1>
+                <p>HTML interface file not found. Please ensure index.html is present.</p>
+            </body>
+            </html>"""
+
+            return Response(request, error_html, content_type="text/html")
+
+        # --- STATIC ASSETS ---
+
+        @self.server.route("/css/style.css", GET)
+        def serve_css(request: Request):
+            """Serve the compiled CSS stylesheet."""
+            return self._stream_file(request, "/sd/www/css/style.css", "text/css")
+
+        @self.server.route("/js/app.js", GET)
+        def serve_js(request: Request):
+            """Serve the frontend JavaScript engine."""
+            return self._stream_file(request, "/sd/www/js/app.js", "application/javascript")
 
         # API: Get global config
         @self.server.route("/api/config/global", GET)
@@ -234,7 +270,7 @@ class WebServerManager:
                                   content_type="application/json", status=400)
 
                 # Validate and update config (protect critical fields)
-                protected_fields = ["role", "type_id"]
+                protected_fields = ["role", "type_id", "satellites"]
                 valid_boolean_fields = ["debug_mode", "test_mode", "web_server_enabled", "mount_sd_card"]
                 valid_int_fields = ["web_server_port", "uart_baudrate", "uart_buffer_size"]
 
@@ -862,8 +898,17 @@ class WebServerManager:
                     except Exception:
                         pass
 
+                # Cross-platform RAM check
+                try:
+                    # CircuitPython: returns bytes, convert to KB
+                    free_ram = round(gc.mem_free() / 1024, 1)
+                except AttributeError:
+                    # CPython (Windows Emulator): gc.mem_free does not exist
+                    free_ram = "Emulator"
+
                 system_data = {
-                    "sleeping": self.app._sleeping if hasattr(self.app, "_sleeping") else False
+                    "sleeping": self.app._sleeping if hasattr(self.app, "_sleeping") else False,
+                    "free_ram_kb": free_ram
                 }
 
                 payload = json.dumps({
@@ -1324,6 +1369,38 @@ class WebServerManager:
             print(f"Error saving config: {e}")
             raise
 
+    def _stream_file(self, request, filepath, content_type):
+        """Dual-compatible file streaming for both Pico and Windows Emulator."""
+        try:
+            import os
+            os.stat(filepath) # Fast check if file exists
+
+            # 1. Try optimized hardware method (Pico)
+            try:
+                from adafruit_httpserver import FileResponse
+                return FileResponse(request, filename=filepath, root_path="/")
+
+            # 2. Fallback for Windows Emulator
+            except ImportError:
+                def chunked_generator(fp, chunk_size=1024):
+                    with open(fp, "r", encoding="utf-8") as f:
+                        while True:
+                            chunk = f.read(chunk_size)
+                            if not chunk:
+                                break
+                            yield chunk
+
+                try:
+                    from adafruit_httpserver import ChunkedResponse
+                    return ChunkedResponse(request, chunked_generator(filepath), content_type=content_type)
+                except ImportError:
+                    # Absolute worst-case fallback
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        return Response(request, f.read(), content_type=content_type)
+
+        except OSError:
+            return Response(request, "File not found", status=404, content_type="text/plain")
+
     def _list_directory(self, path):
         """List files and directories at the given path."""
         try:
@@ -1346,55 +1423,6 @@ class WebServerManager:
             return {"path": path, "items": items}
         except Exception as e:
             raise RuntimeError(f"Error listing directory: {e}")
-
-    def _generate_html_page(self):
-        """Load and stream the main HTML configuration page from file."""
-        # Try to load from SD card first, then fall back to local filesystem
-        html_paths = ["/sd/www/index.html", "www/index.html", "src/www/index.html"]
-
-        for html_path in html_paths:
-            try:
-                # Check if file exists before creating generator
-                with open(html_path, "r", encoding="utf-8") as test_f:
-                    pass  # File exists, proceed
-
-                def html_generator(filepath, chunk_size=None):
-                    """Generator that yields HTML file chunks to save RAM."""
-                    if chunk_size is None:
-                        chunk_size = self.CHUNK_SIZE
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        while True:
-                            chunk = f.read(chunk_size)
-                            if not chunk:
-                                break
-                            yield chunk
-
-                # Return generator for chunked streaming
-                return html_generator(html_path)
-            except OSError:
-                continue
-
-        # Fallback: Return minimal error page if HTML file not found
-        return """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>JEB Field Service - Error</title>
-    <style>
-        body { font-family: Arial; background: #1a1a1a; color: #e0e0e0; padding: 40px; text-align: center; }
-        h1 { color: #ff6b6b; }
-    </style>
-</head>
-<body>
-    <h1>Configuration Error</h1>
-    <p>HTML interface file not found. Please ensure index.html is present in:</p>
-    <ul style="list-style: none;">
-        <li>/sd/www/index.html</li>
-        <li>www/index.html</li>
-        <li>src/www/index.html</li>
-    </ul>
-</body>
-</html>"""
 
     async def start(self):
         """Start the web server."""
