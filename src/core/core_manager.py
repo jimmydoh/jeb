@@ -507,7 +507,7 @@ class CoreManager:
                 if not self.hid.estop: # User reset the button
                     self.meltdown = False
                     self.estop_event.clear()  # Reset the event for future use
-                    await self.audio.play("system_reset.wav")
+                    self.audio.play("system_reset.wav")
                     self.display.update_status("SAFETY RESET", "PLEASE STAND BY")
                     await asyncio.sleep(2)
                 else:
@@ -520,14 +520,14 @@ class CoreManager:
                 self.estop_event.set()  # Signal to any listening tasks that E-Stop is engaged
                 self.sat_network.send_all("LED", f"ALL,{Palette.OFF.index}")  # Kill all LEDs
                 # Audio Alarms
-                await self.audio.play(
+                self.audio.play(
                     "background_winddown.wav", bus_id=self.audio.CH_ATMO, loop=False
                 )
-                await self.audio.set_level(self.audio.CH_ATMO, 0.2)
-                await self.audio.play(
+                self.audio.set_level(self.audio.CH_ATMO, 0.2)
+                self.audio.play(
                     "alarm_klaxon.wav", bus_id=self.audio.CH_SFX, loop=True
                 )
-                await self.audio.play(
+                self.audio.play(
                     "voice_meltdown.wav", bus_id=self.audio.CH_VOICE, loop=True
                 )
                 self.display.update_status("!!! EMERGENCY STOP !!!", "PULL UP TO RESET")
@@ -565,20 +565,20 @@ class CoreManager:
                 success, error = await self.power.soft_start_satellites()
 
                 if success:
-                    await self.audio.play(
+                    self.audio.play(
                         "link_restored.wav", bus_id=self.audio.CH_SFX
                     )
                     # Power is stable, trigger the ID assignment chain
                     await self.sat_network.discover_satellites()
                 else:
                     self.display.update_status("PWR ERROR", error)
-                    await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
+                    self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
 
             elif not self.power.satbus_connected and self.power.satbus_powered:
                 # PHYSICAL LINK LOST - Immediate Hardware Cut-off
                 self.power.emergency_kill()
                 self.display.update_status("SAT LINK LOST", "BUS OFFLINE")
-                await self.audio.play("link_lost.wav", bus_id=self.audio.CH_SFX)
+                self.audio.play("link_lost.wav", bus_id=self.audio.CH_SFX)
 
             await asyncio.sleep(0.5)  # Poll twice per second to save CPU
 
@@ -842,7 +842,7 @@ class CoreManager:
                         # Try to display error (may fail if display is broken)
                         try:
                             self.display.update_status("MODE LOAD ERROR", self.mode)
-                            await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
+                            self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
                         except Exception as e:
                             # Display/audio failure - log and continue anyway
                             JEBLogger.error("CORE", f"Error displaying mode load error: {e}")
@@ -946,7 +946,7 @@ class CoreManager:
                         self.display.update_status(
                             "REQUIREMENT MISSING", f"NEED: {', '.join(requirements)}"
                         )
-                        await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
+                        self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
                     except Exception as e:
                         # Display/audio failure - log and continue anyway
                         JEBLogger.error("CORE", f"Error displaying requirements missing error: {e}")
@@ -960,7 +960,7 @@ class CoreManager:
                 # Try to display error (may fail if display is broken)
                 try:
                     self.display.update_status("MODE NOT FOUND", self.mode)
-                    await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
+                    self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
                 except Exception as e:
                     # Display/audio failure - log and continue anyway
                     JEBLogger.error("CORE", f"Error displaying mode not found error: {e}")

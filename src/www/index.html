@@ -481,6 +481,7 @@
             <button class="tab" onclick="showTab('pixelart')">Pixel Art Studio</button>
             <button class="tab" onclick="showTab('audiostudio')">Audio Studio</button>
             <button class="tab" onclick="showTab('hidemulator')">HID Emulator</button>
+            <button class="tab" onclick="showTab('layout')">Layout</button>
         </div>
 
         <div id="system" class="tab-content active">
@@ -791,6 +792,31 @@
             </div>
             <div id="hidStatus" class="status" style="display:none; margin-top:15px;"></div>
         </div>
+
+        <div id="layout" class="tab-content">
+            <h2>📐 Layout Configurator</h2>
+            <p style="color: #b0b0b0; margin-bottom: 15px;">Configure the spatial offsets (X, Y) for connected satellites on the global animation canvas.</p>
+
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div class="panel" style="flex: 1; min-width: 320px; padding: 20px; background: #222; border-radius: 5px;">
+                    <div id="layoutControls">
+                        </div>
+                    <div style="margin-top: 20px; display: flex; gap: 10px;">
+                        <button onclick="saveLayout()">💾 Save & Apply</button>
+                        <button class="secondary" onclick="loadLayout()">↺ Revert</button>
+                    </div>
+                    <div id="layoutStatus" class="status" style="display:none; margin-top: 15px;"></div>
+                </div>
+
+                <div class="panel" style="flex: 2; min-width: 400px; padding: 20px; background: #222; border-radius: 5px;">
+                    <h3 style="margin-bottom: 15px; color: #4CAF50;">Live Canvas Preview</h3>
+                    <div id="layoutCanvasContainer" style="position: relative; width: 100%; height: 400px; background: #111; border: 1px solid #444; border-radius: 3px; overflow: hidden;">
+                        <div style="position: absolute; top: calc(50% - 64px); left: calc(50% - 64px); width: 128px; height: 128px; background: rgba(0, 150, 255, 0.1); border: 2px solid #0096FF; display: flex; align-items: center; justify-content: center; color: #0096FF; font-weight: bold; font-size: 0.85em; z-index: 10; box-sizing: border-box;">CORE (0,0)</div>
+                    </div>
+                    <p style="color: #888; font-size: 0.8em; margin-top: 10px; text-align: center;">1 Grid Square = 1 LED Pixel. Coordinates map outward from the Core.</p>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -809,9 +835,11 @@
             if (tabName === 'logs') loadLogs();
             if (tabName === 'console') loadConsole();
             if (tabName === 'modes') loadModes();
+            if (tabName === 'actions') startTelemetry();
             if (tabName === 'telemetry') startTelemetry();
             if (tabName === 'pixelart') initPixelArtStudio();
             if (tabName === 'audiostudio') initAudioStudio();
+            if (tabName === 'layout') loadLayout();
         }
 
         async function loadSystemStatus() {
@@ -2016,6 +2044,128 @@
             _hidEncBtnPressed = false;
             document.getElementById('hidEncBtn').classList.remove('pressed');
             _hidSend({ encoder_buttons: '0' });
+        }
+
+        // =====================================================================
+        // Layout Configurator
+        // =====================================================================
+        let currentLayoutData = {};
+
+        async function loadLayout() {
+            try {
+                const response = await fetch('/api/config/layout');
+                const data = await response.json();
+                currentLayoutData = data;
+                renderLayoutUI();
+            } catch (error) {
+                showStatus('layoutStatus', 'Error loading layout: ' + error, 'error');
+            }
+        }
+
+        function renderLayoutUI() {
+            const controls = document.getElementById('layoutControls');
+            const canvas = document.getElementById('layoutCanvasContainer');
+
+            controls.innerHTML = '<h3 style="margin-bottom: 15px; color: #4CAF50;">Offsets</h3>';
+
+            // Reset canvas but keep the CORE block
+            canvas.innerHTML = '<div style="position: absolute; top: calc(50% - 64px); left: calc(50% - 64px); width: 128px; height: 128px; background: rgba(0, 150, 255, 0.1); border: 2px solid #0096FF; display: flex; align-items: center; justify-content: center; color: #0096FF; font-weight: bold; font-size: 0.85em; z-index: 10; box-sizing: border-box;">CORE (0,0)</div>';
+
+            // Merge saved offsets with live satellites to get a complete list of IDs
+            const allSids = new Set([...Object.keys(currentLayoutData.offsets || {}), ...Object.keys(currentLayoutData.live || {})]);
+
+            if (allSids.size === 0) {
+                controls.innerHTML += '<em style="color:#666;">No satellites configured or connected.</em>';
+                return;
+            }
+
+            Array.from(allSids).sort((a,b) => Number(a)-Number(b)).forEach(sid => {
+                const saved = (currentLayoutData.offsets || {})[sid] || { offset_x: 0, offset_y: 0 };
+                const live = (currentLayoutData.live || {})[sid] || { active: false, type: 'OFFLINE/UNKNOWN' };
+
+                const badgeClass = live.active ? 'online' : 'offline';
+                const badgeText = live.active ? 'ONLINE' : 'OFFLINE';
+
+                // Render Input Controls
+                const row = document.createElement('div');
+                row.style.cssText = 'margin-bottom: 15px; padding: 15px; background: #1a1a1a; border: 1px solid #333; border-radius: 4px;';
+                row.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                        <strong style="color: #e0e0e0;">SAT ${sid} <span style="font-weight:normal; color:#888; font-size:0.85em;">(${live.type})</span></strong>
+                        <span class="sat-badge ${badgeClass}">${badgeText}</span>
+                    </div>
+                    <div style="display: flex; gap: 15px;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.8em;">X Offset:</label>
+                            <input type="number" id="layout_x_${sid}" value="${saved.offset_x}" oninput="updateCanvasPreview('${sid}')">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.8em;">Y Offset:</label>
+                            <input type="number" id="layout_y_${sid}" value="${saved.offset_y}" oninput="updateCanvasPreview('${sid}')">
+                        </div>
+                    </div>
+                `;
+                controls.appendChild(row);
+
+                // Render Virtual Canvas Block
+                const satBox = document.createElement('div');
+                satBox.id = `canvas_sat_${sid}`;
+                // Assuming standard 8x16 matrices for satellites (64px by 128px visual scale)
+                satBox.style.cssText = 'position: absolute; width: 64px; height: 128px; background: rgba(255, 152, 0, 0.15); border: 2px dashed #FF9800; display: flex; align-items: center; justify-content: center; color: #FF9800; font-weight: bold; font-size: 0.85em; transition: top 0.1s ease, left 0.1s ease; box-sizing: border-box;';
+                satBox.innerHTML = `SAT ${sid}`;
+                canvas.appendChild(satBox);
+
+                // Position immediately based on loaded values
+                updateCanvasPreview(sid);
+            });
+        }
+
+        function updateCanvasPreview(sid) {
+            const xInput = document.getElementById(`layout_x_${sid}`);
+            const yInput = document.getElementById(`layout_y_${sid}`);
+            if (!xInput || !yInput) return;
+
+            const x = parseInt(xInput.value) || 0;
+            const y = parseInt(yInput.value) || 0;
+
+            const satBox = document.getElementById(`canvas_sat_${sid}`);
+            if (satBox) {
+                const scale = 8; // 1 LED pixel = 8 CSS pixels
+                // Calculate position relative to the Core's origin point
+                satBox.style.left = `calc(50% - 64px + ${x * scale}px)`;
+                satBox.style.top = `calc(50% - 64px + ${y * scale}px)`;
+            }
+        }
+
+        async function saveLayout() {
+            const payload = {};
+            const inputs = document.querySelectorAll('[id^="layout_x_"]');
+
+            inputs.forEach(xInput => {
+                const sid = xInput.id.split('_')[2];
+                const yInput = document.getElementById(`layout_y_${sid}`);
+                payload[sid] = {
+                    x: parseInt(xInput.value) || 0,
+                    y: parseInt(yInput.value) || 0
+                };
+            });
+
+            try {
+                const response = await fetch('/api/config/layout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    showStatus('layoutStatus', 'Layout saved to config & applied live!', 'success');
+                } else {
+                    const data = await response.json();
+                    showStatus('layoutStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (error) {
+                showStatus('layoutStatus', 'Error: ' + error, 'error');
+            }
         }
     </script>
 </body>
