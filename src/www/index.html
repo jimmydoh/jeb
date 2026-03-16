@@ -371,6 +371,49 @@
             color: #555;
             text-align: center;
         }
+        /* Remote HID */
+        .hid-remote-panel {
+            background: #1a1a1a;
+            border: 2px solid #444;
+            border-radius: 8px;
+            padding: 16px;
+            min-width: 220px;
+        }
+        .hid-remote-panel h3 {
+            margin-bottom: 12px;
+            font-size: 1em;
+        }
+        .hid-section h4 {
+            color: #b0b0b0;
+            margin-bottom: 8px;
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .hid-toggle-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .hid-toggle-btn {
+            width: 52px;
+            height: 40px;
+            border-radius: 5px;
+            background: #2a2a2a;
+            border: 2px solid #555;
+            color: #b0b0b0;
+            font-size: 0.72em;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.1s, border-color 0.1s, color 0.1s;
+        }
+        .hid-toggle-btn.active {
+            background: #1a3a1a;
+            border-color: #4CAF50;
+            color: #4CAF50;
+        }
+        .hid-toggle-btn:hover { border-color: #888; }
         /* HID Emulator */
         .hid-emulator-grid {
             display: flex;
@@ -481,6 +524,7 @@
             <button class="tab" onclick="showTab('pixelart')">Pixel Art Studio</button>
             <button class="tab" onclick="showTab('audiostudio')">Audio Studio</button>
             <button class="tab" onclick="showTab('hidemulator')">HID Emulator</button>
+            <button class="tab" onclick="showTab('hid')">Remote HID</button>
             <button class="tab" onclick="showTab('layout')">Layout</button>
         </div>
 
@@ -791,6 +835,13 @@
 
             </div>
             <div id="hidStatus" class="status" style="display:none; margin-top:15px;"></div>
+        </div>
+
+        <div id="hid" class="tab-content">
+            <h2>🕹️ Remote HID</h2>
+            <p style="color: #b0b0b0; margin-bottom: 20px;">Inject virtual hardware inputs into the live HID state for each connected unit. Panels are generated dynamically from the active satellite topology. Connect to Telemetry to populate.</p>
+            <div id="hidDynamicContainer" style="display: flex; gap: 20px; flex-wrap: wrap;"></div>
+            <div id="hidRemoteStatus" class="status" style="display:none; margin-top:15px;"></div>
         </div>
 
         <div id="layout" class="tab-content">
@@ -1478,6 +1529,9 @@
                 const label = VOLTAGE_LABELS[key] || key;
                 drawSparkline(canvasId, _voltageHistory[key], label);
             }
+
+            // --- Remote HID interface ---
+            rebuildHIDInterface(data.satellites);
         }
 
         function drawSparkline(canvasId, values, label) {
@@ -2044,6 +2098,318 @@
             _hidEncBtnPressed = false;
             document.getElementById('hidEncBtn').classList.remove('pressed');
             _hidSend({ encoder_buttons: '0' });
+        }
+
+        // =====================================================================
+        // Remote HID Interface (dynamic satellite topology)
+        // =====================================================================
+        const HID_PROFILES = {
+            "CORE": {
+                label: "CORE",
+                color: "#4CAF50",
+                buttons: [
+                    { label: "B1" }, { label: "B2" }, { label: "B3" }, { label: "B4" },
+                ],
+                latching_toggles: [],
+                momentary_toggles: [],
+                encoders: [{ label: "ENC" }],
+            },
+            "INDUSTRIAL": {
+                label: "INDUSTRIAL",
+                color: "#FF9800",
+                buttons: [{ label: "BIG BTN" }],
+                latching_toggles: [
+                    { label: "T1" }, { label: "T2" }, { label: "T3" }, { label: "T4" },
+                    { label: "T5" }, { label: "T6" }, { label: "T7" }, { label: "T8" },
+                    { label: "ARM" }, { label: "KEY" }, { label: "ROT A" }, { label: "ROT B" },
+                ],
+                momentary_toggles: [{ label: "MOM" }],
+                encoders: [{ label: "ENC" }],
+            },
+        };
+        HID_PROFILES["01"] = HID_PROFILES["INDUSTRIAL"];
+
+        const _hidRemoteState = {};
+        let _hidTopoHash = '';
+
+        async function _hidRemoteSend(sid, payload) {
+            try {
+                const resp = await fetch('/api/hid/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sid, ...payload }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    showStatus('hidRemoteStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+                } else if (data.status === 'no_hid') {
+                    showStatus('hidRemoteStatus', 'HID manager not connected', 'error');
+                }
+            } catch (e) {
+                showStatus('hidRemoteStatus', 'Error: ' + e, 'error');
+            }
+        }
+
+        function _buildHIDPanel(sid, typeName, profile, btnIndexStart, encIndexStart) {
+            const panel = document.createElement('div');
+            panel.className = 'hid-remote-panel';
+            panel.style.borderColor = profile.color;
+
+            const title = sid === 'CORE' ? 'CORE' : `SAT ${sid}`;
+            const header = document.createElement('h3');
+            header.innerHTML = `<span style="color:${profile.color};">${title}</span> <span style="font-weight:normal;font-size:0.8em;color:#888;">${typeName}</span>`;
+            panel.appendChild(header);
+
+            const state = _hidRemoteState[sid];
+
+            // --- Buttons ---
+            if (profile.buttons && profile.buttons.length > 0) {
+                const section = document.createElement('div');
+                section.className = 'hid-section';
+                const h4 = document.createElement('h4');
+                h4.textContent = 'Buttons';
+                section.appendChild(h4);
+                const grid = document.createElement('div');
+                grid.className = 'hid-btn-grid';
+                profile.buttons.forEach((btn, i) => {
+                    const absIdx = btnIndexStart + i;
+                    const b = document.createElement('button');
+                    b.className = 'hid-push-btn';
+                    b.id = `hidDynBtn_${absIdx}`;
+                    b.textContent = btn.label;
+                    const press = () => {
+                        if (state.buttons[i]) return;
+                        state.buttons[i] = true;
+                        b.classList.add('pressed');
+                        _hidRemoteSend(sid, { buttons: state.buttons.map(v => v ? '1' : '0').join('') });
+                    };
+                    const release = () => {
+                        if (!state.buttons[i]) return;
+                        state.buttons[i] = false;
+                        b.classList.remove('pressed');
+                        _hidRemoteSend(sid, { buttons: state.buttons.map(v => v ? '1' : '0').join('') });
+                    };
+                    b.addEventListener('mousedown', press);
+                    b.addEventListener('mouseup', release);
+                    b.addEventListener('mouseleave', release);
+                    b.addEventListener('touchstart', e => { e.preventDefault(); press(); }, { passive: false });
+                    b.addEventListener('touchend', release);
+                    b.addEventListener('touchcancel', release);
+                    grid.appendChild(b);
+                });
+                section.appendChild(grid);
+                panel.appendChild(section);
+            }
+
+            // --- Latching Toggles ---
+            if (profile.latching_toggles && profile.latching_toggles.length > 0) {
+                const section = document.createElement('div');
+                section.className = 'hid-section';
+                const h4 = document.createElement('h4');
+                h4.textContent = 'Toggles';
+                section.appendChild(h4);
+                const grid = document.createElement('div');
+                grid.className = 'hid-toggle-grid';
+                profile.latching_toggles.forEach((tog, i) => {
+                    const b = document.createElement('button');
+                    b.className = 'hid-toggle-btn';
+                    b.id = `hidDynTog_${sid}_${i}`;
+                    b.textContent = tog.label;
+                    if (state.toggles[i]) b.classList.add('active');
+                    b.addEventListener('click', () => {
+                        state.toggles[i] = !state.toggles[i];
+                        b.classList.toggle('active', state.toggles[i]);
+                        _hidRemoteSend(sid, { latching_toggles: state.toggles.map(v => v ? '1' : '0').join('') });
+                    });
+                    grid.appendChild(b);
+                });
+                section.appendChild(grid);
+                panel.appendChild(section);
+            }
+
+            // --- Momentary Toggles ---
+            if (profile.momentary_toggles && profile.momentary_toggles.length > 0) {
+                const section = document.createElement('div');
+                section.className = 'hid-section';
+                const h4 = document.createElement('h4');
+                h4.textContent = 'Momentary';
+                section.appendChild(h4);
+                profile.momentary_toggles.forEach((tog, i) => {
+                    const wrap = document.createElement('div');
+                    wrap.style.cssText = 'display:flex; gap:5px; align-items:center; margin-bottom:5px;';
+                    const lbl = document.createElement('span');
+                    lbl.style.cssText = 'color:#b0b0b0; font-size:0.85em; min-width:40px;';
+                    lbl.textContent = tog.label;
+                    const mkMomBtn = (dir, label) => {
+                        const b = document.createElement('button');
+                        b.className = 'hid-enc-step-btn';
+                        b.textContent = label;
+                        const press = () => {
+                            state.momentary[i] = dir;
+                            _hidRemoteSend(sid, { momentary_toggles: state.momentary.join('') });
+                        };
+                        const release = () => {
+                            state.momentary[i] = 'C';
+                            _hidRemoteSend(sid, { momentary_toggles: state.momentary.join('') });
+                        };
+                        b.addEventListener('mousedown', press);
+                        b.addEventListener('mouseup', release);
+                        b.addEventListener('mouseleave', release);
+                        b.addEventListener('touchstart', e => { e.preventDefault(); press(); }, { passive: false });
+                        b.addEventListener('touchend', release);
+                        b.addEventListener('touchcancel', release);
+                        return b;
+                    };
+                    wrap.appendChild(lbl);
+                    wrap.appendChild(mkMomBtn('U', '▲'));
+                    wrap.appendChild(mkMomBtn('D', '▼'));
+                    section.appendChild(wrap);
+                });
+                panel.appendChild(section);
+            }
+
+            // --- Encoders ---
+            if (profile.encoders && profile.encoders.length > 0) {
+                const section = document.createElement('div');
+                section.className = 'hid-section';
+                const h4 = document.createElement('h4');
+                h4.textContent = 'Encoders';
+                section.appendChild(h4);
+                profile.encoders.forEach((enc, i) => {
+                    const absIdx = encIndexStart + i;
+                    const encWrap = document.createElement('div');
+                    encWrap.style.cssText = 'margin-bottom:10px;';
+                    const encLabel = document.createElement('div');
+                    encLabel.style.cssText = 'color:#b0b0b0; font-size:0.85em; margin-bottom:4px;';
+                    encLabel.textContent = enc.label;
+                    const controls = document.createElement('div');
+                    controls.className = 'hid-encoder-controls';
+                    const display = document.createElement('div');
+                    display.className = 'hid-encoder-display';
+                    display.id = `hidDynEnc_${absIdx}`;
+                    display.textContent = state.encoders[i];
+                    const step = (delta) => {
+                        state.encoders[i] += delta;
+                        display.textContent = state.encoders[i];
+                        _hidRemoteSend(sid, { encoders: state.encoders.map(String).join(':') });
+                    };
+                    const mkStepBtn = (delta, label) => {
+                        const b = document.createElement('button');
+                        b.className = 'hid-enc-step-btn';
+                        b.textContent = label;
+                        b.addEventListener('click', () => step(delta));
+                        return b;
+                    };
+                    const resetBtn = document.createElement('button');
+                    resetBtn.className = 'hid-enc-step-btn';
+                    resetBtn.style.fontSize = '0.7em';
+                    resetBtn.textContent = 'RST';
+                    resetBtn.addEventListener('click', () => {
+                        state.encoders[i] = 0;
+                        display.textContent = '0';
+                        _hidRemoteSend(sid, { encoders: state.encoders.map(String).join(':') });
+                    });
+                    controls.appendChild(mkStepBtn(-5, '«'));
+                    controls.appendChild(mkStepBtn(-1, '−'));
+                    controls.appendChild(display);
+                    controls.appendChild(mkStepBtn(1, '+'));
+                    controls.appendChild(mkStepBtn(5, '»'));
+                    controls.appendChild(resetBtn);
+                    // Encoder button
+                    const encBtnWrap = document.createElement('div');
+                    encBtnWrap.className = 'hid-enc-btn-wrap';
+                    const encBtn = document.createElement('button');
+                    encBtn.className = 'hid-enc-push-btn';
+                    encBtn.id = `hidDynEncBtn_${absIdx}`;
+                    encBtn.textContent = 'ENC BTN';
+                    const encPress = () => {
+                        if (state.encBtns[i]) return;
+                        state.encBtns[i] = true;
+                        encBtn.classList.add('pressed');
+                        _hidRemoteSend(sid, { encoder_buttons: state.encBtns.map(v => v ? '1' : '0').join('') });
+                    };
+                    const encRelease = () => {
+                        if (!state.encBtns[i]) return;
+                        state.encBtns[i] = false;
+                        encBtn.classList.remove('pressed');
+                        _hidRemoteSend(sid, { encoder_buttons: state.encBtns.map(v => v ? '1' : '0').join('') });
+                    };
+                    encBtn.addEventListener('mousedown', encPress);
+                    encBtn.addEventListener('mouseup', encRelease);
+                    encBtn.addEventListener('mouseleave', encRelease);
+                    encBtn.addEventListener('touchstart', e => { e.preventDefault(); encPress(); }, { passive: false });
+                    encBtn.addEventListener('touchend', encRelease);
+                    encBtn.addEventListener('touchcancel', encRelease);
+                    encBtnWrap.appendChild(encBtn);
+                    encWrap.appendChild(encLabel);
+                    encWrap.appendChild(controls);
+                    encWrap.appendChild(encBtnWrap);
+                    section.appendChild(encWrap);
+                });
+                panel.appendChild(section);
+            }
+
+            return panel;
+        }
+
+        function rebuildHIDInterface(satellites) {
+            const container = document.getElementById('hidDynamicContainer');
+            if (!container) return;
+
+            // Sort active satellite entries by ID for stable, backend-matching order
+            const satEntries = Object.entries(satellites || {})
+                .filter(([, sat]) => sat.active)
+                .sort(([a], [b]) => a.localeCompare(b));
+
+            // Build topology hash to avoid unnecessary DOM redraws
+            const topoHash = 'CORE_1' + satEntries.map(([sid, sat]) => `-${sat.type || 'UNKNOWN'}_${sid}`).join('');
+
+            if (_hidTopoHash === topoHash) return;
+            _hidTopoHash = topoHash;
+            container.innerHTML = '';
+
+            let btnIndex = 0;
+            let encIndex = 0;
+
+            // CORE panel (always present)
+            const coreProfile = HID_PROFILES['CORE'];
+            if (!_hidRemoteState['CORE']) {
+                _hidRemoteState['CORE'] = {
+                    buttons: new Array(coreProfile.buttons.length).fill(false),
+                    toggles: [],
+                    momentary: [],
+                    encoders: new Array(coreProfile.encoders.length).fill(0),
+                    encBtns: new Array(coreProfile.encoders.length).fill(false),
+                };
+            }
+            container.appendChild(_buildHIDPanel('CORE', 'CORE', coreProfile, btnIndex, encIndex));
+            btnIndex += coreProfile.buttons.length;
+            encIndex += coreProfile.encoders.length;
+
+            // Satellite panels
+            for (const [sid, sat] of satEntries) {
+                const typeName = sat.type || 'UNKNOWN';
+                const profile = HID_PROFILES[typeName];
+                if (!profile) {
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'hid-remote-panel';
+                    placeholder.innerHTML = `<h3 style="color:#888;">SAT ${sid}</h3><p style="color:#666;font-size:0.85em;">Unknown type: ${typeName}</p>`;
+                    container.appendChild(placeholder);
+                    continue;
+                }
+                if (!_hidRemoteState[sid]) {
+                    _hidRemoteState[sid] = {
+                        buttons: new Array(profile.buttons.length).fill(false),
+                        toggles: new Array(profile.latching_toggles.length).fill(false),
+                        momentary: new Array(profile.momentary_toggles.length).fill('C'),
+                        encoders: new Array(profile.encoders.length).fill(0),
+                        encBtns: new Array(profile.encoders.length).fill(false),
+                    };
+                }
+                container.appendChild(_buildHIDPanel(sid, typeName, profile, btnIndex, encIndex));
+                btnIndex += profile.buttons.length;
+                encIndex += profile.encoders.length;
+            }
         }
 
         // =====================================================================

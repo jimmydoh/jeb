@@ -325,7 +325,8 @@ class SatelliteNetworkManager:
         JEBLogger.debug(
             "NETM",
             f"POWER | in={v_in:.2f}V bus={v_bus:.2f}V logic={v_logic:.2f}V",
-            src=sid
+            src=sid,
+            verbosity=3,
         )
 
         # UVLO alert: raise alarm if input voltage drops below safe threshold
