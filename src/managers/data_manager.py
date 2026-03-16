@@ -89,7 +89,11 @@ class DataManager:
 
     def get_setting(self, mode_name, setting_key, default=None):
         """Retrieve a specific setting."""
-        JEBLogger.debug("DATA", f"Retrieving setting '{setting_key}' for mode: {mode_name} with default: {default}")
+        JEBLogger.debug(
+            "DATA",
+            f"Retrieving setting '{setting_key}' for mode: {mode_name} with default: {default}",
+            verbosity=2,
+        )
         return self.data.get(mode_name, {}).get("CONFIG", {}).get(setting_key, default)
 
     def set_setting(self, mode_name, setting_key, value):
