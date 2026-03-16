@@ -6,7 +6,9 @@ TODO: Implement HardwareContext for modes to limit access
 """
 import asyncio
 import busio
+import gc
 import neopixel
+import sys
 from adafruit_ticks import ticks_ms, ticks_diff
 
 from managers import PowerManager, ResourceManager, WatchdogManager
@@ -346,6 +348,29 @@ class CoreManager:
             raise ImportError(f"Failed to import module '{module_path}' for mode '{mode_id}': {e}") from e
         except AttributeError as e:
             raise ImportError(f"Module '{module_path}' does not have class '{class_name}' for mode '{mode_id}': {e}") from e
+
+    def _unload_mode(self, mode_id):
+        """Ruthlessly purge a mode's class and module from SRAM to prevent OOM crashes."""
+        # 1. Remove from local class cache (prevents permanent RAM locking)
+        if mode_id in self.loaded_modes:
+            del self.loaded_modes[mode_id]
+
+        # 2. Delete from Python's internal module cache
+        meta = self.mode_registry.get(mode_id)
+        if meta and "module_path" in meta:
+            module_path = meta["module_path"]
+            if module_path in sys.modules:
+                del sys.modules[module_path]
+
+        # 3. Force garbage collection sweep
+        gc.collect()
+
+        # Try to log the free RAM if possible
+        try:
+            free_kb = gc.mem_free() / 1024
+            JEBLogger.debug("CORE", f"Purged '{mode_id}' from RAM. Free SRAM: {free_kb:.1f} KB")
+        except AttributeError:
+            pass # CPython emulator doesn't have mem_free
 
     # Satellite Network Delegation Properties
     @property
@@ -822,9 +847,11 @@ class CoreManager:
 
                 if requirements_met:
 
+                    current_mode_id = self.mode
+
                     # LAZY LOAD THE MODE CLASS
                     try:
-                        mode_class = self._load_mode_class(self.mode)
+                        mode_class = self._load_mode_class(current_mode_id)
                     except (ImportError, KeyError) as e:
                         JEBLogger.error("CORE", f"Error loading mode '{self.mode}': {e}")
 
@@ -937,7 +964,18 @@ class CoreManager:
                             break # Break the while loop to instantly load the new mode!
 
                         self.mode = "DASHBOARD"  # Return to dashboard after mode exit or error
+
+                    # ==========================================
+                    # --- AGGRESSIVE RAM PURGE ---
+                    # ==========================================
+                    # Sever all local references to the instance and class
                     self.active_mode = None
+                    mode_instance = None
+                    mode_class = None
+                    # Unload from sys.modules and force GC
+                    if self.mode != current_mode_id:
+                        self._unload_mode(current_mode_id)
+
                 else:
                     JEBLogger.warning("CORE", f"Cannot start {self.mode}: Missing Dependency")
 
