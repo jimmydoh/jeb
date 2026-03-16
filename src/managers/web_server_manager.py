@@ -86,23 +86,23 @@ class WebServerManager:
 
     @property
     def power_manager(self):
-        return self.app.power if self.app else None
+        return getattr(self.app, 'power', None) if self.app else None
 
     @property
     def satellite_manager(self):
-        return self.app.sat_network if self.app else None
+        return getattr(self.app, 'sat_network', None) if self.app else None
 
     @property
     def matrix_manager(self):
-        return self.app.matrix if self.app else None
+        return getattr(self.app, 'matrix', None) if self.app else None
 
     @property
     def synth_manager(self):
-        return self.app.synth if self.app else None
+        return getattr(self.app, 'synth', None) if self.app else None
 
     @property
     def hid(self):
-        return self.app.hid if self.app else None
+        return getattr(self.app, 'hid', None) if self.app else None
 
     async def connect_wifi(self, timeout=30):
         """

@@ -185,6 +185,24 @@ class MockDataManager:
         pass
 
 
+class MockApp:
+    """Generic mock app for WebServerManager delegation testing.
+
+    WebServerManager now accesses hardware managers via properties that
+    delegate to self.app (e.g. power_manager -> app.power).  Tests that
+    need those managers should pass an instance of this class as the
+    ``app`` argument instead of using the old per-manager kwargs.
+    """
+    def __init__(self, power=None, sat_network=None, matrix=None, synth=None, hid=None, data=None, mode_registry=None):
+        self.power = power
+        self.sat_network = sat_network
+        self.matrix = matrix
+        self.synth = synth
+        self.hid = hid
+        self.data = data
+        self.mode_registry = mode_registry or {}
+
+
 def test_initialization():
     """Test WebServerManager initialization."""
     print("Testing WebServerManager initialization...")
@@ -1168,7 +1186,8 @@ def test_telemetry_manager_params():
     pm = MockPowerManager()
     sm = MockSatelliteManager()
 
-    manager = WebServerManager(config, MockWiFiManager(), power_manager=pm, satellite_manager=sm, testing=True)
+    mock_app = MockApp(power=pm, sat_network=sm)
+    manager = WebServerManager(config, MockWiFiManager(), app=mock_app, testing=True)
     assert manager.power_manager is pm
     assert manager.satellite_manager is sm
 
@@ -1210,10 +1229,25 @@ def test_telemetry_sse_generator_with_managers():
         "web_server_enabled": True,
     }
 
+    class MockBus:
+        def __init__(self, v_now):
+            self.v_now = v_now
+
     class MockPowerManager:
         @property
         def status(self):
             return {"input_20v": 20.0, "main_5v": 5.0}
+
+        buses = {
+            "input_20v": None,  # will be set in __init__
+            "main_5v": None,
+        }
+
+        def __init__(self):
+            self.buses = {
+                "input_20v": MockBus(20.0),
+                "main_5v": MockBus(5.0),
+            }
 
     class MockSat:
         is_active = True
@@ -1225,8 +1259,7 @@ def test_telemetry_sse_generator_with_managers():
     manager = WebServerManager(
         config,
         MockWiFiManager(),
-        power_manager=MockPowerManager(),
-        satellite_manager=MockSatelliteManager(),
+        app=MockApp(power=MockPowerManager(), sat_network=MockSatelliteManager()),
         testing=True
     )
     manager.server = MockServer(None, "/static")
@@ -1448,7 +1481,7 @@ def test_pixel_art_preview_with_matrix():
 
     config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
     mock_matrix = MockMatrixManager()
-    manager = WebServerManager(config, MockWiFiManager(), matrix_manager=mock_matrix, testing=True)
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(matrix=mock_matrix), testing=True)
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -1583,7 +1616,7 @@ def test_pixel_art_matrix_manager_stored():
 
     config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
     mock_matrix = MockMatrixManager()
-    manager = WebServerManager(config, MockWiFiManager(), matrix_manager=mock_matrix, testing=True)
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(matrix=mock_matrix), testing=True)
 
     assert manager.matrix_manager is mock_matrix
     assert manager.matrix_manager is not None
@@ -1909,11 +1942,10 @@ def _make_synth_manager(config=None):
     if config is None:
         config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
     mock_synth = MockSynthManager()
-    manager = WebServerManager(config, MockWiFiManager(), synth_manager=mock_synth, testing=True)
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(synth=mock_synth), testing=True)
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
     return manager, mock_synth
-
 
 def _find_route(manager, path):
     for rpath, _, func in manager.server.routes:
@@ -1928,7 +1960,7 @@ def test_synth_manager_stored():
 
     config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
     mock_synth = MockSynthManager()
-    manager = WebServerManager(config, MockWiFiManager(), synth_manager=mock_synth, testing=True)
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(synth=mock_synth), testing=True)
 
     assert manager.synth_manager is mock_synth
     assert manager.synth_manager is not None
@@ -2146,7 +2178,7 @@ def test_hid_manager_stored():
 
     config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
     mock_hid = MockHIDManager()
-    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(hid=mock_hid), testing=True)
 
     assert manager.hid is mock_hid
     assert manager.hid is not None
@@ -2201,7 +2233,7 @@ def test_hid_update_core_buttons():
 
     config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
     mock_hid = MockHIDManager()
-    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(hid=mock_hid), testing=True)
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -2231,7 +2263,7 @@ def test_hid_update_core_all_fields():
 
     config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
     mock_hid = MockHIDManager()
-    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(hid=mock_hid), testing=True)
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -2267,7 +2299,7 @@ def test_hid_update_implicit_core():
 
     config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
     mock_hid = MockHIDManager()
-    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(hid=mock_hid), testing=True)
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -2303,7 +2335,7 @@ def test_hid_update_satellite_routing():
     config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
     sat_manager = MockSatelliteManager()
     manager = WebServerManager(
-        config, MockWiFiManager(), satellite_manager=sat_manager, testing=True
+        config, MockWiFiManager(), app=MockApp(sat_network=sat_manager), testing=True
     )
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
@@ -2335,7 +2367,7 @@ def test_hid_update_satellite_not_found():
 
     config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
     manager = WebServerManager(
-        config, MockWiFiManager(), satellite_manager=MockSatelliteManager(), testing=True
+        config, MockWiFiManager(), app=MockApp(sat_network=MockSatelliteManager()), testing=True
     )
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
@@ -2381,7 +2413,7 @@ def test_hid_update_no_fields():
 
     config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
     mock_hid = MockHIDManager()
-    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(hid=mock_hid), testing=True)
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -2404,7 +2436,7 @@ def test_hid_update_invalid_json():
 
     config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
     mock_hid = MockHIDManager()
-    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(hid=mock_hid), testing=True)
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -2425,7 +2457,7 @@ def test_hid_update_encoder_buttons():
 
     config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
     mock_hid = MockHIDManager()
-    manager = WebServerManager(config, MockWiFiManager(), hid=mock_hid, testing=True)
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(hid=mock_hid), testing=True)
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
@@ -2590,9 +2622,9 @@ def test_get_modes_with_industrial_satellite():
                 "settings": []
             },
         }
+        sat_network = MockSatManager()
 
-    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(),
-                               satellite_manager=MockSatManager(), testing=True)
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(), testing=True)
     manager.server = MockServer(None, "/static")
     manager.setup_routes()
 
