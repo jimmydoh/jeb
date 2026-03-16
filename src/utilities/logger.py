@@ -22,6 +22,7 @@ class JEBLogger:
 
     # Global Configuration
     LEVEL = LogLevel.INFO
+    VERBOSITY = 0  # Optional numeric verbosity level for fine-grained control
     EMUL = False  # Set to True when running in the emulator to enable EMULATOR log level
     SOURCE = "CORE"  # Default source tag for log messages
     PRINT_TO_CONSOLE = True
@@ -160,9 +161,10 @@ class JEBLogger:
 
     # Log Wrappers
     @classmethod
-    def debug(cls, tag, msg, src=None, file=None):
+    def debug(cls, tag, msg, src=None, verbosity=None, file=None):
         if cls.LEVEL <= LogLevel.DEBUG:
-            cls._log(LogLevel.DEBUG, tag, msg, source_tag=src, file_override=file)
+            if verbosity is None or verbosity <= cls.VERBOSITY:
+                cls._log(LogLevel.DEBUG, tag, msg, source_tag=src, file_override=file)
 
     @classmethod
     def info(cls, tag, msg, src=None, file=None):
