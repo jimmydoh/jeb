@@ -855,7 +855,10 @@ class WebServerManager:
                 if self.satellite_manager is not None:
                     try:
                         for sid, sat in self.satellite_manager.satellites.items():
-                            sat_data[sid] = {"active": sat.is_active}
+                            sat_data[sid] = {
+                                "active": sat.is_active,
+                                "type": getattr(sat, 'sat_type_name', '01'),
+                            }
                     except Exception:
                         pass
 
