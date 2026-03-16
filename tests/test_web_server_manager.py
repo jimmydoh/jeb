@@ -1251,6 +1251,7 @@ def test_telemetry_sse_generator_with_managers():
 
     class MockSat:
         is_active = True
+        sat_type_name = "INDUSTRIAL"
 
     class MockSatelliteManager:
         satellites = {"0100": MockSat()}
@@ -1285,6 +1286,9 @@ def test_telemetry_sse_generator_with_managers():
     assert "ts" in payload
     assert payload["power"]["input_20v"] == 20.0
     assert payload["satellites"]["0100"]["active"] is True
+    assert payload["satellites"]["0100"]["type"] == "INDUSTRIAL", (
+        "Satellite telemetry should include the sat_type_name as 'type'"
+    )
 
     print("  ✓ Telemetry status handler with managers test passed")
 
@@ -1355,6 +1359,62 @@ def test_telemetry_keepalive_chunks():
     assert isinstance(payload["ts"], (int, float)), "Timestamp should be numeric"
 
     print("  ✓ Telemetry status response structure test passed")
+
+
+def test_telemetry_satellite_type_field():
+    """Test that the telemetry endpoint exposes sat_type_name as 'type' in satellite data."""
+    print("\nTesting telemetry satellite type field...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True,
+    }
+
+    class MockSatWithType:
+        is_active = True
+        sat_type_name = "INDUSTRIAL"
+
+    class MockSatNoType:
+        """Satellite without sat_type_name attribute (uses default fallback)."""
+        is_active = False
+
+    class MockSatelliteManager:
+        satellites = {
+            "0100": MockSatWithType(),
+            "0200": MockSatNoType(),
+        }
+
+    class MockApp:
+        sat_network = MockSatelliteManager()
+        power = None
+        _sleeping = False
+
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    status_handler = None
+    for path, _, func in manager.server.routes:
+        if path == "/api/telemetry/status":
+            status_handler = func
+            break
+    assert status_handler is not None
+
+    request = MockRequest()
+    response = status_handler(request)
+    payload = json.loads(response.body)
+
+    # Satellite with sat_type_name returns the name
+    assert payload["satellites"]["0100"]["type"] == "INDUSTRIAL", (
+        "Satellite with sat_type_name should expose it as 'type'"
+    )
+    # Satellite without sat_type_name falls back to '01'
+    assert payload["satellites"]["0200"]["type"] == "01", (
+        "Satellite without sat_type_name should fall back to '01'"
+    )
+
+    print("  ✓ Telemetry satellite type field test passed")
 
 
 def test_pixel_art_palette_route():
@@ -2952,6 +3012,7 @@ def run_all_tests():
         test_telemetry_sse_generator_with_managers,
         test_telemetry_sse_generator_no_managers,
         test_telemetry_keepalive_chunks,
+        test_telemetry_satellite_type_field,
         test_pixel_art_palette_route,
         test_pixel_art_preview_no_matrix,
         test_pixel_art_preview_with_matrix,
