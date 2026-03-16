@@ -88,6 +88,7 @@ def spy_transmit(self, message):
     payload = getattr(message, 'payload', '')
     suppressed_commands = [
         "SYNC_FRAME",
+        "POWER",
     ]
     if cmd not in suppressed_commands:
         JEBLogger.emulator("UART", f"{src:<4}➔ {dest:<4} | CMD:{cmd:<10} | DATA:{payload}")

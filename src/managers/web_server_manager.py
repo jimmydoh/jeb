@@ -1240,6 +1240,75 @@ class WebServerManager:
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}', status=500, content_type="application/json")
 
+        # API: Get satellite layout offsets
+        @self.server.route("/api/config/layout", GET)
+        def get_layout(request: Request):
+            """Return current satellite layout offsets and live status."""
+            try:
+                # Get saved offsets from config
+                saved_offsets = self.config.get("satellites", {})
+
+                # Mix in live satellite status if the network manager is running
+                live_sats = {}
+                if self.satellite_manager is not None:
+                    for sid, sat in self.satellite_manager.satellites.items():
+                        live_sats[str(sid)] = {
+                            "active": getattr(sat, 'is_active', False),
+                            "type": getattr(sat, 'sat_type_name', 'UNKNOWN')
+                        }
+
+                response_data = {
+                    "offsets": saved_offsets,
+                    "live": live_sats
+                }
+                return Response(request, json.dumps(response_data),
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Update satellite layout offsets
+        @self.server.route("/api/config/layout", POST)
+        def update_layout(request: Request):
+            """Update satellite layout offsets in config and apply them live."""
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                if "satellites" not in self.config:
+                    self.config["satellites"] = {}
+
+                # 1. Update config dictionary
+                for sid, offsets in data.items():
+                    self.config["satellites"][str(sid)] = {
+                        "offset_x": int(offsets.get("x", 0)),
+                        "offset_y": int(offsets.get("y", 0))
+                    }
+
+                self._save_config()
+
+                # 2. Push live updates to SatelliteNetworkManager immediately
+                if self.satellite_manager is not None:
+                    for sid, offsets in data.items():
+                        try:
+                            self.satellite_manager.set_satellite_offset(
+                                int(sid),
+                                int(offsets.get("x", 0)),
+                                int(offsets.get("y", 0))
+                            )
+                        except ValueError:
+                            pass # Ignore malformed IDs
+
+                self.log("Satellite layout updated via web interface")
+                return Response(request, '{"status": "success"}',
+                              content_type="application/json")
+            except Exception as e:
+                self.log(f"Error updating layout: {e}")
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
     def _save_config(self):
         """Save configuration to config.json."""
         if self._testing:
