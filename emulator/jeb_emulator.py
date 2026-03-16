@@ -36,18 +36,29 @@ if SRC_DIR not in sys.path:
 
 _orig_stat = os.stat
 _orig_mkdir = os.mkdir
+_orig_listdir = os.listdir    # <-- Added listdir
 _orig_open = builtins.open
+_orig_remove = os.remove
+_orig_rmdir = os.rmdir
 
 def smart_path_mapper(path):
     if not isinstance(path, str):
         return path
 
-    # If the code is looking for the SD card, route it absolutely to the repo's SD folder
+    # 1. Exact match for the root SD directory (Fixes the trailing slash issue)
+    if path.lower() in ('/sd', 'sd'):
+        JEBLogger.emulator("MOCK", f"Path {path} mapped -> {SD_DIR}")
+        return SD_DIR
+
+    # 2. Match for subdirectories and files
     if path.lower().startswith('/sd/') or path.lower().startswith('sd/'):
         # Strip the '/sd/' prefix and append the rest to our absolute SD_DIR
         clean_path = path[4:] if path.lower().startswith('/sd/') else path[3:]
-        JEBLogger.emulator("MOCK", f"Path {path} mapped -> {os.path.join(SD_DIR, clean_path)}")
-        return os.path.join(SD_DIR, clean_path)
+
+        # Normalize the path so Windows uses backslashes correctly
+        mapped_path = os.path.normpath(os.path.join(SD_DIR, clean_path))
+        JEBLogger.emulator("MOCK", f"Path {path} mapped -> {mapped_path}")
+        return mapped_path
 
     return path
 
@@ -56,6 +67,10 @@ def _mock_stat(path, *args, **kwargs):
     JEBLogger.emulator("MOCK", f"Intercepted os.stat for path: {path}")
     return _orig_stat(smart_path_mapper(path), *args, **kwargs)
 
+def _mock_listdir(path="."):
+    JEBLogger.emulator("MOCK", f"Intercepted os.listdir for path: {path}")
+    return _orig_listdir(smart_path_mapper(path))
+
 def _mock_open(file, *args, **kwargs):
     JEBLogger.emulator("MOCK", f"Intercepted open for file: {file}")
     return _orig_open(smart_path_mapper(file), *args, **kwargs)
@@ -63,6 +78,14 @@ def _mock_open(file, *args, **kwargs):
 def _mock_mkdir(path, *args, **kwargs):
     JEBLogger.emulator("MOCK", f"Intercepted os.mkdir for path: {path}")
     return _orig_mkdir(smart_path_mapper(path), *args, **kwargs)
+
+def _mock_remove(path, *args, **kwargs):
+    JEBLogger.emulator("MOCK", f"Intercepted os.remove for path: {path}")
+    return _orig_remove(smart_path_mapper(path), *args, **kwargs)
+
+def _mock_rmdir(path, *args, **kwargs):
+    JEBLogger.emulator("MOCK", f"Intercepted os.rmdir for path: {path}")
+    return _orig_rmdir(smart_path_mapper(path), *args, **kwargs)
 
 class MockStorage:
     @staticmethod
@@ -76,6 +99,9 @@ sys.modules['storage'] = MockStorage()
 # Apply the patches globally for the emulator session
 os.stat = _mock_stat
 os.mkdir = _mock_mkdir
+os.listdir = _mock_listdir
+os.remove = _mock_remove
+os.rmdir = _mock_rmdir
 builtins.open = _mock_open
 
 # Console Mocks
@@ -1224,12 +1250,16 @@ class MockHTTPRequest:
         self._body = body
 
     def _parse_query(self, query_string):
+        import urllib.parse
         params = {}
         if query_string:
             for part in query_string.split("&"):
                 if "=" in part:
                     k, v = part.split("=", 1)
-                    params[k] = v.replace("+", " ")
+                    # Safely decode URL entities (e.g., %2F becomes /)
+                    decoded_k = urllib.parse.unquote(k)
+                    decoded_v = urllib.parse.unquote(v.replace("+", " "))
+                    params[decoded_k] = decoded_v
         return params
 
     def json(self):
