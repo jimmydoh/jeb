@@ -859,9 +859,14 @@ class WebServerManager:
                     except Exception:
                         pass
 
+                system_data = {
+                    "sleeping": self.app._sleeping if hasattr(self.app, "_sleeping") else False
+                }
+
                 payload = json.dumps({
                     "power": power_data,
                     "satellites": sat_data,
+                    "system": system_data,
                     "ts": time.monotonic(),
                 })
                 return Response(request, payload, content_type="application/json")
@@ -1172,6 +1177,68 @@ class WebServerManager:
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
+
+        # --- SYSTEM ACTIONS ---
+
+        @self.server.route("/api/action/reboot", POST)
+        def action_reboot(request: Request):
+            """Trigger a soft reboot of the Master Controller."""
+            self.log("Web requested system reboot.")
+            import supervisor
+            import asyncio
+
+            # Spawn a background task to reboot after 1 second
+            # This allows the HTTP 200 OK response to successfully reach the browser first!
+            async def delayed_reboot():
+                await asyncio.sleep(1)
+                supervisor.reload()
+
+            asyncio.create_task(delayed_reboot())
+            return Response(request, '{"status": "rebooting"}', content_type="application/json")
+
+        @self.server.route("/api/action/sleep", POST)
+        def action_sleep(request: Request):
+            """Toggle the low-power sleep state."""
+            if not self.app:
+                return Response(request, '{"error": "App not available"}', status=503)
+            try:
+                data = json.loads(request.body)
+                sleep_req = data.get("sleep", True)
+
+                if sleep_req:
+                    asyncio.create_task(self.app._enter_sleep())
+                    self.log("Web forced system SLEEP.")
+                else:
+                    asyncio.create_task(self.app._wake_system())
+                    self.log("Web forced system WAKE.")
+
+                return Response(request, '{"status": "ok"}', content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}', status=500, content_type="application/json")
+
+        @self.server.route("/api/action/led", POST)
+        def action_led(request: Request):
+            """Apply an animation state to specific LEDs."""
+            if not self.app or not self.app.leds:
+                return Response(request, '{"error": "LED Manager not available"}', status=503)
+            try:
+                data = json.loads(request.body)
+                idx = int(data.get("index", -1))
+                hex_color = data.get("color", "#00FFFF")
+                anim = data.get("anim", "SOLID")
+                speed = float(data.get("speed", 1.0))
+
+                # Parse hex to RGB tuple
+                hex_color = hex_color.lstrip('#')
+                r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+                # Apply to the button LED manager
+                self.app.leds.set_led(idx, color=(r,g,b), anim_mode=anim, speed=speed)
+                self.log(f"Web set LED {idx} -> {anim} @ {speed}x")
+
+                return Response(request, '{"status": "ok"}', content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}', status=500, content_type="application/json")
 
     def _save_config(self):
         """Save configuration to config.json."""
