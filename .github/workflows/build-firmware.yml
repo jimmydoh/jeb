@@ -79,13 +79,13 @@ jobs:
           cp -r src/utilities $STAGE_DIR/ || true
 
           echo "--> Fetching latest Adafruit Bundle URL..."
-          
+
           # 1. Fetch the first release in the array [0] using a secure Bearer token
           # 2. Extract the .zip file containing "-py-"
           BUNDLE_URL=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/adafruit/Adafruit_CircuitPython_Bundle/releases \
             | jq -r '.[0].assets[] | select(.name | contains("-py-") and endswith(".zip")) | .browser_download_url')
-          
+
           # Check if the URL is completely empty or says 'null'
           if [ -z "$BUNDLE_URL" ] || [ "$BUNDLE_URL" == "null" ]; then
             echo "ERROR: Failed to extract the bundle URL. The API might be rate-limiting or returning an error."
@@ -93,14 +93,14 @@ jobs:
             curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/adafruit/Adafruit_CircuitPython_Bundle/releases | jq '.message'
             exit 1
           fi
-          
+
           echo "Downloading from: $BUNDLE_URL"
           wget -q "$BUNDLE_URL" -O /tmp/bundle.zip
-          
+
           unzip -q /tmp/bundle.zip -d /tmp/bundle_extracted
 
           # Find the nested 'lib' folder inside the extracted bundle
-          BUNDLE_LIB=$(find /tmp/bundle_extracted -type d -name "lib" | head -n 1)
+          export BUNDLE_LIB=$(find /tmp/bundle_extracted -type d -name "lib" | head -n 1)
 
           echo "--> Parsing requirements-circup.txt and extracting libraries..."
           python3 << 'EOF'
