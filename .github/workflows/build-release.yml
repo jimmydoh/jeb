@@ -1,0 +1,13 @@
+name: JEB Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  trigger-sd-build:
+    name: MPY Build
+    uses: ./.github/workflows/build-mpy.yml
+
+  trigger-firmware-build:
+    name: UF2 Build
+    uses: ./.github/workflows/build-firmware.yml

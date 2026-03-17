@@ -1,16 +1,7 @@
 name: Build Custom JEB Firmware
 
 on:
-  push:
-    branches: [ "main" ]
-    paths:
-      - 'src/core/**'
-      - 'src/dummies/**'
-      - 'src/managers/**'
-      - 'src/satellites/**'
-      - 'src/transport/**'
-      - 'src/utilities/**'
-      - 'requirements-circup.txt'
+  workflow_call:
   workflow_dispatch: # Allows manual triggering
 
 jobs:
@@ -36,7 +27,7 @@ jobs:
 
       - name: Clone CircuitPython
         run: |
-          git clone -b main https://github.com/adafruit/circuitpython.git /tmp/circuitpython
+          git clone -b 10.1.3 https://github.com/adafruit/circuitpython.git /tmp/circuitpython
           cd /tmp/circuitpython
           make fetch-all-submodules
           pip install -r requirements-dev.txt
@@ -57,17 +48,31 @@ jobs:
           # Clone the Pico 2 W board
           cp -r raspberry_pi_pico2_w jeb_master
 
-          # Patch the Makefile for 2.5MB Firmware and strip Web Workflow
-          sed -i "s/-DCIRCUITPY_FIRMWARE_SIZE='(1536 \* 1024)'/-DCIRCUITPY_FIRMWARE_SIZE='(2556 \* 1024)'/g" jeb_master/mpconfigboard.mk
-          sed -i "s/CIRCUITPY_WEB_WORKFLOW = 1/CIRCUITPY_WEB_WORKFLOW = 0/g" jeb_master/mpconfigboard.mk
+          # Bulletproof replacements (target the numbers directly)
+          sed -i 's/1536/2556/g' jeb_master/mpconfigboard.mk
+          sed -i 's/CIRCUITPY_WEB_WORKFLOW = 1/CIRCUITPY_WEB_WORKFLOW = 0/g' jeb_master/mpconfigboard.mk
+          sed -i 's/1532K/2552K/g' jeb_master/link.ld
 
-          # Patch the Linker Script (2556K - 4K bootloader = 2552K)
-          sed -i "s/firmware_size = 1532K/firmware_size = 2552K/g" jeb_master/link.ld
+          # VERIFICATION: Print the modified lines to the GitHub log so we know it worked
+          echo "=== VERIFYING BOARD MODIFICATIONS ==="
+          echo "[mpconfigboard.mk]:"
+          grep -E "FIRMWARE_SIZE|WEB_WORKFLOW" jeb_master/mpconfigboard.mk
+          echo "[link.ld]:"
+          grep "firmware_size" jeb_master/link.ld
+          echo "====================================="
 
       - name: Stage Frozen Modules
         run: |
           STAGE_DIR="/tmp/jeb_frozen"
           mkdir -p $STAGE_DIR
+
+          echo "--> Injecting Firmware Version Metadata..."
+          # Dynamically create a version file that will be frozen into the .uf2
+          cat <<EOF > $STAGE_DIR/jeb_version.py
+          FIRMWARE_VERSION = "${{ github.ref_name }}"
+          BUILD_DATE = "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          COMMIT_HASH = "${{ github.sha }}"
+          EOF
 
           echo "--> Copying JEB Custom Modules..."
           # Adjust these paths if your repo structure is different
