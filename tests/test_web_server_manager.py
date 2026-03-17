@@ -337,7 +337,7 @@ def test_config_save():
 
 
 def test_html_generation_with_mock_file():
-    """Test HTML page generation with mocked file system."""
+    """Test HTML page generation via the index route with mocked file system."""
     print("\nTesting HTML generation with mock file...")
 
     config = {
@@ -347,39 +347,34 @@ def test_html_generation_with_mock_file():
     }
 
     manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
 
-    # Patch the _generate_html_page to avoid file system issues
-    def mock_html_generator():
-        """Mock HTML generator that returns test content."""
-        yield "<!DOCTYPE html>"
-        yield "<html><head><title>JEB</title></head>"
-        yield "<body><h1>Test HTML</h1></body>"
-        yield "</html>"
+    # Find the index route
+    index_route = None
+    for path, method, func in manager.server.routes:
+        if path == "/":
+            index_route = func
+            break
 
-    original_method = manager._generate_html_page
-    manager._generate_html_page = mock_html_generator
+    assert index_route is not None, "Index route not found"
 
-    html_result = manager._generate_html_page()
+    # Call the index route; in the test environment no HTML files exist on disk,
+    # so the handler falls back to the inline error/fallback HTML response.
+    request = MockRequest()
+    response = index_route(request)
 
-    # The function should return a generator
-    assert hasattr(html_result, '__iter__') and not isinstance(html_result, str), \
-        f"Expected generator, got {type(html_result)}"
+    # Response should contain HTML content
+    assert response is not None, "Index route should return a response"
+    assert hasattr(response, 'body'), "Response should have a body attribute"
 
-    # Consume the generator
-    chunks = []
-    for chunk in html_result:
-        if chunk:
-            chunks.append(chunk)
-    html = ''.join(chunks)
+    body = response.body
+    if isinstance(body, bytes):
+        body = body.decode("utf-8")
 
-    # Verify we got some HTML content
-    assert isinstance(html, str), f"Expected string, got {type(html)}"
-    assert len(html) > 0, "HTML content should not be empty"
-    assert "<!DOCTYPE html>" in html, "Should contain HTML structure"
-    assert "JEB" in html, "Should contain JEB title"
-
-    # Restore original method
-    manager._generate_html_page = original_method
+    assert isinstance(body, str), f"Expected string body, got {type(body)}"
+    assert len(body) > 0, "HTML content should not be empty"
+    assert "<!DOCTYPE html>" in body, "Should contain HTML structure"
 
     print("  ✓ HTML generation with mock file test passed")
 
