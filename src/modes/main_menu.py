@@ -444,6 +444,7 @@ class MainMenu(UtilityMode):
                             #selected_setting_idx = curr_pos % len(mode_settings)
                             selected_setting_idx = (selected_setting_idx + encoder_diff) % len(mode_settings)
                             self.core.buzzer.play_sequence(tones.UI_TICK)
+                            JEBLogger.info("MENU", f"Setting selected: {mode_settings[selected_setting_idx]['label']} (idx={selected_setting_idx})  of {len(mode_settings)}")
                             needs_render = True
 
                         if encoder_pressed:
@@ -458,7 +459,7 @@ class MainMenu(UtilityMode):
                                 opt_idx = 0
                             new_idx = (opt_idx + 1) % len(setting["options"])
                             new_value = setting["options"][new_idx]
-
+                            JEBLogger.info("MENU", f"Toggling setting '{setting['label']}' from '{current_val}' to '{new_value}'")
                             self.core.data.set_setting(mode_meta["id"], setting["key"], new_value)
                             self.core.buzzer.play_sequence(tones.UI_CONFIRM)
                             needs_render = True
