@@ -178,7 +178,7 @@ class CyberSnakeMode(GameMode):
         await self.handle_death() # Triggers the red flash and death sequence
 
         # Wait for the audio track to finish naturally
-        await tute_audio
+        await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
 
         # Clean up and return to the menu
         await self.core.clean_slate()

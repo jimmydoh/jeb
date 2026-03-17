@@ -87,8 +87,8 @@ class BouncingSprite(BaseMode):
         self.width = 0
         self.height = 0
         self._frame = None       # bytearray: palette-indexed render buffer
-        self._x = int(random() * (self.width - _SPRITE_W))  # integer x position (top-left of bounding box)
-        self._y = int(random() * (self.height - _SPRITE_H))  # integer y position
+        self._x = 0              # integer x position (top-left of bounding box), set properly in _reset()
+        self._y = 0              # integer y position, set properly in _reset()
         self._vx = 1 if random() < 0.5 else -1  # integer x velocity (+1 or -1)
         self._vy = 1 if random() < 0.5 else -1  # integer y velocity (+1 or -1)
         self._color_idx = 0      # index into _COLOR_INDICES
