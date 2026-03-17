@@ -79,16 +79,24 @@ jobs:
           cp -r src/utilities $STAGE_DIR/ || true
 
           echo "--> Fetching latest Adafruit Bundle URL..."
-          # Query the GitHub API to find the exact dynamic URL for the -py- bundle
-          BUNDLE_URL=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/adafruit/Adafruit_CircuitPython_Bundle/releases/latest | jq -r '.assets[] | select(.name | contains("-py-")) | select(.name | endswith(".zip")) | .browser_download_url')
           
-          if [ -z "$BUNDLE_URL" ]; then
-            echo "ERROR: Failed to fetch the bundle URL from GitHub API."
+          # 1. Fetch the first release in the array [0] using a secure Bearer token
+          # 2. Extract the .zip file containing "-py-"
+          BUNDLE_URL=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/adafruit/Adafruit_CircuitPython_Bundle/releases \
+            | jq -r '.[0].assets[] | select(.name | contains("-py-") and endswith(".zip")) | .browser_download_url')
+          
+          # Check if the URL is completely empty or says 'null'
+          if [ -z "$BUNDLE_URL" ] || [ "$BUNDLE_URL" == "null" ]; then
+            echo "ERROR: Failed to extract the bundle URL. The API might be rate-limiting or returning an error."
+            # Print the raw API response for debugging
+            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/adafruit/Adafruit_CircuitPython_Bundle/releases | jq '.message'
             exit 1
           fi
           
           echo "Downloading from: $BUNDLE_URL"
           wget -q "$BUNDLE_URL" -O /tmp/bundle.zip
+          
           unzip -q /tmp/bundle.zip -d /tmp/bundle_extracted
 
           # Find the nested 'lib' folder inside the extracted bundle
