@@ -43,13 +43,26 @@ jobs:
           name: jeb-master-firmware
           path: ./jeb-master-firmware
 
+      - name: Package SD Assets into a ZIP
+        run: |
+          # Create a temporary staging folder to build the SD card root structure
+          mkdir -p sd-staging/mpy
+
+          # Copy the files into the staging area
+          cp -r ./mpy-files/* sd-staging/mpy/
+          cp ./manifest/* sd-staging/
+
+          # Zip it all up into a single file
+          cd sd-staging
+          zip -r ../jeb-sd-assets.zip ./*
+          cd ..
+
       - name: Upload to GitHub Release Page
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Use the pre-installed GitHub CLI to attach the files to the release tag
+          # Upload the raw UF2 directly, and the newly created zip for the SD card
           gh release upload ${{ github.event.release.tag_name }} \
-            ./jeb-master-firmware/jeb-master-firmware.zip \
-            ./mpy-files/mpy-files.zip \
-            ./manifest/manifest.zip \
+            ./jeb-master-firmware/firmware.uf2 \
+            ./jeb-sd-assets.zip \
             --clobber
