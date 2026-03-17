@@ -26,15 +26,10 @@ class BuzzerManager:
         self.VOLUME_ON = int(volume * (2**16 - 1))
         self.VOLUME_OFF = 0
 
-    async def stop(self):
+    def stop(self):
         """Immediately silences the buzzer and cancels running tasks."""
         if self._current_task and not self._current_task.done():
             self._current_task.cancel()
-            try:
-                await self._current_task
-            except asyncio.CancelledError:
-                pass
-
         self.buzzer.duty_cycle = self.VOLUME_OFF
 
     async def _play_tone_logic(self, frequency, duration=None):
@@ -95,14 +90,14 @@ class BuzzerManager:
 
     async def _play_tone(self, frequency, duration=None):
         """Plays a single non-blocking tone."""
-        await self.stop()  # Preempt any existing sound
+        self.stop()  # Preempt any existing sound
         self._current_task = asyncio.create_task(
             self._play_tone_logic(frequency, duration)
         )
 
     async def _play_sequence(self, sequence, tempo=1.0, loop=False):
         """Plays a sequence of notes [(freq, dur), ...]."""
-        await self.stop()
+        self.stop()
         self._current_task = asyncio.create_task(
             self._play_sequence_logic(sequence, tempo, loop)
         )

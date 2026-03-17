@@ -23,9 +23,12 @@ _RATIOS = [
     (2, 5),   # Five-loop
     (1, 4),   # Four-lobed
     (1, 1),   # Circle / lemniscate (phase-dependent)
+    (5, 7),   # Complex knot
+    (7, 5),   # Complex knot (inverse ratio)
+    (4, 9),   # Nine-lobed
 ]
 
-_RATIO_NAMES = ["1:2", "1:3", "2:3", "3:4", "3:5", "2:5", "1:4", "1:1"]
+_RATIO_NAMES = ["1:2", "1:3", "2:3", "3:4", "3:5", "2:5", "1:4", "1:1", "5:7", "7:5", "4:9"]
 
 # Base audio frequency for the synth drone channels (Hz).
 _BASE_FREQ = 110.0   # A2
@@ -69,10 +72,10 @@ class LissajousMode(BaseMode):
     matrix into a live XY-oscilloscope audio visualiser.
 
     Controls:
-        Encoder turn       : cycle through a:b frequency ratios
+        Encoder turn       : cycle through a:b frequency ratios or edit custom values
         Button 1 (tap)     : cycle phase-shift speed (SLOW → TURBO)
         Button 2 (tap)     : clear the phosphor buffer (instant reset)
-        Encoder long press : return to Zero Player menu
+        Button 3 (tap)     : cycle encoder focus (PRESET -> EDIT A -> EDIT B)
     """
 
     def __init__(self, core):
@@ -85,9 +88,147 @@ class LissajousMode(BaseMode):
         self._phase_speed_idx = 2    # Default: NORM
         self._phase = 0.0            # Current phase offset δ (radians)
         self._hue = 0.0              # Current hue angle (degrees)
+
+        # Custom Ratio State
+        self._edit_mode = 0          # 0: Presets, 1: Custom A, 2: Custom B
+        self._custom_a = 1
+        self._custom_b = 2
+
         # Synth note handles for audio sync
         self._note_a = None
         self._note_b = None
+
+    async def run_tutorial(self):
+        """
+        Guided demonstration of the Lissajous Curve Generator.
+
+        The Voiceover Script (audio/tutes/lissajous_tute.wav) ~46 seconds:
+            [0:00] "Welcome to the Lissajous Curve Generator."
+            [0:04] "Named after physicist Jules Antoine Lissajous, these curves visualize the intersection of two complex harmonic waveforms."
+            [0:12] "In the analog era, they were frequently generated on oscilloscopes to calibrate frequencies and test radar equipment."
+            [0:20] "Turn the main dial to cycle through common preset frequency ratios."
+            [0:25] "Press button three to enter custom edit mode, allowing you to dial in your own X and Y variables."
+            [0:32] "Button one changes the phase-shift speed, controlling how fast the shape morphs in three-dimensional space."
+            [0:39] "And button two instantly clears the phosphor trail buffer."
+            [0:43] "Enjoy the mathematics."
+            [0:46] (End of file)
+        """
+        await self.core.clean_slate()
+
+        self.game_state = "TUTORIAL"
+
+        self.core.audio.play(
+            "audio/tutes/lissajous_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
+        )
+
+        # Setup standard display state for the tutorial
+        self.width = self.core.matrix.width
+        self.height = self.core.matrix.height
+        size = self.width * self.height
+        self._buf = [[0.0, 0.0, 0.0] for _ in range(size)]
+
+        self._ratio_idx = 0
+        self._phase_speed_idx = 2
+        self._phase = 0.0
+        self._hue = 0.0
+        self._edit_mode = 0
+        self._custom_a = 1
+        self._custom_b = 2
+
+        self.core.display.use_standard_layout()
+        self.core.display.update_header("LISSAJOUS")
+        self.core.display.update_footer("B1:Spd B2:Rst B3:Mode")
+
+        def _refresh_ui():
+            line1, line2 = self._status_line()
+            self.core.display.update_status(line1, line2)
+
+        _refresh_ui()
+        self._start_audio()
+
+        # Helper to step the visual simulation smoothly while waiting
+        async def _sim_frames(frames, dt_ms=33):
+            dt_s = dt_ms / 1000.0
+            for _ in range(frames):
+                self._phase += _PHASE_SPEEDS_MS[self._phase_speed_idx] * dt_ms
+                self._hue = (self._hue + _HUE_SPEED * dt_s) % 360.0
+                r_dot, g_dot, b_dot = Palette.hsv_to_rgb(self._hue, 1.0, 1.0)
+
+                self._fade_buf()
+
+                a, b = self._get_current_ab()
+                half_x = (self.width - 1) / 2.0
+                half_y = (self.height - 1) / 2.0
+                step = (2.0 * math.pi) / _PLOT_STEPS
+                for i in range(_PLOT_STEPS):
+                    t = i * step
+                    fx = half_x * math.sin(a * t + self._phase) + half_x
+                    fy = half_y * math.sin(b * t) + half_y
+                    self._plot(fx, fy, r_dot, g_dot, b_dot)
+
+                self._render_to_matrix()
+
+                await asyncio.sleep(dt_s)
+
+        try:
+            # [0:00 - 0:20] Intro, history, and base drawing
+            self.core.display.update_status("LISSAJOUS CURVES", "MATHEMATICAL ART")
+            await _sim_frames(20 * 30) # ~20 seconds at 30fps
+
+            # [0:20 - 0:25] Preset cycling
+            self.core.display.update_status("MAIN DIAL", "CYCLE PRESETS")
+            for _ in range(3):
+                self._ratio_idx = (self._ratio_idx + 1) % len(_RATIOS)
+                self._clear_buf()
+                self._phase = 0.0
+                self._start_audio()
+                _refresh_ui()
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_frames(50) # ~1.6 seconds per preset
+
+            # [0:25 - 0:32] Custom edit mode
+            self.core.display.update_status("BUTTON 3", "CUSTOM VARIABLES")
+            self._edit_mode = 1 # Switch to Edit A
+            self._custom_a, self._custom_b = _RATIOS[self._ratio_idx]
+            _refresh_ui()
+            self.core.buzzer.play_sequence(tones.COIN)
+            await _sim_frames(60)
+
+            # Simulate turning the dial to bump custom variable A
+            self._custom_a += 2
+            self._clear_buf()
+            self._phase = 0.0
+            self._start_audio()
+            _refresh_ui()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_frames(90)
+
+            # [0:32 - 0:39] Speed change
+            self.core.display.update_status("BUTTON 1", "CHANGE SPEED")
+            self._phase_speed_idx = 4 # Kick it to TURBO
+            _refresh_ui()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_frames(180)
+
+            # [0:39 - 0:43] Buffer clear
+            self.core.display.update_status("BUTTON 2", "CLEAR BUFFER")
+            self._clear_buf()
+            self._phase = 0.0
+            self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+            await _sim_frames(120)
+
+            # Wait for audio to finish out if it's still running
+            if hasattr(self.core.audio, 'wait_for_bus'):
+                await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+            else:
+                await asyncio.sleep(2.0)
+
+        finally:
+            self._stop_audio()
+            await self.core.clean_slate()
+
+        return "TUTORIAL_COMPLETE"
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -140,12 +281,18 @@ class LissajousMode(BaseMode):
                 cell = self._buf[y * w + x]
                 self.core.matrix.draw_pixel(x, y, (int(cell[0]), int(cell[1]), int(cell[2])))
 
+    def _get_current_ab(self):
+        """Return the current (a, b) values based on edit mode."""
+        if self._edit_mode == 0:
+            return _RATIOS[self._ratio_idx]
+        return (self._custom_a, self._custom_b)
+
     def _start_audio(self):
         """Start two synth drone notes matching the current a:b ratio."""
         self._stop_audio()
         try:
             from utilities.synth_registry import Patches
-            a, b = _RATIOS[self._ratio_idx]
+            a, b = self._get_current_ab()
             self._note_a = self.core.synth.play_note(_BASE_FREQ * a, Patches.ENGINE_HUM)
             self._note_b = self.core.synth.play_note(_BASE_FREQ * b, Patches.ENGINE_HUM)
         except Exception:
@@ -165,9 +312,16 @@ class LissajousMode(BaseMode):
 
     def _status_line(self):
         """Return the two status strings for the current state."""
+        if self._edit_mode == 0:
+            ratio_str = f"PRESET: {_RATIO_NAMES[self._ratio_idx]}"
+        elif self._edit_mode == 1:
+            ratio_str = f"CUSTOM: >{self._custom_a}< : {self._custom_b}"
+        else:
+            ratio_str = f"CUSTOM: {self._custom_a} : >{self._custom_b}<"
+
         return (
-            f"RATIO {_RATIO_NAMES[self._ratio_idx]}",
-            f"SPEED {_PHASE_SPEED_NAMES[self._phase_speed_idx]}",
+            ratio_str,
+            f"SPEED:  {_PHASE_SPEED_NAMES[self._phase_speed_idx]}",
         )
 
     # ------------------------------------------------------------------
@@ -188,13 +342,14 @@ class LissajousMode(BaseMode):
         self._phase_speed_idx = 2
         self._phase = 0.0
         self._hue = 0.0
+        self._edit_mode = 0
 
         # UI setup
         self.core.display.use_standard_layout()
         self.core.display.update_header("LISSAJOUS")
         line1, line2 = self._status_line()
         self.core.display.update_status(line1, line2)
-        self.core.display.update_footer("B1:Speed  B2:Reset")
+        self.core.display.update_footer("B1:Spd  B2:Rst  B3:Mode")
 
         self.core.hid.flush()
         self.core.hid.reset_encoder(self._ratio_idx)
@@ -215,14 +370,27 @@ class LissajousMode(BaseMode):
                 last_tick = now
                 dt_s = dt_ms / 1000.0
 
-                # --- Encoder: cycle frequency ratio ---
+                # --- Encoder: cycle frequency ratio or edit custom values ---
                 enc = self.core.hid.encoder_position()
                 diff = enc - last_enc
                 if diff != 0:
                     delta = 1 if diff > 0 else -1
-                    self._ratio_idx = (self._ratio_idx + delta) % len(_RATIOS)
-                    self.core.hid.reset_encoder(self._ratio_idx)
-                    last_enc = self._ratio_idx
+
+                    if self._edit_mode == 0:
+                        self._ratio_idx = (self._ratio_idx + delta) % len(_RATIOS)
+                        self.core.hid.reset_encoder(self._ratio_idx)
+                        last_enc = self._ratio_idx
+                    elif self._edit_mode == 1:
+                        # Clamp custom 'a' between 1 and 20
+                        self._custom_a = max(1, min(20, self._custom_a + delta))
+                        self.core.hid.reset_encoder(self._custom_a)
+                        last_enc = self._custom_a
+                    elif self._edit_mode == 2:
+                        # Clamp custom 'b' between 1 and 20
+                        self._custom_b = max(1, min(20, self._custom_b + delta))
+                        self.core.hid.reset_encoder(self._custom_b)
+                        last_enc = self._custom_b
+
                     self._clear_buf()
                     self._phase = 0.0
                     self._start_audio()
@@ -245,10 +413,30 @@ class LissajousMode(BaseMode):
                     self.core.display.update_status(line1, "CLEARED!")
                     self.core.buzzer.play_sequence(tones.UI_CONFIRM)
 
-                # --- Encoder long press (2 s): exit to Zero Player menu ---
-                if self.core.hid.is_encoder_button_pressed(long=True, duration=2000):
-                    JEBLogger.info("LISS", "[EXIT] Returning to Zero Player menu")
-                    return "SUCCESS"
+                # --- Button 3: cycle edit mode (Preset -> Edit A -> Edit B) ---
+                if self.core.hid.is_button_pressed(2, action="tap"):
+                    old_mode = self._edit_mode
+                    self._edit_mode = (self._edit_mode + 1) % 3
+
+                    # If transitioning from Presets to Custom, copy current preset as a starting point
+                    if self._edit_mode == 1 and old_mode == 0:
+                        self._custom_a, self._custom_b = _RATIOS[self._ratio_idx]
+
+                    # Reset the hardware encoder tracking to match the new focus
+                    if self._edit_mode == 0:
+                        self.core.hid.reset_encoder(self._ratio_idx)
+                        last_enc = self._ratio_idx
+                    elif self._edit_mode == 1:
+                        self.core.hid.reset_encoder(self._custom_a)
+                        last_enc = self._custom_a
+                    elif self._edit_mode == 2:
+                        self.core.hid.reset_encoder(self._custom_b)
+                        last_enc = self._custom_b
+
+                    self._start_audio()
+                    line1, line2 = self._status_line()
+                    self.core.display.update_status(line1, line2)
+                    self.core.buzzer.play_sequence(tones.COIN)
 
                 # --- Simulation: fade → hue advance → plot → render ---
 

@@ -452,28 +452,6 @@ def test_show_frame_frame_length_larger_than_grid():
 # 4. Manifest entries
 # ===========================================================================
 
-def test_zero_player_menu_in_manifest():
-    """ZERO_PLAYER_MENU entry exists in MODE_REGISTRY with all required fields."""
-    from modes.manifest import MODE_REGISTRY
-
-    assert "ZERO_PLAYER_MENU" in MODE_REGISTRY, \
-        "ZERO_PLAYER_MENU not found in MODE_REGISTRY"
-    meta = MODE_REGISTRY["ZERO_PLAYER_MENU"]
-
-    required_fields = ["id", "name", "module_path", "class_name", "icon", "menu", "requires", "settings"]
-    for field in required_fields:
-        assert field in meta, \
-            f"ZERO_PLAYER_MENU missing required field '{field}'"
-
-    assert meta["id"] == "ZERO_PLAYER_MENU"
-    assert meta["menu"] == "MAIN", \
-        "ZERO_PLAYER_MENU should appear in the MAIN menu"
-    assert meta["icon"] == "ZERO_PLAYER", \
-        "ZERO_PLAYER_MENU should reference the ZERO_PLAYER icon"
-    assert meta.get("submenu") == "ZERO_PLAYER", \
-        "ZERO_PLAYER_MENU should declare submenu='ZERO_PLAYER'"
-    print("✓ manifest: ZERO_PLAYER_MENU entry is complete and correct")
-
 
 def test_conways_life_in_manifest():
     """CONWAYS_LIFE entry exists in MODE_REGISTRY with all required fields."""

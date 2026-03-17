@@ -36,18 +36,29 @@ if SRC_DIR not in sys.path:
 
 _orig_stat = os.stat
 _orig_mkdir = os.mkdir
+_orig_listdir = os.listdir    # <-- Added listdir
 _orig_open = builtins.open
+_orig_remove = os.remove
+_orig_rmdir = os.rmdir
 
 def smart_path_mapper(path):
     if not isinstance(path, str):
         return path
 
-    # If the code is looking for the SD card, route it absolutely to the repo's SD folder
+    # 1. Exact match for the root SD directory (Fixes the trailing slash issue)
+    if path.lower() in ('/sd', 'sd'):
+        JEBLogger.emulator("MOCK", f"Path {path} mapped -> {SD_DIR}")
+        return SD_DIR
+
+    # 2. Match for subdirectories and files
     if path.lower().startswith('/sd/') or path.lower().startswith('sd/'):
         # Strip the '/sd/' prefix and append the rest to our absolute SD_DIR
         clean_path = path[4:] if path.lower().startswith('/sd/') else path[3:]
-        JEBLogger.emulator("MOCK", f"Path {path} mapped -> {os.path.join(SD_DIR, clean_path)}")
-        return os.path.join(SD_DIR, clean_path)
+
+        # Normalize the path so Windows uses backslashes correctly
+        mapped_path = os.path.normpath(os.path.join(SD_DIR, clean_path))
+        JEBLogger.emulator("MOCK", f"Path {path} mapped -> {mapped_path}")
+        return mapped_path
 
     return path
 
@@ -56,6 +67,10 @@ def _mock_stat(path, *args, **kwargs):
     JEBLogger.emulator("MOCK", f"Intercepted os.stat for path: {path}")
     return _orig_stat(smart_path_mapper(path), *args, **kwargs)
 
+def _mock_listdir(path="."):
+    JEBLogger.emulator("MOCK", f"Intercepted os.listdir for path: {path}")
+    return _orig_listdir(smart_path_mapper(path))
+
 def _mock_open(file, *args, **kwargs):
     JEBLogger.emulator("MOCK", f"Intercepted open for file: {file}")
     return _orig_open(smart_path_mapper(file), *args, **kwargs)
@@ -63,6 +78,14 @@ def _mock_open(file, *args, **kwargs):
 def _mock_mkdir(path, *args, **kwargs):
     JEBLogger.emulator("MOCK", f"Intercepted os.mkdir for path: {path}")
     return _orig_mkdir(smart_path_mapper(path), *args, **kwargs)
+
+def _mock_remove(path, *args, **kwargs):
+    JEBLogger.emulator("MOCK", f"Intercepted os.remove for path: {path}")
+    return _orig_remove(smart_path_mapper(path), *args, **kwargs)
+
+def _mock_rmdir(path, *args, **kwargs):
+    JEBLogger.emulator("MOCK", f"Intercepted os.rmdir for path: {path}")
+    return _orig_rmdir(smart_path_mapper(path), *args, **kwargs)
 
 class MockStorage:
     @staticmethod
@@ -76,6 +99,9 @@ sys.modules['storage'] = MockStorage()
 # Apply the patches globally for the emulator session
 os.stat = _mock_stat
 os.mkdir = _mock_mkdir
+os.listdir = _mock_listdir
+os.remove = _mock_remove
+os.rmdir = _mock_rmdir
 builtins.open = _mock_open
 
 # Console Mocks
@@ -704,17 +730,17 @@ class MockSynthesizer:
         """Generates a seamless looping buffer using the actual synth_registry waveform."""
         if frequency <= 0 or not pygame.mixer.get_init():
             return None
-            
+
         sample_rate = pygame.mixer.get_init()[0]
-        
+
         # Calculate buffer length for seamless looping
         wavelength_samples = sample_rate / frequency
         num_waves = max(1, int((sample_rate * 0.1) // wavelength_samples))
         buffer_length = int(num_waves * wavelength_samples)
-        
+
         buf = array.array('h', [0] * (buffer_length * 2))
         table_len = len(wavetable) if wavetable else 0
-        
+
         for i in range(buffer_length):
             if wavetable:
                 # Phase Accumulator: Steps through the pre-generated waveform array
@@ -727,13 +753,13 @@ class MockSynthesizer:
                 t = float(i) / sample_rate
                 val = math.sin(2.0 * math.pi * frequency * t)
                 sample = 32000 if val > 0 else -32000
-                
+
             # Apply global mix volume to prevent Pygame distortion on chords
             sample = int(sample * self._master_volume)
-            
+
             buf[i*2]     = sample
             buf[i*2 + 1] = sample
-            
+
         return pygame.mixer.Sound(buffer=buf)
 
     async def _run_adsr(self, sound, env):
@@ -764,16 +790,16 @@ class MockSynthesizer:
     def press(self, note):
         if note in self.active_notes:
             return
-            
+
         sound = self._generate_tone(note.frequency, note.waveform)
         if sound:
             # Start the sound at 0 volume and let the ADSR task fade it in
             sound.set_volume(0.0)
             sound.play(loops=-1)
-            
+
             adsr_task = asyncio.create_task(self._run_adsr(sound, note.envelope))
             self.active_notes[note] = {"sound": sound, "task": adsr_task}
-            
+
         JEBLogger.emulator("MOCK", f"[SYNTH] Pressed:  {note.frequency:>6.1f} Hz")
 
     def release(self, note):
@@ -781,17 +807,17 @@ class MockSynthesizer:
             data = self.active_notes.pop(note)
             sound = data["sound"]
             task = data["task"]
-            
+
             # Stop the Attack/Decay automation if it's still running
             if task:
                 task.cancel()
-                
+
             if sound:
                 # --- RELEASE PHASE ---
                 # Convert envelope seconds to Pygame fadeout milliseconds
                 fade_ms = max(50, int(note.envelope.release_time * 1000))
                 sound.fadeout(fade_ms)
-                
+
             JEBLogger.emulator("MOCK", f"[SYNTH] Released: {note.frequency:>6.1f} Hz")
 
     def release_all(self):
@@ -1133,13 +1159,38 @@ sys.modules['adafruit_ht16k33.segments'] = type('MockHTSegments', (), {'Seg14x4'
 
 import socket as _socket_module
 
+_IP_PROBE_TARGET = "8.8.8.8"  # Used only for routing-table lookup; no data is sent
+
+def _get_emulator_host_ip():
+    """Resolve the local machine's primary non-loopback IP for emulator use.
+
+    Uses a UDP connect trick (no data is sent) to determine which interface
+    the OS would use for outbound traffic, giving the LAN IP rather than
+    loopback so the mock web server is reachable from other devices.
+    Falls back to 127.0.0.1 if the host has no network.
+    """
+    try:
+        s = _socket_module.socket(_socket_module.AF_INET, _socket_module.SOCK_DGRAM)
+        try:
+            s.connect((_IP_PROBE_TARGET, 80))
+            return s.getsockname()[0]
+        finally:
+            s.close()
+    except Exception:
+        return "127.0.0.1"
+
 # --- WIFI RADIO MOCK ---
 class MockWiFiRadio:
-    """Simulates the CircuitPython wifi.radio object. Always 'connects' to 127.0.0.1."""
+    """Simulates the CircuitPython wifi.radio object.
+
+    Reports the host machine's real LAN IP (via _get_emulator_host_ip) so
+    that web-server URLs displayed during emulation are reachable from other
+    devices on the same network.
+    """
     def __init__(self):
         self._connected = False
         self._enabled = True
-        self.ipv4_address = "127.0.0.1"
+        self.ipv4_address = _get_emulator_host_ip()
 
     @property
     def connected(self):
@@ -1180,8 +1231,8 @@ class MockSocketPoolModule:
 sys.modules['socketpool'] = MockSocketPoolModule()
 
 # --- ADAFRUIT_HTTPSERVER MOCK ---
-# A functional HTTP server implementation that binds to a real local TCP socket,
-# so the web UI can be accessed at http://127.0.0.1:<port> during emulation.
+# A functional HTTP server implementation that binds to a real TCP socket on
+# 0.0.0.0 so the web UI is reachable from any interface during emulation.
 
 class GET:
     pass
@@ -1199,12 +1250,16 @@ class MockHTTPRequest:
         self._body = body
 
     def _parse_query(self, query_string):
+        import urllib.parse
         params = {}
         if query_string:
             for part in query_string.split("&"):
                 if "=" in part:
                     k, v = part.split("=", 1)
-                    params[k] = v.replace("+", " ")
+                    # Safely decode URL entities (e.g., %2F becomes /)
+                    decoded_k = urllib.parse.unquote(k)
+                    decoded_v = urllib.parse.unquote(v.replace("+", " "))
+                    params[decoded_k] = decoded_v
         return params
 
     def json(self):
@@ -1213,6 +1268,11 @@ class MockHTTPRequest:
             return _json.loads(self._body) if self._body else None
         except Exception:
             return None
+
+    @property
+    def body(self):
+        """Mock the adafruit_httpserver behavior which returns body as bytes."""
+        return self._body.encode('utf-8') if self._body else b""
 
 class MockHTTPResponse:
     """Represents an HTTP response, matching the adafruit_httpserver.Response API."""
@@ -1227,8 +1287,8 @@ class MockHTTPServer:
     """
     Functional HTTP server mock for the emulator.
 
-    Binds to a real TCP socket so the web UI can be tested in a browser
-    at http://127.0.0.1:<port>. Matches the adafruit_httpserver.Server API:
+    Binds to 0.0.0.0:<port> so the web UI is reachable from any network
+    interface (localhost, LAN, etc.). Matches the adafruit_httpserver.Server API:
       - route(path, methods) decorator for handler registration
       - start(host, port) to bind and listen
       - poll() for non-blocking request dispatch (called every asyncio tick)
@@ -1257,14 +1317,25 @@ class MockHTTPServer:
         return decorator
 
     def start(self, host, port):
-        """Bind to host:port and start listening for connections."""
+        """Bind to 0.0.0.0:port (all interfaces) and start listening.
+
+        Always binds to 0.0.0.0 regardless of the host argument so the server
+        is reachable via localhost, the LAN IP, or any other interface on the
+        emulator machine.  The log message shows the caller-supplied host (the
+        real IP reported by MockWiFiRadio) for a convenient, clickable URL.
+        """
         try:
             self._sock = _socket_module.socket(_socket_module.AF_INET, _socket_module.SOCK_STREAM)
             self._sock.setsockopt(_socket_module.SOL_SOCKET, _socket_module.SO_REUSEADDR, 1)
             self._sock.setblocking(False)
-            self._sock.bind((host, int(port)))
+            # Intentionally bind to all interfaces so the emulator web UI is
+            # reachable from localhost *and* from other devices on the LAN.
+            # This is emulator-only code; the real firmware runs on CircuitPython
+            # hardware where this mock is never used.
+            self._sock.bind(("0.0.0.0", int(port)))  # noqa: S104
             self._sock.listen(5)
-            JEBLogger.emulator("WEBS", f"[HTTP] Listening on http://{host}:{port}")
+            display_host = host if host not in ("0.0.0.0", "", None) else _get_emulator_host_ip()
+            JEBLogger.emulator("WEBS", f"[HTTP] Listening on http://{display_host}:{port} (bound to 0.0.0.0:{port})")
         except Exception as e:
             JEBLogger.emulator("WEBS", f"[HTTP] Failed to start server: {e}")
 

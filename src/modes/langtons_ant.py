@@ -59,6 +59,159 @@ class LangtonsAnt(BaseMode):
         self._step_count = 0
         self._ants = []         # list of [x, y, direction] lists
 
+    async def run_tutorial(self):
+        """
+        Guided demonstration of Langton's Ant.
+
+        The Voiceover Script (audio/tutes/ant_tute.wav) ~63 seconds:
+            [0:00] "Welcome to Langton's Ant."
+            [0:04] "Invented by Chris Langton in 1986, this is a two-dimensional Turing machine."
+            [0:11] "The ant follows two simple rules based on the color of the square it lands on."
+            [0:17] "On a dark square, it turns right, flips the color, and moves forward."
+            [0:24] "On a lit square, it turns left, flips the color, and moves forward."
+            [0:31] "At first, the patterns appear perfectly symmetric. But soon, they descend into apparent chaos."
+            [0:40] "Eventually, the ant will build a repeating diagonal highway, marching endlessly."
+            [0:48] "Turn the main dial to adjust the simulation speed."
+            [0:53] "Press button one to change the trail color, and button two to reset the grid."
+            [0:59] "Watch the chaos unfold."
+            [1:03] (End of file)
+        """
+        await self.core.clean_slate()
+
+        self.game_state = "TUTORIAL"
+
+        # Trigger audio synchronously (fire-and-forget)
+        self.core.audio.play(
+            "audio/tutes/ant_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
+        )
+
+        # Setup standard display state for the tutorial
+        self.width = self.core.matrix.width
+        self.height = self.core.matrix.height
+        size = self.width * self.height
+
+        self._grid = bytearray(size)
+        self._frame = bytearray(size)
+        self._color_idx = 0
+        self._step_count = 0
+
+        # Start very SLOW so the player can actually see the rules in action
+        self._speed_idx = 0
+
+        # Force exactly 1 ant in the center for the tutorial clarity
+        self._ants = [[self.width // 2, self.height // 2, 0]]
+
+        self.core.display.use_standard_layout()
+        self.core.display.update_header("LANGTON'S ANT")
+        self.core.display.update_footer("B1:Color  B2:Reset")
+
+        def _refresh_ui():
+            line1, line2 = self._status_line()
+            self.core.display.update_status(line1, line2)
+
+        _refresh_ui()
+
+        async def _sim_wait(duration_s):
+            """Runs the ant simulation continuously for the specified duration."""
+            start_time = ticks_ms()
+            last_step_tick = start_time
+            target_ms = int(duration_s * 1000)
+
+            while ticks_diff(ticks_ms(), start_time) < target_ms:
+                now = ticks_ms()
+                interval = _SPEED_LEVELS_MS[self._speed_idx]
+                if ticks_diff(now, last_step_tick) >= interval:
+                    self._step()
+                    self._build_frame()
+                    self.core.matrix.show_frame(self._frame)
+
+                    # Update UI roughly every 10 steps during fast modes, or every step during slow
+                    if interval >= 100 or self._step_count % 10 == 0:
+                        _refresh_ui()
+
+                    last_step_tick = now
+                await asyncio.sleep(0.01)
+
+        try:
+            # [0:00 - 0:17] Intro & Turing machine context
+            self.core.display.update_status("LANGTON'S ANT", "TURING MACHINE")
+            await _sim_wait(17.0)
+
+            # [0:17 - 0:24] Rule 1: Dark Square (Right turn)
+            self.core.display.update_status("RULE 1: DARK", "TURN RIGHT, FLIP")
+            await _sim_wait(7.0)
+
+            # [0:24 - 0:31] Rule 2: Lit Square (Left turn)
+            self.core.display.update_status("RULE 2: LIT", "TURN LEFT, FLIP")
+            await _sim_wait(7.0)
+
+            # [0:31 - 0:40] Symmetry into chaos
+            self.core.display.update_status("EMERGENT", "SYMMETRY TO CHAOS")
+            self._speed_idx = 3 # Kick it to FAST to speed up the visual evolution
+            _refresh_ui()
+            await _sim_wait(9.0)
+
+            # [0:40 - 0:48] The Highway
+            self.core.display.update_status("10,000 STEPS", "THE HIGHWAY")
+            self._speed_idx = 5 # Kick to MAX speed! Let it zoom.
+            _refresh_ui()
+            await _sim_wait(8.0)
+
+            # [0:48 - 0:53] Speed dial demonstration
+            self.core.display.update_status("MAIN DIAL", "CHANGE SPEED")
+            for speed in [3, 4, 1, 2]: # Cycle FAST -> TURBO -> MED -> NORM
+                self._speed_idx = speed
+                _refresh_ui()
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(1.25)
+
+            # [0:53 - 0:59] Color cycling and Reset demonstration
+            self.core.display.update_status("BUTTON 1", "CYCLE COLOR")
+            for _ in range(4):
+                self._color_idx = (self._color_idx + 1) % len(_TRAIL_COLOR_INDICES)
+                self._recolor_trail()
+                self._build_frame()
+                self.core.matrix.show_frame(self._frame)
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(1.0)
+
+            self.core.display.update_status("BUTTON 2", "RESET GRID")
+            await _sim_wait(1.0)
+
+            # Clear the grid
+            for i in range(len(self._grid)): self._grid[i] = 0
+            self._ants = [[self.width // 2, self.height // 2, 0]]
+            self._step_count = 0
+            self._build_frame()
+            self.core.matrix.show_frame(self._frame)
+
+            self.core.display.update_status("BUTTON 2", "RESET!")
+            self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+            await _sim_wait(3.0)
+
+            # Wait for audio to finish out if it's still running
+            if hasattr(self.core.audio, 'wait_for_bus'):
+                await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+            else:
+                await asyncio.sleep(2.0)
+
+            # --- SEAMLESS HANDOFF TO MAIN LOOP ---
+            self.core.display.update_status("TUTORIAL COMPLETE", "HANDING OVER CONTROL")
+            await asyncio.sleep(1.5)
+
+            self.core.hid.flush()
+
+            # Re-run the proper reset to apply the user's custom ANTS setting
+            # (since we forced exactly 1 ant for the tutorial clarity)
+            self._reset()
+
+            self.game_state = "RUNNING"
+            return await self.run()
+
+        finally:
+            await self.core.clean_slate()
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------

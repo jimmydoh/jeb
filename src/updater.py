@@ -230,12 +230,7 @@ class Updater:
             return False
 
     def verify_files(self):
-        """
-        Compare local files with manifest to identify changes.
-
-        Returns:
-            tuple: (files_to_update, files_ok) lists
-        """
+        """Compare local files with manifest to identify changes."""
         if not self.manifest:
             raise UpdaterError("No manifest loaded")
 
@@ -245,17 +240,23 @@ class Updater:
         print("Verifying local files...")
 
         for file_info in self.manifest["files"]:
-            path = file_info["path"]
+            action = file_info.get("action", "update")
+            dest_path = file_info.get("destination", f"/{file_info['path']}")
             expected_hash = file_info["sha256"]
 
-            # Calculate local hash
-            local_hash = self.calculate_sha256(path)
+            # Skip frozen files completely
+            if action == "ignore_if_frozen":
+                print(f"  - Ignored (Frozen): {file_info['path']}")
+                continue
+
+            # Calculate local hash based on the intended destination
+            local_hash = self.calculate_sha256(dest_path)
 
             if local_hash is None:
-                print(f"  ✗ Missing: {path}")
+                print(f"  ✗ Missing: {dest_path}")
                 files_to_update.append(file_info)
             elif local_hash != expected_hash:
-                print(f"  ✗ Modified: {path}")
+                print(f"  ✗ Modified: {dest_path}")
                 files_to_update.append(file_info)
             else:
                 files_ok.append(file_info)
@@ -377,51 +378,34 @@ class Updater:
         print(f"\n✓ Successfully downloaded {success_count}/{total} files")
         return success_count == total
 
-    def install_file(self, file_info, dest_root="/"):
-        """
-        Install a single file from SD card staging to internal flash.
-
-        Args:
-            file_info (dict): File information from manifest
-            dest_root (str): Destination root directory (default: "/" for CircuitPython)
-                            Allows injection for testing purposes
-
-        Returns:
-            bool: True if successful
-
-        Raises:
-            UpdaterError: If installation fails
-        """
+    def install_file(self, file_info):
+        """Install a single file from staging to its final manifest destination."""
         path = file_info["path"]
         expected_hash = file_info["sha256"]
 
-        # Source: SD card staging area
-        # Strip leading slash from path to ensure proper path joining
-        path_normalized = path.lstrip('/')
-        # Reject empty or invalid paths that would cause us to write to dest_root itself
-        if not path_normalized:
-            raise UpdaterError(
-                f"Invalid file path in manifest (empty or only slashes): {repr(path)}"
-            )
-        src_path = os.path.join(self.download_dir, path_normalized)
-        # Destination: Configurable root (default to "/" for production)
-        dest_path = os.path.join(dest_root, path_normalized)
+        # Source is still our temporary download directory
+        src_path = os.path.join(self.download_dir, path.lstrip('/'))
+
+        # Destination comes explicitly from the manifest routing engine
+        dest_path = file_info.get("destination", f"/{path}")
 
         print(f"Installing: {path}")
         print(f"  From: {src_path}")
         print(f"  To: {dest_path}")
 
         try:
-            # Ensure destination directory exists
-            dest_dir = os.path.dirname(dest_path) if "/" in dest_path else ""
-            if dest_dir and dest_dir != "/":
+            # Ensure destination directory exists (handling both /sd/ and / paths)
+            dest_dir = os.path.dirname(dest_path)
+            if dest_dir and dest_dir not in ["", "/", "/sd"]:
                 try:
+                    # MicroPython doesn't have os.makedirs, we might need to build the path incrementally
+                    # but if your current os.makedirs works, keep using it!
                     os.makedirs(dest_dir)
                     print(f"  Created directory: {dest_dir}")
                 except OSError:
                     pass  # Directory already exists
 
-            # Copy file from SD to flash in chunks and compute SHA256 during copy
+            # Copy file and compute SHA256 during copy
             hasher = hashlib.sha256()
             with open(src_path, "rb") as src_file, open(dest_path, "wb") as dest_file:
                 while True:
@@ -431,14 +415,20 @@ class Updater:
                     dest_file.write(chunk)
                     hasher.update(chunk)
 
-            # Verify hash of installed file based on streamed data
+            # Verify hash
             actual_hash = hasher.hexdigest()
             if actual_hash != expected_hash:
                 raise UpdaterError(
                     f"Hash mismatch after install for {path}: expected {expected_hash}, got {actual_hash}"
                 )
 
-            print(f"  ✓ Installed and verified: {path}")
+            # Clean up the staging file to save space
+            try:
+                os.remove(src_path)
+            except OSError:
+                pass
+
+            print(f"  ✓ Installed and verified: {dest_path}")
             return True
         except Exception as e:
             raise UpdaterError(f"Failed to install {path}: {e}")

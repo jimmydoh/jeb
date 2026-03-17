@@ -23,7 +23,7 @@ class DebugMode(UtilityMode):
         # Example diagnostic routine
         for i in range(5):
             self.core.display.update_status("DEBUG MODE", f"TEST {i+1}/5")
-            await self.core.audio.play_sfx("debug_beep.wav")
+            self.core.audio.play_sfx("debug_beep.wav")
             await asyncio.sleep(1)
 
         self.core.display.update_status("DEBUG MODE", "DIAGNOSTICS COMPLETE")

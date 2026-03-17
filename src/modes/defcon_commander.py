@@ -91,21 +91,6 @@ class DefconCommander(GameMode):
             - 9-Digit Keypad:                      Auth code entry
     """
 
-    METADATA = {
-        "id": "DEFCON_COMMANDER",
-        "name": "DEFCON CMDR",
-        "icon": "DEFCON_COMMANDER",
-        "requires": ["CORE", "INDUSTRIAL"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["NORMAL", "HARD", "INSANE"],
-                "default": "NORMAL"
-            }
-        ]
-    }
-
     def __init__(self, core):
         super().__init__(core, "DEFCON COMMANDER", "Tactical Intercept Protocol")
         self.sat = None
@@ -147,6 +132,156 @@ class DefconCommander(GameMode):
 
         # --- Tick timing ---
         self._last_tick_ms = 0
+
+    async def run_tutorial(self):
+        """
+        An in-universe operator orientation for Defcon Commander.
+
+        The Voiceover Script (audio/tutes/defcon_tute.wav) ~ 42 seconds:
+            [0:00] "Operator, welcome to the Strategic Defense Bunker. Your duty is to manage this ten-silo ICBM complex."
+            [0:07] "When an Emergency Action Message arrives, an authorization code will be transmitted."
+            [0:12] "Enter this four-digit code on the keypad, then turn the launch key to unlock the firing circuit."
+            [0:19] "Raise the guarded toggle to begin charging the payload. Wait for the sequence to complete."
+            [0:25] "Next, hold the momentary toggle up to open the silo door."
+            [0:29] "If a preparation fault occurs, flip the flashing hardware switch to clear it."
+            [0:34] "Finally, press the giant red button to execute the launch. Disarm your panel to prepare for the next order."
+            [0:42] (End of file)
+        """
+        await self.core.clean_slate()
+
+        # Ensure satellite is connected
+        if not self.sat or not self.sat.is_active:
+            self.core.display.update_status("DEFCON CMDR", "SAT OFFLINE – ABORT")
+            await asyncio.sleep(2)
+            return "TUTORIAL_FAILED"
+
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        self.core.audio.play("audio/tutes/defcon_tute.wav", bus_id=self.core.audio.CH_VOICE)
+
+        # Setup initial clean state
+        self.silo_states = [SILO_IDLE] * _NUM_SILOS
+        self.focused_silo = 0
+        self._charge_timer = 0.0
+        self._door_open_frac = 0.0
+        self._fault_toggle_idx = -1
+
+        # [0:00 - 0:07] "Operator, welcome to the Strategic Defense Bunker..."
+        self.core.display.update_header("STRATCOM LINK: ACTIVE")
+        self.core.display.update_status("SYSTEM ORIENTATION", "STAND BY")
+        self._render_matrix()
+
+        await asyncio.sleep(7.0)
+
+        # [0:07 - 0:12] "When an Emergency Action Message arrives..."
+        self.silo_states[0] = SILO_ORDERED
+        self.core.display.update_status("EAM RECEIVED", "SILO 01 ORDERED")
+        self._render_matrix()
+
+
+        # Simulate EAM Teletype printing the code
+        auth_code = "8824"
+        self.core.display.update(
+            self.core.display.sub_status, f">{auth_code}",
+            scroll=False, anim="typewriter", delay=0.1
+        )
+        self.core.buzzer.play_sequence(tones.ALARM)
+        await asyncio.sleep(5.0)
+
+        # [0:12 - 0:19] "Enter this four-digit code... turn the launch key..."
+        self.core.display.update_status("ENTER AUTH CODE", "TURN KEY TO UNLOCK")
+
+        # Simulate Keypad Entry
+        current_display = ""
+        for char in auth_code:
+            current_display += char
+            self.core.display.update_footer(f"INPUT: {current_display}")
+            self.core.audio.play("audio/ind/sfx/keypad_click.wav", self.core.audio.CH_SFX)
+            await asyncio.sleep(0.4)
+
+        await asyncio.sleep(0.5)
+        self.silo_states[0] = SILO_AUTH
+        self.core.display.update_status("AUTH OK", "KEY UNLOCKED")
+        self._render_matrix()
+
+        self.core.buzzer.play_sequence(tones.SUCCESS)
+        await asyncio.sleep(3.5)
+
+        # [0:19 - 0:25] "Raise the guarded toggle to begin charging..."
+        self.silo_states[0] = SILO_ARMING
+        self.core.display.update_status("ARMING PAYLOAD", "CHARGING...")
+        self.core.buzzer.play_sequence(tones.CHARGING)
+
+        # Animate the charging sequence
+        for step in range(10):
+            self._charge_timer = (step / 10.0) * _CHARGE_TIME
+            self._render_matrix()
+
+            await asyncio.sleep(0.4)
+
+        self._charge_timer = _CHARGE_TIME
+        self.silo_states[0] = SILO_OPEN
+        await asyncio.sleep(2.0)
+
+        # [0:25 - 0:29] "Next, hold the momentary toggle up to open the silo door."
+        self.core.display.update_status("SILO CHARGED", "HOLD DOOR TOGGLE")
+
+        # Animate the door opening on the schematic
+        for step in range(10):
+            self._door_open_frac = (step / 10.0)
+            self._render_matrix()
+
+            await asyncio.sleep(0.2)
+
+        self._door_open_frac = 1.0
+        self.silo_states[0] = SILO_PREP
+        await asyncio.sleep(2.0)
+
+        # [0:29 - 0:34] "If a preparation fault occurs, flip the flashing hardware switch..."
+        self.core.display.update_status("PREP FAULT!", "FLIP FLASHING SWITCH")
+        self._fault_toggle_idx = 3 # Hardcode fault to toggle 3
+        self._render_matrix()
+
+        self.core.buzzer.play_sequence(tones.DANGER)
+
+        # Flash the physical hardware toggle on the satellite
+        try:
+            self.sat.send("LEDFLASH", f"3,{Palette.RED.index},0.0,1.0,3,0.2,0.2")
+        except:
+            pass
+
+        await asyncio.sleep(3.0)
+
+        # Simulate clearing the fault
+        self._fault_toggle_idx = -1
+        self.silo_states[0] = SILO_READY
+        self.core.display.update_status("FAULT CLEARED", "SILO READY")
+        self._render_matrix()
+
+        self.core.buzzer.play_sequence(tones.SUCCESS)
+
+        try:
+            self.sat.send("LED", f"3,{Palette.OFF.index},0.0,0.0,2")
+        except:
+            pass
+
+        await asyncio.sleep(2.0)
+
+        # [0:34 - 0:42] "Finally, press the giant red button to execute... Disarm..."
+        self.core.display.update_status("EXECUTE LAUNCH", "PRESS RED BUTTON")
+        await asyncio.sleep(1.0)
+
+        # Simulate Launch!
+        self.silo_states[0] = SILO_LAUNCHED
+        self._render_matrix()
+
+        self.core.buzzer.play_sequence(tones.LAUNCH)
+        self.core.display.update_status("MISSILE AWAY", "DISARM PANEL")
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
 
     # ------------------------------------------------------------------
     # Satellite hardware accessors

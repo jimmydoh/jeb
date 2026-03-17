@@ -62,27 +62,6 @@ class RhythmMode(GameMode):
     - Configurable latency offset to calibrate SD card / DAC start-up delay
     """
 
-    METADATA = {
-        "id": "RHYTHM",
-        "name": "NEON BEATS",
-        "icon": "RHYTHM",
-        "requires": ["CORE"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["EASY", "NORMAL", "HARD"],
-                "default": "NORMAL"
-            },
-            {
-                "key": "latency",
-                "label": "LATENCY",
-                "options": ["0", "20", "45", "70", "100"],
-                "default": "45"
-            }
-        ]
-    }
-
     # SD card base path for all rhythm-game assets
     SONGS_PATH = "/sd/data/rhythm"
 
@@ -95,6 +74,9 @@ class RhythmMode(GameMode):
     EASY_FALL_DURATION_MS = 1400
     HARD_FALL_DURATION_MS = 800
 
+    # Classic Rhythm Game Colors (Lane 1-4)
+    LANE_COLORS = [Palette.GREEN, Palette.RED, Palette.YELLOW, Palette.BLUE]
+
     def __init__(self, core):
         super().__init__(core, "NEON BEATS", "Rhythm Game")
 
@@ -106,6 +88,8 @@ class RhythmMode(GameMode):
         self.beatmap = []
         self.combo = 0
         self.selected_song = None
+
+
 
     # ------------------------------------------------------------------
     # Properties derived from live matrix dimensions
@@ -126,6 +110,88 @@ class RhythmMode(GameMode):
         w = self.core.matrix.width
         step = w // 4
         return [step // 2 + i * step for i in range(4)]
+
+    async def run_tutorial(self):
+        """
+        A guided, time-synced demonstration of Neon Beats.
+
+        The Voiceover Script (audio/tutes/rhythm_tute.wav) ~ 34 seconds:
+            [0:00] "Welcome to Neon Beats. A test of rhythm and timing."
+            [0:05] "Notes will fall down the matrix in four colored lanes."
+            [0:10] "Wait for the notes to reach the hit zone at the very bottom."
+            [0:15] "Press the corresponding physical button exactly to the beat."
+            [0:20] "Perfect timing scores maximum points and builds your combo multiplier."
+            [0:25] "But miss a note, and your combo breaks."
+            [0:30] "Feel the rhythm and chase the high score!"
+            [0:34] (End of file)
+        """
+        await self.core.clean_slate()
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        self.core.audio.play("audio/tutes/rhythm_tute.wav", bus_id=self.core.audio.CH_VOICE)
+
+        # Build a perfectly timed mock beatmap synced to the voiceover
+        cols = self.button_columns
+        self.beatmap = [
+            {"time": 15000, "col": cols[0], "state": "WAITING"}, # "Press the corresponding..."
+            {"time": 20000, "col": cols[1], "state": "WAITING"}, # "Perfect timing..."
+            {"time": 21000, "col": cols[2], "state": "WAITING"},
+            {"time": 26000, "col": cols[3], "state": "WAITING"}, # "But miss a note..." (Intentional Miss)
+            {"time": 30000, "col": cols[0], "state": "WAITING"}, # "Feel the rhythm..."
+            {"time": 30500, "col": cols[1], "state": "WAITING"},
+        ]
+
+        self.score = 0
+        self.combo = 0
+        self.fall_duration_ms = self.DEFAULT_FALL_DURATION_MS
+        self.hit_window_ms = self.GOOD_WINDOW_MS
+
+        # Audio starts now
+        start_anchor = ticks_ms()
+
+        while True:
+            now = ticks_ms()
+            current_time = ticks_diff(now, start_anchor)
+
+            # Contextual UI updates synced to audio timestamps
+            if current_time < 5000:
+                self.core.display.update_status("NEON BEATS", "RHYTHM & TIMING")
+            elif current_time < 10000:
+                self.core.display.update_status("COLORED LANES", "FOUR CHANNELS")
+            elif current_time < 15000:
+                self.core.display.update_status("HIT ZONE", "BOTTOM ROW")
+            elif current_time < 20000:
+                if self.combo == 0:
+                    self.core.display.update_status("TIMING", "PRESS TO THE BEAT")
+            elif current_time < 25000:
+                pass # UI handled by _process_hit "PERFECT" states
+            elif current_time < 28000:
+                if self.combo == 0 and current_time > 26150:
+                    self.core.display.update_status("MISS!", "COMBO BROKEN")
+            else:
+                if self.combo == 0:
+                    self.core.display.update_status("FEEL THE RHYTHM", "CHASE HIGH SCORES")
+
+            # Auto-Hit Logic (Puppeteer)
+            for note in self.beatmap:
+                if note["state"] == "WAITING":
+                    # Hit perfects, but deliberately ignore the blue note at 26000 to trigger a miss
+                    if note["time"] != 26000 and 0 <= current_time - note["time"] < 20:
+                        self._process_hit(note["time"], note["col"])
+
+            # Render frame
+            self._render(current_time)
+
+
+            # End of audio track
+            if current_time > 34000:
+                break
+
+            await asyncio.sleep(0.016)
+
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
 
     # ------------------------------------------------------------------
     # Song discovery
@@ -276,7 +342,7 @@ class RhythmMode(GameMode):
         await asyncio.sleep(0.5)
 
         audio_path = f"{self.SONGS_PATH}/{self.selected_song}.wav"
-        await self.core.audio.play(audio_path, self.core.audio.CH_ATMO, level=0.8)
+        self.core.audio.play(audio_path, self.core.audio.CH_ATMO, level=0.8)
 
         # Master time anchor – set immediately after play() is called
         self.start_anchor = ticks_ms()
@@ -321,24 +387,27 @@ class RhythmMode(GameMode):
                     smallest_diff = diff
                     closest_note = note
 
+        lane_idx = self.button_columns.index(col) if col in self.button_columns else 0
+
         if closest_note is not None and smallest_diff <= self.hit_window_ms:
             closest_note["state"] = "HIT"
             self.combo += 1
 
             if smallest_diff <= self.PERFECT_WINDOW_MS:
                 self.score += 100
-                self.core.leds.set_pixel(col % 4, Palette.GREEN)
+                self.core.leds.flash_led(lane_idx, self.LANE_COLORS[lane_idx], duration=0.2, speed=0.1)
                 self.core.synth.play_note(880.0, "UI_SELECT", duration=0.05)
+                self.core.display.update_status("PERFECT!", f"COMBO: {self.combo}x")
             else:
                 self.score += 50
-                self.core.leds.set_pixel(col % 4, Palette.YELLOW)
+                self.core.leds.flash_led(lane_idx, Palette.WHITE, duration=0.2, speed=0.1)
                 self.core.synth.play_note(660.0, "UI_SELECT", duration=0.05)
-
-            self.core.display.update_status("NEON BEATS", f"SCORE: {self.score}")
+                self.core.display.update_status("GOOD", f"COMBO: {self.combo}x")
         else:
-            # Miss / stray press
             self.combo = 0
-            self.core.leds.set_pixel(col % 4, Palette.RED)
+            self.core.leds.flash_led(lane_idx, Palette.RED, duration=0.2, speed=0.1)
+            self.core.synth.play_note(150.0, "UI_ERROR", duration=0.1)
+            self.core.display.update_status("MISS!", "COMBO BROKEN")
 
     # ------------------------------------------------------------------
     # Rendering
@@ -351,9 +420,11 @@ class RhythmMode(GameMode):
         cols = self.button_columns
         hz = self.hit_zone_row
 
-        # Draw hit-zone markers at the bottom row
-        for col in cols:
-            self.core.matrix.draw_pixel(col, hz, Palette.WHITE)
+        # Draw hit-zone markers (dimmed lane colors)
+        for i, col in enumerate(cols):
+            base_color = self.LANE_COLORS[i]
+            dim_color = (base_color[0] // 4, base_color[1] // 4, base_color[2] // 4)
+            self.core.matrix.draw_pixel(col, hz, dim_color)
 
         for note in self.beatmap:
             if note["state"] != "WAITING":
@@ -362,16 +433,21 @@ class RhythmMode(GameMode):
             spawn_time = note["time"] - self.fall_duration_ms
 
             if spawn_time <= current_time <= note["time"]:
-                # Map elapsed fall time to a y position (0 → hit_zone_row)
                 progress = (current_time - spawn_time) / self.fall_duration_ms
                 y_pos = int(progress * hz)
-                self.core.matrix.draw_pixel(note["col"], y_pos, Palette.CYAN)
+
+                # Fetch matching color for the column
+                lane_idx = cols.index(note["col"]) if note["col"] in cols else 0
+                color = self.LANE_COLORS[lane_idx]
+
+                self.core.matrix.draw_pixel(note["col"], y_pos, color)
 
             elif current_time > note["time"] + self.hit_window_ms:
                 # Note has passed without being hit
                 note["state"] = "MISSED"
                 self.combo = 0
                 self.core.synth.play_note(150.0, "UI_ERROR", duration=0.1)
+                self.core.display.update_status("MISS!", "COMBO BROKEN")
 
     # ------------------------------------------------------------------
     # Demo beatmap (used when no SD card beatmap is found)

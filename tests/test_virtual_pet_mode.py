@@ -62,7 +62,7 @@ def test_virtual_pet_in_manifest():
     assert entry["class_name"] == "VirtualPet"
     assert entry["icon"] == "VIRTUAL_PET"
     assert "CORE" in entry["requires"]
-    assert entry.get("menu") == "MAIN"
+    assert entry.get("menu") == "CORE"
     print("✓ VIRTUAL_PET correctly registered in manifest")
 
 

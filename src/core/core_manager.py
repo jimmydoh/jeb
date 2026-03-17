@@ -6,7 +6,9 @@ TODO: Implement HardwareContext for modes to limit access
 """
 import asyncio
 import busio
+import gc
 import neopixel
+import sys
 from adafruit_ticks import ticks_ms, ticks_diff
 
 from managers import PowerManager, ResourceManager, WatchdogManager
@@ -247,6 +249,13 @@ class CoreManager:
         self.loaded_modes = {} # Cache for instantiated mode classes
         self.mode = "DASHBOARD" # Start in main menu mode
 
+        # --- Console Injection Tracking ---
+        self.active_mode = None
+        self.console_override_mode = None
+
+        # Optional variant flag set by ConsoleManager to request tutorial instead of run()
+        self._pending_mode_variant = None
+
         # Fail-safe mode tracking to prevent infinite error loops
         self.dashboard_failure_count = 0
         self.max_dashboard_failures = 3  # Enter safe mode after 3 consecutive failures
@@ -338,6 +347,29 @@ class CoreManager:
         except AttributeError as e:
             raise ImportError(f"Module '{module_path}' does not have class '{class_name}' for mode '{mode_id}': {e}") from e
 
+    def _unload_mode(self, mode_id):
+        """Ruthlessly purge a mode's class and module from SRAM to prevent OOM crashes."""
+        # 1. Remove from local class cache (prevents permanent RAM locking)
+        if mode_id in self.loaded_modes:
+            del self.loaded_modes[mode_id]
+
+        # 2. Delete from Python's internal module cache
+        meta = self.mode_registry.get(mode_id)
+        if meta and "module_path" in meta:
+            module_path = meta["module_path"]
+            if module_path in sys.modules:
+                del sys.modules[module_path]
+
+        # 3. Force garbage collection sweep
+        gc.collect()
+
+        # Try to log the free RAM if possible
+        try:
+            free_kb = gc.mem_free() / 1024
+            JEBLogger.debug("CORE", f"Purged '{mode_id}' from RAM. Free SRAM: {free_kb:.1f} KB")
+        except AttributeError:
+            pass # CPython emulator doesn't have mem_free
+
     # Satellite Network Delegation Properties
     @property
     def satellites(self):
@@ -395,7 +427,7 @@ class CoreManager:
         if self.audio:              # Stop all audio
             self.audio.stop_all()
         if self.buzzer:             # Stop buzzer
-            asyncio.create_task(self.buzzer.stop())
+            self.buzzer.stop()
 
     async def run_mode_with_safety(self, mode_instance, target_sat=None):
         """Execute a task while monitoring for interrupts.
@@ -498,7 +530,7 @@ class CoreManager:
                 if not self.hid.estop: # User reset the button
                     self.meltdown = False
                     self.estop_event.clear()  # Reset the event for future use
-                    await self.audio.play("system_reset.wav")
+                    self.audio.play("system_reset.wav")
                     self.display.update_status("SAFETY RESET", "PLEASE STAND BY")
                     await asyncio.sleep(2)
                 else:
@@ -511,14 +543,14 @@ class CoreManager:
                 self.estop_event.set()  # Signal to any listening tasks that E-Stop is engaged
                 self.sat_network.send_all("LED", f"ALL,{Palette.OFF.index}")  # Kill all LEDs
                 # Audio Alarms
-                await self.audio.play(
+                self.audio.play(
                     "background_winddown.wav", bus_id=self.audio.CH_ATMO, loop=False
                 )
-                await self.audio.set_level(self.audio.CH_ATMO, 0.2)
-                await self.audio.play(
+                self.audio.set_level(self.audio.CH_ATMO, 0.2)
+                self.audio.play(
                     "alarm_klaxon.wav", bus_id=self.audio.CH_SFX, loop=True
                 )
-                await self.audio.play(
+                self.audio.play(
                     "voice_meltdown.wav", bus_id=self.audio.CH_VOICE, loop=True
                 )
                 self.display.update_status("!!! EMERGENCY STOP !!!", "PULL UP TO RESET")
@@ -556,20 +588,20 @@ class CoreManager:
                 success, error = await self.power.soft_start_satellites()
 
                 if success:
-                    await self.audio.play(
+                    self.audio.play(
                         "link_restored.wav", bus_id=self.audio.CH_SFX
                     )
                     # Power is stable, trigger the ID assignment chain
                     await self.sat_network.discover_satellites()
                 else:
                     self.display.update_status("PWR ERROR", error)
-                    await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
+                    self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
 
             elif not self.power.satbus_connected and self.power.satbus_powered:
                 # PHYSICAL LINK LOST - Immediate Hardware Cut-off
                 self.power.emergency_kill()
                 self.display.update_status("SAT LINK LOST", "BUS OFFLINE")
-                await self.audio.play("link_lost.wav", bus_id=self.audio.CH_SFX)
+                self.audio.play("link_lost.wav", bus_id=self.audio.CH_SFX)
 
             await asyncio.sleep(0.5)  # Poll twice per second to save CPU
 
@@ -580,7 +612,7 @@ class CoreManager:
         self._sleeping = True
         # Blank the display and set LEDs to a low-power breathing animation
         self.display.update_status("", "")
-        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim="BREATH", speed=0.5)
+        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim_mode="BREATH", speed=0.5)
         # Throttle render loop to 10Hz to reduce power draw
         self.renderer.target_frame_rate = 10
         # Broadcast SLEEP to all satellites
@@ -813,9 +845,11 @@ class CoreManager:
 
                 if requirements_met:
 
+                    current_mode_id = self.mode
+
                     # LAZY LOAD THE MODE CLASS
                     try:
-                        mode_class = self._load_mode_class(self.mode)
+                        mode_class = self._load_mode_class(current_mode_id)
                     except (ImportError, KeyError) as e:
                         JEBLogger.error("CORE", f"Error loading mode '{self.mode}': {e}")
 
@@ -833,7 +867,7 @@ class CoreManager:
                         # Try to display error (may fail if display is broken)
                         try:
                             self.display.update_status("MODE LOAD ERROR", self.mode)
-                            await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
+                            self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
                         except Exception as e:
                             # Display/audio failure - log and continue anyway
                             JEBLogger.error("CORE", f"Error displaying mode load error: {e}")
@@ -846,10 +880,23 @@ class CoreManager:
                     self.dashboard_failure_count = 0
 
                     mode_instance = mode_class(self)
+                    self.active_mode = mode_instance
+
+                    JEBLogger.debug("CORE", f"Pending mode variant for '{self.active_mode}' = '{self._pending_mode_variant}'")
+
+                    if self._pending_mode_variant == "TUTORIAL":
+                        JEBLogger.info("CORE", f"Applying tutorial variant for mode '{self.active_mode}'")
+                        try:
+                            mode_instance.variant = "TUTORIAL"  # Set the mode instance to tutorial variant
+                            self._pending_mode_variant = None  # Clear the flag immediately after consuming it
+                        except Exception as e:
+                            JEBLogger.error("CORE", f"Tutorial error for '{self.active_mode}': {e}")
 
                     run_robust = True
                     while run_robust:
                         if target_sat:
+                            # Send command to the sat to go ACTIVE
+                            target_sat.send(CMD_MODE, "ACTIVE")
                             result = await self.run_mode_with_safety(
                                 mode_instance, target_sat=target_sat
                             )
@@ -907,7 +954,26 @@ class CoreManager:
                         else:
                             run_robust = False
 
+                        # --- NEW: Check for Console Injection Override ---
+                        if getattr(self, 'console_override_mode', None):
+                            JEBLogger.info("CORE", f"Console override detected! Routing to {self.console_override_mode}")
+                            self.mode = self.console_override_mode
+                            self.console_override_mode = None # Clear the flag
+                            break # Break the while loop to instantly load the new mode!
+
                         self.mode = "DASHBOARD"  # Return to dashboard after mode exit or error
+
+                    # ==========================================
+                    # --- AGGRESSIVE RAM PURGE ---
+                    # ==========================================
+                    # Sever all local references to the instance and class
+                    self.active_mode = None
+                    mode_instance = None
+                    mode_class = None
+                    # Unload from sys.modules and force GC
+                    if self.mode != current_mode_id:
+                        self._unload_mode(current_mode_id)
+
                 else:
                     JEBLogger.warning("CORE", f"Cannot start {self.mode}: Missing Dependency")
 
@@ -916,7 +982,7 @@ class CoreManager:
                         self.display.update_status(
                             "REQUIREMENT MISSING", f"NEED: {', '.join(requirements)}"
                         )
-                        await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
+                        self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
                     except Exception as e:
                         # Display/audio failure - log and continue anyway
                         JEBLogger.error("CORE", f"Error displaying requirements missing error: {e}")
@@ -930,7 +996,7 @@ class CoreManager:
                 # Try to display error (may fail if display is broken)
                 try:
                     self.display.update_status("MODE NOT FOUND", self.mode)
-                    await self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
+                    self.audio.play("fail.wav", bus_id=self.audio.CH_SFX)
                 except Exception as e:
                     # Display/audio failure - log and continue anyway
                     JEBLogger.error("CORE", f"Error displaying mode not found error: {e}")

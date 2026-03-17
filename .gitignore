@@ -18,3 +18,4 @@ scripts/source_emojis/*
 sd/audio/*/*.wav
 sd/data/*
 sd/icons/*
+src/config.json

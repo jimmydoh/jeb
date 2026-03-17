@@ -141,7 +141,7 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
     async def on_sleep(self):
         """Hardware-specific sleep routine."""
         await self.segment.clear()
-        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim="BREATH", speed=0.5)
+        self.leds.set_led(-1, SLEEP_LED_COLOR, brightness=0.1, anim_mode="BREATH", speed=0.5)
         self.renderer.target_frame_rate = 10
 
     async def on_wake(self):
@@ -179,8 +179,8 @@ class IndustrialSatelliteFirmware(SatelliteFirmware):
             orientation='horizontal',
         )
 
-    def _get_status_bytes(self):
-        return self.hid.get_status_bytes()
+    def _get_status_bytes(self, flush=False):
+        return self.hid.get_status_bytes(flush=flush)
 
     async def on_mode_change(self, new_mode):
         """React to mode changes by cleaning up local hardware state."""

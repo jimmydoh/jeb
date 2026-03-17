@@ -362,22 +362,25 @@ def test_verify_files():
         hash1 = hashlib.sha256(test_content_1).hexdigest()
         hash2 = hashlib.sha256(test_content_2).hexdigest()
         
-        # Create manifest
+        # Create manifest with explicit destination paths pointing to temp_dir
         manifest = {
             "version": "1.0.0",
             "files": [
                 {
                     "path": "file1.mpy",
+                    "destination": os.path.join(temp_dir, "file1.mpy"),
                     "sha256": hash1,  # Correct hash
                     "size": len(test_content_1)
                 },
                 {
                     "path": "file2.mpy",
+                    "destination": os.path.join(temp_dir, "file2.mpy"),
                     "sha256": hash2,  # File doesn't exist
                     "size": len(test_content_2)
                 },
                 {
                     "path": "file3.mpy",
+                    "destination": os.path.join(temp_dir, "file3.mpy"),
                     "sha256": "wronghash123",  # Wrong hash
                     "size": 100
                 }
@@ -411,9 +414,8 @@ def test_verify_files():
         
         print("  ✓ File verification logic correct")
         
-        os.chdir(original_dir)
-        
     finally:
+        os.chdir(original_dir)
         shutil.rmtree(temp_dir)
     
     print("✓ verify_files test passed")
@@ -458,9 +460,8 @@ def test_write_version_info():
         
         print("  ✓ version.json written correctly")
         
-        os.chdir(original_dir)
-        
     finally:
+        os.chdir(original_dir)
         shutil.rmtree(temp_dir)
     
     print("✓ write_version_info test passed")
@@ -469,8 +470,8 @@ def test_write_version_info():
 def test_install_file():
     """Test installing a file from SD staging to flash.
     
-    This test exercises the real Updater.install_file() method with an
-    injectable dest_root parameter to verify path handling, directory
+    This test exercises the real Updater.install_file() method using the
+    manifest's destination field to verify path handling, directory
     creation, and error handling work correctly.
     """
     print("\nTesting install_file...")
@@ -502,19 +503,21 @@ def test_install_file():
         # Use relative paths within temp directory
         updater_instance.download_dir = "sd/update"
         
-        # Create file info
+        dest_file = os.path.join(temp_dir, "lib/test.mpy")
+        
+        # Create file info with explicit destination
         file_info = {
             "path": "lib/test.mpy",
+            "destination": dest_file,
             "sha256": test_hash,
             "size": len(test_content)
         }
         
-        # Install the file using the real install_file method with temp_dir as dest_root
-        result = updater_instance.install_file(file_info, dest_root=temp_dir)
+        # Install the file using the real install_file method
+        result = updater_instance.install_file(file_info)
         assert result, "install_file should return True"
         
         # Check destination file was created
-        dest_file = os.path.join(temp_dir, "lib/test.mpy")
         assert os.path.exists(dest_file), "Destination file should exist"
         
         # Verify content
@@ -529,7 +532,7 @@ def test_install_file():
         
         print("  ✓ File installed and verified correctly")
         
-        # Test with absolute path (should be handled correctly)
+        # Test with a path that has a leading slash (should be handled via destination)
         os.makedirs("sd/update/modules", exist_ok=True)
         test_content_2 = b"Another test file"
         test_hash_2 = hashlib.sha256(test_content_2).hexdigest()
@@ -537,16 +540,18 @@ def test_install_file():
         with open(staging_file_2, "wb") as f:
             f.write(test_content_2)
         
+        dest_file_2 = os.path.join(temp_dir, "modules/core.mpy")
+        
         file_info_2 = {
             "path": "/modules/core.mpy",  # Absolute path with leading slash
+            "destination": dest_file_2,
             "sha256": test_hash_2,
             "size": len(test_content_2)
         }
         
-        result_2 = updater_instance.install_file(file_info_2, dest_root=temp_dir)
+        result_2 = updater_instance.install_file(file_info_2)
         assert result_2, "install_file should return True for absolute path"
         
-        dest_file_2 = os.path.join(temp_dir, "modules/core.mpy")
         assert os.path.exists(dest_file_2), "File with absolute path should be installed correctly"
         
         with open(dest_file_2, "rb") as f:
@@ -555,9 +560,8 @@ def test_install_file():
         
         print("  ✓ Absolute path handling verified correctly")
         
-        os.chdir(original_dir)
-        
     finally:
+        os.chdir(original_dir)
         shutil.rmtree(temp_dir)
     
     print("✓ install_file test passed")

@@ -7,8 +7,7 @@ direct imports, avoiding circular dependencies and tight coupling.
 
 To add a new mode:
 1. Create your mode class in a new file in the modes/ directory
-2. Import it in this file
-3. Add it to the AVAILABLE_MODES list
+2. Add its details to the MODE_REGISTRY dictionary below, following the existing structure.
 """
 
 # Mode Registry
@@ -19,6 +18,7 @@ MODE_REGISTRY = {
         "module_path": "modes.main_menu",
         "class_name": "MainMenu",
         "icon": "DEFAULT",
+        "order": 0,
         "requires": ["CORE"],
         "settings": []
     },
@@ -28,16 +28,80 @@ MODE_REGISTRY = {
         "module_path": "modes.main_menu",
         "class_name": "MainMenu",
         "icon": "DEFAULT",
+        "order": 0,
         "requires": ["CORE"],
         "settings": []
     },
+    "ZERO_PLAYER_MENU": {
+        "id": "ZERO_PLAYER_MENU",
+        "name": "ZERO PLAYER",
+        "module_path": "modes.zero_player",
+        "class_name": "ZeroPlayerMode",
+        "icon": "ZERO_PLAYER",
+        "requires": ["CORE"],
+        "settings": []
+    },
+}
+
+# Admin Menu Items
+MODE_REGISTRY |= {
+    "LAYOUT_CONFIGURATOR": {
+        "id": "LAYOUT_CONFIGURATOR",
+        "name": "LAYOUT CONFIG",
+        "module_path": "modes.layout_configurator",
+        "class_name": "LayoutConfigurator",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "order": 1020,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "GLOBAL_SETTINGS": {
+        "id": "GLOBAL_SETTINGS",
+        "name": "GLOBAL SETTINGS",
+        "module_path": "modes.global_settings",
+        "class_name": "GlobalSettings",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "order": 1030,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "DEBUG": {
+        "id": "DEBUG",
+        "name": "DEBUG DASH",
+        "module_path": "modes.debug",
+        "class_name": "DebugMode",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "order": 1099,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "POWER_TELEMETRY": {
+        "id": "POWER_TELEMETRY",
+        "name": "PWR TELEMETRY",
+        "module_path": "modes.power_telemetry",
+        "class_name": "PowerTelemetryMode",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "order": 1015,
+        "requires": ["CORE"],
+        "settings": []
+    },
+}
+
+# CORE Game Modes
+MODE_REGISTRY |= {
     "SIMON": {
         "id": "SIMON",
         "name": "SIMON SAYS",
         "module_path": "modes.simon",
         "class_name": "Simon",
         "icon": "SIMON",
-        "menu": "MAIN",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 10,
         "requires": ["CORE"],
         "settings": [
             {
@@ -51,6 +115,12 @@ MODE_REGISTRY = {
                 "label": "DIFF",
                 "options": ["EASY","NORMAL", "HARD", "INSANE"],
                 "default": "NORMAL"
+            },
+            {
+                "key": "audio_engine",
+                "label": "AUDIO",
+                "options": ["MODERN", "CLASSIC"],
+                "default": "MODERN"
             }
         ]
     },
@@ -60,7 +130,9 @@ MODE_REGISTRY = {
         "module_path": "modes.jebris",
         "class_name": "JEBris",
         "icon": "JEBRIS",
-        "menu": "MAIN",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 20,
         "requires": ["CORE"],
         "settings": [
             {
@@ -83,18 +155,10 @@ MODE_REGISTRY = {
         "module_path": "modes.safe_cracker",
         "class_name": "SafeCracker",
         "icon": "SAFE",
-        "menu": "MAIN",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 30,
         "requires": ["CORE"],
-        "settings": []
-    },
-    "IND_START": {
-        "id": "IND_START",
-        "name": "INDUSTRIAL STARTUP",
-        "module_path": "modes.industrial_startup",
-        "class_name": "IndustrialStartup",
-        "icon": "IND",
-        "menu": "MAIN",
-        "requires": ["INDUSTRIAL"],
         "settings": []
     },
     "PONG": {
@@ -103,7 +167,9 @@ MODE_REGISTRY = {
         "module_path": "modes.pong",
         "class_name": "Pong",
         "icon": "PONG",
-        "menu": "MAIN",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 40,
         "requires": ["CORE"],
         "optional": ["INDUSTRIAL"],
         "settings": [
@@ -121,110 +187,15 @@ MODE_REGISTRY = {
             }
         ]
     },
-    "ASTRO_BREAKER": {
-        "id": "ASTRO_BREAKER",
-        "name": "ASTRO BREAKER",
-        "module_path": "modes.astro_breaker",
-        "class_name": "AstroBreaker",
-        "icon": "ASTRO_BREAKER",
-        "menu": "MAIN",
-        "requires": ["CORE"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["NORMAL", "HARD", "INSANE"],
-                "default": "NORMAL"
-            }
-        ]
-    },
-    "TRENCH_RUN": {
-        "id": "TRENCH_RUN",
-        "name": "TRENCH RUN",
-        "module_path": "modes.trench_run",
-        "class_name": "TrenchRun",
-        "icon": "TRENCH_RUN",
-        "menu": "MAIN",
-        "requires": ["CORE"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["NORMAL", "HARD", "INSANE"],
-                "default": "NORMAL"
-            },
-            {
-                "key": "perspective",
-                "label": "VIEW",
-                "options": ["3RD_PERSON", "1ST_PERSON"],
-                "default": "3RD_PERSON"
-            }
-        ]
-    },
-    "DATA_FLOW": {
-        "id": "DATA_FLOW",
-        "name": "DATA FLOW",
-        "module_path": "modes.data_flow",
-        "class_name": "DataFlowMode",
-        "icon": "DATA_FLOW",
-        "menu": "MAIN",
-        "requires": ["CORE"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["NORMAL", "HARD"],
-                "default": "NORMAL"
-            }
-        ]
-    },
-    "LAYOUT_CONFIGURATOR": {
-        "id": "LAYOUT_CONFIGURATOR",
-        "name": "LAYOUT CONFIG",
-        "module_path": "modes.layout_configurator",
-        "class_name": "LayoutConfigurator",
-        "icon": "ADMIN",
-        "menu": "ADMIN",
-        "requires": ["CORE"],
-        "settings": []
-    },
-    "GLOBAL_SETTINGS": {
-        "id": "GLOBAL_SETTINGS",
-        "name": "GLOBAL SETTINGS",
-        "module_path": "modes.global_settings",
-        "class_name": "GlobalSettings",
-        "icon": "ADMIN",
-        "menu": "ADMIN",
-        "requires": ["CORE"],
-        "settings": []
-    },
-    "DEBUG": {
-        "id": "DEBUG",
-        "name": "DEBUG DASH",
-        "module_path": "modes.debug",
-        "class_name": "DebugMode",
-        "icon": "ADMIN",
-        "menu": "ADMIN",
-        "requires": ["CORE"],
-        "settings": []
-    },
-    "POWER_TELEMETRY": {
-        "id": "POWER_TELEMETRY",
-        "name": "PWR TELEMETRY",
-        "module_path": "modes.power_telemetry",
-        "class_name": "PowerTelemetryMode",
-        "icon": "ADMIN",
-        "menu": "ADMIN",
-        "requires": ["CORE"],
-        "settings": []
-    },
     "SNAKE": {
         "id": "SNAKE",
         "name": "CYBER SNAKE",
         "module_path": "modes.cyber_snake",
         "class_name": "CyberSnakeMode",
         "icon": "SNAKE",
-        "menu": "MAIN",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 80,
         "requires": ["CORE"],
         "settings": [
             {
@@ -241,13 +212,129 @@ MODE_REGISTRY = {
             }
         ]
     },
+    "ASTRO_BREAKER": {
+        "id": "ASTRO_BREAKER",
+        "name": "ASTRO BREAKER",
+        "module_path": "modes.astro_breaker",
+        "class_name": "AstroBreaker",
+        "icon": "ASTRO_BREAKER",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 50,
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "TRENCH_RUN": {
+        "id": "TRENCH_RUN",
+        "name": "TRENCH RUN",
+        "module_path": "modes.trench_run",
+        "class_name": "TrenchRun",
+        "icon": "TRENCH_RUN",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 60,
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            },
+            {
+                "key": "perspective",
+                "label": "VIEW",
+                "options": ["3RD_PERSON", "1ST_PERSON"],
+                "default": "3RD_PERSON"
+            }
+        ]
+    },
+    "LUNAR_SALVAGE": {
+        "id": "LUNAR_SALVAGE",
+        "name": "LUNAR SALVAGE",
+        "module_path": "modes.lunar_salvage",
+        "class_name": "LunarSalvage",
+        "icon": "LUNAR_SALVAGE",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 65,
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY", "NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "DATA_FLOW": {
+        "id": "DATA_FLOW",
+        "name": "DATA FLOW",
+        "module_path": "modes.data_flow",
+        "class_name": "DataFlowMode",
+        "icon": "DATA_FLOW",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 70,
+        "requires": ["CORE"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "VIRTUAL_PET": {
+        "id": "VIRTUAL_PET",
+        "name": "VIRTUAL PET",
+        "module_path": "modes.virtual_pet",
+        "class_name": "VirtualPet",
+        "icon": "VIRTUAL_PET",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 110,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "GROOVEBOX": {
+        "id": "GROOVEBOX",
+        "name": "JEB-808",
+        "module_path": "modes.groovebox",
+        "class_name": "GrooveboxMode",
+        "icon": "GROOVEBOX",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 120,
+        "requires": ["CORE"],
+        "optional": ["INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "bpm",
+                "label": "BPM",
+                "options": ["80", "100", "120", "140", "160"],
+                "default": "120"
+            }
+        ]
+    },
     "RHYTHM": {
         "id": "RHYTHM",
         "name": "NEON BEATS",
         "module_path": "modes.rhythm_mode",
         "class_name": "RhythmMode",
         "icon": "RHYTHM",
-        "menu": "MAIN",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 999,
         "requires": ["CORE"],
         "settings": [
             {
@@ -270,7 +357,9 @@ MODE_REGISTRY = {
         "module_path": "modes.emoji_reveal",
         "class_name": "EmojiRevealMode",
         "icon": "EMOJI_REVEAL",
-        "menu": "MAIN",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 90,
         "requires": ["CORE"],
         "settings": [
             {
@@ -293,7 +382,9 @@ MODE_REGISTRY = {
         "module_path": "modes.frequency_hunter",
         "class_name": "FrequencyHunterMode",
         "icon": "FREQ_HUNTER",
-        "menu": "MAIN",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 100,
         "requires": ["CORE"],
         "settings": [
             {
@@ -310,17 +401,10 @@ MODE_REGISTRY = {
             }
         ]
     },
-    "ZERO_PLAYER_MENU": {
-        "id": "ZERO_PLAYER_MENU",
-        "name": "ZERO PLAYER",
-        "module_path": "",
-        "class_name": "",
-        "icon": "ZERO_PLAYER",
-        "menu": "MAIN",
-        "submenu": "ZERO_PLAYER",
-        "requires": ["CORE"],
-        "settings": []
-    },
+}
+
+# Zero Player Game Modes
+MODE_REGISTRY |= {
     "CONWAYS_LIFE": {
         "id": "CONWAYS_LIFE",
         "name": "GAME OF LIFE",
@@ -328,6 +412,8 @@ MODE_REGISTRY = {
         "class_name": "ConwaysLife",
         "icon": "CONWAYS_LIFE",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 510,
         "requires": ["CORE"],
         "settings": []
     },
@@ -338,6 +424,8 @@ MODE_REGISTRY = {
         "class_name": "LangtonsAnt",
         "icon": "LANGTONS_ANT",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 520,
         "requires": ["CORE"],
         "settings": [
             {
@@ -355,6 +443,8 @@ MODE_REGISTRY = {
         "class_name": "WolframAutomata",
         "icon": "WOLFRAM_AUTOMATA",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 530,
         "requires": ["CORE"],
         "settings": [
             {
@@ -372,6 +462,8 @@ MODE_REGISTRY = {
         "class_name": "LissajousMode",
         "icon": "LISSAJOUS",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 540,
         "requires": ["CORE"],
         "settings": []
     },
@@ -382,6 +474,8 @@ MODE_REGISTRY = {
         "class_name": "BoidsMode",
         "icon": "BOIDS",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 550,
         "requires": ["CORE"],
         "settings": []
     },
@@ -392,6 +486,8 @@ MODE_REGISTRY = {
         "class_name": "PlasmaMode",
         "icon": "PLASMA",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 560,
         "requires": ["CORE"],
         "settings": []
     },
@@ -402,6 +498,8 @@ MODE_REGISTRY = {
         "class_name": "FallingSandMode",
         "icon": "FALLING_SAND",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 570,
         "requires": ["CORE"],
         "settings": []
     },
@@ -412,6 +510,8 @@ MODE_REGISTRY = {
         "class_name": "BouncingSprite",
         "icon": "BOUNCING_SPRITE",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 580,
         "requires": ["CORE"],
         "settings": []
     },
@@ -422,6 +522,8 @@ MODE_REGISTRY = {
         "class_name": "Wireworld",
         "icon": "WIREWORLD",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 590,
         "requires": ["CORE"],
         "settings": []
     },
@@ -432,6 +534,8 @@ MODE_REGISTRY = {
         "class_name": "StarfieldMode",
         "icon": "STARFIELD",
         "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 600,
         "requires": ["CORE"],
         "settings": [
             {
@@ -442,13 +546,136 @@ MODE_REGISTRY = {
             }
         ]
     },
+    "MECHA_FORGE": {
+        "id": "MECHA_FORGE",
+        "name": "MECHA FORGE",
+        "module_path": "modes.mecha_forge",
+        "class_name": "MechaForge",
+        "icon": "MECHA_FORGE",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 610,
+        "requires": ["CORE"],
+        "optional": ["INDUSTRIAL"],
+        "settings": []
+    },
+    "LAVA_LAMP": {
+        "id": "LAVA_LAMP",
+        "name": "LAVA LAMP",
+        "module_path": "modes.lava_lamp",
+        "class_name": "LavaLampMode",
+        "icon": "LAVA_LAMP",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 620,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "REACTION_DIFFUSION": {
+        "id": "REACTION_DIFFUSION",
+        "name": "REACTION DIFFUSION",
+        "module_path": "modes.reaction_diffusion",
+        "class_name": "ReactionDiffusion",
+        "icon": "REACTION_DIFFUSION",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 630,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "LORENZ_ATTRACTOR": {
+        "id": "LORENZ_ATTRACTOR",
+        "name": "LORENZ ATTRACTOR",
+        "module_path": "modes.lorenz_attractor",
+        "class_name": "LorenzAttractor",
+        "icon": "LORENZ_ATTRACTOR",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 640,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "PERLIN_FLOW": {
+        "id": "PERLIN_FLOW",
+        "name": "PERLIN FLOW",
+        "module_path": "modes.perlin_flow",
+        "class_name": "VectorFlowMode",
+        "icon": "PERLIN_FLOW",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 650,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "DIGITAL_RAIN": {
+        "id": "DIGITAL_RAIN",
+        "name": "DIGITAL RAIN",
+        "module_path": "modes.digital_rain",
+        "class_name": "DigitalRainMode",
+        "icon": "DIGITAL_RAIN",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 660,
+        "requires": ["CORE"],
+        "settings": []
+    },
+    "SORTING_VISUALIZER": {
+        "id": "SORTING_VISUALIZER",
+        "name": "SORTING VISUALIZER",
+        "module_path": "modes.sorting_visualizer",
+        "class_name": "SortingVisualizerMode",
+        "icon": "SORTING_VISUALIZER",
+        "menu": "ZERO_PLAYER",
+        "has_tutorial": True,
+        "order": 670,
+        "requires": ["CORE"],
+        "settings": []
+    },
+}
+
+# Sat Type 01 INDUSTRIAL Game Modes
+MODE_REGISTRY |= {
+    "IND_START": {
+        "id": "IND_START",
+        "name": "INDUSTRIAL STARTUP",
+        "module_path": "modes.industrial_startup",
+        "class_name": "IndustrialStartup",
+        "icon": "IND",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 1,
+        "requires": ["INDUSTRIAL"],
+        "settings": []
+    },
+    "ABYSSAL_ROVER": {
+        "id": "ABYSSAL_ROVER",
+        "name": "ABYSSAL ROVER",
+        "module_path": "modes.abyssal_rover",
+        "class_name": "AbyssalRover",
+        "icon": "ABYSSAL_ROVER",
+        "menu": "CORE",
+        "has_tutorial": True,
+        "order": 85,
+        "requires": ["CORE"],
+        "optional": ["INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
     "ABYSSAL_PING": {
         "id": "ABYSSAL_PING",
         "name": "ABYSSAL PING",
         "module_path": "modes.abyssal_ping",
         "class_name": "AbyssalPing",
         "icon": "ABYSSAL_PING",
-        "menu": "MAIN",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 2,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
             {
@@ -465,7 +692,9 @@ MODE_REGISTRY = {
         "module_path": "modes.orbital_strike",
         "class_name": "OrbitalStrike",
         "icon": "ORBITAL_STRIKE",
-        "menu": "MAIN",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 3,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
             {
@@ -482,7 +711,9 @@ MODE_REGISTRY = {
         "module_path": "modes.iron_canopy",
         "class_name": "IronCanopy",
         "icon": "IRON_CANOPY",
-        "menu": "MAIN",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 4,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
             {
@@ -499,7 +730,9 @@ MODE_REGISTRY = {
         "module_path": "modes.defcon_commander",
         "class_name": "DefconCommander",
         "icon": "DEFCON_COMMANDER",
-        "menu": "MAIN",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 5,
         "requires": ["CORE", "INDUSTRIAL"],
         "settings": [
             {
@@ -510,16 +743,215 @@ MODE_REGISTRY = {
             }
         ]
     },
-    "VIRTUAL_PET": {
-        "id": "VIRTUAL_PET",
-        "name": "VIRTUAL PET",
-        "module_path": "modes.virtual_pet",
-        "class_name": "VirtualPet",
-        "icon": "VIRTUAL_PET",
-        "menu": "MAIN",
-        "requires": ["CORE"],
-        "settings": []
-    }
+    "ARTILLERY_COMMAND": {
+        "id": "ARTILLERY_COMMAND",
+        "name": "ARTY COMMAND",
+        "module_path": "modes.artillery_command",
+        "class_name": "ArtilleryCommand",
+        "icon": "ARTILLERY_COMMAND",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 6,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "ENIGMA_BYTE": {
+        "id": "ENIGMA_BYTE",
+        "name": "ENIGMA BYTE",
+        "module_path": "modes.enigma_byte",
+        "class_name": "EnigmaByte",
+        "icon": "ENIGMA_BYTE",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 7,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "MAGLEV_EXPRESS": {
+        "id": "MAGLEV_EXPRESS",
+        "name": "MAGLEV EXPRESS",
+        "module_path": "modes.maglev_express",
+        "class_name": "MaglevExpress",
+        "icon": "MAGLEV_EXPRESS",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "ORBITAL_DOCKING": {
+        "id": "ORBITAL_DOCKING",
+        "name": "ORBITAL DOCKING",
+        "module_path": "modes.orbital_docking",
+        "class_name": "OrbitalDocking",
+        "icon": "ORBITAL_DOCKING",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["EASY", "NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "FLUX_SCAVENGER": {
+        "id": "FLUX_SCAVENGER",
+        "name": "FLUX SCAVENGER",
+        "module_path": "modes.flux_scavenger",
+        "class_name": "FluxScavenger",
+        "icon": "FLUX_SCAVENGER",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "VANGUARD_OVERRIDE": {
+        "id": "VANGUARD_OVERRIDE",
+        "name": "VANGUARD OVR",
+        "module_path": "modes.vanguard_override",
+        "class_name": "VanguardOverride",
+        "icon": "VANGUARD_OVERRIDE",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "PIPELINE_OVERLOAD": {
+        "id": "PIPELINE_OVERLOAD",
+        "name": "PIPELINE OVLD",
+        "module_path": "modes.pipeline_overload",
+        "class_name": "PipelineOverload",
+        "icon": "PIPELINE_OVERLOAD",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "NUMBERS_STATION": {
+        "id": "NUMBERS_STATION",
+        "name": "NMBRS STN",
+        "module_path": "modes.numbers_station",
+        "class_name": "NumbersStation",
+        "icon": "NUMBERS_STATION",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "MAGNETIC_CONTAINMENT": {
+        "id": "MAGNETIC_CONTAINMENT",
+        "name": "MAG CONTAINMENT",
+        "module_path": "modes.magnetic_containment",
+        "class_name": "MagneticContainment",
+        "icon": "MAGNETIC_CONTAINMENT",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "BUNKER_DEFUSE": {
+        "id": "BUNKER_DEFUSE",
+        "name": "BUNKER DEFUSE",
+        "module_path": "modes.bunker_defuse",
+        "class_name": "BunkerDefuse",
+        "icon": "BUNKER_DEFUSE",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
+    "SEISMIC_STABILIZER": {
+        "id": "SEISMIC_STABILIZER",
+        "name": "SEISMIC STAB",
+        "module_path": "modes.seismic_stabilizer",
+        "class_name": "SeismicStabilizer",
+        "icon": "SEISMIC_STABILIZER",
+        "menu": "EXP1",
+        "has_tutorial": True,
+        "order": 8,
+        "requires": ["CORE", "INDUSTRIAL"],
+        "settings": [
+            {
+                "key": "difficulty",
+                "label": "DIFF",
+                "options": ["NORMAL", "HARD", "INSANE"],
+                "default": "NORMAL"
+            }
+        ]
+    },
 }
 
 __all__ = ["MODE_REGISTRY"]

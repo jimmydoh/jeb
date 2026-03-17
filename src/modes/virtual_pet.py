@@ -95,6 +95,85 @@ class VirtualPet(BaseMode):
         # --- Display toggle ---
         self._show_stats = False
 
+    async def run_tutorial(self):
+        """
+        A guided, non-interactive demonstration of the Virtual Pet.
+
+        The Voiceover Script (audio/tutes/pet_tute.wav)
+            [0:00] "Welcome to Virtual Pet. Your new digital companion."
+            [0:05] "Press button one to feed your cat when it gets hungry."
+            [0:10] "Press button two to play with it and keep it happy."
+            [0:15] "Press button three to check its hunger and happiness stats on the screen."
+            [0:21] "If you ignore it, it will get grumpy and alert you. But if you take good care of it, it will happily fall asleep."
+            [0:27] "Take good care of your new feline friend!"
+            [0:31] (End of file)
+        """
+        await self.core.clean_slate()
+
+        # Suspend normal state machine updates
+        self.state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        self.core.audio.play("audio/tutes/pet_tute.wav", bus_id=self.core.audio.CH_VOICE)
+
+        # [0:00 - 0:05] "Welcome to Virtual Pet. Your new digital companion."
+        self.core.display.update_status("VIRTUAL PET", "DIGITAL COMPANION")
+        self.core.matrix.show_icon("CAT_IDLE", anim_mode="PULSE", speed=0.5)
+        await asyncio.sleep(5.0)
+
+        # [0:05 - 0:10] "Press button one to feed your cat when it gets hungry."
+        self.core.display.update_status("VIRTUAL PET", "PRESS B1 TO FEED")
+        self.core.leds.flash_led(0, Palette.GREEN, duration=2.0, speed=0.2)
+        await asyncio.sleep(1.0)
+
+        # Reuse your native logic to trigger the eating animation and meow!
+        self._feed(ticks_ms())
+        await asyncio.sleep(4.0)
+
+        # [0:10 - 0:15] "Press button two to play with it and keep it happy."
+        self.core.display.update_status("VIRTUAL PET", "PRESS B2 TO PLAY")
+        self.core.leds.flash_led(1, Palette.CYAN, duration=2.0, speed=0.2)
+        await asyncio.sleep(1.0)
+
+        # Reuse native logic for playing
+        self._play(ticks_ms())
+        await asyncio.sleep(4.0)
+
+        # [0:15 - 0:21] "Press button three to check its hunger and happiness stats..."
+        self.core.display.update_status("VIRTUAL PET", "PRESS B3 FOR STATS")
+        self.core.leds.flash_led(2, Palette.YELLOW, duration=2.0, speed=0.2)
+        await asyncio.sleep(1.0)
+
+        # Force a specific stat readout for the demo
+        self.hunger = 25
+        self.happiness = 90
+        self._show_stats = True
+        self._update_display()
+        await asyncio.sleep(5.0)
+        self._show_stats = False
+
+        # [0:21 - 0:27] "If you ignore it, it will get grumpy... But if you take good care..."
+        self.core.display.update_status("VIRTUAL PET", "ALERT: HUNGRY!")
+        self.state = self.STATE_HUNGRY
+        self._draw_state()
+        self.core.buzzer.play_sequence(self._ALERT)
+        await asyncio.sleep(3.0)
+
+        self.core.display.update_status("VIRTUAL PET", "ZZZ...")
+        self.state = self.STATE_SLEEPING
+        self._draw_state()
+        self.core.buzzer.play_sequence(self._SLEEP_TONE)
+        await asyncio.sleep(3.0)
+
+        # [0:27 - 0:31] "Take good care of your new feline friend!"
+        self.core.display.update_status("VIRTUAL PET", "TAKE GOOD CARE!")
+        self.state = self.STATE_IDLE
+        self._draw_state()
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
+
     # ------------------------------------------------------------------
     # BaseMode entry-point
     # ------------------------------------------------------------------

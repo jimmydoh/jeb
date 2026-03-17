@@ -18,6 +18,7 @@ Controls:
 
 import asyncio
 import gc
+from random import random
 
 from adafruit_ticks import ticks_ms, ticks_diff
 
@@ -64,15 +65,6 @@ _COLOR_INDICES = (11, 51, 41, 71, 22, 21)
 _SPEED_LEVELS_MS = (300, 200, 120, 80, 50)
 _SPEED_NAMES = ("SLOW", "MED", "NORM", "FAST", "TURBO")
 
-# Starting position: top-left corner of the 3×3 bounding box.
-_START_X = 0
-_START_Y = 0
-
-# Starting velocity: one pixel per step in each axis (diagonal movement).
-_START_VX = 1
-_START_VY = 1
-
-
 class BouncingSprite(BaseMode):
     """DVD-logo style bouncing sprite screensaver.
 
@@ -95,63 +87,170 @@ class BouncingSprite(BaseMode):
         self.width = 0
         self.height = 0
         self._frame = None       # bytearray: palette-indexed render buffer
-        self._x = 0              # integer x position (top-left of bounding box)
-        self._y = 0              # integer y position
-        self._vx = _START_VX     # integer x velocity (+1 or -1)
-        self._vy = _START_VY     # integer y velocity (+1 or -1)
+        self._x = 0              # integer x position (top-left of bounding box), set properly in _reset()
+        self._y = 0              # integer y position, set properly in _reset()
+        self._vx = 1 if random() < 0.5 else -1  # integer x velocity (+1 or -1)
+        self._vy = 1 if random() < 0.5 else -1  # integer y velocity (+1 or -1)
         self._color_idx = 0      # index into _COLOR_INDICES
         self._speed_idx = 2      # default: NORM
+
+    async def run_tutorial(self):
+        """
+        Guided demonstration of the Bouncing Sprite screensaver.
+
+        The Voiceover Script (audio/tutes/bouncing_tute.wav) ~37 seconds:
+            [0:00] "Welcome to Bouncing Sprite."
+            [0:04] "Inspired by classic DVD player screensavers, this mode features a tiny spaceship trapped in a 16 by 16 universe."
+            [0:12] "Watch carefully as it hits the walls. A perfect corner bounce is a rare and satisfying event."
+            [0:19] "Turn the main dial to adjust the animation speed."
+            [0:24] "Press button one to manually change the ship's colour."
+            [0:29] "And press button two to scramble its position and velocity."
+            [0:34] "Enjoy the screensaver."
+            [0:37] (End of file)
+        """
+        await self.core.clean_slate()
+
+        self.game_state = "TUTORIAL"
+
+        # Trigger audio synchronously (fire-and-forget)
+        self.core.audio.play(
+            "audio/tutes/bouncing_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
+        )
+
+        # Setup standard display state for the tutorial
+        self.width = self.core.matrix.width
+        self.height = self.core.matrix.height
+
+        self._frame = bytearray(self.width * self.height)
+        self._color_idx = 0
+        self._speed_idx = 2
+
+        self._reset()
+        self._build_frame()
+
+        self.core.display.use_standard_layout()
+        self.core.display.update_header("BOUNCING SPRITE")
+        self.core.display.update_footer("B1:Color  B2:Reset")
+
+        def _refresh_ui():
+            line1, line2 = self._status_line()
+            self.core.display.update_status(line1, line2)
+
+        _refresh_ui()
+
+        async def _sim_wait(duration_s):
+            """Runs the bouncing simulation continuously for the specified duration."""
+            start_time = ticks_ms()
+            last_step_tick = start_time
+            target_ms = int(duration_s * 1000)
+
+            while ticks_diff(ticks_ms(), start_time) < target_ms:
+                now = ticks_ms()
+                interval = _SPEED_LEVELS_MS[self._speed_idx]
+                if ticks_diff(now, last_step_tick) >= interval:
+                    self._step()
+                    self._build_frame()
+                    self.core.matrix.show_frame(self._frame)
+                    _refresh_ui() # Updates the pos coordinates on the screen
+                    last_step_tick = now
+                await asyncio.sleep(0.01)
+
+        try:
+            # [0:00 - 0:12] Intro & DVD context
+            self.core.display.update_status("BOUNCING SPRITE", "DVD SCREENSAVER")
+            await _sim_wait(12.0)
+
+            # [0:12 - 0:19] The elusive corner bounce
+            self.core.display.update_status("CORNER BOUNCE", "A RARE EVENT...")
+            await _sim_wait(7.0)
+
+            # [0:19 - 0:24] Speed dial demonstration
+            self.core.display.update_status("MAIN DIAL", "CHANGE SPEED")
+            for speed in [3, 4, 1, 2]: # Cycle FAST -> TURBO -> MED -> NORM
+                self._speed_idx = speed
+                _refresh_ui()
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(1.25)
+
+            # [0:24 - 0:29] Color cycling demonstration
+            self.core.display.update_status("BUTTON 1", "CYCLE COLOR")
+            for _ in range(4):
+                self._color_idx = (self._color_idx + 1) % len(_COLOR_INDICES)
+                self._build_frame()
+                self.core.matrix.show_frame(self._frame)
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(1.25)
+
+            # [0:29 - 0:34] Reset demonstration
+            self.core.display.update_status("BUTTON 2", "SCRAMBLE")
+            await _sim_wait(1.0)
+            self._reset()
+            self._build_frame()
+            self.core.matrix.show_frame(self._frame)
+            self.core.display.update_status("BUTTON 2", "SCRAMBLED!")
+            self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+            await _sim_wait(4.0)
+
+            # Wait for audio to finish out if it's still running
+            if hasattr(self.core.audio, 'wait_for_bus'):
+                await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+            else:
+                await asyncio.sleep(3.0)
+
+        finally:
+            await self.core.clean_slate()
+
+        return "TUTORIAL_COMPLETE"
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
     def _reset(self):
-        """Reset sprite to its starting position and velocity.
+        """Reset sprite to its starting position and velocity using fixed-point math."""
+        # Shift by 8 bits (multiply by 256) for sub-pixel precision
+        self._x = int(random() * (self.width - _SPRITE_W)) << 8
+        self._y = int(random() * (self.height - _SPRITE_H)) << 8
 
-        A gc.collect() is triggered here (a safe, low-frequency moment)
-        to relieve GC pressure before the main render loop begins.
-        """
-        self._x = _START_X
-        self._y = _START_Y
-        self._vx = _START_VX
-        self._vy = _START_VY
+        # Give it a random sub-pixel velocity between ~0.7 and 1.3 pixels per frame
+        # (179 to 332 in fixed point)
+        self._vx = 179 + int(random() * 153)
+        self._vx = self._vx if random() < 0.5 else -self._vx
+
+        self._vy = 179 + int(random() * 153)
+        self._vy = self._vy if random() < 0.5 else -self._vy
         gc.collect()
 
     def _step(self):
-        """Advance the sprite by one pixel step.
-
-        After moving, checks whether the bounding box has reached or
-        exceeded any wall.  On a collision the offending velocity component
-        is negated and the primary colour index is cycled once.  Corner
-        hits (both axes simultaneously) count as a single colour cycle.
-        """
-        max_x = self.width - _SPRITE_W
-        max_y = self.height - _SPRITE_H
+        """Advance the sprite by one sub-pixel step."""
+        # Convert boundaries to fixed-point
+        max_x = (self.width - _SPRITE_W) << 8
+        max_y = (self.height - _SPRITE_H) << 8
 
         bounced = False
 
         nx = self._x + self._vx
         ny = self._y + self._vy
 
-        # Horizontal wall check.
+        # Horizontal wall check
         if nx <= 0:
             nx = 0
-            self._vx = 1
+            self._vx = -self._vx
             bounced = True
         elif nx >= max_x:
             nx = max_x
-            self._vx = -1
+            self._vx = -self._vx
             bounced = True
 
-        # Vertical wall check.
+        # Vertical wall check
         if ny <= 0:
             ny = 0
-            self._vy = 1
+            self._vy = -self._vy
             bounced = True
         elif ny >= max_y:
             ny = max_y
-            self._vy = -1
+            self._vy = -self._vy
             bounced = True
 
         self._x = nx
@@ -160,20 +259,30 @@ class BouncingSprite(BaseMode):
         if bounced:
             self._color_idx = (self._color_idx + 1) % len(_COLOR_INDICES)
 
-    def _build_frame(self):
-        """Write the sprite into the palette-indexed frame buffer.
+            # Add a slight "spin" (random drift) on bounce to prevent infinite identical loops
+            # +/- 16 sub-pixels (~0.06 pixels)
+            self._vx += int((random() - 0.5) * 32)
+            self._vy += int((random() - 0.5) * 32)
 
-        The buffer is cleared first (all zeroes = off), then each
-        non-transparent sprite pixel is written at its current position.
-        """
+            # Cap the velocities so it doesn't get too slow or fast over time
+            # 128 is 0.5 pixels, 384 is 1.5 pixels
+            self._vx = max(-384, min(384, self._vx))
+            if abs(self._vx) < 128: self._vx = 128 if self._vx > 0 else -128
+
+            self._vy = max(-384, min(384, self._vy))
+            if abs(self._vy) < 128: self._vy = 128 if self._vy > 0 else -128
+
+    def _build_frame(self):
         # Clear the frame.
         for i in range(len(self._frame)):
             self._frame[i] = 0
 
         primary = _COLOR_INDICES[self._color_idx]
         w = self.width
-        x0 = self._x
-        y0 = self._y
+
+        # Shift back down to real pixels for rendering
+        x0 = self._x >> 8
+        y0 = self._y >> 8
 
         for dx, dy, ptype in _SPRITE_PIXELS:
             color = primary if ptype == 1 else _ACCENT_INDEX
@@ -183,7 +292,8 @@ class BouncingSprite(BaseMode):
         """Return two-line status tuple for the current simulation state."""
         name = _SPEED_NAMES[self._speed_idx]
         ms = _SPEED_LEVELS_MS[self._speed_idx]
-        return f"{name} ({ms}ms)", f"POS:{self._x},{self._y}"
+        # Shift back down for the UI read-out
+        return f"{name} ({ms}ms)", f"POS:{self._x >> 8},{self._y >> 8}"
 
     # ------------------------------------------------------------------
     # Main loop

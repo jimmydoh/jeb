@@ -21,7 +21,10 @@ class AudioManager:
     def preload(self, files):
         pass
 
-    async def play(self, file, channel=1, loop=False, level=1.0, wait=False, interrupt=True):
+    def play(self, file, bus_id=1, loop=False, level=1.0, wait=False, interrupt=True):
+        pass
+
+    async def wait_for_bus(self, bus_id):
         pass
 
     def stop(self, channel):

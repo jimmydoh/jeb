@@ -135,14 +135,23 @@ class AudioManager:
             except Exception as e:
                 JEBLogger.error("AUDI", f"Could not preload {filename}: {e}")
 
-    async def play(self, file, bus_id=1, loop=False, level=1.0, wait=False, interrupt=True):
+    def play(self, file, bus_id=1, loop=False, level=1.0, wait=False, interrupt=True):
         """
-        Plays a sound file.
-        - file: Filename string.
-        - bus_id: Logical bus ID (0=Atmo, 1=SFX, 2=Voice).
-        - interrupt: If False, will not play if bus is busy.
-        """
+        Plays a sound file (Fire-and-forget).
 
+        Parameters:
+        - file: Filename string relative to root_data_dir.
+        - bus_id: Logical bus ID (0=Atmo, 1=SFX, 2=Voice).
+        - loop: Whether to loop the audio.
+        - level: Volume level (0.0 to 1.0).
+        - wait: If True, waits for the voice to be free before playing.
+        - interrupt: If False, will not play if bus is busy. Ignored if wait=True.
+        """
+        # Spawns the async task in the background so the caller doesn't have to!
+        asyncio.create_task(self._play_async(file, bus_id, loop, level, wait, interrupt))
+
+    async def _play_async(self, file, bus_id, loop, level, wait, interrupt):
+        """Internal async coroutine that handles waiting and hardware triggering."""
         # 1. Allocate a physical voice using the new pool logic
         try:
             voice_idx = self._allocate_voice(bus_id)
@@ -211,6 +220,15 @@ class AudioManager:
                 else:
                     # Track the file handle so we can close it later
                     self._stream_files[voice_idx] = f
+
+    async def wait_for_bus(self, bus_id):
+        """Yields the event loop until all voices on the specified bus are silent."""
+        pool = self.pools.get(bus_id)
+        if not pool:
+            return
+
+        while any(self.mixer.voice[v].playing for v in pool):
+            await asyncio.sleep(0.1)
 
     async def fade_out(self, bus_id, duration=1.0):
         """

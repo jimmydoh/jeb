@@ -1,0 +1,1782 @@
+let currentPath = '/sd';
+
+function showTab(tabName) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById(tabName).classList.add('active');
+
+    // Auto-load content for some tabs
+    if (tabName === 'system') {
+        loadSystemStatus();
+        startTelemetry();
+    }
+    if (tabName === 'config') loadConfig();
+    if (tabName === 'files') loadFiles();
+    if (tabName === 'logs') loadLogs();
+    if (tabName === 'console') loadConsole();
+    if (tabName === 'modes') loadModes();
+    if (tabName === 'pixelart') initPixelArtStudio();
+    if (tabName === 'audiostudio') initAudioStudio();
+    if (tabName === 'layout') loadLayout();
+}
+
+async function loadSystemStatus() {
+    try {
+        const response = await fetch('/api/system/status');
+        const data = await response.json();
+
+        const html = `
+            <div class="compact-info"><span>WiFi SSID</span> <strong>${data.wifi_ssid}</strong></div>
+            <div class="compact-info"><span>IP Address</span> <strong>${data.ip_address}</strong></div>
+            <div class="compact-info"><span>Debug Mode</span> <strong>${data.debug_mode ? 'ON' : 'OFF'}</strong></div>
+            <div class="compact-info"><span>Uptime</span> <strong>${Math.floor(data.uptime)}s</strong></div>
+            <div class="compact-info"><span>Free Memory</span> <strong>${Math.floor(data.free_memory / 1024)} KB</strong></div>
+        `;
+        document.getElementById('systemStatus').innerHTML = html;
+    } catch (error) {
+        showStatus('actionStatus', 'Error loading status: ' + error, 'error');
+    }
+}
+
+let _currentConfigRaw = {};
+
+// Keys to hide from the generic config tab because they have dedicated UI tabs
+const CONFIG_IGNORE_KEYS = ['satellites'];
+
+async function loadConfig() {
+    try {
+        const response = await fetch('/api/config/global');
+        _currentConfigRaw = await response.json();
+
+        const container = document.getElementById('dynamicConfigFields');
+        container.innerHTML = '';
+
+        // Sort keys alphabetically for a consistent UI
+        const keys = Object.keys(_currentConfigRaw).sort();
+
+        keys.forEach(key => {
+            if (CONFIG_IGNORE_KEYS.includes(key)) return;
+
+            const val = _currentConfigRaw[key];
+            const type = typeof val;
+            const prettyTopLabel = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+            // --- NESTED DICTIONARY CARD (1 Level Deep) ---
+            if (type === 'object' && val !== null && !Array.isArray(val)) {
+                let cardHtml = `
+                    <div class="panel" style="margin: 5px 0 15px 0; padding: 15px; background: #1a1a1a; border: 1px solid #333; border-top: 3px solid #4CAF50;">
+                        <h4 style="color: #e0e0e0; margin-bottom: 15px; font-size: 1.1em; letter-spacing: 0.05em;">${prettyTopLabel}</h4>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                `;
+
+                // Iterate through the inside elements
+                for (const [subKey, subVal] of Object.entries(val)) {
+                    const subType = typeof subVal;
+                    const subId = `cfg_${key}__${subKey}`;
+                    const prettySubLabel = subKey.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                    let subInputHtml = '';
+
+                    // Detect sub-types and append data-parent mapping attributes
+                    if (subType === 'boolean') {
+                        subInputHtml = `
+                            <select id="${subId}" data-type="boolean" data-parent="${key}" data-key="${subKey}">
+                                <option value="true" ${subVal ? 'selected' : ''}>Enabled</option>
+                                <option value="false" ${!subVal ? 'selected' : ''}>Disabled</option>
+                            </select>`;
+                    } else if (subType === 'number') {
+                        subInputHtml = `<input type="number" id="${subId}" value="${subVal}" data-type="number" step="any" data-parent="${key}" data-key="${subKey}">`;
+                    } else {
+                        const isPassword = subKey.toLowerCase().includes('password');
+                        subInputHtml = `<input type="${isPassword ? 'password' : 'text'}" id="${subId}" value="${subVal !== null ? subVal : ''}" data-type="string" data-parent="${key}" data-key="${subKey}">`;
+                    }
+
+                    cardHtml += `
+                        <div class="form-group" style="margin: 0;">
+                            <label title="Internal key: ${key}.${subKey}" style="font-size: 0.85em;">${prettySubLabel}:</label>
+                            ${subInputHtml}
+                        </div>
+                    `;
+                }
+
+                cardHtml += `</div></div>`;
+                const row = document.createElement('div');
+                row.innerHTML = cardHtml;
+                container.appendChild(row);
+
+            } else {
+                // --- STANDARD TOP-LEVEL INPUTS & ARRAY FALLBACK ---
+                let inputHtml = '';
+                if (type === 'boolean') {
+                    inputHtml = `
+                        <select id="cfg_${key}" data-type="boolean" data-key="${key}">
+                            <option value="true" ${val ? 'selected' : ''}>Enabled</option>
+                            <option value="false" ${!val ? 'selected' : ''}>Disabled</option>
+                        </select>`;
+                } else if (type === 'number') {
+                    inputHtml = `<input type="number" id="cfg_${key}" value="${val}" data-type="number" step="any" data-key="${key}">`;
+                } else if (type === 'object' && val !== null) {
+                    // Fallback for Arrays or complex structures (renders as raw JSON)
+                    inputHtml = `<textarea id="cfg_${key}" data-type="object" data-key="${key}" rows="3" style="font-family: monospace;">${JSON.stringify(val, null, 2)}</textarea>`;
+                } else {
+                    const isPassword = key.toLowerCase().includes('password');
+                    inputHtml = `<input type="${isPassword ? 'password' : 'text'}" id="cfg_${key}" value="${val || ''}" data-type="string" data-key="${key}">`;
+                }
+
+                const row = document.createElement('div');
+                row.className = 'form-group';
+                row.style.margin = '0';
+                row.innerHTML = `
+                    <label title="Internal key: ${key}">${prettyTopLabel}:</label>
+                    ${inputHtml}
+                `;
+                container.appendChild(row);
+            }
+        });
+
+        showStatus('configStatus', 'Configuration loaded', 'success');
+    } catch (error) {
+        showStatus('configStatus', 'Error loading config: ' + error, 'error');
+    }
+}
+
+async function saveConfig() {
+    try {
+        const payload = {};
+        const inputs = document.querySelectorAll('[id^="cfg_"]');
+
+        inputs.forEach(el => {
+            const parentKey = el.dataset.parent; // Identifies if this belongs inside a nested object
+            const key = el.dataset.key;          // The actual setting key
+            const type = el.dataset.type;
+
+            let parsedVal;
+            if (type === 'boolean') {
+                parsedVal = (el.value === 'true');
+            } else if (type === 'number') {
+                parsedVal = Number(el.value);
+            } else if (type === 'object') {
+                try {
+                    parsedVal = JSON.parse(el.value);
+                } catch (e) {
+                    console.warn(`Invalid JSON for ${key}, skipping.`);
+                    return;
+                }
+            } else {
+                parsedVal = el.value;
+            }
+
+            // Route the parsed value to the correct level of the payload dictionary
+            if (parentKey) {
+                if (!payload[parentKey]) payload[parentKey] = {};
+                payload[parentKey][key] = parsedVal;
+            } else {
+                payload[key] = parsedVal;
+            }
+        });
+
+        const response = await fetch('/api/config/global', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            showStatus('configStatus', 'Configuration saved successfully', 'success');
+            loadConfig(); // Refresh to ensure sync
+        } else {
+            const data = await response.json();
+            showStatus('configStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (error) {
+        showStatus('configStatus', 'Error: ' + error, 'error');
+    }
+}
+
+async function loadFiles() {
+    try {
+        const response = await fetch(`/api/files?path=${encodeURIComponent(currentPath)}`);
+        const data = await response.json();
+
+        const fileList = document.getElementById('fileList');
+        fileList.innerHTML = '';
+
+        // Add parent directory link if not at root
+        if (currentPath !== '/sd' && currentPath !== '/') {
+            const li = document.createElement('li');
+            li.className = 'file-item';
+            li.innerHTML = `
+                <span>📁 ..</span>
+                <button class="secondary" onclick="navigateUp()">Up</button>
+            `;
+            fileList.appendChild(li);
+        }
+
+        // Add files and directories
+        data.items.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'file-item';
+            const icon = item.is_dir ? '📁' : '📄';
+            const size = item.is_dir ? '' : ` (${formatSize(item.size)})`;
+
+            li.innerHTML = `
+                <span>${icon} ${item.name}${size}</span>
+                <div>
+                    ${item.is_dir ?
+                        `<button class="secondary" onclick="navigateTo('${item.path}')">Open</button>` :
+                        `<button class="secondary" onclick="downloadFile('${item.path}')">Download</button>`
+                    }
+                </div>
+            `;
+            fileList.appendChild(li);
+        });
+
+        document.getElementById('currentPath').textContent = currentPath;
+    } catch (error) {
+        console.error('Error loading files:', error);
+    }
+}
+
+function navigateTo(path) {
+    currentPath = path;
+    loadFiles();
+}
+
+function navigateUp() {
+    const parts = currentPath.split('/');
+    parts.pop();
+    currentPath = parts.join('/') || '/';
+    loadFiles();
+}
+
+function downloadFile(path) {
+    window.location.href = `/api/files/download?path=${encodeURIComponent(path)}`;
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return Math.floor(bytes / 1024) + ' KB';
+    return Math.floor(bytes / (1024 * 1024)) + ' MB';
+}
+
+const LOG_LEVEL_COLORS = {
+    'DBUG': '#888',
+    'INFO': '#4fc3f7',
+    'NOTE': '#80deea',
+    'WARN': '#ffcc02',
+    'CRIT': '#ffa726',
+    '!ERR': '#ef5350',
+    'EMUL': '#ce93d8',
+};
+
+async function loadLogs() {
+    try {
+        const level = document.getElementById('logLevelFilter').value;
+        const search = document.getElementById('logSearch').value.trim();
+        let url = '/api/logs';
+        const params = [];
+        if (level !== '') params.push('level=' + encodeURIComponent(level));
+        if (search) params.push('search=' + encodeURIComponent(search));
+        if (params.length) url += '?' + params.join('&');
+
+        const response = await fetch(url);
+        const logs = await response.json();
+
+        const logViewer = document.getElementById('logViewer');
+        logViewer.innerHTML = '';
+
+        logs.forEach(entry => {
+            const line = document.createElement('div');
+            const tag = entry.level_tag || '';
+            const color = LOG_LEVEL_COLORS[tag] || '#e0e0e0';
+            // Escape HTML to prevent XSS, then colorise
+            const text = `[${entry.time}][${tag}][${entry.source}][${entry.module}] ${entry.message}`;
+            const escaped = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+            line.innerHTML = `<span style="color:${color}">${escaped}</span>`;
+            logViewer.appendChild(line);
+        });
+
+        if (logs.length === 0) {
+            logViewer.textContent = 'No log entries.';
+        }
+
+        // Scroll to bottom
+        logViewer.scrollTop = logViewer.scrollHeight;
+    } catch (error) {
+        document.getElementById('logViewer').textContent = 'Error loading logs: ' + error;
+    }
+}
+
+async function clearLogs() {
+    try {
+        await fetch('/api/logs/clear', { method: 'POST' });
+    } catch (_) {}
+    document.getElementById('logViewer').textContent = '';
+}
+
+let _consoleAutoRefreshTimer = null;
+
+function toggleConsoleAutoRefresh() {
+    const enabled = document.getElementById('consoleAutoRefresh').checked;
+    if (enabled) {
+        _consoleAutoRefreshTimer = setInterval(loadConsole, 2000);
+    } else {
+        if (_consoleAutoRefreshTimer) {
+            clearInterval(_consoleAutoRefreshTimer);
+            _consoleAutoRefreshTimer = null;
+        }
+    }
+}
+
+async function loadConsole() {
+    try {
+        const response = await fetch('/api/console');
+        const data = await response.json();
+
+        // Use textContent to prevent XSS attacks
+        const consoleViewer = document.getElementById('consoleViewer');
+        const atBottom = consoleViewer.scrollHeight - consoleViewer.scrollTop <= consoleViewer.clientHeight + 40; // 40px tolerance
+        consoleViewer.textContent = data.output;
+        if (atBottom) consoleViewer.scrollTop = consoleViewer.scrollHeight;
+    } catch (error) {
+        document.getElementById('consoleViewer').textContent = 'Error loading console: ' + error;
+    }
+}
+
+async function sendConsoleInput() {
+    const inputEl = document.getElementById('consoleInput');
+    const line = inputEl.value.trim();
+    if (!line) return;
+    try {
+        const response = await fetch('/api/console/input', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ input: line })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            inputEl.value = '';
+            setTimeout(loadConsole, 200);
+        } else {
+            showStatus('consoleStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (error) {
+        showStatus('consoleStatus', 'Error: ' + error, 'error');
+    }
+}
+
+async function triggerOTAUpdate() {
+    if (!confirm('Trigger OTA update? Device will update on next boot.')) return;
+
+    try {
+        const response = await fetch('/api/actions/ota-update', { method: 'POST' });
+        const data = await response.json();
+
+        if (response.ok) {
+            showStatus('actionStatus', 'OTA update scheduled for next boot', 'success');
+        } else {
+            showStatus('actionStatus', 'Error: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showStatus('actionStatus', 'Error: ' + error, 'error');
+    }
+}
+
+async function toggleDebugMode() {
+    try {
+        const response = await fetch('/api/actions/toggle-debug', { method: 'POST' });
+        const data = await response.json();
+
+        if (response.ok) {
+            showStatus('actionStatus', 'Debug mode toggled successfully', 'success');
+            loadSystemStatus();  // Refresh status
+        } else {
+            showStatus('actionStatus', 'Error: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showStatus('actionStatus', 'Error: ' + error, 'error');
+    }
+}
+
+let currentSleepState = false;
+
+function triggerReboot() {
+    if (confirm("WARNING: This will restart the JEB Master Controller.\n\nAre you sure?")) {
+        fetch('/api/action/reboot', { method: 'POST' })
+            .then(() => {
+                document.body.innerHTML = "<h1 style='text-align:center; margin-top:50px;'>Rebooting...</h1><p style='text-align:center;'>Please wait a few seconds and refresh the page.</p>";
+            })
+            .catch(err => console.error("Reboot error:", err));
+    }
+}
+
+function toggleSleep() {
+    const newState = !currentSleepState; // Flip the current state
+    fetch('/api/action/sleep', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sleep: newState })
+    }).catch(err => console.error("Sleep toggle error:", err));
+    // Note: We don't manually update the UI here. Telemetry will catch it and update it perfectly!
+}
+
+function triggerLED() {
+    const payload = {
+        index: parseInt(document.getElementById('ledActionIndex').value),
+        color: document.getElementById('ledActionColor').value,
+        anim: document.getElementById('ledActionAnim').value,
+        speed: parseFloat(document.getElementById('ledActionSpeed').value)
+    };
+
+    fetch('/api/action/led', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    }).catch(err => console.error("LED trigger error:", err));
+}
+
+let _currentModeFilter = 'ALL';
+
+function filterModes(menu, btn) {
+    _currentModeFilter = menu;
+    // Update filter button styles
+    document.querySelectorAll('.mode-filter-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    // Show/hide mode cards
+    document.querySelectorAll('.mode-card').forEach(card => {
+        card.style.display = (menu === 'ALL' || card.dataset.menu === menu) ? '' : 'none';
+    });
+}
+
+function escapeHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+}
+
+async function loadModes() {
+    try {
+        const response = await fetch('/api/modes');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = await response.json();
+
+        // Show connected hardware
+        const hwDiv = document.getElementById('modesHardware');
+        const hwList = data.connected_hardware || ['CORE'];
+        hwDiv.innerHTML = '<span style="color:#b0b0b0;">Connected hardware: </span>' +
+            hwList.map(hw => `<span style="padding:1px 8px; background:#1a3a1a; border:1px solid #4CAF50; border-radius:3px; color:#4CAF50; font-size:0.85em; margin-right:4px;">${escapeHtml(hw)}</span>`).join('');
+
+        const modesList = document.getElementById('modesList');
+        modesList.innerHTML = '';
+
+        const menuLabels = { CORE: 'Core', ZERO_PLAYER: 'Zero Player', EXP1: 'Industrial' };
+        let currentMenu = null;
+
+        for (const mode of (data.modes || [])) {
+            // Menu section header
+            if (mode.menu !== currentMenu) {
+                currentMenu = mode.menu;
+                const header = document.createElement('h3');
+                header.textContent = menuLabels[currentMenu] || currentMenu;
+                header.style.cssText = 'color:#888; font-size:0.85em; text-transform:uppercase; letter-spacing:2px; margin:18px 0 8px; padding-bottom:4px; border-bottom:1px solid #333;';
+                header.dataset.menu = currentMenu;
+                modesList.appendChild(header);
+            }
+
+            const modeDiv = document.createElement('div');
+            modeDiv.className = 'mode-card';
+            modeDiv.dataset.menu = mode.menu;
+            modeDiv.style.cssText = 'margin-bottom:10px; padding:12px 14px; background:#1a1a1a; border-radius:5px; border-left:3px solid ' + (mode.playable ? '#4CAF50' : '#444') + ';';
+
+            // Header row: name + hardware badges + action buttons
+            let html = '<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">';
+            html += '<div style="flex:1;">';
+            html += `<span style="font-weight:bold; color:${mode.playable ? '#e0e0e0' : '#888'};">${escapeHtml(mode.name)}</span>`;
+            // Requires badges
+            (mode.requires || []).forEach(hw => {
+                html += ` <span style="padding:1px 5px; background:#222; border:1px solid ${mode.playable ? '#555' : '#333'}; border-radius:3px; font-size:0.75em; color:#888;">${escapeHtml(hw)}</span>`;
+            });
+            // Optional badges
+            (mode.optional || []).forEach(hw => {
+                html += ` <span style="padding:1px 5px; background:#1a1a1a; border:1px solid #333; border-radius:3px; font-size:0.75em; color:#555;" title="Optional">${escapeHtml(hw)}</span>`;
+            });
+            html += '</div>';
+
+            // Action buttons
+            html += '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">';
+            if (mode.playable) {
+                html += `<button onclick="launchMode('${escapeHtml(mode.id)}', false)" style="background:#1e3e1e; border-color:#4CAF50; color:#4CAF50; padding:4px 10px;">▶ Launch</button>`;
+                if (mode.has_tutorial) {
+                    html += `<button onclick="launchMode('${escapeHtml(mode.id)}', true)" style="background:#12283c; border-color:#4fc3f7; color:#4fc3f7; padding:4px 10px;">📖 Tutorial</button>`;
+                }
+            }
+            if ((mode.settings || []).length > 0) {
+                html += `<button onclick="saveModeSettings('${escapeHtml(mode.id)}')" style="background:#2a2a2a; padding:4px 10px;">💾 Save</button>`;
+            }
+            html += '</div>';
+            html += '</div>';
+
+            // Settings row
+            if ((mode.settings || []).length > 0) {
+                html += '<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:10px;">';
+                mode.settings.forEach(setting => {
+                    const current = mode.current || {};
+                    const currentValue = current[setting.key] !== undefined ? current[setting.key] : setting.default;
+                    html += `<div class="form-group" style="margin:0; min-width:120px;">`;
+                    html += `<label style="font-size:0.82em; color:#aaa;">${escapeHtml(setting.label)}:</label>`;
+                    html += `<select id="${escapeHtml(mode.id)}_${escapeHtml(setting.key)}">`;
+                    (setting.options || []).forEach(opt => {
+                        html += `<option value="${escapeHtml(opt)}"${opt === currentValue ? ' selected' : ''}>${escapeHtml(opt)}</option>`;
+                    });
+                    html += '</select></div>';
+                });
+                html += '</div>';
+            }
+
+            modeDiv.innerHTML = html;
+            modesList.appendChild(modeDiv);
+        }
+
+        // Apply active filter
+        filterModes(_currentModeFilter, null);
+
+    } catch (error) {
+        showStatus('modesStatus', 'Error loading modes: ' + error, 'error');
+    }
+}
+
+async function launchMode(modeId, tutorial) {
+    const label = tutorial ? 'tutorial' : 'main game';
+    if (!confirm(`Launch "${modeId}" (${label}) on device?`)) return;
+    try {
+        const response = await fetch('/api/actions/launch-mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode_id: modeId, tutorial: tutorial })
+        });
+        const result = await response.json();
+        if (response.ok) {
+            showStatus('modesStatus', `Launching ${modeId} (${label}) on device…`, 'success');
+        } else {
+            showStatus('modesStatus', 'Error: ' + (result.error || 'Unknown'), 'error');
+        }
+    } catch (error) {
+        showStatus('modesStatus', 'Error: ' + error, 'error');
+    }
+}
+
+async function saveModeSettings(modeId) {
+    try {
+        // Collect all settings for this mode
+        const settings = {};
+        document.querySelectorAll(`[id^="${modeId}_"]`).forEach(elem => {
+            const key = elem.id.replace(`${modeId}_`, '');
+            settings[key] = elem.value;
+        });
+
+        const response = await fetch('/api/config/modes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode_id: modeId, settings: settings })
+        });
+
+        if (response.ok) {
+            showStatus('modesStatus', `${escapeHtml(modeId)} settings saved`, 'success');
+            loadModes();
+        } else {
+            showStatus('modesStatus', 'Error saving settings', 'error');
+        }
+    } catch (error) {
+        showStatus('modesStatus', 'Error: ' + error, 'error');
+    }
+}
+
+async function uploadFile() {
+    const fileInput = document.getElementById('fileUpload');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        alert('Please select a file first');
+        return;
+    }
+
+    try {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const content = e.target.result;
+
+            const response = await fetch(
+                `/api/files/upload?path=${encodeURIComponent(currentPath)}&filename=${encodeURIComponent(file.name)}`,
+                {
+                    method: 'POST',
+                    body: content
+                }
+            );
+
+            if (response.ok) {
+                alert(`File ${file.name} uploaded successfully`);
+                loadFiles();  // Refresh file list
+            } else {
+                const data = await response.json();
+                alert('Upload failed: ' + data.error);
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    } catch (error) {
+        alert('Upload error: ' + error);
+    }
+}
+
+function showStatus(elementId, message, type) {
+    const status = document.getElementById(elementId);
+    status.textContent = message;
+    status.className = 'status ' + type;
+    status.style.display = 'block';
+    setTimeout(() => {
+        status.style.display = 'none';
+    }, 5000);
+}
+
+// --- Telemetry / Polling ---
+let _telemetryTimer = null;
+const _voltageHistory = {};
+const CHART_MAX_POINTS = 60;
+const VOLTAGE_LABELS = {
+    input_20v:  'Input (20V)',
+    satbus_20v: 'SatBus (20V)',
+    main_5v:    'Logic (5V)',
+    led_5v:     'LED (5V)',
+};
+
+async function fetchTelemetry() {
+    try {
+        const response = await fetch('/api/telemetry/status');
+        if (response.ok) {
+            const data = await response.json();
+            updateTelemetryUI(data);
+
+            const el = document.getElementById('telemetryStatus');
+            el.textContent = 'Connected';
+            el.className = 'telemetry-status connected';
+        }
+    } catch (err) {
+        const el = document.getElementById('telemetryStatus');
+        el.textContent = 'Reconnecting…';
+        el.className = 'telemetry-status disconnected';
+    }
+}
+
+function startTelemetry() {
+    if (_telemetryTimer) return; // Already polling
+    fetchTelemetry(); // Fetch immediately
+    _telemetryTimer = setInterval(fetchTelemetry, 1000); // Poll every 1 second
+}
+
+function stopTelemetry() {
+    if (_telemetryTimer) {
+        clearInterval(_telemetryTimer);
+        _telemetryTimer = null;
+    }
+    const el = document.getElementById('telemetryStatus');
+    el.textContent = 'Disconnected';
+    el.className = 'telemetry-status disconnected';
+}
+
+function updateTelemetryUI(data) {
+    // --- System State Sync ---
+    if (data.system !== undefined) {
+        currentSleepState = data.system.sleeping;
+        const sleepBtn = document.getElementById('btnSleepToggle');
+
+        if (currentSleepState) {
+            sleepBtn.textContent = "Wake System";
+            sleepBtn.style.background = "#FF9800"; // Orange when asleep
+        } else {
+            sleepBtn.textContent = "Put to Sleep";
+            sleepBtn.style.background = "#555";    // Grey when awake
+        }
+
+        const ramEl = document.getElementById('sysRam');
+        if (ramEl && data.system.free_ram_kb !== undefined) {
+            if (data.system.free_ram_kb === "Emulator") {
+                ramEl.textContent = "Unlimited (Emulator)";
+                ramEl.style.color = "#9C27B0"; // Purple for emulator
+            } else {
+                const ramVal = data.system.free_ram_kb;
+                ramEl.textContent = ramVal.toFixed(1) + " KB";
+
+                // Color coding based on Pico 2W thresholds
+                if (ramVal < 40) {
+                    ramEl.style.color = "#f44336"; // Red (Danger - GC struggles here)
+                } else if (ramVal < 80) {
+                    ramEl.style.color = "#ff9800"; // Orange (Warning)
+                } else {
+                    ramEl.style.color = "#4CAF50"; // Green (Healthy)
+                }
+            }
+        }
+    }
+
+    // --- Voltage cards ---
+    const power = data.power || {};
+    const voltEl = document.getElementById('telemetryVoltages');
+    let html = '';
+
+    // Only draw cards for buses that actually exist in the payload
+    const powerKeys = Object.keys(power);
+    if (powerKeys.length === 0) {
+        html = '<em style="color: #666;">No power data available</em>';
+    } else {
+        for (const [key, val] of Object.entries(power)) {
+            if (val === undefined || val === null) continue;
+
+            // Look up the pretty label, or default to the raw dictionary key
+            const label = VOLTAGE_LABELS[key] || key;
+            html += `<div class="info-card"><h3>${label}</h3><div class="value">${Number(val).toFixed(2)} V</div></div>`;
+        }
+    }
+    voltEl.innerHTML = html;
+
+    // --- Satellite badges ---
+    const sats = data.satellites || {};
+    const satEl = document.getElementById('telemetrySatellites');
+    const satKeys = Object.keys(sats);
+    if (satKeys.length === 0) {
+        satEl.innerHTML = '<em style="color: #666;">No satellites detected</em>';
+    } else {
+        satEl.innerHTML = satKeys.map(sid => {
+            const online = sats[sid].active;
+            return `<span class="sat-badge ${online ? 'online' : 'offline'}">SAT ${sid}: ${online ? 'ONLINE' : 'OFFLINE'}</span>`;
+        }).join('');
+    }
+
+    // --- Sparkline charts for ALL voltages ---
+    const chartsContainer = document.getElementById('telemetryCharts');
+    for (const [key, val] of Object.entries(power)) {
+        if (val === undefined || val === null) continue;
+
+        if (!_voltageHistory[key]) _voltageHistory[key] = [];
+        _voltageHistory[key].push(Number(val));
+        if (_voltageHistory[key].length > CHART_MAX_POINTS) {
+            _voltageHistory[key].shift();
+        }
+
+        let canvasId = 'chart_' + key;
+        let canvas = document.getElementById(canvasId);
+
+        // Dynamically create the canvas if it doesn't exist yet
+        if (!canvas) {
+            canvas = document.createElement('canvas');
+            canvas.id = canvasId;
+            canvas.className = 'sparkline';
+            canvas.width = 600;
+            canvas.height = 90; // Slightly shorter to fit multiple cleanly on screen
+            chartsContainer.appendChild(canvas);
+        }
+
+        const label = VOLTAGE_LABELS[key] || key;
+        drawSparkline(canvasId, _voltageHistory[key], label);
+    }
+
+    // --- Remote HID interface ---
+    rebuildHIDInterface(data.satellites);
+}
+
+function drawSparkline(canvasId, values, label) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    if (values.length < 2) return;
+
+    const min = Math.min(...values) - 0.5;
+    const max = Math.max(...values) + 0.5;
+    const range = max - min || 1;
+
+    // Grid lines
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    [0.25, 0.5, 0.75].forEach(frac => {
+        const y = Math.round(h * frac) + 0.5;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    });
+
+    // Line
+    ctx.strokeStyle = '#4CAF50';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    values.forEach((v, i) => {
+        const x = (i / (CHART_MAX_POINTS - 1)) * w;
+        const y = h - ((v - min) / range) * (h - 10) - 5;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = '#b0b0b0';
+    ctx.font = '11px monospace';
+    ctx.fillText(`${label}  max:${Math.max(...values).toFixed(2)}V  min:${Math.min(...values).toFixed(2)}V`, 6, 14);
+}
+
+// Auto-load initial data
+loadSystemStatus();
+startTelemetry();
+
+// --- Pixel Art Studio ---
+const GRID_SIZE = 16;
+let pixelData = new Array(GRID_SIZE * GRID_SIZE).fill(0);
+let selectedColorIndex = 0;
+let selectedColorRGB = '#000000';
+let paletteColors = {};
+let pixelArtInitialized = false;
+let isDrawing = false;
+
+function rgbToHex(r, g, b) {
+    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+async function initPixelArtStudio() {
+    if (pixelArtInitialized) return;
+    pixelArtInitialized = true;
+
+    // Build the 16x16 grid
+    const grid = document.getElementById('pixelGrid');
+    grid.innerHTML = '';
+    for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'pixel-cell';
+        cell.dataset.index = i;
+        grid.appendChild(cell);
+    }
+
+    // Fetch palette from server
+    try {
+        const resp = await fetch('/api/pixel-art/palette');
+        paletteColors = await resp.json();
+    } catch (e) {
+        // Fallback minimal palette if server unavailable.
+        // Indices match the JEB palette: 0=OFF, 11=RED, 41=GREEN, 61=BLUE
+        paletteColors = {'0': {name:'OFF',r:0,g:0,b:0}, '11': {name:'RED',r:255,g:0,b:0}, '41': {name:'GREEN',r:0,g:200,b:0}, '61': {name:'BLUE',r:0,g:0,b:255}};
+    }
+
+    // Build palette swatches
+    const paletteGrid = document.getElementById('paletteGrid');
+    paletteGrid.innerHTML = '';
+    for (const [idx, color] of Object.entries(paletteColors)) {
+        const swatch = document.createElement('div');
+        swatch.className = 'palette-swatch' + (parseInt(idx) === 0 ? ' selected' : '');
+        const hex = rgbToHex(color.r, color.g, color.b);
+        swatch.style.background = parseInt(idx) === 0 ? '#111' : hex;
+        swatch.title = `${idx}: ${color.name}`;
+        swatch.dataset.index = idx;
+        swatch.onclick = () => selectColor(parseInt(idx));
+        paletteGrid.appendChild(swatch);
+    }
+}
+
+function selectColor(idx) {
+    selectedColorIndex = idx;
+    const color = paletteColors[String(idx)];
+    if (!color) return;
+    const hex = (idx === 0) ? '#000000' : rgbToHex(color.r, color.g, color.b);
+    selectedColorRGB = hex;
+    document.getElementById('selectedColorName').textContent = `${idx}: ${color.name}`;
+    document.getElementById('selectedColorPreview').style.background = hex;
+    // Update swatch borders
+    document.querySelectorAll('.palette-swatch').forEach(s => {
+        s.classList.toggle('selected', parseInt(s.dataset.index) === idx);
+    });
+}
+
+function paintCell(index) {
+    if (index < 0 || index >= GRID_SIZE * GRID_SIZE) return;
+    pixelData[index] = selectedColorIndex;
+    const cell = document.querySelector(`.pixel-cell[data-index="${index}"]`);
+    if (cell) {
+        const color = paletteColors[String(selectedColorIndex)];
+        if (selectedColorIndex === 0 || !color) {
+            cell.style.background = '#000';
+        } else {
+            cell.style.background = rgbToHex(color.r, color.g, color.b);
+        }
+    }
+}
+
+function getCellIndexFromEvent(e) {
+    const target = e.target;
+    if (target && target.dataset && target.dataset.index !== undefined) {
+        return parseInt(target.dataset.index);
+    }
+    return -1;
+}
+
+function pixelMouseDown(e) {
+    isDrawing = true;
+    const idx = getCellIndexFromEvent(e);
+    if (idx >= 0) paintCell(idx);
+}
+
+function pixelMouseMove(e) {
+    if (!isDrawing) return;
+    const idx = getCellIndexFromEvent(e);
+    if (idx >= 0) paintCell(idx);
+}
+
+function pixelMouseUp() {
+    isDrawing = false;
+}
+
+function clearCanvas() {
+    pixelData.fill(0);
+    document.querySelectorAll('.pixel-cell').forEach(cell => {
+        cell.style.background = '#000';
+    });
+}
+
+async function previewPixelArt() {
+    try {
+        const resp = await fetch('/api/pixel-art/preview', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pixels: pixelData})
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+            showStatus('pixelArtStatus', 'Preview sent to matrix!', 'success');
+        } else if (data.status === 'no_matrix') {
+            showStatus('pixelArtStatus', 'Matrix not connected to web server', 'error');
+        } else {
+            showStatus('pixelArtStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (e) {
+        showStatus('pixelArtStatus', 'Error: ' + e, 'error');
+    }
+}
+
+async function savePixelArt() {
+    const name = document.getElementById('iconName').value.trim();
+    if (!name) {
+        showStatus('pixelArtStatus', 'Please enter an icon name', 'error');
+        return;
+    }
+    try {
+        const resp = await fetch('/api/pixel-art/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, pixels: pixelData})
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+            showStatus('pixelArtStatus', `Saved to ${data.path}`, 'success');
+        } else {
+            showStatus('pixelArtStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (e) {
+        showStatus('pixelArtStatus', 'Error: ' + e, 'error');
+    }
+}
+
+// =====================================================================
+// Audio Studio
+// =====================================================================
+const AUDIO_NUM_CHANNELS = 3;
+const AUDIO_NUM_STEPS    = 16;
+
+// Patch names – must match JSEQ_PATCH_NAMES in synth_manager.py
+const JSEQ_PATCH_NAMES = [
+    'RETRO_LEAD', 'RETRO_BASS', 'RETRO_NOISE',
+    'BEEP', 'BEEP_SQUARE', 'PAD', 'PUNCH',
+    'ALARM', 'SCANNER', 'CLICK', 'NOISE', 'SELECT',
+];
+
+// Available note names for the picker
+const AUDIO_OCTAVES = [2, 3, 4, 5, 6, 7];
+const AUDIO_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+// Duration options: [label, beats]
+const DURATION_OPTIONS = [
+    ['1/32', 0.125], ['1/16', 0.25], ['1/8', 0.5],
+    ['1/4', 1.0], ['1/2', 2.0], ['1', 4.0],
+];
+
+// Sequence data: audioSteps[ch][step] = {note, duration} or null (rest)
+let audioSteps = [];
+let audioChannelPatches = [];
+let activeNote = null;       // e.g. 'C4'
+let activeDuration = 1.0;    // in beats (quarter note default)
+let audioStudioInitialized = false;
+
+function initAudioStudio() {
+    if (audioStudioInitialized) return;
+    audioStudioInitialized = true;
+
+    // Initialize data
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        audioSteps.push(new Array(AUDIO_NUM_STEPS).fill(null));
+        audioChannelPatches.push(JSEQ_PATCH_NAMES[c] || 'SELECT');
+    }
+
+    _buildChannelRows();
+    _buildNotePicker();
+    _buildDurationPicker();
+}
+
+function _buildChannelRows() {
+    const container = document.getElementById('channelRows');
+    container.innerHTML = '';
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        const row = document.createElement('div');
+        row.className = 'channel-row';
+        row.id = `channelRow_${c}`;
+
+        // Label
+        const lbl = document.createElement('div');
+        lbl.className = 'channel-label';
+        lbl.textContent = `Ch${c + 1}`;
+        row.appendChild(lbl);
+
+        // Patch selector
+        const sel = document.createElement('select');
+        sel.className = 'channel-patch';
+        sel.id = `channelPatch_${c}`;
+        JSEQ_PATCH_NAMES.forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            if (name === audioChannelPatches[c]) opt.selected = true;
+            sel.appendChild(opt);
+        });
+        sel.onchange = () => { audioChannelPatches[c] = sel.value; };
+        row.appendChild(sel);
+
+        // Step grid
+        const grid = document.createElement('div');
+        grid.className = 'step-grid';
+        grid.id = `stepGrid_${c}`;
+        for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
+            const btn = document.createElement('button');
+            btn.className = 'step-btn';
+            btn.id = `step_${c}_${s}`;
+            btn.textContent = '—';
+            btn.onclick = () => _toggleStep(c, s);
+            grid.appendChild(btn);
+        }
+        row.appendChild(grid);
+        container.appendChild(row);
+    }
+}
+
+function _buildNotePicker() {
+    const picker = document.getElementById('notePicker');
+    picker.innerHTML = '';
+
+    // Rest button
+    const restBtn = document.createElement('button');
+    restBtn.className = 'note-pick-btn rest';
+    restBtn.textContent = '— Rest';
+    restBtn.onclick = () => _selectNote(null);
+    picker.appendChild(restBtn);
+
+    // Note buttons by octave
+    AUDIO_OCTAVES.forEach(oct => {
+        AUDIO_NOTE_NAMES.forEach(n => {
+            const noteName = n + oct;
+            const btn = document.createElement('button');
+            btn.className = 'note-pick-btn';
+            btn.textContent = noteName;
+            btn.id = `notePick_${noteName}`;
+            btn.onclick = () => _selectNote(noteName);
+            picker.appendChild(btn);
+        });
+    });
+}
+
+function _buildDurationPicker() {
+    const picker = document.getElementById('durationPicker');
+    picker.innerHTML = '';
+    DURATION_OPTIONS.forEach(([label, beats]) => {
+        const btn = document.createElement('button');
+        btn.className = 'dur-btn' + (beats === activeDuration ? ' selected' : '');
+        btn.textContent = label;
+        btn.onclick = () => _selectDuration(beats, label, btn);
+        picker.appendChild(btn);
+    });
+}
+
+function _selectNote(noteName) {
+    activeNote = noteName;
+    document.getElementById('activeNoteLabel').textContent = noteName || '— Rest';
+    document.querySelectorAll('.note-pick-btn').forEach(b => b.classList.remove('selected'));
+    if (noteName) {
+        const btn = document.getElementById(`notePick_${noteName}`);
+        if (btn) btn.classList.add('selected');
+    } else {
+        const restBtns = document.querySelectorAll('.note-pick-btn.rest');
+        restBtns.forEach(b => b.classList.add('selected'));
+    }
+}
+
+function _selectDuration(beats, label, clickedBtn) {
+    activeDuration = beats;
+    document.getElementById('activeDurLabel').textContent = label + ' (' + beats + ' beat' + (beats === 1 ? '' : 's') + ')';
+    document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('selected'));
+    clickedBtn.classList.add('selected');
+}
+
+function _toggleStep(ch, step) {
+    const current = audioSteps[ch][step];
+    if (current !== null && activeNote === current.note) {
+        // Same note clicked again → clear (rest)
+        audioSteps[ch][step] = null;
+    } else if (activeNote === null) {
+        // Rest selected → clear
+        audioSteps[ch][step] = null;
+    } else {
+        // Place or replace note
+        audioSteps[ch][step] = { note: activeNote, duration: activeDuration };
+    }
+    _refreshStepButton(ch, step);
+}
+
+function _refreshStepButton(ch, step) {
+    const btn = document.getElementById(`step_${ch}_${step}`);
+    if (!btn) return;
+    const s = audioSteps[ch][step];
+    if (s) {
+        btn.textContent = s.note;
+        btn.classList.add('active');
+    } else {
+        btn.textContent = '—';
+        btn.classList.remove('active');
+    }
+}
+
+function audioClearAll() {
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        audioSteps[c] = new Array(AUDIO_NUM_STEPS).fill(null);
+        for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
+            _refreshStepButton(c, s);
+        }
+    }
+}
+
+function _buildPreviewPayload() {
+    const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
+    const channels = [];
+    const REST_DURATION = 1.0; // Quarter note default for rest steps
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        const sequence = audioSteps[c].map(s => s ? [s.note, s.duration] : ['-', REST_DURATION]);
+        channels.push({ patch: audioChannelPatches[c], sequence });
+    }
+    return { bpm, channels };
+}
+
+async function audioPreview() {
+    const payload = _buildPreviewPayload();
+    try {
+        const resp = await fetch('/api/synth/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+            showStatus('audioStatus', '▶ Preview started on device', 'success');
+        } else if (data.status === 'no_synth') {
+            showStatus('audioStatus', 'Synth manager not connected to web server', 'error');
+        } else {
+            showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (e) {
+        showStatus('audioStatus', 'Error: ' + e, 'error');
+    }
+}
+
+async function audioStop() {
+    try {
+        const resp = await fetch('/api/synth/stop', { method: 'POST' });
+        const data = await resp.json();
+        if (resp.ok) {
+            showStatus('audioStatus', '■ Playback stopped', 'success');
+        } else {
+            showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (e) {
+        showStatus('audioStatus', 'Error: ' + e, 'error');
+    }
+}
+
+// Encode a note name to .jseq MIDI index (0 = rest, 1 = MIDI note 0)
+// MIDI numbering: C-1=0, C0=12, C1=24, C2=36, C4=60, A4=69
+// Formula: (octave + 1) * 12 + semitone gives standard MIDI note number
+function _noteToJseqIndex(noteName) {
+    if (!noteName || noteName === '-') return 0;
+    const semitones = { 'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11 };
+    const m = noteName.match(/^([A-G]#?)(\d+)$/);
+    if (!m) return 0;
+    const midi = (parseInt(m[2]) + 1) * 12 + (semitones[m[1]] !== undefined ? semitones[m[1]] : 0);
+    return midi + 1; // +1: index 0 reserved for rest
+}
+
+function _durationToJseqUnits(beats) {
+    return Math.max(1, Math.min(255, Math.round(beats * 32)));
+}
+
+function _encodeJseq() {
+    const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
+    // Calculate buffer size: 8-byte header + per-channel data
+    let size = 8;
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) size += 3 + AUDIO_NUM_STEPS * 2;
+
+    const buf = new ArrayBuffer(size);
+    const view = new DataView(buf);
+    let pos = 0;
+
+    // Magic "JSEQ"
+    view.setUint8(pos++, 0x4A); view.setUint8(pos++, 0x53);
+    view.setUint8(pos++, 0x45); view.setUint8(pos++, 0x51);
+    view.setUint8(pos++, 1); // version
+    view.setUint16(pos, bpm, true); pos += 2;
+    view.setUint8(pos++, AUDIO_NUM_CHANNELS);
+
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        const patchIdx = JSEQ_PATCH_NAMES.indexOf(audioChannelPatches[c]);
+        view.setUint8(pos++, patchIdx >= 0 ? patchIdx : 0);
+        view.setUint16(pos, AUDIO_NUM_STEPS, true); pos += 2;
+        for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
+            const step = audioSteps[c][s];
+            view.setUint8(pos++, step ? _noteToJseqIndex(step.note) : 0);
+            view.setUint8(pos++, step ? _durationToJseqUnits(step.duration) : _durationToJseqUnits(activeDuration));
+        }
+    }
+    return buf;
+}
+
+async function audioSave() {
+    const name = document.getElementById('audioSeqName').value.trim();
+    if (!name) {
+        showStatus('audioStatus', 'Please enter a sequence name', 'error');
+        return;
+    }
+    try {
+        const buf = _encodeJseq();
+        const resp = await fetch(`/api/synth/save?name=${encodeURIComponent(name)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: buf,
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+            showStatus('audioStatus', `💾 Saved to ${data.path}`, 'success');
+        } else {
+            showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (e) {
+        showStatus('audioStatus', 'Error: ' + e, 'error');
+    }
+}
+
+// =====================================================================
+// HID Emulator
+// =====================================================================
+const HID_NUM_BUTTONS = 4;
+let _hidBtnStates = new Array(HID_NUM_BUTTONS).fill(false);
+let _hidEncoderPos = 0;
+let _hidEncBtnPressed = false;
+
+function _hidBuildButtonsStr() {
+    return _hidBtnStates.map(v => v ? '1' : '0').join('');
+}
+
+async function _hidSend(payload) {
+    try {
+        const resp = await fetch('/api/hid/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sid: 'CORE', ...payload }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            showStatus('hidStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        } else if (data.status === 'no_hid') {
+            showStatus('hidStatus', 'HID manager not connected to web server', 'error');
+        }
+    } catch (e) {
+        showStatus('hidStatus', 'Error: ' + e, 'error');
+    }
+}
+
+function hidBtnPress(index) {
+    if (_hidBtnStates[index]) return;
+    _hidBtnStates[index] = true;
+    document.getElementById('hidBtn' + index).classList.add('pressed');
+    _hidSend({ buttons: _hidBuildButtonsStr() });
+}
+
+function hidBtnRelease(index) {
+    if (!_hidBtnStates[index]) return;
+    _hidBtnStates[index] = false;
+    document.getElementById('hidBtn' + index).classList.remove('pressed');
+    _hidSend({ buttons: _hidBuildButtonsStr() });
+}
+
+function hidEncoderStep(delta) {
+    _hidEncoderPos += delta;
+    document.getElementById('hidEncoderVal').textContent = _hidEncoderPos;
+    _hidSend({ encoders: String(_hidEncoderPos) });
+}
+
+function hidEncoderReset() {
+    _hidEncoderPos = 0;
+    document.getElementById('hidEncoderVal').textContent = '0';
+    _hidSend({ encoders: '0' });
+}
+
+function hidEncBtnPress() {
+    if (_hidEncBtnPressed) return;
+    _hidEncBtnPressed = true;
+    document.getElementById('hidEncBtn').classList.add('pressed');
+    _hidSend({ encoder_buttons: '1' });
+}
+
+function hidEncBtnRelease() {
+    if (!_hidEncBtnPressed) return;
+    _hidEncBtnPressed = false;
+    document.getElementById('hidEncBtn').classList.remove('pressed');
+    _hidSend({ encoder_buttons: '0' });
+}
+
+// =====================================================================
+// Remote HID Interface (dynamic satellite topology)
+// =====================================================================
+const HID_PROFILES = {
+    "CORE": {
+        label: "CORE",
+        color: "#4CAF50",
+        buttons: [
+            { label: "B1" }, { label: "B2" }, { label: "B3" }, { label: "B4" },
+        ],
+        latching_toggles: [],
+        momentary_toggles: [],
+        encoders: [{ label: "ENC" }],
+    },
+    "INDUSTRIAL": {
+        label: "INDUSTRIAL",
+        color: "#FF9800",
+        buttons: [{ label: "BIG BTN" }],
+        latching_toggles: [
+            { label: "T1" }, { label: "T2" }, { label: "T3" }, { label: "T4" },
+            { label: "T5" }, { label: "T6" }, { label: "T7" }, { label: "T8" },
+            { label: "ARM" }, { label: "KEY" }, { label: "ROT A" }, { label: "ROT B" },
+        ],
+        momentary_toggles: [{ label: "MOM" }],
+        encoders: [{ label: "ENC" }],
+    },
+};
+HID_PROFILES["01"] = HID_PROFILES["INDUSTRIAL"];
+
+const _hidRemoteState = {};
+let _hidTopoHash = '';
+
+async function _hidRemoteSend(sid, payload) {
+    try {
+        const resp = await fetch('/api/hid/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sid, ...payload }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            showStatus('hidRemoteStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        } else if (data.status === 'no_hid') {
+            showStatus('hidRemoteStatus', 'HID manager not connected', 'error');
+        }
+    } catch (e) {
+        showStatus('hidRemoteStatus', 'Error: ' + e, 'error');
+    }
+}
+
+function _buildHIDPanel(sid, typeName, profile, btnIndexStart, encIndexStart) {
+    const panel = document.createElement('div');
+    panel.className = 'hid-remote-panel';
+    panel.style.borderColor = profile.color;
+
+    const title = sid === 'CORE' ? 'CORE' : `SAT ${sid}`;
+    const header = document.createElement('h3');
+    header.innerHTML = `<span style="color:${profile.color};">${title}</span> <span style="font-weight:normal;font-size:0.8em;color:#888;">${typeName}</span>`;
+    panel.appendChild(header);
+
+    const state = _hidRemoteState[sid];
+
+    // --- Buttons ---
+    if (profile.buttons && profile.buttons.length > 0) {
+        const section = document.createElement('div');
+        section.className = 'hid-section';
+        const h4 = document.createElement('h4');
+        h4.textContent = 'Buttons';
+        section.appendChild(h4);
+        const grid = document.createElement('div');
+        grid.className = 'hid-btn-grid';
+        profile.buttons.forEach((btn, i) => {
+            const absIdx = btnIndexStart + i;
+            const b = document.createElement('button');
+            b.className = 'hid-push-btn';
+            b.id = `hidDynBtn_${absIdx}`;
+            b.textContent = btn.label;
+            const press = () => {
+                if (state.buttons[i]) return;
+                state.buttons[i] = true;
+                b.classList.add('pressed');
+                _hidRemoteSend(sid, { buttons: state.buttons.map(v => v ? '1' : '0').join('') });
+            };
+            const release = () => {
+                if (!state.buttons[i]) return;
+                state.buttons[i] = false;
+                b.classList.remove('pressed');
+                _hidRemoteSend(sid, { buttons: state.buttons.map(v => v ? '1' : '0').join('') });
+            };
+            b.addEventListener('mousedown', press);
+            b.addEventListener('mouseup', release);
+            b.addEventListener('mouseleave', release);
+            b.addEventListener('touchstart', e => { e.preventDefault(); press(); }, { passive: false });
+            b.addEventListener('touchend', release);
+            b.addEventListener('touchcancel', release);
+            grid.appendChild(b);
+        });
+        section.appendChild(grid);
+        panel.appendChild(section);
+    }
+
+    // --- Latching Toggles ---
+    if (profile.latching_toggles && profile.latching_toggles.length > 0) {
+        const section = document.createElement('div');
+        section.className = 'hid-section';
+        const h4 = document.createElement('h4');
+        h4.textContent = 'Toggles';
+        section.appendChild(h4);
+        const grid = document.createElement('div');
+        grid.className = 'hid-toggle-grid';
+        profile.latching_toggles.forEach((tog, i) => {
+            const b = document.createElement('button');
+            b.className = 'hid-toggle-btn';
+            b.id = `hidDynTog_${sid}_${i}`;
+            b.textContent = tog.label;
+            if (state.toggles[i]) b.classList.add('active');
+            b.addEventListener('click', () => {
+                state.toggles[i] = !state.toggles[i];
+                b.classList.toggle('active', state.toggles[i]);
+                _hidRemoteSend(sid, { latching_toggles: state.toggles.map(v => v ? '1' : '0').join('') });
+            });
+            grid.appendChild(b);
+        });
+        section.appendChild(grid);
+        panel.appendChild(section);
+    }
+
+    // --- Momentary Toggles ---
+    if (profile.momentary_toggles && profile.momentary_toggles.length > 0) {
+        const section = document.createElement('div');
+        section.className = 'hid-section';
+        const h4 = document.createElement('h4');
+        h4.textContent = 'Momentary';
+        section.appendChild(h4);
+        profile.momentary_toggles.forEach((tog, i) => {
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'display:flex; gap:5px; align-items:center; margin-bottom:5px;';
+            const lbl = document.createElement('span');
+            lbl.style.cssText = 'color:#b0b0b0; font-size:0.85em; min-width:40px;';
+            lbl.textContent = tog.label;
+            const mkMomBtn = (dir, label) => {
+                const b = document.createElement('button');
+                b.className = 'hid-enc-step-btn';
+                b.textContent = label;
+                const press = () => {
+                    state.momentary[i] = dir;
+                    _hidRemoteSend(sid, { momentary_toggles: state.momentary.join('') });
+                };
+                const release = () => {
+                    state.momentary[i] = 'C';
+                    _hidRemoteSend(sid, { momentary_toggles: state.momentary.join('') });
+                };
+                b.addEventListener('mousedown', press);
+                b.addEventListener('mouseup', release);
+                b.addEventListener('mouseleave', release);
+                b.addEventListener('touchstart', e => { e.preventDefault(); press(); }, { passive: false });
+                b.addEventListener('touchend', release);
+                b.addEventListener('touchcancel', release);
+                return b;
+            };
+            wrap.appendChild(lbl);
+            wrap.appendChild(mkMomBtn('U', '▲'));
+            wrap.appendChild(mkMomBtn('D', '▼'));
+            section.appendChild(wrap);
+        });
+        panel.appendChild(section);
+    }
+
+    // --- Encoders ---
+    if (profile.encoders && profile.encoders.length > 0) {
+        const section = document.createElement('div');
+        section.className = 'hid-section';
+        const h4 = document.createElement('h4');
+        h4.textContent = 'Encoders';
+        section.appendChild(h4);
+        profile.encoders.forEach((enc, i) => {
+            const absIdx = encIndexStart + i;
+            const encWrap = document.createElement('div');
+            encWrap.style.cssText = 'margin-bottom:10px;';
+            const encLabel = document.createElement('div');
+            encLabel.style.cssText = 'color:#b0b0b0; font-size:0.85em; margin-bottom:4px;';
+            encLabel.textContent = enc.label;
+            const controls = document.createElement('div');
+            controls.className = 'hid-encoder-controls';
+            const display = document.createElement('div');
+            display.className = 'hid-encoder-display';
+            display.id = `hidDynEnc_${absIdx}`;
+            display.textContent = state.encoders[i];
+            const step = (delta) => {
+                state.encoders[i] += delta;
+                display.textContent = state.encoders[i];
+                _hidRemoteSend(sid, { encoders: state.encoders.map(String).join(':') });
+            };
+            const mkStepBtn = (delta, label) => {
+                const b = document.createElement('button');
+                b.className = 'hid-enc-step-btn';
+                b.textContent = label;
+                b.addEventListener('click', () => step(delta));
+                return b;
+            };
+            const resetBtn = document.createElement('button');
+            resetBtn.className = 'hid-enc-step-btn';
+            resetBtn.style.fontSize = '0.7em';
+            resetBtn.textContent = 'RST';
+            resetBtn.addEventListener('click', () => {
+                state.encoders[i] = 0;
+                display.textContent = '0';
+                _hidRemoteSend(sid, { encoders: state.encoders.map(String).join(':') });
+            });
+            controls.appendChild(mkStepBtn(-5, '«'));
+            controls.appendChild(mkStepBtn(-1, '−'));
+            controls.appendChild(display);
+            controls.appendChild(mkStepBtn(1, '+'));
+            controls.appendChild(mkStepBtn(5, '»'));
+            controls.appendChild(resetBtn);
+            // Encoder button
+            const encBtnWrap = document.createElement('div');
+            encBtnWrap.className = 'hid-enc-btn-wrap';
+            const encBtn = document.createElement('button');
+            encBtn.className = 'hid-enc-push-btn';
+            encBtn.id = `hidDynEncBtn_${absIdx}`;
+            encBtn.textContent = 'ENC BTN';
+            const encPress = () => {
+                if (state.encBtns[i]) return;
+                state.encBtns[i] = true;
+                encBtn.classList.add('pressed');
+                _hidRemoteSend(sid, { encoder_buttons: state.encBtns.map(v => v ? '1' : '0').join('') });
+            };
+            const encRelease = () => {
+                if (!state.encBtns[i]) return;
+                state.encBtns[i] = false;
+                encBtn.classList.remove('pressed');
+                _hidRemoteSend(sid, { encoder_buttons: state.encBtns.map(v => v ? '1' : '0').join('') });
+            };
+            encBtn.addEventListener('mousedown', encPress);
+            encBtn.addEventListener('mouseup', encRelease);
+            encBtn.addEventListener('mouseleave', encRelease);
+            encBtn.addEventListener('touchstart', e => { e.preventDefault(); encPress(); }, { passive: false });
+            encBtn.addEventListener('touchend', encRelease);
+            encBtn.addEventListener('touchcancel', encRelease);
+            encBtnWrap.appendChild(encBtn);
+            encWrap.appendChild(encLabel);
+            encWrap.appendChild(controls);
+            encWrap.appendChild(encBtnWrap);
+            section.appendChild(encWrap);
+        });
+        panel.appendChild(section);
+    }
+
+    return panel;
+}
+
+function rebuildHIDInterface(satellites) {
+    const container = document.getElementById('hidDynamicContainer');
+    if (!container) return;
+
+    // Sort active satellite entries by ID for stable, backend-matching order
+    const satEntries = Object.entries(satellites || {})
+        .filter(([, sat]) => sat.active)
+        .sort(([a], [b]) => a.localeCompare(b));
+
+    // Build topology hash to avoid unnecessary DOM redraws
+    const topoHash = 'CORE_1' + satEntries.map(([sid, sat]) => `-${sat.type || 'UNKNOWN'}_${sid}`).join('');
+
+    if (_hidTopoHash === topoHash) return;
+    _hidTopoHash = topoHash;
+    container.innerHTML = '';
+
+    let btnIndex = 0;
+    let encIndex = 0;
+
+    // CORE panel (always present)
+    const coreProfile = HID_PROFILES['CORE'];
+    if (!_hidRemoteState['CORE']) {
+        _hidRemoteState['CORE'] = {
+            buttons: new Array(coreProfile.buttons.length).fill(false),
+            toggles: [],
+            momentary: [],
+            encoders: new Array(coreProfile.encoders.length).fill(0),
+            encBtns: new Array(coreProfile.encoders.length).fill(false),
+        };
+    }
+    container.appendChild(_buildHIDPanel('CORE', 'CORE', coreProfile, btnIndex, encIndex));
+    btnIndex += coreProfile.buttons.length;
+    encIndex += coreProfile.encoders.length;
+
+    // Satellite panels
+    for (const [sid, sat] of satEntries) {
+        const typeName = sat.type || 'UNKNOWN';
+        const profile = HID_PROFILES[typeName];
+        if (!profile) {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'hid-remote-panel';
+            placeholder.innerHTML = `<h3 style="color:#888;">SAT ${sid}</h3><p style="color:#666;font-size:0.85em;">Unknown type: ${typeName}</p>`;
+            container.appendChild(placeholder);
+            continue;
+        }
+        if (!_hidRemoteState[sid]) {
+            _hidRemoteState[sid] = {
+                buttons: new Array(profile.buttons.length).fill(false),
+                toggles: new Array(profile.latching_toggles.length).fill(false),
+                momentary: new Array(profile.momentary_toggles.length).fill('C'),
+                encoders: new Array(profile.encoders.length).fill(0),
+                encBtns: new Array(profile.encoders.length).fill(false),
+            };
+        }
+        container.appendChild(_buildHIDPanel(sid, typeName, profile, btnIndex, encIndex));
+        btnIndex += profile.buttons.length;
+        encIndex += profile.encoders.length;
+    }
+}
+
+// =====================================================================
+// Layout Configurator
+// =====================================================================
+let currentLayoutData = {};
+
+async function loadLayout() {
+    try {
+        const response = await fetch('/api/config/layout');
+        const data = await response.json();
+        currentLayoutData = data;
+        renderLayoutUI();
+    } catch (error) {
+        showStatus('layoutStatus', 'Error loading layout: ' + error, 'error');
+    }
+}
+
+function renderLayoutUI() {
+    const controls = document.getElementById('layoutControls');
+    const canvas = document.getElementById('layoutCanvasContainer');
+
+    controls.innerHTML = '<h3 style="margin-bottom: 15px; color: #4CAF50;">Offsets</h3>';
+
+    // Reset canvas but keep the CORE block
+    canvas.innerHTML = '<div style="position: absolute; top: calc(50% - 64px); left: calc(50% - 64px); width: 128px; height: 128px; background: rgba(0, 150, 255, 0.1); border: 2px solid #0096FF; display: flex; align-items: center; justify-content: center; color: #0096FF; font-weight: bold; font-size: 0.85em; z-index: 10; box-sizing: border-box;">CORE (0,0)</div>';
+
+    // Merge saved offsets with live satellites to get a complete list of IDs
+    const allSids = new Set([...Object.keys(currentLayoutData.offsets || {}), ...Object.keys(currentLayoutData.live || {})]);
+
+    if (allSids.size === 0) {
+        controls.innerHTML += '<em style="color:#666;">No satellites configured or connected.</em>';
+        return;
+    }
+
+    Array.from(allSids).sort((a,b) => Number(a)-Number(b)).forEach(sid => {
+        const saved = (currentLayoutData.offsets || {})[sid] || { offset_x: 0, offset_y: 0 };
+        const live = (currentLayoutData.live || {})[sid] || { active: false, type: 'OFFLINE/UNKNOWN' };
+
+        const badgeClass = live.active ? 'online' : 'offline';
+        const badgeText = live.active ? 'ONLINE' : 'OFFLINE';
+
+        // Render Input Controls
+        const row = document.createElement('div');
+        row.style.cssText = 'margin-bottom: 15px; padding: 15px; background: #1a1a1a; border: 1px solid #333; border-radius: 4px;';
+        row.innerHTML = `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                <strong style="color: #e0e0e0;">SAT ${sid} <span style="font-weight:normal; color:#888; font-size:0.85em;">(${live.type})</span></strong>
+                <span class="sat-badge ${badgeClass}">${badgeText}</span>
+            </div>
+            <div style="display: flex; gap: 15px;">
+                <div style="flex: 1;">
+                    <label style="font-size: 0.8em;">X Offset:</label>
+                    <input type="number" id="layout_x_${sid}" value="${saved.offset_x}" oninput="updateCanvasPreview('${sid}')">
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-size: 0.8em;">Y Offset:</label>
+                    <input type="number" id="layout_y_${sid}" value="${saved.offset_y}" oninput="updateCanvasPreview('${sid}')">
+                </div>
+            </div>
+        `;
+        controls.appendChild(row);
+
+        // Render Virtual Canvas Block
+        const satBox = document.createElement('div');
+        satBox.id = `canvas_sat_${sid}`;
+        // Assuming standard 8x16 matrices for satellites (64px by 128px visual scale)
+        satBox.style.cssText = 'position: absolute; width: 64px; height: 128px; background: rgba(255, 152, 0, 0.15); border: 2px dashed #FF9800; display: flex; align-items: center; justify-content: center; color: #FF9800; font-weight: bold; font-size: 0.85em; transition: top 0.1s ease, left 0.1s ease; box-sizing: border-box;';
+        satBox.innerHTML = `SAT ${sid}`;
+        canvas.appendChild(satBox);
+
+        // Position immediately based on loaded values
+        updateCanvasPreview(sid);
+    });
+}
+
+function updateCanvasPreview(sid) {
+    const xInput = document.getElementById(`layout_x_${sid}`);
+    const yInput = document.getElementById(`layout_y_${sid}`);
+    if (!xInput || !yInput) return;
+
+    const x = parseInt(xInput.value) || 0;
+    const y = parseInt(yInput.value) || 0;
+
+    const satBox = document.getElementById(`canvas_sat_${sid}`);
+    if (satBox) {
+        const scale = 8; // 1 LED pixel = 8 CSS pixels
+        // Calculate position relative to the Core's origin point
+        satBox.style.left = `calc(50% - 64px + ${x * scale}px)`;
+        satBox.style.top = `calc(50% - 64px + ${y * scale}px)`;
+    }
+}
+
+async function saveLayout() {
+    const payload = {};
+    const inputs = document.querySelectorAll('[id^="layout_x_"]');
+
+    inputs.forEach(xInput => {
+        const sid = xInput.id.split('_')[2];
+        const yInput = document.getElementById(`layout_y_${sid}`);
+        payload[sid] = {
+            x: parseInt(xInput.value) || 0,
+            y: parseInt(yInput.value) || 0
+        };
+    });
+
+    try {
+        const response = await fetch('/api/config/layout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            showStatus('layoutStatus', 'Layout saved to config & applied live!', 'success');
+        } else {
+            const data = await response.json();
+            showStatus('layoutStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (error) {
+        showStatus('layoutStatus', 'Error: ' + error, 'error');
+    }
+}

@@ -53,9 +53,9 @@ class TestDummyAudioManager:
         assert not is_async(self.mgr.attach_synth)
         self.mgr.attach_synth(None)
 
-    def test_play_is_async(self):
-        assert is_async(self.mgr.play)
-        run(self.mgr.play("sound.wav"))
+    def test_play_is_sync(self):
+        assert not is_async(self.mgr.play)
+        self.mgr.play("sound.wav")  # Should not raise
 
     def test_stop_is_sync(self):
         assert not is_async(self.mgr.stop)

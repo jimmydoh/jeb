@@ -61,9 +61,11 @@ def load_config():
         "update_url": "",  # OTA update URL (empty by default)
         "uart_baudrate": 921600,  # Default UART baudrate
         "uart_buffer_size": 4096,  # Default UART buffer size
+        "led_brightness": 0.3,  # Default LED brightness (0.0 to 1.0)
         "mount_sd_card": False,  # Whether to initialize SD card
         "debug_mode": False,  # Debug mode off by default
         "test_mode": True,  # Test mode on by default (real hardware should set to False)
+        "log_level": "INFO",  # Default log level
         "web_server_enabled": False,  # Web server disabled by default
         "web_server_port": 80,  # Default HTTP port
         "hardware_features": {}  # Empty dict means all hardware enabled
@@ -179,6 +181,19 @@ debug_mode = config.get("debug_mode", False)
 test_mode = config.get("test_mode", False)
 resource_monitor = config.get("resource_monitor", {})
 
+if debug_mode:
+    JEBLogger.set_level(LogLevel.DEBUG)
+    JEBLogger.warning("CODE", "⚠️ DEBUG MODE ENABLED: Verbose logging active. ⚠️")
+else:
+    if config.get("log_level", "").upper() in JEBLogger.LEVEL_TAGS:
+        level_str = config["log_level"].upper()
+        level = getattr(LogLevel, level_str, LogLevel.INFO)
+        JEBLogger.set_level(level)
+        JEBLogger.info("CODE", f"Log level set to {level_str} from config")
+    else:
+        JEBLogger.set_level(LogLevel.INFO)
+        JEBLogger.info("CODE", "Default INFO log level active. Set 'log_level' in config.json to change.")
+
 JEBLogger.info("CODE", f"ROLE: {role}, ID: {type_id}, NAME: {type_name}")
 
 # Add computed values to config for manager initialization
@@ -252,13 +267,13 @@ if config.get("wifi_ssid") and config.get("wifi_password"):
                 WEB_SERVER = WebServerManager(
                     config,
                     wifi_manager=wifi_manager,
-                    power_manager=app.power if app else None,
-                    satellite_manager=app.satellites if app and hasattr(app, "satellites") else None,
-                    matrix_manager=app.matrix if app and hasattr(app, "matrix") else None
+                    app=app,
+                    console_buffer=CONSOLE if CONSOLE else None,
                 )
                 JEBLogger.info("CODE", "Web server manager initialized - will start with app")
-            except ImportError:
+            except ImportError as e:
                 JEBLogger.warning("CODE", "⚠️ WebServerManager not available - check dependencies")
+                JEBLogger.error("CODE", f"Web server initialization error: {e}")
             except Exception as e:
                 JEBLogger.error("CODE", f"⚠️ Web server initialization error: {e}")
 

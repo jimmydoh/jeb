@@ -191,24 +191,42 @@ jobs:
               "files": []
           }
 
+          # Define your architectural rules
+          FROZEN_DIRS = ["core", "dummies", "managers", "satellites", "transport", "utilities"]
+          ROOT_FILES = ["boot.py", "code.py", "updater.mpy"]
+
           # Walk through build/mpy directory
           total_size = 0
           for root, dirs, files in os.walk("build/mpy"):
               for file in files:
-                  # Include both .mpy and .py files (boot.py and code.py)
                   if file.endswith(".mpy") or file.endswith(".py"):
                       filepath = os.path.join(root, file)
-                      # Get relative path from build/mpy
                       relpath = os.path.relpath(filepath, "build/mpy")
-
                       file_size = os.path.getsize(filepath)
                       total_size += file_size
+
+                      # --- THE ROUTING ENGINE ---
+                      action = "update"
+                      # Default destination is either root or update to the SD card src folder
+                      destination = f"/{relpath}"
+
+                      # Rule 1: Root files stay on the internal flash
+                      if relpath in ROOT_FILES:
+                          destination = f"/{relpath}"
+
+                      # Rule 2: Frozen files are ignored (unless hot-patched)
+                      elif any(relpath.startswith(fd) for fd in FROZEN_DIRS):
+                          action = "ignore_if_frozen"
+                          # If we ever change this to "hot-patch", it goes to the root
+                          destination = f"/{os.path.basename(relpath)}"
 
                       file_info = {
                           "path": relpath,
                           "download_path": f"mpy/{relpath}",
                           "sha256": calculate_sha256(filepath),
-                          "size": file_size
+                          "size": file_size,
+                          "action": action,             # NEW
+                          "destination": destination    # NEW
                       }
                       manifest["files"].append(file_info)
 

@@ -62,6 +62,136 @@ class Pong(GameMode):
         self.game_mode = "1P"
         self.industrial_sat = None
 
+    async def run_tutorial(self):
+        """
+        A guided, non-interactive demonstration of Pong.
+
+        The Revised Voiceover Script (audio/tutes/pong_tute.wav) ~ 25 seconds:
+            [0:00] "Welcome to Mini Pong. A classic battle of reflexes."
+            [0:04] "Turn the dial to move your paddle up and down."
+            [0:08] "Deflect the ball past your opponent to score points. First to seven wins."
+            [0:13] "In one-player mode, crush the CPU quickly to maximize your score multiplier."
+            [0:18] "Or connect an expansion box to challenge a friend in two-player mode."
+            [0:23] "Get ready to play!"
+            [0:25] (End of file)
+        """
+        await self.core.clean_slate()
+
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        self.core.audio.play("audio/tutes/pong_tute.wav", bus_id=self.core.audio.CH_VOICE)
+
+        # Initialize safe starting state for the trick shot
+        self.player_bat_y = 7
+        self.cpu_bat_y = 7
+        self.ball_x = 7.0
+        self.ball_y = 7.0
+        self.player_score = 0
+        self.cpu_score = 0
+        self.game_mode = "1P"
+
+        # [0:00 - 0:04] "Welcome to Mini Pong..."
+        self.core.display.update_status("PONG TUTORIAL", "CLASSIC REFLEXES")
+        self.core.matrix.show_icon("PONG", anim_mode="PULSE", speed=2.0)
+        await asyncio.sleep(4.0)
+
+        # [0:04 - 0:08] "Turn the dial to move your paddle..."
+        self.core.display.update_status("PONG TUTORIAL", "TURN DIAL TO MOVE")
+
+        # Wiggle the player paddle up and down programmatically
+        for y_pos in [7, 6, 5, 4, 3, 4, 5, 6, 7, 8, 9, 10, 11, 10, 9, 8, 7]:
+            self.player_bat_y = y_pos
+            self.render()
+
+            await asyncio.sleep(0.12)
+
+        await asyncio.sleep(1.0)
+
+        # [0:08 - 0:13] "Deflect the ball past your opponent to score points..."
+        self.core.display.update_status("PONG TUTORIAL", "DEFLECT TO SCORE")
+
+        # Trick Shot Rally: Ball comes from the right, player hits it, CPU misses
+        self.ball_x = 13.0
+        self.ball_y = 10.0
+        self.ball_dx = -0.5  # Moving left
+        self.ball_dy = -0.2  # Moving slightly up
+        self.player_bat_y = 7 # Pre-positioned to intercept
+
+        # Ball approaches player
+        while self.ball_x > 1.0:
+            self.ball_x += self.ball_dx
+            self.ball_y += self.ball_dy
+            self.render()
+
+            await asyncio.sleep(0.04)
+
+        # Impact!
+        self.ball_x = 1.0
+        self.ball_dx = 0.6  # Bounce back faster
+        self.ball_dy = 0.3
+        self.core.buzzer.play_sequence(tones.UI_TICK)
+
+        # CPU paddle moves the wrong way (misses)
+        self.cpu_bat_y = 2
+
+        # Ball flies past CPU
+        while self.ball_x < 15.0:
+            self.ball_x += self.ball_dx
+            self.ball_y += self.ball_dy
+            self.render()
+
+            await asyncio.sleep(0.04)
+
+        # Play a crunchy impact sound using the buzzer
+        self.core.buzzer.play_sequence(tones.ERROR)
+
+        await self.animate_explosion(self.MATRIX_WIDTH - 1, self.ball_y, Palette.ORANGE)
+
+        # Point Scored!
+        self.player_score = 1
+        await self.update_score_display()
+        self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+
+        # Flash the right goal line red to visually indicate the score
+        for _ in range(3):
+            for y in range(self.MATRIX_HEIGHT):
+                self.core.matrix.draw_pixel(15, y, Palette.RED, show=False)
+
+            await asyncio.sleep(0.1)
+            self.render()
+
+            await asyncio.sleep(0.1)
+
+        await asyncio.sleep(1.0)
+
+        # [0:13 - 0:18] "In one-player mode, crush the CPU quickly..."
+        self.core.display.update_status("PONG TUTORIAL", "MAXIMIZE WIN MARGIN")
+        self.player_score = 7
+        self.cpu_score = 2
+        await self.update_score_display()
+        self.calculate_1p_score() # Shows off the high score multiplier math
+        self.core.display.update_footer(f"BONUS SCORE: {self.score}")
+        await asyncio.sleep(5.0)
+
+        # [0:18 - 0:23] "Or connect an Industrial Satellite to challenge..."
+        self.core.display.update_status("PONG TUTORIAL", "2-PLAYER MULTIPLAYER")
+        self.core.display.update_footer("")
+
+        # Quick visual of both paddles moving independently
+        self.ball_x = 7.5
+        self.ball_y = 7.5
+        for step in range(25):
+            self.player_bat_y = 7 + int(4 * math.sin(step * 0.4))
+            self.cpu_bat_y = 7 + int(4 * math.cos(step * 0.4))
+            self.render()
+
+            await asyncio.sleep(0.05)
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
+
     async def run(self):
         """Main game loop for Pong."""
 
@@ -153,6 +283,18 @@ class Pong(GameMode):
                 # Check for scoring
                 scored = self.check_score()
                 if scored:
+                    # Play a crunchy impact sound using the buzzer
+                    self.core.buzzer.play_sequence(tones.ERROR)
+
+                    # --- NEW EXPLOSION EFFECT ---
+                    if self.ball_x < 0:
+                        # Ball crossed the left edge (CPU/P2 scored) -> Blue Explosion
+                        await self.animate_explosion(0, self.ball_y, Palette.BLUE)
+                    else:
+                        # Ball crossed the right edge (Player 1 scored) -> Orange Explosion
+                        await self.animate_explosion(self.MATRIX_WIDTH - 1, self.ball_y, Palette.ORANGE)
+                    # ----------------------------
+
                     # Update display with scores
                     await self.update_score_display()
 
@@ -333,6 +475,47 @@ class Pong(GameMode):
         # Calculate final score
         self.score = int((base_score + margin_bonus) * multiplier)
 
+    async def animate_explosion(self, origin_x, origin_y, color):
+        """Animate a pixel explosion at the given coordinates."""
+        particles = []
+        # Generate 15 particles with random outward velocities
+        for _ in range(15):
+            angle = random.uniform(0, math.pi * 2)
+            speed = random.uniform(0.3, 1.2)
+            particles.append([
+                float(origin_x), float(origin_y),     # 0: x, 1: y
+                math.cos(angle) * speed,              # 2: dx
+                math.sin(angle) * speed,              # 3: dy
+                random.randint(8, 20)                 # 4: life (frames)
+            ])
+
+        # Run the physics simulation for up to 25 frames
+        for _ in range(25):
+            # Render the static game elements (net, paddles) underneath
+            self.render()
+
+            active_particles = False
+            for p in particles:
+                if p[4] > 0: # If life > 0
+                    p[0] += p[2] # Update X
+                    p[1] += p[3] # Update Y
+                    p[4] -= 1    # Decrease life
+
+                    # Draw the particle if it's still within the matrix bounds
+                    px, py = int(p[0]), int(p[1])
+                    if 0 <= px < self.MATRIX_WIDTH and 0 <= py < self.MATRIX_HEIGHT:
+                        self.core.matrix.draw_pixel(px, py, color, show=False)
+
+                    active_particles = True
+
+
+
+            # Exit early if all particles are dead or off-screen
+            if not active_particles:
+                break
+
+            await asyncio.sleep(0.02)
+
     def render(self):
         """Render the game state to the LED matrix."""
         # Clear matrix
@@ -382,7 +565,7 @@ class Pong(GameMode):
             anim_mode="PULSE",
             speed=2.0
         )
-        await self.core.audio.play(
+        self.core.audio.play(
             "audio/general/win.wav",
             self.core.audio.CH_SFX,
             level=1.0,
@@ -408,7 +591,7 @@ class Pong(GameMode):
             anim_mode="PULSE",
             speed=2.0
         )
-        await self.core.audio.play(
+        self.core.audio.play(
             "audio/general/fail.wav",
             self.core.audio.CH_SFX,
             level=1.0,

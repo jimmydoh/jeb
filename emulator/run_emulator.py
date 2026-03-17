@@ -1,5 +1,14 @@
 import sys
 import os
+import asyncio
+import importlib.util
+
+if sys.platform == 'win32':
+    import msvcrt
+else:
+    import select
+    import tty
+    import termios
 
 # ==========================================
 # PATH & SD CARD INJECTION
@@ -17,13 +26,8 @@ if SRC_DIR not in sys.path:
 import jeb_emulator
 from jeb_emulator import HardwareMocks, MockKeypadEvent
 
-import asyncio
-import importlib.util
-
-
 # Setup JEBLogger
 from utilities.logger import JEBLogger, LogLevel
-JEBLogger.set_level(LogLevel.DEBUG)
 JEBLogger.enable_file_logging(False)
 
 # Patch JEBLogger for emulation
@@ -90,10 +94,7 @@ def spy_transmit(self, message):
     payload = getattr(message, 'payload', '')
     suppressed_commands = [
         "SYNC_FRAME",
-        "STATUS",
         "POWER",
-        "PING",
-        "NEW_SAT"
     ]
     if cmd not in suppressed_commands:
         JEBLogger.emulator("UART", f"{src:<4}➔ {dest:<4} | CMD:{cmd:<10} | DATA:{payload}")
@@ -695,7 +696,14 @@ async def run_hardware_spy_loop(core, satellite, screen):
             await asyncio.sleep(1) # Pause to prevent spamming errors
 
 async def main():
+    NOSAT = "--no-sat" in sys.argv
     HEADLESS = "--headless" in sys.argv
+    HEADLESS_SAT = "--headless-sat" in sys.argv
+    LOG_LEVEL = "DEBUG" if "--debug" in sys.argv else "INFO"
+    EMUL_LOG = True if "--emul-log" in sys.argv else False
+
+    JEBLogger.set_emul(EMUL_LOG)
+
 
     # Setup Pygame if not in headless mode
     screen = None
@@ -724,13 +732,78 @@ async def main():
 
     # Console Manager Asyncio Patch
     from managers.console_manager import ConsoleManager
-    async def patched_get_input(self, prompt):
-        try:
-            return await asyncio.to_thread(input, prompt)
-        except (EOFError, KeyboardInterrupt):
-            await asyncio.sleep(3600)
-            return ""
 
+    async def patched_get_input(self, prompt):
+        self._print(prompt)
+        serial_line = ""
+
+        while True:
+            # 1. Check for web-injected commands
+            if self.input_queue:
+                line = self.input_queue.pop(0)
+                self._print(f"\nWEB>> {line}")
+                return line
+
+            # 2. Check physical keyboard non-blockingly
+            if sys.platform == 'win32':
+                while msvcrt.kbhit():
+                    char_bytes = msvcrt.getch()
+
+                    # Ignore special keys (arrows, function keys) which return 2 bytes
+                    if char_bytes in (b'\x00', b'\xe0'):
+                        msvcrt.getch() # clear the second byte
+                        continue
+
+                    char = char_bytes.decode('utf-8', errors='ignore')
+
+                    if char in ('\n', '\r'):
+                        self._print("") # Line break for visual clarity
+                        if serial_line:
+                            # self._print(f"SYS>> {serial_line}") # Optional: echo like hardware
+                            line = serial_line
+                            serial_line = ""
+                            return line
+                    elif char == '\x08': # Backspace
+                        if serial_line:
+                            serial_line = serial_line[:-1]
+                            sys.stdout.write('\b \b')
+                            sys.stdout.flush()
+                    else:
+                        serial_line += char
+                        sys.stdout.write(char)
+                        sys.stdout.flush()
+            else:
+                fd = sys.stdin.fileno()
+                old_settings = termios.tcgetattr(fd)
+                try:
+                    tty.setraw(fd)
+                    rlist, _, _ = select.select([sys.stdin], [], [], 0)
+                    while rlist:
+                        char = sys.stdin.read(1)
+                        if char in ('\n', '\r'):
+                            self._print("")
+                            if serial_line:
+                                line = serial_line
+                                serial_line = ""
+                                return line
+                        elif char in ('\x7f', '\x08'):  # Backspace / DEL
+                            if serial_line:
+                                serial_line = serial_line[:-1]
+                                sys.stdout.write('\b \b')
+                                sys.stdout.flush()
+                        elif char == '\x03':  # Ctrl-C
+                            raise KeyboardInterrupt
+                        else:
+                            serial_line += char
+                            sys.stdout.write(char)
+                            sys.stdout.flush()
+                        rlist, _, _ = select.select([sys.stdin], [], [], 0)
+                finally:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+            await asyncio.sleep(0.05)
+
+    # Apply the patch
     ConsoleManager.get_input = patched_get_input
 
     primary_app = jeb_code.app
@@ -744,17 +817,24 @@ async def main():
     if role == "CORE":
         core = primary_app
         tag_managers(core, 'CORE')
-        JEBLogger.emulator("EMUL", " --- BOOTING SECONDARY SAT_01 FIRMWARE --- ")
-        HardwareMocks.set_context("SAT_01")
-        from satellites.sat_01_firmware import IndustrialSatelliteFirmware
-        satellite = IndustrialSatelliteFirmware(
-            config={
-                "type_id": "01",
-                "type_name": "INDUSTRIAL"
-            }
-        )
-        tag_managers(satellite, '0101')
-        tasks.append(satellite.start())
+
+        # Override logging if debug flag is set
+        if LOG_LEVEL == "DEBUG":
+            JEBLogger.set_level(LogLevel.DEBUG)
+            JEBLogger.emulator("EMUL", "Debug logging enabled.")
+
+        if not NOSAT and (not HEADLESS or (HEADLESS and HEADLESS_SAT)):
+            JEBLogger.emulator("EMUL", " --- BOOTING SECONDARY SAT_01 FIRMWARE --- ")
+            HardwareMocks.set_context("SAT_01")
+            from satellites.sat_01_firmware import IndustrialSatelliteFirmware
+            satellite = IndustrialSatelliteFirmware(
+                config={
+                    "type_id": "01",
+                    "type_name": "INDUSTRIAL"
+                }
+            )
+            tag_managers(satellite, '0101')
+            tasks.append(satellite.start())
     elif role == "SAT":
         satellite = primary_app
         JEBLogger.emulator("EMUL", "Primary is Satellite. Core simulation not active.")
@@ -764,6 +844,19 @@ async def main():
         tasks.append(run_hardware_spy_loop(core, satellite, screen))
     else:
         JEBLogger.emulator("EMUL", "Running in HEADLESS mode (No GUI).")
+        if not NOSAT and (satellite and HEADLESS_SAT):
+            # Plug in the satellite after everything is stable (for testing hot-plug)
+            HardwareMocks.satellite_plugged_in = not HardwareMocks.satellite_plugged_in
+
+            satbus_detect = HardwareMocks.get("CORE", "satbus_detect_pin")
+            if satbus_detect:
+                # Pull the pin to Ground to simulate the physical connection
+                satbus_detect.value = not HardwareMocks.satellite_plugged_in
+
+                if HardwareMocks.satellite_plugged_in:
+                    JEBLogger.emulator("EMUL", ">>> PHYSICAL ACTION: SATELLITE CABLE PLUGGED IN >>>")
+                else:
+                    JEBLogger.emulator("EMUL", "<<< PHYSICAL ACTION: SATELLITE CABLE UNPLUGGED <<<")
 
     # Run Everything!
     JEBLogger.emulator("EMUL", " --- EMULATOR ONLINE --- ")

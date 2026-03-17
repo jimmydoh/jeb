@@ -39,6 +39,116 @@ class IndustrialStartup(GameMode):
                 self.sat = sat
                 break
 
+    async def run_tutorial(self):
+        """
+        The Voiceover Script (audio/tutes/ind_tute.wav) ~ 34 seconds total
+            [0:00] "Welcome to the Orbital Reactor Control Console. Let's review your station."
+            [0:05] "On your left is the Primary Coolant Manifold. Keep a close eye on these four status indicators."
+            [0:10] "Below them is the Emergency Purge switch. When commanded, it requires a firm, sustained hold to engage."
+            [0:15] "In the center, the numeric keypad and telemetry readout are used for manual authorization overrides."
+            [0:21] "Finally, the dual rotary encoders control the magnetic containment brackets. Precision is critical."
+            [0:27] "During a startup sequence, listen closely to central command. Do exactly as instructed, or the core will overload. Good luck."
+            [0:34] (End of file)
+        """
+        await self.core.clean_slate()
+
+        # Ensure satellite is connected before trying to puppeteer it
+        if not self.sat or not self.sat.is_connected:
+            self.core.display.update_status("ERROR", "SATELLITE OFFLINE")
+            self.core.buzzer.play_sequence(tones.ERROR)
+            await asyncio.sleep(2)
+            return "TUTORIAL_FAILED"
+
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        self.core.audio.play("audio/tutes/ind_tute.wav", bus_id=self.core.audio.CH_VOICE)
+
+        # [0:00 - 0:05] "Welcome to the Orbital Reactor Control Console..."
+        self.core.display.update_status("SYSTEM ORIENTATION", "STAND BY")
+        self.core.matrix.show_icon("DEFAULT", anim_mode="FADE_IN", speed=1.0)
+        self.sat.send("DSP", "OPERATOR")
+        await asyncio.sleep(5.0)
+
+        # [0:05 - 0:10] "On your left is the Primary Coolant Manifold..."
+        self.core.display.update_status("STATION REVIEW", "COOLANT MANIFOLD")
+        self.sat.send("DSP", "COOLANT ")
+
+        # Flash the 4 latching toggle LEDs sequentially, then pulse them
+        for i in range(4):
+            self.sat.send("LED", f"{i},{Palette.CYAN.index},0.0,1.0,1") # Solid Cyan
+            await asyncio.sleep(0.2)
+
+        await asyncio.sleep(0.5)
+        for i in range(4):
+            self.sat.send("LEDBREATH", f"{i},{Palette.CYAN.index},0.0,1.0,1,2.0")
+
+        await asyncio.sleep(3.7)
+
+        # [0:10 - 0:15] "Below them is the Emergency Purge switch..."
+        self.core.display.update_status("STATION REVIEW", "EMERGENCY PURGE")
+        self.sat.send("DSP", "PURGE-SW")
+
+        # Turn off upper LEDs, flash the momentary toggle LED aggressively
+        for i in range(4):
+            self.sat.send("LED", f"{i},{Palette.OFF.index},0.0,0.0,1")
+
+        self.sat.send("LEDFLASH", f"4,{Palette.ORANGE.index},0.0,1.0,1,0.2,0.2")
+        await asyncio.sleep(5.0)
+        self.sat.send("LED", f"4,{Palette.OFF.index},0.0,0.0,1")
+
+        # [0:15 - 0:21] "In the center, the numeric keypad and telemetry readout..."
+        self.core.display.update_status("STATION REVIEW", "AUTH KEYPAD")
+
+        # Simulate typing an auth code on the 14-segment display
+        demo_code = "AUTH-992"
+        current_display = ""
+        for char in demo_code:
+            current_display += char
+            self.sat.send("DSP", current_display)
+            self.core.audio.play("audio/ind/sfx/keypad_click.wav", self.core.audio.CH_SFX, level=0.5)
+            await asyncio.sleep(0.3)
+
+        self.core.audio.play("audio/ind/sfx/success.wav", self.core.audio.CH_SFX, level=0.6)
+        await asyncio.sleep(3.6)
+
+        # [0:21 - 0:27] "Finally, the dual rotary encoders control the magnetic brackets..."
+        self.core.display.update_status("STATION REVIEW", "MAGNETIC BRACKETS")
+        self.sat.send("DSP", "SYNC-ENC")
+
+        # Flash the matrix with the brackets moving inward to demonstrate
+        w = self.core.matrix.width
+        h = self.core.matrix.height
+        for step in range(6):
+            self.core.matrix.fill(Palette.OFF, show=False)
+
+            # Left Bracket (Cyan)
+            for y in range(h // 4, h * 3 // 4):
+                self.core.matrix.draw_pixel(step, y, Palette.CYAN, show=False)
+
+            # Right Bracket (Magenta)
+            for y in range(h // 4, h * 3 // 4):
+                self.core.matrix.draw_pixel(w - 1 - step, y, Palette.MAGENTA, show=False)
+
+
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await asyncio.sleep(0.5)
+
+        await asyncio.sleep(3.0)
+
+        # [0:27 - 0:34] "During a startup sequence, listen closely... Good luck."
+        self.core.display.update_status("ORIENTATION COMPLETE", "AWAITING COMMANDS")
+        self.sat.send("DSP", "STBY... ")
+        self.core.matrix.show_icon("WARNING", anim_mode="PULSE", speed=1.0)
+
+        # Wait for the audio track to finish naturally
+        await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+
+        # Clean up and return to the menu
+        self.sat.send("DSP", "        ") # Clear display
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
+
     async def game_over(self):
         """Industrial Startup Fail Sequence."""
         self.core.matrix.show_icon("FAILURE", anim_mode="PULSE", speed=2.0)
@@ -540,8 +650,8 @@ class IndustrialStartup(GameMode):
         executed in a random order before the victory sequence.
         """
 
-        # Initial check to confirm Satellite is connected
-        if not self.sat or not self.sat.is_connected:
+        # Initial check to confirm Satellite is active
+        if not self.sat or not self.sat.is_active:
             self.core.display.update_status("ERROR", "SATELLITE OFFLINE")
             await asyncio.sleep(2)
             return "FAILURE"
@@ -576,8 +686,8 @@ class IndustrialStartup(GameMode):
                             level=narration_vol,
                             wait=True)
         while True:
-            core_press = self.core.hid.is_pressed(0, Long=True, Duration=2000)
-            sat_press = self.sat.is_momentary_toggled(0, "D", Long=True, Duration=2000)
+            core_press = self.core.hid.is_button_pressed(0, long=True, duration=2000)
+            sat_press = self.sat.hid.is_momentary_toggled(0, "D", long=True, duration=2000)
             if core_press and sat_press:
                 break
             await asyncio.sleep(0.1)

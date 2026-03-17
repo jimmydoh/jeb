@@ -19,10 +19,8 @@ class JEBris(GameMode):
     STATE_CLEARING_LINES = "CLEARING_LINES"
 
     # Input debounce constants (in milliseconds)
-    DEBOUNCE_LEFT_MS = 100
     DEBOUNCE_ROTATE_MS = 200
     DEBOUNCE_DROP_MS = 0  # No debounce for fast drop
-    DEBOUNCE_RIGHT_MS = 100
 
     def __init__(self, core):
         super().__init__(core, "JEBRIS", "Tetris-inspired Falling Block Game")
@@ -89,20 +87,138 @@ class JEBris(GameMode):
         self.next_piece_color = Palette.OFF
 
         # --- TIMING STATE (for non-blocking input debouncing) ---
-        # Track last input time for each button (0: Left, 1: Rotate, 2: Drop, 3: Right)
-        self.last_input_time = [0, 0, 0, 0]
+        # Track last input time for each action (0: Rotate, 1: Drop)
+        self.last_input_time = [0, 0]
         self.input_debounce_ms = [
-            self.DEBOUNCE_LEFT_MS,
             self.DEBOUNCE_ROTATE_MS,
             self.DEBOUNCE_DROP_MS,
-            self.DEBOUNCE_RIGHT_MS
         ]
+
+        # Encoder tracking for left/right movement
+        self.last_encoder_pos = 0
 
         # --- STATE MACHINE for line clearing ---
         self.game_state = self.STATE_PLAYING
         self.lines_to_clear = set()  # Set for O(1) lookup during rendering
         self.clear_animation_start = 0
         self.clear_animation_duration_ms = 50
+
+    async def run_tutorial(self):
+        """
+        The Voiceover Script (audio/tutes/jebris_tute.wav) ~ 20 seconds:
+            [0:00] "Welcome to JEBris. Turn the rotary encoder to move your falling blocks left and right."
+            [0:04] "Press button one to spin the block into the perfect spot."
+            [0:07] "When you're ready, hit button two to instantly drop it into place."
+            [0:11] "Complete solid lines across the matrix to clear them and score points."
+            [0:16] "But be careful... if your stack reaches the top, it's game over!"
+            [0:20] (End of file)
+        """
+        await self.core.clean_slate()
+        await self.reset_game()
+
+        # Suspend normal gravity and input handling
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        self.core.audio.play("audio/tutes/jebris_tute.wav", bus_id=self.core.audio.CH_VOICE)
+
+        # [0:00 - 0:04] "Welcome to JEBris. Turn the rotary encoder..."
+        self.core.display.update_status("JEBRIS TUTORIAL", "TURN ENCODER TO MOVE")
+
+        # Setup a specific piece (e.g., the Magenta 'T' piece)
+        self.current_piece = self.shapes[2]
+        self.piece_color = self.colors[2]
+        self.piece_x = 5
+        self.piece_y = 2
+        self._dirty = True
+        self.draw()
+
+
+        await asyncio.sleep(2.0)
+
+        # Puppeteer left/right movement
+        for _ in range(2):
+            self.move_piece(-1, 0)
+            self.draw()
+
+            await asyncio.sleep(0.5)
+
+        self.move_piece(1, 0)
+        self.draw()
+
+
+        # [0:04 - 0:07] "Press button one to spin..."
+        self.core.display.update_status("JEBRIS TUTORIAL", "PRESS B1 TO ROTATE")
+        self.core.leds.flash_led(0, Palette.MAGENTA, duration=2.0)
+        await asyncio.sleep(1.0)
+
+        for _ in range(2):
+            self.rotate_piece()
+            self.draw()
+
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await asyncio.sleep(0.5)
+
+        # [0:07 - 0:11] "When you're ready, hit button two..."
+        self.core.display.update_status("JEBRIS TUTORIAL", "PRESS B2 TO DROP")
+        self.core.leds.flash_led(1, Palette.MAGENTA, duration=2.0)
+        await asyncio.sleep(2.0)
+
+        # Simulate the Fast Drop
+        while self.move_piece(0, 1):
+            self.draw()
+
+            await asyncio.sleep(0.02)
+
+        self.lock_piece()
+        self.core.buzzer.play_sequence(tones.BEEP)
+        self.draw()
+
+
+        # [0:11 - 0:16] "Complete solid lines across the matrix..."
+        self.core.display.update_status("JEBRIS TUTORIAL", "CLEAR LINES TO SCORE")
+
+        # Trick Shot Setup: Fill the bottom row with Gray, leaving a 1-block hole on the right
+        bottom_row_offset = (self.playfield_height - 1) * self.playfield_width
+        for x in range(self.playfield_width - 1):
+            self.grid[bottom_row_offset + x] = Palette.GRAY.index
+        self._dirty = True
+
+        # Spawn a Cyan 'I' piece directly above the hole
+        self.current_piece = self.shapes[0]
+        self.piece_color = self.colors[0]
+        self.piece_x = self.playfield_width - 1
+        self.piece_y = self.playfield_height - 6
+        self.rotate_piece() # Rotate to vertical
+        self.draw()
+
+        await asyncio.sleep(1.0)
+
+        # Drop it into the hole
+        while self.move_piece(0, 1):
+            self.draw()
+
+            await asyncio.sleep(0.05)
+
+        self.lock_piece()
+
+        # Trigger the native clear animation manually
+        self.start_clear_lines()
+        self.draw()
+
+
+        # Wait for the clear animation duration, then finish it
+        await asyncio.sleep(0.5)
+        self.finish_clear_lines()
+        self.draw()
+
+
+        # [0:16 - 0:20] "But be careful, if your stack reaches the top..."
+        self.core.display.update_status("JEBRIS TUTORIAL", "DON'T TOP OUT!")
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
 
     async def run(self):
         """Main Game Loop"""
@@ -169,6 +285,7 @@ class JEBris(GameMode):
         self.grid = bytearray(self.playfield_width * self.playfield_height)
         self.score = 0
         self.is_game_over = False
+        self.last_encoder_pos = self.core.hid.encoder_position()
         await self.core.clean_slate()  # Clear any existing state
         self.spawn_piece()
 
@@ -197,28 +314,25 @@ class JEBris(GameMode):
         """Checks for button presses with non-blocking debouncing."""
         hid = self.core.hid
 
-        # LEFT (Btn 0)
+        # LEFT / RIGHT (Encoder rotation)
+        current_encoder_pos = hid.encoder_position()
+        encoder_diff = current_encoder_pos - self.last_encoder_pos
+        if encoder_diff != 0:
+            direction = -1 if encoder_diff < 0 else 1
+            for _ in range(abs(encoder_diff)):
+                self.move_piece(direction, 0)
+            self.last_encoder_pos = current_encoder_pos
+
+        # ROTATE (B1 / Button A)
         if hid.is_button_pressed(0):
             if ticks_diff(now, self.last_input_time[0]) > self.input_debounce_ms[0]:
-                self.move_piece(-1, 0)
+                self.rotate_piece()
                 self.last_input_time[0] = now
 
-        # ROTATE (Btn 1)
+        # FAST DROP (B2 / Button B)
         if hid.is_button_pressed(1):
-            if ticks_diff(now, self.last_input_time[1]) > self.input_debounce_ms[1]:
-                self.rotate_piece()
-                self.last_input_time[1] = now
-
-        # FAST DROP (Btn 2)
-        if hid.is_button_pressed(2):
             # No debounce for fast drop to allow continuous dropping
             self.move_piece(0, 1)
-
-        # RIGHT (Btn 3)
-        if hid.is_button_pressed(3):
-            if ticks_diff(now, self.last_input_time[3]) > self.input_debounce_ms[3]:
-                self.move_piece(1, 0)
-                self.last_input_time[3] = now
 
     def move_piece(self, dx, dy):
         """Attempts to move the piece. Returns True if successful."""
@@ -261,7 +375,7 @@ class JEBris(GameMode):
 
             # Stack Collision (ignore if above board, e.g. spawning)
             if ny >= 0:
-                if self.grid[ny * self.playfield_width + nx] != Palette.OFF:
+                if self.grid[ny * self.playfield_width + nx] != Palette.OFF.index:
                     return True
         return False
 
@@ -271,7 +385,7 @@ class JEBris(GameMode):
             nx = self.piece_x + x
             ny = self.piece_y + y
             if 0 <= nx < self.playfield_width and 0 <= ny < self.playfield_height:
-                self.grid[ny * self.playfield_width + nx] = self.piece_color
+                self.grid[ny * self.playfield_width + nx] = self.piece_color.index
         self._dirty = True
 
     def start_clear_lines(self):
@@ -284,7 +398,7 @@ class JEBris(GameMode):
             row_offset = y * self.playfield_width
 
             for x in range(self.playfield_width):
-                if self.grid[row_offset + x] == Palette.OFF:
+                if self.grid[row_offset + x] == Palette.OFF.index:
                     row_is_full = False
                     break  # Stop checking this row as soon as we find an empty space
 
@@ -313,7 +427,7 @@ class JEBris(GameMode):
             # Shift all rows above 'y' down by one row
             self.grid[self.playfield_width : (y + 1) * self.playfield_width] = self.grid[0 : y * self.playfield_width]
             # Clear the top row
-            self.grid[0 : self.playfield_width] = bytearray([Palette.OFF] * self.playfield_width)
+            self.grid[0 : self.playfield_width] = bytearray([Palette.OFF.index] * self.playfield_width)
 
         # Update score
         self.score += lines_cleared
@@ -327,10 +441,14 @@ class JEBris(GameMode):
         if not self.next_piece:
             return
 
+        # Draw a border for the preview area
+        for y in range(self.matrix_height):
+            self.core.matrix.draw_pixel(self.preview_x_offset - 1, y, Palette.CHARCOAL, show=False)
+
         # Calculate center position for preview (in the right area)
         # Preview starts at column 11 (playfield_width=10, gap=1)
         preview_center_x = self.preview_x_offset + 2
-        preview_center_y = 3  # Near top of screen
+        preview_center_y = 6  # Near top of screen
 
         # Draw the next piece centered in preview area
         for x, y in self.next_piece:
@@ -354,8 +472,9 @@ class JEBris(GameMode):
                 # If we're in clearing state, show white for lines being cleared
                 if self.game_state == self.STATE_CLEARING_LINES and y in self.lines_to_clear:
                     self.core.matrix.draw_pixel(x, y, Palette.WHITE, show=False)
-                elif self.grid[y * self.playfield_width + x] != Palette.OFF:
-                    self.core.matrix.draw_pixel(x, y, self.grid[y * self.playfield_width + x], show=False)
+                elif self.grid[y * self.playfield_width + x] != Palette.OFF.index:
+                    color_idx = self.grid[y * self.playfield_width + x]
+                    self.core.matrix.draw_pixel(x, y, Palette.get_color(color_idx), show=False)
 
         # 3. Draw Active Piece (only in PLAYING state)
         if self.game_state == self.STATE_PLAYING and self.current_piece:
@@ -377,9 +496,9 @@ class JEBris(GameMode):
             duration=2.0,
             speed=0.5
         )
-        await self.core.audio.stop_all()
+        self.core.audio.stop_all()
         self.core.synth.stop_chiptune()
-        await self.core.buzzer.stop()
-        await self.core.buzzer.play_sequence(tones.GAME_OVER)
+        self.core.buzzer.stop()
+        self.core.buzzer.play_sequence(tones.GAME_OVER)
         await asyncio.sleep(2)
         return await self.game_over()

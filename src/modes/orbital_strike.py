@@ -21,6 +21,7 @@ import random
 
 from adafruit_ticks import ticks_ms, ticks_diff
 
+from utilities.logger import JEBLogger
 from utilities.palette import Palette
 from utilities import tones
 
@@ -84,21 +85,6 @@ class OrbitalStrike(GameMode):
             - Rotary Encoder (index 0): Y-axis crosshair panning
     """
 
-    METADATA = {
-        "id": "ORBITAL_STRIKE",
-        "name": "ORBITAL STRIKE",
-        "icon": "ORBITAL_STRIKE",
-        "requires": ["CORE", "INDUSTRIAL"],
-        "settings": [
-            {
-                "key": "difficulty",
-                "label": "DIFF",
-                "options": ["NORMAL", "HARD", "INSANE"],
-                "default": "NORMAL"
-            }
-        ]
-    }
-
     def __init__(self, core):
         super().__init__(core, "ORBITAL STRIKE", "Tactical Fire Control")
         self.sat = None
@@ -132,6 +118,138 @@ class OrbitalStrike(GameMode):
 
         self._code_len = 4
         self._drift_enabled = False
+
+    async def run_tutorial(self):
+        """
+        A guided, non-interactive demonstration of an Orbital Strike mission.
+
+        The Voiceover Script (audio/tutes/orb_tute.wav) ~ 42 seconds:
+            [0:00] "Weapons Officer, welcome to Orbital Strike. Process fire missions quickly before time runs out."
+            [0:06] "Phase one: Target Grid. Type the requested authorization code on the numeric keypad."
+            [0:12] "Phase two: Payload. Flip the eight hardware toggles to match the required pattern."
+            [0:18] "Phase three: Fine Targeting. Use the base dial for the X-axis, and the satellite dial for the Y-axis."
+            [0:24] "Lock your crosshair over the red target indicator."
+            [0:28] "Phase four: Execute. Engage the Master Arm and hit the big red button to fire!"
+            [0:34] "Once confirmed, disarm the panel and reset all toggles to prepare for the next mission."
+            [0:40] "Good luck."
+            [0:42] (End of file)
+        """
+        await self.core.clean_slate()
+
+        # Ensure satellite is connected
+        if not self.sat or not self.sat.is_active:
+            self.core.display.update_status("ORBITAL STRIKE", "SAT OFFLINE - ABORT")
+            await asyncio.sleep(2)
+            return "TUTORIAL_FAILED"
+
+        self.game_state = "TUTORIAL"
+
+        # 1. Start the voiceover track
+        self.core.audio.play("audio/tutes/orb_tute.wav", bus_id=self.core.audio.CH_VOICE)
+
+        # [0:00 - 0:06] "Weapons Officer, welcome to Orbital Strike..."
+        self.core.display.update_header("ORBITAL STRIKE")
+        self.core.display.update_status("WEAPONS ONLINE", "STAND BY")
+        self.core.matrix.show_icon("ORBITAL_STRIKE", clear=True)
+        self.core.buzzer.play_sequence(tones.POWER_UP)
+        await asyncio.sleep(6.0)
+
+        # [0:06 - 0:12] "Phase one: Target Grid. Type the requested authorization code..."
+        self.core.display.update_status("PHASE 1: GRID", "USE NUMBER PAD")
+        self.core.matrix.clear()
+
+        self._send_segment("        ")
+
+        # Simulate typing code "8492"
+        demo_code = "8492"
+        entered = ""
+        await asyncio.sleep(1.0)
+        for char in demo_code:
+            entered += char
+            self._send_segment(entered.ljust(4))
+            self.core.display.update_status("GRID: 8492", f"ENTERED: {entered}")
+            self.core.buzzer.play_sequence([(880, 0.05)])
+            await asyncio.sleep(0.4)
+
+        self.core.buzzer.play_sequence(tones.SUCCESS)
+        await asyncio.sleep(2.0)
+
+        # [0:12 - 0:18] "Phase two: Payload. Flip the eight hardware toggles..."
+        self.core.display.update_status("PHASE 2: PAYLOAD", "NEED: X_X_X_X_")
+        self._send_segment("PAYLOAD ")
+
+        # Flash the physical LEDs to show the pattern
+        try:
+            for i in range(8):
+                color = Palette.GREEN.index if i % 2 == 0 else Palette.RED.index
+                self.sat.send("LED", f"{i},{color},0.0,1.0,2")
+        except: pass
+
+        await asyncio.sleep(2.0)
+        self.core.display.update_status("PHASE 2: PAYLOAD", "HAVE: X_X_X_X_")
+        self.core.buzzer.play_sequence(tones.SUCCESS)
+        await asyncio.sleep(3.0)
+
+        # [0:18 - 0:28] "Phase three: Fine Targeting. Use the base dial..."
+        self.core.display.update_status("PHASE 3: TARGETING", "USE DUAL DIALS")
+        self._send_segment("TGT     ")
+
+        # Setup crosshair and target
+        self._crosshair_x = 2
+        self._crosshair_y = 2
+        self._target_x = 12
+        self._target_y = 12
+
+        # Puppeteer X-axis movement (Base dial)
+        for _ in range(10):
+            self._crosshair_x += 1
+            self._render_targeting()
+
+            self.core.buzzer.play_sequence([(660, 0.03)])
+            await asyncio.sleep(0.2)
+
+        # Puppeteer Y-axis movement (Satellite dial)
+        for _ in range(10):
+            self._crosshair_y += 1
+            self._render_targeting()
+
+            self.core.buzzer.play_sequence([(660, 0.03)])
+            await asyncio.sleep(0.2)
+
+        self.core.buzzer.play_sequence(tones.SUCCESS)
+        await asyncio.sleep(1.0)
+
+        # [0:28 - 0:34] "Phase four: Execute. Engage the Master Arm and hit the big red button..."
+        self._render_locked()
+
+        self.core.display.update_status("PHASE 4: EXECUTE", "ARM + PRESS BUTTON")
+        self._send_segment("LOCKED  ")
+        self.core.buzzer.play_sequence(tones.ALARM)
+
+        await asyncio.sleep(3.0)
+
+        # Simulate Strike
+        self.core.display.update_status("STRIKE CONFIRMED!", "+150 PTS")
+        self._send_segment("BOOM    ")
+        self.core.buzzer.play_sequence(tones.FIREBALL)
+        await self._animate_explosion()
+
+        # [0:34 - 0:40] "Once confirmed, disarm the panel and reset all toggles..."
+        self.core.display.update_status("PHASE 5: RESET", "CLEAR TOGGLES + ARM")
+        self._send_segment("RESET   ")
+
+        try:
+            for i in range(8):
+                self.sat.send("LED", f"{i},{Palette.OFF.index},0.0,0.0,2")
+        except: pass
+
+        await asyncio.sleep(4.0)
+        self.core.display.update_status("RESET COMPLETE", "STAND BY")
+        self.core.buzzer.play_sequence(tones.SUCCESS)
+
+        # Clean up and return to the menu
+        await self.core.clean_slate()
+        return "TUTORIAL_COMPLETE"
 
     # ------------------------------------------------------------------
     # Satellite helpers
@@ -308,6 +426,7 @@ class OrbitalStrike(GameMode):
 
     async def _run_phase_grid(self):
         """Phase 1 – Player types the grid code on the satellite keypad."""
+        JEBLogger.debug("MODE", f"Orbital Strike - Phase 1 GRID started. Code to enter: {self._grid_code}")
         self.core.display.update_status(
             f"MISSION RECV #{self._mission_count + 1}",
             f"GRID: {self._grid_code}"
@@ -318,28 +437,26 @@ class OrbitalStrike(GameMode):
         )
         self.core.matrix.show_icon("ORBITAL_STRIKE", clear=True)
         self._last_keypad_snapshot = ""
+        _current_keypad = ""
 
         while True:
             # Read keypad from satellite
             if self.sat:
                 try:
-                    keypads = self.sat.hid.keypad_values
-                    if keypads:
-                        current = "".join(
-                            str(k) for k in keypads[0] if k is not None and str(k).isdigit()
-                        )
-                    else:
-                        current = ""
-                except (IndexError, AttributeError):
-                    current = ""
-            else:
-                current = ""
+                    next_key = self.sat.hid.get_keypad_next_key()
+                    if next_key:
+                        _current_keypad += next_key
+                        JEBLogger.debug("MODE", f"Orbital Strike - Keypad snapshot: {_current_keypad}")
+                except (IndexError, AttributeError) as e:
+                    JEBLogger.error("MODE", f"Orbital Strike - Error reading keypad: {e}")
+                except Exception as e:
+                    JEBLogger.error("MODE", f"Orbital Strike - Error reading keypad: {e}")
 
             # Detect new keypresses
-            if len(current) > len(self._last_keypad_snapshot):
-                new_chars = current[len(self._last_keypad_snapshot):]
+            if len(_current_keypad) > len(self._last_keypad_snapshot):
+                new_chars = _current_keypad[len(self._last_keypad_snapshot):]
                 self._grid_entered += new_chars
-                self._last_keypad_snapshot = current
+                self._last_keypad_snapshot = _current_keypad
 
                 # Trim to code length
                 if len(self._grid_entered) > self._code_len:
@@ -356,11 +473,14 @@ class OrbitalStrike(GameMode):
             if len(self._grid_entered) >= self._code_len:
                 if self._grid_entered[-self._code_len:] == self._grid_code:
                     self.core.synth.play_note(1200.0, "SUCCESS", duration=0.1)
+                    self.sat.hid.flush_keypad_queue()  # Clear any extra keys
                     return True
                 else:
                     # Wrong code – reset entry silently
                     self._grid_entered = ""
-                    self._last_keypad_snapshot = current
+                    self.sat.hid.flush_keypad_queue()  # Clear any extra keys
+                    self._last_keypad_snapshot = ""
+                    _current_keypad = ""
                     self._send_segment("ERR     ")
                     self.core.display.update_status("GRID ERROR", f"RE-ENTER: {self._grid_code}")
                     asyncio.create_task(

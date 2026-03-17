@@ -83,6 +83,130 @@ class PlasmaMode(BaseMode):
         self._time = 0.0         # Animation clock (seconds)
         self._hue_offset = 0.0   # Palette hue shift driven by encoder (degrees)
 
+    async def run_tutorial(self):
+        """
+        Guided demonstration of the Demoscene Plasma Visualizer.
+
+        The Voiceover Script (audio/tutes/plasma_tute.wav) ~48 seconds:
+            [0:00] "Welcome to the Demoscene Plasma Visualizer."
+            [0:05] "A staple of 1990s demoscene coding, this effect is generated entirely by math in real-time."
+            [0:12] "It calculates intersecting sine and cosine waves at every single pixel to create continuously shifting color blobs."
+            [0:21] "Press button one to change the wave frequency, morphing from wide, lazy swells to tight, flickering static."
+            [0:31] "Press button two to toggle the color cycling speed between a gentle drift and a raging storm."
+            [0:39] "And turn the main dial to manually push the palette through the color spectrum."
+            [0:45] "Enjoy the visualizer."
+            [0:48] (End of file)
+        """
+        await self.core.clean_slate()
+
+        self.game_state = "TUTORIAL"
+
+        # Trigger audio synchronously (fire-and-forget)
+        self.core.audio.play(
+            "audio/tutes/plasma_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
+        )
+
+        # Setup standard display state for the tutorial
+        self.width = self.core.matrix.width
+        self.height = self.core.matrix.height
+        size = self.width * self.height
+
+        self._buf = [[0, 0, 0] for _ in range(size)]
+        self._freq_idx = 0       # Start on WIDE so the math is obvious
+        self._hue_speed_idx = 0  # Start on DRIFT
+        self._time = 0.0
+        self._hue_offset = 0.0
+
+        self.core.display.use_standard_layout()
+        self.core.display.update_header("PLASMA")
+        self.core.display.update_footer("B1:Freq  B2:Speed")
+
+        def _refresh_ui():
+            line1, line2 = self._status_line()
+            self.core.display.update_status(line1, line2)
+
+        _refresh_ui()
+
+        async def _sim_wait(duration_s):
+            """Runs the plasma simulation continuously for the specified duration."""
+            start_time = ticks_ms()
+            last_tick = start_time
+            target_ms = int(duration_s * 1000)
+
+            while ticks_diff(ticks_ms(), start_time) < target_ms:
+                now = ticks_ms()
+                dt_ms = ticks_diff(now, last_tick)
+
+                if dt_ms >= _FRAME_MS:
+                    dt_s = dt_ms / 1000.0
+                    last_tick = now
+
+                    # Advance animation clock
+                    self._time += dt_s * _TIME_SCALE
+
+                    # Advance hue offset for automatic colour cycling
+                    hue_speed = _HUE_SPEEDS[self._hue_speed_idx]
+                    self._hue_offset = (self._hue_offset + hue_speed * dt_s) % 360.0
+
+                    self._compute_frame()
+                    self._render_to_matrix()
+
+
+                await asyncio.sleep(0.01)
+
+        try:
+            # [0:00 - 0:12] Intro & Demoscene Context
+            self.core.display.update_status("PLASMA VISUALIZER", "1990s DEMOSCENE")
+            await _sim_wait(12.0)
+
+            # [0:12 - 0:21] Math explanation
+            self.core.display.update_status("REAL-TIME MATH", "SINE & COSINE WAVES")
+            await _sim_wait(9.0)
+
+            # [0:21 - 0:31] Button 1: Frequency Cycle
+            self.core.display.update_status("BUTTON 1", "CYCLE FREQUENCY")
+            for _ in range(4):
+                await _sim_wait(2.0)
+                self._freq_idx = (self._freq_idx + 1) % len(_FREQ_LEVELS)
+                _refresh_ui()
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(2.0)
+
+            # [0:31 - 0:39] Button 2: Color Speed Toggle
+            self.core.display.update_status("BUTTON 2", "COLOR SPEED")
+            await _sim_wait(1.5)
+            self._hue_speed_idx = 1 # Toggle to STORM
+            _refresh_ui()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(6.5)
+
+            # [0:39 - 0:45] Main Dial: Hue shift
+            self.core.display.update_status("MAIN DIAL", "SHIFT HUE")
+            # Simulate the user spinning the dial by rapidly shifting the offset
+            spin_start = ticks_ms()
+            while ticks_diff(ticks_ms(), spin_start) < 6000:
+                self._hue_offset = (self._hue_offset + 10.0) % 360.0
+                await _sim_wait(0.1)
+
+            # Wait for audio to finish out if it's still running
+            if hasattr(self.core.audio, 'wait_for_bus'):
+                await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+            else:
+                await asyncio.sleep(2.0)
+
+            # --- SEAMLESS HANDOFF TO MAIN LOOP ---
+            self.core.display.update_status("TUTORIAL COMPLETE", "HANDING OVER CONTROL")
+            await asyncio.sleep(1.5)
+
+            self.core.hid.flush()
+
+            self.game_state = "RUNNING"
+            return await self.run()
+
+        finally:
+            await self.core.clean_slate()
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------

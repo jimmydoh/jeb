@@ -544,7 +544,7 @@ class Icons:
         63, 63, 63, 71, 64, 64, 51, 51, 51, 51, 64, 64, 71, 63, 63, 63,
         63, 63, 63, 63, 71, 71, 71, 71, 71, 71, 71, 71, 63, 63, 63, 63,
     ])
-    
+
     # Wireworld: copper loop (21=ORANGE) with electron head (61=BLUE) and
     # electron tail (51=CYAN) on a black background.  Mirrors Pattern 1.
     WIREWORLD = bytes([
@@ -637,6 +637,32 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # Abyssal Rover – top-down dark maze with a 5×5 spotlight centered on rover.
+    # Background: black (0) with faint charcoal (1) corridor glimpses.
+    # Viewport halo: teal (50) 5×5 square centered at (7,7).
+    # Rover at (7,7): cyan (51) body with navy (60) cockpit dot.
+    # Exit marker at bottom-right corner: gold (22).
+    # Visible corridor: slim charcoal lines above and below viewport.
+    ABYSSAL_ROVER = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  0  corridor glimpse north
+         0,   1,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   1,   0,  # Row  1  dim walls
+         0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  2
+         0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  3  corridor to viewport top
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  4  gap before viewport
+         0,   0,   0,   0,   0,  50,  50,  50,  50,  50,   0,   0,   0,   0,   0,   0,  # Row  5  viewport top edge (teal)
+         0,   0,   0,   0,   0,  50,  51,  51,  51,  50,   0,   0,   0,   0,   0,   0,  # Row  6  rover top half
+         0,   0,   0,   0,   0,  50,  51,  60,  51,  50,   0,   0,   0,   0,   0,   0,  # Row  7  rover core (navy cockpit)
+         0,   0,   0,   0,   0,  50,  51,  51,  51,  50,   0,   0,   0,   0,   0,   0,  # Row  8  rover bottom half
+         0,   0,   0,   0,   0,  50,  50,  50,  50,  50,   0,   0,   0,   0,   0,   0,  # Row  9  viewport bottom edge (teal)
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 10  gap after viewport
+         0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 11  corridor south of viewport
+         0,   1,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   1,   0,  # Row 12  dim walls
+         0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 13
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  22,  22,   0,  # Row 14  exit marker (gold)
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  22,  22,   0,  # Row 15  exit marker (gold)
+    ])
+
     # DEFCON Commander – 10-silo missile complex viewed from above
     # Dark background with 10 small silo dots (Yellow) and a key symbol
     DEFCON_COMMANDER = bytes([
@@ -658,12 +684,224 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # Artillery Command – steampunk cannon side-view
+    # Barrel (gray/silver) points left with muzzle flash (orange);
+    # breech ring and wheel spokes in gold/brass; carriage in brown/wood.
+    # Colour key: 0=OFF, 2=GRAY, 3=SILVER, 20=BROWN, 21=ORANGE, 22=GOLD, 11=RED
+    ARTILLERY_COMMAND = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,  11,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  0  target north
+         0,   0,   0,   0,   0,   0,   0,  11,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  1
+         0,   0,   0,   0,   0,   0,   0,  11,   0,   0,   0,  22,  22,  22,   0,   0,  # Row  2  breech ring top
+        21,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  3  muzzle flash hint
+        21,  21,   2,   2,   2,   2,   2,   2,   2,   2,   2,  22,   3,  22,   0,   0,  # Row  4  barrel top + breech
+        21,  21,   3,   3,   3,   3,   3,   3,   3,   3,   3,  22,   3,  22,   0,   0,  # Row  5  barrel bore
+         0,  21,   2,   2,   2,   2,   2,   2,   2,   2,   2,  22,   3,  22,   0,   0,  # Row  6  barrel bottom + breech
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  22,  22,  22,   0,   0,  # Row  7  breech ring bottom
+         0,   0,   0,   0,   0,   0,   0,  20,  20,  20,  20,  20,  20,  20,  20,   0,  # Row  8  carriage top beam
+         0,   0,   0,   0,   0,   0,  20,  20,  20,  20,  20,  20,  20,  20,  20,   0,  # Row  9  carriage body
+         0,   0,   0,   0,   0,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,   0,  # Row 10  carriage lower
+         0,  22,  22,   0,  20,   0,   0,   0,   0,   0,   0,  20,   0,  22,  22,   0,  # Row 11  wheel tops + carriage
+        22,   0,   0,  22,  20,   0,   0,   0,   0,   0,   0,  20,  22,   0,   0,  22,  # Row 12  wheel sides
+         0,  22,  22,   0,  20,  20,  20,  20,  20,  20,  20,  20,   0,  22,  22,   0,  # Row 13  wheel bottoms
+        20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  20,  # Row 14  ground line
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15
+    ])
+
+    # -------------------------------------------------------------------------
+    # Enigma Byte icon (16x16)
+    # A padlock with 8 binary-bit dots on the body and a glowing keyhole.
+    # Colour key:
+    #   0=OFF  51=CYAN  64=NAVY  41=GREEN  31=YELLOW
+    # -------------------------------------------------------------------------
+    ENIGMA_BYTE = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  0
+         0,   0,   0,   0,   0,  51,  51,  51,  51,  51,   0,   0,   0,   0,   0,   0,  # Row  1  arch top
+         0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  # Row  2  arch sides
+         0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  # Row  3  arch sides
+         0,   0,  64,  64,  64,  64,  64,  64,  64,  64,  64,  64,  64,  64,   0,   0,  # Row  4  lock body top
+         0,   0,  64,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  64,   0,   0,  # Row  5
+         0,   0,  64,   0,  51,   0,  51,   0,  51,   0,  51,   0,   0,  64,   0,   0,  # Row  6  8 bit dots (top)
+         0,   0,  64,   0,  51,   0,  51,   0,  51,   0,  51,   0,   0,  64,   0,   0,  # Row  7  8 bit dots (top)
+         0,   0,  64,   0,   0,   0,   0,  41,  41,   0,   0,   0,   0,  64,   0,   0,  # Row  8  keyhole top
+         0,   0,  64,   0,   0,   0,   0,  41,  41,   0,   0,   0,   0,  64,   0,   0,  # Row  9  keyhole mid
+         0,   0,  64,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  64,   0,   0,  # Row 10
+         0,   0,  64,   0,  51,   0,  51,   0,  51,   0,  51,   0,   0,  64,   0,   0,  # Row 11  8 bit dots (bot)
+         0,   0,  64,   0,  51,   0,  51,   0,  51,   0,  51,   0,   0,  64,   0,   0,  # Row 12  8 bit dots (bot)
+         0,   0,  64,  64,  64,  64,  64,  64,  64,  64,  64,  64,  64,  64,   0,   0,  # Row 13  lock body bot
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 14
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15
+    ])
+
+    # Orbital Docking: targeting crosshair with expanding docking ring
+    # Colour key: 0=OFF  21=ORANGE(docking port)  41=GREEN(crosshair arms)
+    #             51=CYAN(outer ring)  4=WHITE(centre dot)
+    ORBITAL_DOCKING = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  0  top arm
+         0,   0,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  1
+         0,  51,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,  51,   0,   0,  # Row  2  outer ring corners
+         0,   0,  51,   0,   0,   0,   0,  41,   0,   0,   0,   0,  51,   0,   0,   0,  # Row  3
+         0,   0,   0,  51,   0,   0,   0,  41,   0,   0,   0,  51,   0,   0,   0,   0,  # Row  4
+         0,   0,   0,   0,   0,  51,   0,  41,   0,  51,   0,   0,   0,   0,   0,   0,  # Row  5  inner ring
+         0,   0,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  6
+        41,  41,  41,  41,  41,  41,  41,   4,  41,  41,  41,  41,  41,  41,  41,  41,  # Row  7  horizontal arm + centre
+         0,   0,   0,   0,   0,   0,   0,  21,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  8  docking port (orange)
+         0,   0,   0,   0,   0,  51,   0,  41,   0,  51,   0,   0,   0,   0,   0,   0,  # Row  9  inner ring
+         0,   0,   0,  51,   0,   0,   0,  41,   0,   0,   0,  51,   0,   0,   0,   0,  # Row 10
+         0,   0,  51,   0,   0,   0,   0,  41,   0,   0,   0,   0,  51,   0,   0,   0,  # Row 11
+         0,  51,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,  51,   0,   0,  # Row 12  outer ring corners
+         0,   0,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 13
+         0,   0,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 14
+         0,   0,   0,   0,   0,   0,   0,  41,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15  bottom arm
+    ])
+
+    # -------------------------------------------------------------------------
+    # Vanguard Override – top-down vertical shooter splash.
+    # Colour key:
+    #   0=OFF  4=WHITE(stars)  11=RED(enemies)  21=ORANGE(enemy bullets)
+    #  31=YELLOW(player laser)  51=CYAN(player ship)  61=BLUE(ship wings)
+    # -------------------------------------------------------------------------
+    VANGUARD_OVERRIDE = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   4,   0,   0,   0,   0,   0,   0,   4,   0,   0,   0,   4,   0,  # Row  0  stars
+         0,   0,  11,  11,  11,   0,   0,   0,   0,   0,  11,  11,  11,   0,   0,   0,  # Row  1  enemies
+         0,   0,  11,   0,  11,   0,   0,   0,   0,   0,  11,   0,  11,   0,   0,   0,  # Row  2  enemies
+         0,   0,  11,  11,  11,   0,   0,   0,   0,   0,  11,  11,  11,   0,   0,   0,  # Row  3  enemies
+         0,   0,   0,  21,   0,   0,   0,   0,   0,   0,   0,  21,   0,   0,   0,   0,  # Row  4  enemy bullets
+         0,   0,   0,  21,   0,   0,   0,   0,   0,   0,   0,  21,   0,   0,   0,   0,  # Row  5  enemy bullets
+         0,   0,   0,   0,   0,   0,  11,  11,  11,   0,   0,   0,   0,   0,   0,   0,  # Row  6  centre enemy
+         0,   0,   0,   0,   0,   0,  11,   0,  11,   0,   0,   0,   0,   0,   0,   0,  # Row  7  centre enemy
+         0,   0,   0,   0,   0,   0,   0,  21,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  8  enemy bullet
+         0,   0,   0,   0,   0,   0,   0,  31,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  9  player laser
+         0,   0,   0,   0,   0,   0,   0,  31,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 10  player laser
+         0,   4,   0,   0,   0,   0,   0,  31,   0,   0,   0,   0,   0,   0,   0,   4,  # Row 11  stars + laser
+         0,   0,   0,   0,   0,   0,   0,  31,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 12  player laser
+         0,   0,   0,   0,   0,  61,   0,   0,   0,  61,   0,   0,   0,   0,   0,   0,  # Row 13  ship wings
+         0,   0,   0,   0,  61,  51,  51,  51,  51,  51,  61,   0,   0,   0,   0,   0,  # Row 14  ship body
+         0,   0,   0,   0,   0,  51,   0,  51,   0,  51,   0,   0,   0,   0,   0,   0,  # Row 15  ship engines
+    ])
+
+    # Magnetic Containment: plasma ball enclosed in a magnetic field coil.
+    # Colour key:
+    #   0=OFF  51=CYAN (field lines)  61=BLUE (coil ring)  71=MAGENTA (plasma core)
+    # -------------------------------------------------------------------------
+    MAGNETIC_CONTAINMENT = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  0
+         0,   0,   0,   0,   0,  51,   0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  # Row  1  NW/NE field dots
+         0,   0,   0,  51,   0,   0,   0,   0,   0,   0,   0,   0,  51,   0,   0,   0,  # Row  2  diagonal field dots
+         0,   0,  51,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  51,   0,   0,  # Row  3  corner field dots
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  4
+         0,  51,   0,   0,   0,   0,  61,  61,  61,  61,   0,   0,   0,   0,  51,   0,  # Row  5  coil top arc
+         0,   0,   0,   0,   0,  61,   0,   0,   0,   0,  61,   0,   0,   0,   0,   0,  # Row  6  coil sides
+         0,   0,   0,   0,   0,  61,   0,  71,  71,   0,  61,   0,   0,   0,   0,   0,  # Row  7  plasma core
+         0,   0,   0,   0,   0,  61,   0,  71,  71,   0,  61,   0,   0,   0,   0,   0,  # Row  8  plasma core
+         0,   0,   0,   0,   0,  61,   0,   0,   0,   0,  61,   0,   0,   0,   0,   0,  # Row  9  coil sides
+         0,  51,   0,   0,   0,   0,  61,  61,  61,  61,   0,   0,   0,   0,  51,   0,  # Row 10  coil bottom arc
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 11
+         0,   0,  51,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  51,   0,   0,  # Row 12  corner field dots
+         0,   0,   0,  51,   0,   0,   0,   0,   0,   0,   0,   0,  51,   0,   0,   0,  # Row 13  diagonal field dots
+         0,   0,   0,   0,   0,  51,   0,   0,   0,   0,  51,   0,   0,   0,   0,   0,  # Row 14  SW/SE field dots
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15
+    ])
+
+    # Bunker Defuse icon (16x16)
+    # A classic round bomb with a lit fuse and toggle-switch silhouettes.
+    # Colour key:
+    #   0=OFF  1=CHARCOAL  4=WHITE  11=RED  21=ORANGE  22=GOLD  31=YELLOW  51=CYAN
+    # -------------------------------------------------------------------------
+    BUNKER_DEFUSE = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  22,  22,   0,   0,   0,   0,  # Row  0  fuse top
+         0,   0,   0,   0,   0,   0,   0,   0,   0,  22,   0,   0,  31,   0,   0,   0,  # Row  1  fuse bend + spark
+         0,   0,   0,   0,   0,   0,   0,   0,  22,   0,   0,  21,  31,  21,   0,   0,  # Row  2  fuse + flame
+         0,   0,   0,   0,   0,   1,   1,   1,  22,  1,    1,   0,  31,   0,   0,   0,  # Row  3  fuse socket + bomb top
+         0,   0,   0,   1,   1,  11,  11,  11,  11,  11,  11,   1,   1,   0,   0,   0,  # Row  4  bomb upper body
+         0,   0,   1,  11,  11,  11,   4,  11,  11,  11,  11,  11,  11,   1,   0,   0,  # Row  5  highlight
+         0,   1,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,   1,   0,  # Row  6  bomb mid
+         0,   1,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,   1,   0,  # Row  7  bomb mid
+         0,   0,   1,  11,  11,  11,  11,  11,  11,  11,  11,  11,  11,   1,   0,   0,  # Row  8  bomb lower body
+         0,   0,   0,   1,   1,  11,  11,  11,  11,  11,  11,   1,   1,   0,   0,   0,  # Row  9  bomb bottom
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 10  gap
+         0,  51,   0,  51,   0,  51,   0,  51,   0,  51,   0,  51,   0,  51,   0,  51,  # Row 11  toggle dots (8 off)
+         0,   1,   0,   1,   0,   1,   0,   1,   0,   1,   0,   1,   0,   1,   0,   1,  # Row 12  toggle stems
+         0,   1,   0,   1,   0,   1,   0,   1,   0,   1,   0,   1,   0,   1,   0,   1,  # Row 13  toggle base
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 14
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row 15
+    ])
+
+    # -------------------------------------------------------------------------
+    # Maglev Express icon (16x16)
+    # Front-on view of a futuristic maglev train nose with headlights, track
+    # lines converging from the bottom corners, and a speed stripe.
+    # Colour key:
+    #   0=OFF  2=GRAY  3=SILVER  51=CYAN  41=GREEN  11=RED  31=YELLOW
+    # -------------------------------------------------------------------------
+    MAGLEV_EXPRESS = bytes([
+        #        0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  0
+         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  # Row  1
+         0,   0,   0,   2,   2,   2,   2,   2,   2,   2,   2,   2,   2,   0,   0,   0,  # Row  2  nose top
+         0,   0,   2,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   2,   0,   0,  # Row  3  nose body
+         0,   2,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   2,   0,  # Row  4  nose wide
+         0,   2,   3,  31,  31,   3,   3,   3,   3,   3,   3,  31,  31,   3,   2,   0,  # Row  5  headlights (yellow)
+         0,   2,   3,  51,  51,   3,   3,   2,   2,   3,   3,  51,  51,   3,   2,   0,  # Row  6  headlights (cyan) + centre stripe
+         0,   2,   3,   3,   3,   3,   2,   3,   3,   2,   3,   3,   3,   3,   2,   0,  # Row  7  windshield frame
+         0,   2,   3,   3,   3,  51,  51,  51,  51,  51,  51,   3,   3,   3,   2,   0,  # Row  8  windshield glass (cyan)
+         0,   2,   3,   3,   3,   3,   3,  51,  51,   3,   3,   3,   3,   3,   2,   0,  # Row  9  windshield lower
+         0,   0,   2,   2,   2,   2,   2,   2,   2,   2,   2,   2,   2,   2,   0,   0,  # Row 10  skirt top
+         0,   0,   0,   2,   2,   2,   2,   2,   2,   2,   2,   2,   2,   0,   0,   0,  # Row 11  skirt body
+         0,   0,   0,   0,   2,   0,   0,   0,   0,   0,   0,   2,   0,   0,   0,   0,  # Row 12  track suggestion
+        51,   0,   0,   0,   2,   0,   0,   0,   0,   0,   0,   2,   0,   0,   0,  51,  # Row 13  track rails diverge
+        51,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  51,  # Row 14  outer rails
+        51,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  51,  # Row 15  bottom rail hint
+    ])
+
     # -------------------------------------------------------------------------
     # Virtual Pet cat sprites (16x16)
     # Colour key:
     #   0=OFF  1=CHARCOAL  2=GRAY  3=SILVER  4=WHITE
     #  11=RED  13=PINK     22=GOLD 31=YELLOW 61=BLUE
     # -------------------------------------------------------------------------
+
+    # PIPELINE_OVERLOAD – pipe maze with descending fluid blob
+    # Navy(60) background, Teal(50) pipes, Cyan(51) junctions, Orange(21) fluid
+    PIPELINE_OVERLOAD = bytes([
+        # Row  0 – top border
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+        # Row  1 – pipe columns with fluid entry (orange) in section 1
+        60, 60, 21, 21, 60, 60, 50, 50, 60, 60, 50, 50, 60, 60, 50, 50,
+        # Row  2
+        60, 60, 21, 21, 60, 60, 50, 50, 60, 60, 50, 50, 60, 60, 50, 50,
+        # Row  3
+        60, 60, 21, 21, 60, 60, 50, 50, 60, 60, 50, 50, 60, 60, 50, 50,
+        # Row  4 – junction: fluid bends right (orange connector)
+        60, 60, 21, 21, 21, 21, 51, 51, 60, 60, 50, 50, 60, 60, 50, 50,
+        # Row  5 – fluid continues in section 2 (cols 4-5)
+        60, 60, 60, 60, 60, 60, 21, 21, 60, 60, 50, 50, 60, 60, 50, 50,
+        # Row  6
+        60, 60, 60, 60, 60, 60, 21, 21, 60, 60, 50, 50, 60, 60, 50, 50,
+        # Row  7 – junction: fluid bends right (cols 6-9)
+        60, 60, 60, 60, 60, 60, 21, 21, 21, 21, 51, 51, 60, 60, 50, 50,
+        # Row  8 – fluid in section 4 (cols 8-9)
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 21, 21, 60, 60, 50, 50,
+        # Row  9
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 21, 21, 60, 60, 50, 50,
+        # Row 10
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 21, 21, 60, 60, 50, 50,
+        # Row 11 – junction: fluid bends right (cols 10-13)
+        60, 60, 60, 60, 60, 60, 60, 60, 51, 51, 21, 21, 21, 21, 51, 51,
+        # Row 12 – fluid at section 6 (cols 12-13) heading to exit
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 21, 21,
+        # Row 13
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 21, 21,
+        # Row 14 – fluid exits at bottom right
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 21, 21,
+        # Row 15 – bottom border
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+    ])
 
     # VIRTUAL_PET – mode menu / idle face: cute cat with happy open eyes
     VIRTUAL_PET = bytes([
@@ -969,7 +1207,7 @@ class Icons:
          3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,
          3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
     ])
-    
+
     # Starfield / Warp Core – stars radiating from a bright centre point.
     # Black background (0), dim distant stars (1=CHARCOAL), medium stars
     # (3=SILVER), and bright close stars / warp-core centre (4=WHITE).
@@ -992,6 +1230,228 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
+    # Mecha Forge – 16×16 pixel-art robot icon
+    # Body: CYAN (51), Eyes: WHITE (4), Chest accents: GOLD (22)
+    MECHA_FORGE = bytes([
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  # row  0
+         0,  0,  0,  0,  0,  0, 51, 51, 51,  0,  0,  0,  0,  0,  0,  0,  # row  1  antenna
+         0,  0,  0,  0,  0, 51, 51, 51, 51, 51,  0,  0,  0,  0,  0,  0,  # row  2  head top
+         0,  0,  0,  0, 51, 51, 51, 51, 51, 51, 51,  0,  0,  0,  0,  0,  # row  3  head
+         0,  0,  0,  0, 51,  4, 51, 51, 51,  4, 51,  0,  0,  0,  0,  0,  # row  4  eyes
+         0,  0,  0,  0, 51, 51, 51, 51, 51, 51, 51,  0,  0,  0,  0,  0,  # row  5  face
+         0,  0,  0,  0,  0, 51, 51, 51, 51, 51,  0,  0,  0,  0,  0,  0,  # row  6  chin
+         0,  0,  0,  0,  0,  0, 51, 51, 51,  0,  0,  0,  0,  0,  0,  0,  # row  7  neck
+         0,  0, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51,  0,  0,  0,  # row  8  shoulder
+         0,  0,  0, 51, 51, 22, 51, 51, 51, 22, 51, 51,  0,  0,  0,  0,  # row  9  chest+accents
+         0,  0,  0, 51, 51, 51, 51, 51, 51, 51, 51, 51,  0,  0,  0,  0,  # row 10  chest
+         0,  0,  0,  0, 51, 51, 51, 51, 51, 51, 51,  0,  0,  0,  0,  0,  # row 11  waist
+         0,  0,  0,  0,  0, 51, 51,  0,  0, 51, 51,  0,  0,  0,  0,  0,  # row 12  upper legs
+         0,  0,  0,  0,  0, 51, 51,  0,  0, 51, 51,  0,  0,  0,  0,  0,  # row 13  lower legs
+         0,  0,  0,  0, 51, 51, 51,  0,  0, 51, 51, 51,  0,  0,  0,  0,  # row 14  feet
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  # row 15
+    ])
+
+    # Numbers Station – Cold War shortwave radio tower with signal waves.
+    # Antenna tip = WHITE (4), antenna mast = SILVER (3),
+    # signal waves = GOLD (22), radio body = GRAY (2),
+    # VFD screen = BLUE (61), indicator LEDs = ORANGE (21).
+    NUMBERS_STATION = bytes([
+        # Row  0 – antenna beacon (white)
+         0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  1 – inner signal wave (gold)
+         0,  0,  0,  0, 22,  0,  0,  3,  0,  0, 22,  0,  0,  0,  0,  0,
+        # Row  2 – outer signal wave
+         0,  0, 22,  0,  0,  0,  0,  3,  0,  0,  0,  0, 22,  0,  0,  0,
+        # Row  3 – antenna mast
+         0,  0,  0,  0,  0,  0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  4 – antenna mast
+         0,  0,  0,  0,  0,  0,  0,  3,  0,  0,  0,  0,  0,  0,  0,  0,
+        # Row  5 – antenna meets radio body
+         0,  0,  0,  0,  0,  0,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,
+        # Row  6 – radio top edge
+         0,  0,  0,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  0,  0,  0,
+        # Row  7 – radio body top
+         0,  0,  0,  3,  2,  2,  2,  2,  2,  2,  2,  2,  3,  0,  0,  0,
+        # Row  8 – VFD display top
+         0,  0,  0,  3,  2, 61, 61, 61, 61, 61, 61,  2,  3,  0,  0,  0,
+        # Row  9 – VFD display centre (bright)
+         0,  0,  0,  3,  2, 61,  4,  4,  4,  4, 61,  2,  3,  0,  0,  0,
+        # Row 10 – VFD display bottom
+         0,  0,  0,  3,  2, 61, 61, 61, 61, 61, 61,  2,  3,  0,  0,  0,
+        # Row 11 – indicator lights (orange LEDs)
+         0,  0,  0,  3,  2,  2, 21,  2,  2, 21,  2,  2,  3,  0,  0,  0,
+        # Row 12 – tuning dial (gold)
+         0,  0,  0,  3,  3, 22, 22, 22, 22, 22,  3,  3,  3,  0,  0,  0,
+        # Row 13 – radio base top
+         0,  0,  0,  0,  3,  3,  3,  3,  3,  3,  3,  3,  0,  0,  0,  0,
+        # Row 14 – radio base bottom
+         0,  0,  0,  0,  0,  3,  3,  3,  3,  3,  3,  0,  0,  0,  0,  0,
+        # Row 15 – ground
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
+    # 16×16 icon for the JEB-808 Groovebox sequencer mode.
+    # Each pair of rows represents one of the 8 instrument tracks; columns are
+    # time steps.  A handful of steps per track are lit in that track's colour
+    # to give the icon the feel of a real step-sequencer pattern.
+    #
+    # Palette indices used:
+    #   11 = RED    (KICK)    21 = ORANGE (SNARE)   31 = YELLOW (HIHAT)
+    #   41 = GREEN  (TOM)     51 = CYAN   (BASS)    71 = MAGENTA (LEAD)
+    #   61 = BLUE   (PAD)      4 = WHITE  (FX)
+    GROOVEBOX = bytes([
+        # Track 0 – KICK  (RED 11): steps 0, 4, 8, 12
+        11,  0,  0,  0, 11,  0,  0,  0, 11,  0,  0,  0, 11,  0,  0,  0,
+        11,  0,  0,  0, 11,  0,  0,  0, 11,  0,  0,  0, 11,  0,  0,  0,
+        # Track 1 – SNARE (ORANGE 21): steps 4, 12
+         0,  0,  0,  0, 21,  0,  0,  0,  0,  0,  0,  0, 21,  0,  0,  0,
+         0,  0,  0,  0, 21,  0,  0,  0,  0,  0,  0,  0, 21,  0,  0,  0,
+        # Track 2 – HIHAT (YELLOW 31): all even steps
+        31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0,
+        31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0, 31,  0,
+        # Track 3 – TOM   (GREEN 41): steps 6, 14
+         0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0, 41,  0,
+         0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0, 41,  0,
+        # Track 4 – BASS  (CYAN 51): steps 0, 3, 8, 11
+        51,  0,  0, 51,  0,  0,  0,  0, 51,  0,  0, 51,  0,  0,  0,  0,
+        51,  0,  0, 51,  0,  0,  0,  0, 51,  0,  0, 51,  0,  0,  0,  0,
+        # Track 5 – LEAD  (MAGENTA 71): steps 4, 7, 12, 15
+         0,  0,  0,  0, 71,  0,  0, 71,  0,  0,  0,  0, 71,  0,  0, 71,
+         0,  0,  0,  0, 71,  0,  0, 71,  0,  0,  0,  0, 71,  0,  0, 71,
+        # Track 6 – PAD   (BLUE 61): steps 0, 8
+        61,  0,  0,  0,  0,  0,  0,  0, 61,  0,  0,  0,  0,  0,  0,  0,
+        61,  0,  0,  0,  0,  0,  0,  0, 61,  0,  0,  0,  0,  0,  0,  0,
+        # Track 7 – FX    (WHITE 4): steps 2, 10
+         0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,
+         0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,
+    ])
+
+    # Lava Lamp (Metaballs) - Merging blobs in thermal colours
+    # Palette: 11=RED, 21=ORANGE, 31=YELLOW, 4=WHITE highlight
+    LAVA_LAMP = bytes([
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0, 11, 11, 11,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0, 11, 21, 21, 11,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0, 11, 31, 21, 11,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0, 11, 21, 11,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0, 11, 11,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0, 11, 11,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0, 11, 21, 11,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0, 11, 21, 31, 21, 11,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0, 11, 21, 31, 31, 21, 11,  0,  0,  0,  0,  0,  0,  0,
+         0,  0, 11, 21, 31,  4, 31, 21, 11,  0,  0,  0,  0,  0,  0,  0,
+         0,  0, 11, 21, 31, 31, 31, 21, 11,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0, 11, 21, 21, 21, 11,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0, 11, 11, 11,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
+    # Reaction Diffusion - Organic labyrinth coral patterns
+    # Palette: 50=TEAL, 51=CYAN
+    REACTION_DIFFUSION = bytes([
+        50, 50, 50,  0, 50, 50, 50, 50,  0, 50, 50, 50,  0,  0,  0,  0,
+        50, 51, 51, 50,  0, 51, 51, 51, 50,  0, 51, 51, 50,  0,  0,  0,
+        50, 51,  0,  0,  0, 51,  0,  0, 51,  0,  0, 51, 50,  0,  0,  0,
+        50, 51,  0, 50, 50, 51,  0, 50, 51, 51, 50, 51,  0,  0,  0,  0,
+        50, 51,  0, 51, 51, 51,  0, 51, 51, 51, 50, 51, 50, 50, 50,  0,
+        50, 51,  0, 51,  0,  0,  0,  0,  0, 51,  0, 51, 51, 51, 51, 50,
+        50, 51,  0, 51, 50, 50, 50, 50,  0, 51,  0,  0,  0,  0, 51, 50,
+        50, 51,  0, 51, 51, 51, 51, 51, 50, 51, 50, 50, 50,  0, 51, 50,
+         0, 50,  0,  0,  0,  0,  0, 51,  0, 51, 51, 51, 51,  0, 51, 50,
+         0, 50, 51, 51, 50, 50,  0, 51,  0,  0,  0,  0, 51,  0, 51, 50,
+         0,  0, 50, 51, 51, 51, 50, 51, 50, 50, 50,  0, 51,  0, 51, 50,
+         0,  0,  0, 50,  0, 51,  0, 51, 51, 51, 51,  0, 51, 50, 51, 50,
+         0,  0,  0, 50, 51, 51,  0,  0,  0,  0, 51,  0, 51,  0, 51, 50,
+         0,  0,  0,  0, 51,  0, 50, 50, 50,  0, 51,  0, 51, 50, 51, 50,
+         0,  0,  0,  0, 51, 50, 51, 51, 51, 50, 51,  0, 51, 51, 51, 50,
+         0,  0,  0,  0, 50,  0, 50, 50, 50,  0, 50,  0, 50, 50, 50,  0,
+    ])
+
+    # Lorenz Attractor - "Butterfly Effect" chaos lobes
+    # Palette: 71=MAGENTA, 13=PINK (bright foreground)
+    LORENZ_ATTRACTOR = bytes([
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0, 71, 71, 71,  0,  0,  0, 71, 71, 71,  0,  0,  0,  0,
+         0,  0, 71, 13, 13, 71,  0,  0, 71, 13, 13, 71,  0,  0,  0,  0,
+         0, 71, 13, 71,  0, 71, 13, 13, 71,  0, 71, 13, 71,  0,  0,  0,
+         0, 71, 71,  0,  0,  0, 71, 71,  0,  0,  0, 71, 71,  0,  0,  0,
+         0,  0,  0,  0,  0, 71, 71, 71, 71,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0, 71, 13, 71, 71, 13, 71,  0,  0,  0,  0,  0,  0,
+         0,  0,  0, 71, 13, 71,  0,  0, 71, 13, 71,  0,  0,  0,  0,  0,
+         0,  0, 71, 13, 71,  0,  0,  0,  0, 71, 13, 71,  0,  0,  0,  0,
+         0, 71, 13, 71,  0,  0,  0,  0,  0,  0, 71, 13, 71,  0,  0,  0,
+         0, 71, 71,  0,  0,  0,  0,  0,  0,  0,  0, 71, 71,  0,  0,  0,
+         0,  0, 71, 71,  0,  0,  0,  0,  0,  0, 71, 71,  0,  0,  0,  0,
+         0,  0,  0, 71, 71, 71,  0,  0, 71, 71, 71,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
+    # Perlin Flow - Sweeping S-curves representing turbulent wind/water
+    # Palette: 51=CYAN, 61=BLUE
+    PERLIN_FLOW = bytes([
+         0,  0,  0, 51,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0, 51, 61,  0,  0,  0,  0,  0, 51, 51,  0,  0,  0,  0,  0,
+         0, 51, 61,  0,  0,  0,  0, 51, 51, 61,  0, 51,  0,  0,  0,  0,
+         0, 51, 61,  0,  0,  0, 51, 61,  0,  0,  0,  0, 51,  0,  0,  0,
+         0,  0, 51, 61,  0, 51, 61,  0,  0,  0,  0,  0,  0, 51,  0,  0,
+         0,  0,  0, 51, 51, 61,  0,  0, 51, 51,  0,  0,  0, 51, 61,  0,
+         0,  0,  0,  0,  0,  0,  0, 51, 61,  0, 51,  0,  0, 51, 61,  0,
+         0,  0,  0,  0,  0,  0, 51, 61,  0,  0,  0, 51, 51, 61,  0,  0,
+         0, 51, 51,  0,  0, 51, 61,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        51, 61,  0, 51, 51, 61,  0,  0,  0,  0,  0,  0, 51, 51,  0,  0,
+        51, 61,  0,  0,  0,  0,  0,  0, 51, 51, 51, 51, 61,  0, 51,  0,
+         0, 51, 61,  0,  0,  0,  0, 51, 61,  0,  0,  0,  0,  0,  0, 51,
+         0,  0, 51, 61,  0,  0, 51, 61,  0,  0,  0,  0,  0,  0,  0, 51,
+         0,  0,  0, 51, 51, 51, 61,  0,  0,  0,  0,  0,  0,  0, 51, 61,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51, 61,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51, 61,  0,  0,
+    ])
+
+    # Digital Rain - Matrix falling code columns
+    # Palette: 4=WHITE (head), 42=LIME, 41=GREEN, 40=FOREST (fading tail)
+    DIGITAL_RAIN = bytes([
+         0,  0, 40,  0,  0,  0,  0,  0,  0,  0,  0, 40,  0,  0,  0,  0,
+         0,  0, 41,  0,  0,  0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  0,
+         0,  0, 42,  0,  0,  0, 40,  0,  0,  0,  0, 42,  0,  0,  0,  0,
+         0,  0,  4,  0,  0,  0, 41,  0,  0,  0,  0,  4,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0, 42,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0, 40,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 41,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0, 40,  0,  0,  0, 42,  0,  0,  0,
+        40,  0,  0,  0,  0,  0,  0,  0, 41,  0,  0,  0,  4,  0,  0,  0,
+        41,  0,  0,  0,  0,  0,  0,  0, 42,  0,  0,  0,  0,  0,  0,  0,
+        42,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0,
+         4,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0, 40,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0, 41,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0, 42,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    ])
+
+    # Sorting Visualizer - Partially sorted columns with active swap highlights
+    # Palette: 51=CYAN (unsorted), 41=GREEN (sorted), 11=RED (active), 31=YELLOW (compare)
+    SORTING_VISUALIZER = bytes([
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0,  0,
+         0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 51,  0, 51,
+         0,  0,  0,  0,  0,  0,  0,  0,  0, 11,  0,  0,  0, 51,  0, 51,
+         0,  0,  0,  0,  0,  0,  0,  0,  0, 11,  0,  0, 51, 51,  0, 51,
+         0,  0,  0,  0,  0,  0,  0, 31,  0, 11,  0,  0, 51, 51,  0, 51,
+         0,  0,  0,  0,  0,  0,  0, 31,  0, 11,  0, 51, 51, 51,  0, 51,
+         0,  0,  0,  0,  0,  0,  0, 31,  0, 11,  0, 51, 51, 51, 51, 51,
+         0,  0,  0,  0,  0, 41,  0, 31,  0, 11,  0, 51, 51, 51, 51, 51,
+         0,  0,  0,  0, 41, 41,  0, 31, 51, 11,  0, 51, 51, 51, 51, 51,
+         0,  0,  0, 41, 41, 41,  0, 31, 51, 11,  0, 51, 51, 51, 51, 51,
+         0,  0, 41, 41, 41, 41,  0, 31, 51, 11, 51, 51, 51, 51, 51, 51,
+         0, 41, 41, 41, 41, 41,  0, 31, 51, 11, 51, 51, 51, 51, 51, 51,
+        41, 41, 41, 41, 41, 41,  0, 31, 51, 11, 51, 51, 51, 51, 51, 51,
+        41, 41, 41, 41, 41, 41, 31, 31, 51, 11, 51, 51, 51, 51, 51, 51,
+        41, 41, 41, 41, 41, 41, 31, 31, 51, 11, 51, 51, 51, 51, 51, 51,
+    ])
+
     ICON_LIBRARY = {
         "DEFAULT": DEFAULT,
         "MENU": DEFAULT,
@@ -1006,6 +1466,7 @@ class Icons:
         "ASTRO_BREAKER": ASTRO_BREAKER,
         "DATA_FLOW": DATA_FLOW,
         "TRENCH_RUN": DEFAULT,
+        "LUNAR_SALVAGE": DEFAULT,
         "SNAKE": DEFAULT,
         "RHYTHM": RHYTHM,
         "EMOJI_REVEAL": EMOJI_REVEAL,
@@ -1025,11 +1486,30 @@ class Icons:
         "PLASMA": PLASMA,
         "WIREWORLD": WIREWORLD,
         "STARFIELD": STARFIELD,
+        "MECHA_FORGE": MECHA_FORGE,
+        "GROOVEBOX": GROOVEBOX,
         "IRON_CANOPY": IRON_CANOPY,
         "DEFCON_COMMANDER": DEFCON_COMMANDER,
         "ABYSSAL_PING": ABYSSAL_PING,
+        "ABYSSAL_ROVER": ABYSSAL_ROVER,
         "ORBITAL_STRIKE": ORBITAL_STRIKE,
+        "ARTILLERY_COMMAND": ARTILLERY_COMMAND,
+        "ENIGMA_BYTE": ENIGMA_BYTE,
+        "MAGLEV_EXPRESS": MAGLEV_EXPRESS,
+        "ORBITAL_DOCKING": ORBITAL_DOCKING,
+        "VANGUARD_OVERRIDE": VANGUARD_OVERRIDE,
+        "PIPELINE_OVERLOAD": PIPELINE_OVERLOAD,
+        "NUMBERS_STATION": NUMBERS_STATION,
+        "MAGNETIC_CONTAINMENT": MAGNETIC_CONTAINMENT,
+        "BUNKER_DEFUSE": BUNKER_DEFUSE,
+        "SEISMIC_STABILIZER": DEFAULT,
         "VIRTUAL_PET": VIRTUAL_PET,
+        "LAVA_LAMP": LAVA_LAMP,
+        "REACTION_DIFFUSION": REACTION_DIFFUSION,
+        "LORENZ_ATTRACTOR": LORENZ_ATTRACTOR,
+        "PERLIN_FLOW": PERLIN_FLOW,
+        "DIGITAL_RAIN": DIGITAL_RAIN,
+        "SORTING_VISUALIZER": SORTING_VISUALIZER,
         "CAT_IDLE": CAT_IDLE,
         "CAT_EAT": CAT_EAT,
         "CAT_SLEEP": CAT_SLEEP,

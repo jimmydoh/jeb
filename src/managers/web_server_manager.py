@@ -46,18 +46,15 @@ class WebServerManager:
     MAX_UPLOAD_SIZE_BYTES = 50 * 1024  # Maximum upload size (50KB)
     DEFAULT_MAX_LOGS = 1000  # Default maximum log entries to keep
 
-    def __init__(self, config, wifi_manager, console_buffer=None, power_manager=None, satellite_manager=None, matrix_manager=None, synth_manager=None, testing=False):
+    def __init__(self, config, wifi_manager, app=None, console_buffer=None, testing=False):
         """
         Initialize the web server manager.
 
         Args:
             config (dict): Configuration dictionary
-            wifi_manager (WiFiManager): REQUIRED: Shared WiFiManager instance for managing WiFi connectivity.
+            wifi_manager (WiFiManager): REQUIRED: Shared WiFiManager instance.
+            app: Optional CoreManager application instance for hardware and registry access.
             console_buffer (object): Optional console buffer for output capture
-            power_manager (PowerManager): Optional PowerManager for live telemetry
-            satellite_manager (SatelliteNetworkManager): Optional SatelliteNetworkManager for link telemetry
-            matrix_manager (MatrixManager): Optional MatrixManager for live pixel art preview
-            synth_manager (SynthManager): Optional SynthManager for Audio Studio live preview
         """
         if wifi_manager is None:
             JEBLogger.warning("WEBS", "No WiFiManager provided - WebServerManager cannot start")
@@ -71,20 +68,41 @@ class WebServerManager:
         self.enabled = config.get("web_server_enabled", False)
         self.wifi_manager = wifi_manager
 
+        self.app = app
         self.console_buffer = console_buffer
-        self.power_manager = power_manager
-        self.satellite_manager = satellite_manager
-        self.matrix_manager = matrix_manager
-        self.synth_manager = synth_manager
 
         self.server = None
         self.pool = None
         self.connected = False
         self.logs = []  # Ring buffer for log messages
-        self.max_logs = self.DEFAULT_MAX_LOGS  # Maximum log entries to keep
+        self.max_logs = self.DEFAULT_MAX_LOGS
 
         # Enable JEBLogger ring buffer so all system logs feed the Logging tab
         JEBLogger.enable_buffer(max_entries=self.DEFAULT_MAX_LOGS)
+
+    # --- Hardware Delegation Properties ---
+    # These properties safely fetch the managers from the active app if it exists.
+    # This prevents us from needing to rewrite all the API endpoints!
+
+    @property
+    def power_manager(self):
+        return getattr(self.app, 'power', None) if self.app else None
+
+    @property
+    def satellite_manager(self):
+        return getattr(self.app, 'sat_network', None) if self.app else None
+
+    @property
+    def matrix_manager(self):
+        return getattr(self.app, 'matrix', None) if self.app else None
+
+    @property
+    def synth_manager(self):
+        return getattr(self.app, 'synth', None) if self.app else None
+
+    @property
+    def hid(self):
+        return getattr(self.app, 'hid', None) if self.app else None
 
     async def connect_wifi(self, timeout=30):
         """
@@ -196,8 +214,54 @@ class WebServerManager:
         @self.server.route("/", GET)
         def index(request: Request):
             """Serve the main configuration page."""
-            html = self._generate_html_page()
-            return Response(request, html, content_type="text/html")
+            html_paths = ["/sd/www/index.html", "www/index.html", "src/www/index.html"]
+
+            for path in html_paths:
+                try:
+                    import os
+                    os.stat(path) # Fast check if the file exists in this location
+
+                    # File found! Pass it to our bulletproof streaming helper
+                    return self._stream_file(request, path, "text/html")
+                except OSError:
+                    continue # File not found here, try the next path in the list
+
+            # Fallback: Return minimal error page if HTML file is missing entirely
+            error_html = """<!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8"><title>JEB Field Service - Error</title>
+                <style>body { font-family: Arial; background: #1a1a1a; color: #e0e0e0; padding: 40px; text-align: center; } h1 { color: #ff6b6b; }</style>
+            </head>
+            <body>
+                <h1>Configuration Error</h1>
+                <p>HTML interface file not found. Please ensure index.html is present.</p>
+            </body>
+            </html>"""
+
+            return Response(request, error_html, content_type="text/html")
+
+        # --- STATIC ASSETS ---
+
+        @self.server.route("/css/style.css", GET)
+        def serve_css(request: Request):
+            """Serve the compiled CSS stylesheet."""
+            return self._stream_file(request, "/sd/www/css/style.css", "text/css")
+
+        @self.server.route("/css/style.min.css", GET)
+        def serve_css_min(request: Request):
+            """Serve the minified CSS stylesheet."""
+            return self._stream_file(request, "/sd/www/css/style.min.css", "text/css")
+
+        @self.server.route("/js/app.js", GET)
+        def serve_js(request: Request):
+            """Serve the frontend JavaScript engine."""
+            return self._stream_file(request, "/sd/www/js/app.js", "application/javascript")
+
+        @self.server.route("/js/app.min.js", GET)
+        def serve_js_min(request: Request):
+            """Serve the minified frontend JavaScript engine."""
+            return self._stream_file(request, "/sd/www/js/app.min.js", "application/javascript")
 
         # API: Get global config
         @self.server.route("/api/config/global", GET)
@@ -216,7 +280,7 @@ class WebServerManager:
                                   content_type="application/json", status=400)
 
                 # Validate and update config (protect critical fields)
-                protected_fields = ["role", "type_id"]
+                protected_fields = ["role", "type_id", "satellites"]
                 valid_boolean_fields = ["debug_mode", "test_mode", "web_server_enabled", "mount_sd_card"]
                 valid_int_fields = ["web_server_port", "uart_baudrate", "uart_buffer_size"]
 
@@ -428,23 +492,40 @@ class WebServerManager:
         # API: Get mode settings
         @self.server.route("/api/config/modes", GET)
         def get_mode_settings(request: Request):
-            """Return mode settings from data manager."""
+            """Return mode settings from the registry with current values from DataManager."""
             try:
-                # Load mode settings from data manager if available
-                # For now, return example structure showing available modes
-                modes_data = {
-                    "SIMON": {
-                        "settings": [
-                            {"key": "mode", "label": "MODE", "options": ["CLASSIC", "REVERSE", "BLIND"], "default": "CLASSIC"},
-                            {"key": "difficulty", "label": "DIFF", "options": ["EASY", "NORMAL", "HARD", "INSANE"], "default": "NORMAL"}
-                        ],
-                        "current": {
-                            "mode": "CLASSIC",
-                            "difficulty": "NORMAL"
-                        }
-                    },
-                    # Add more modes as needed
-                }
+                # Resolve mode registry: prefer live app registry, fall back to manifest import
+                mode_registry = None
+                if self.app is not None and hasattr(self.app, 'mode_registry'):
+                    mode_registry = self.app.mode_registry
+                else:
+                    try:
+                        from modes.manifest import MODE_REGISTRY
+                        mode_registry = MODE_REGISTRY
+                    except ImportError:
+                        return Response(request, '{"error": "Mode registry not available"}',
+                                      content_type="application/json", status=503)
+
+                # Resolve DataManager if available
+                data_mgr = None
+                if self.app is not None and hasattr(self.app, 'data'):
+                    data_mgr = self.app.data
+
+                modes_data = {}
+                for mode_id, meta in mode_registry.items():
+                    settings = meta.get("settings", [])
+                    if not settings:
+                        continue
+                    current = {}
+                    for s in settings:
+                        if data_mgr is not None:
+                            current[s["key"]] = data_mgr.get_setting(mode_id, s["key"], s["default"])
+                        else:
+                            current[s["key"]] = s["default"]
+                    modes_data[mode_id] = {
+                        "settings": settings,
+                        "current": current,
+                    }
 
                 return Response(request, json.dumps(modes_data),
                               content_type="application/json")
@@ -455,7 +536,7 @@ class WebServerManager:
         # API: Update mode settings
         @self.server.route("/api/config/modes", POST)
         def update_mode_settings(request: Request):
-            """Update settings for a specific mode."""
+            """Update settings for a specific mode and persist to DataManager."""
             try:
                 data = request.json()
                 if not data:
@@ -469,13 +550,105 @@ class WebServerManager:
                     return Response(request, '{"error": "mode_id and settings required"}',
                                   content_type="application/json", status=400)
 
-                # Save settings (would integrate with DataManager in actual implementation)
+                if self.app is None or not hasattr(self.app, 'data'):
+                    return Response(request, '{"error": "DataManager not available"}',
+                                  content_type="application/json", status=503)
+
+                for key, value in settings.items():
+                    self.app.data.set_setting(mode_id, key, value)
+
                 self.log(f"Mode settings updated for {mode_id}")
 
                 return Response(request, '{"status": "success"}',
                               content_type="application/json")
             except Exception as e:
                 self.log(f"Error updating mode settings: {e}")
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Get full mode list from manifest with playable status
+        @self.server.route("/api/modes", GET)
+        def get_modes(request: Request):
+            """Return all game modes from the registry with settings and playable status.
+
+            Playable status is determined by comparing each mode's ``requires``
+            list against the hardware that is currently connected (CORE is always
+            present; satellite types are checked via the satellite_manager).
+            """
+            try:
+                # Resolve mode registry: prefer live app registry, fall back to manifest import
+                mode_registry = None
+                if self.app is not None and hasattr(self.app, 'mode_registry'):
+                    mode_registry = self.app.mode_registry
+                else:
+                    try:
+                        from modes.manifest import MODE_REGISTRY
+                        mode_registry = MODE_REGISTRY
+                    except ImportError:
+                        return Response(request, '{"error": "Mode registry not available"}',
+                                      content_type="application/json", status=503)
+
+                # Determine connected hardware
+                connected_hardware = ["CORE"]
+                if self.satellite_manager is not None:
+                    try:
+                        for sat in self.satellite_manager.satellites.values():
+                            if getattr(sat, 'is_active', False):
+                                sat_type = getattr(sat, 'sat_type_name', '')
+                                if sat_type and sat_type not in connected_hardware:
+                                    connected_hardware.append(sat_type)
+                    except Exception:
+                        pass
+
+                # Game menu categories only (exclude admin/system menus)
+                # Resolve DataManager if available; reload from disk to ensure fresh data
+                data_mgr = None
+                if self.app is not None and hasattr(self.app, 'data'):
+                    data_mgr = self.app.data
+                    if hasattr(data_mgr, 'reload'):
+                        try:
+                            data_mgr.reload()
+                        except Exception:
+                            pass
+
+                game_menus = {"CORE", "EXP1", "ZERO_PLAYER"}
+                modes = []
+                for mode_id, meta in mode_registry.items():
+                    if meta.get("menu") not in game_menus:
+                        continue
+                    requires = meta.get("requires", [])
+                    playable = all(hw in connected_hardware for hw in requires)
+                    settings = meta.get("settings", [])
+                    current = {}
+                    for s in settings:
+                        if data_mgr is not None:
+                            current[s["key"]] = data_mgr.get_setting(mode_id, s["key"], s["default"])
+                        else:
+                            current[s["key"]] = s["default"]
+                    modes.append({
+                        "id": meta["id"],
+                        "name": meta.get("name", meta["id"]),
+                        "menu": meta.get("menu", ""),
+                        "order": meta.get("order", 9999),
+                        "requires": requires,
+                        "optional": meta.get("optional", []),
+                        "has_tutorial": meta.get("has_tutorial", False),
+                        "playable": playable,
+                        "settings": settings,
+                        "current": current,
+                    })
+
+                # Sort: menu category, then order, then name
+                menu_order = {"CORE": 0, "ZERO_PLAYER": 1, "EXP1": 2}
+                _unknown_menu_order = len(menu_order)
+                modes.sort(key=lambda m: (menu_order.get(m["menu"], _unknown_menu_order), m["order"], m["name"]))
+
+                return Response(request, json.dumps({
+                    "connected_hardware": connected_hardware,
+                    "modes": modes,
+                }), content_type="application/json")
+            except Exception as e:
+                self.log(f"Error getting modes: {e}")
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
@@ -537,18 +710,35 @@ class WebServerManager:
                 if self.console_buffer is None:
                     return Response(request, '{"error": "Console not available"}',
                                   content_type="application/json", status=503)
-                data = request.json()
-                if not data:
-                    return Response(request, '{"error": "Invalid JSON"}',
-                                  content_type="application/json", status=400)
-                line = data.get("input", "").strip()
+
+                # 1. Grab the raw body
+                raw_body = request.body.decode('utf-8').strip()
+                line = ""
+
+                # 2. Try parsing it as JSON {"input": "..."} first
+                if raw_body.startswith("{"):
+                    try:
+                        data = json.loads(raw_body)
+                        line = str(data.get("input", "")).strip()
+                    except Exception:
+                        pass
+                else:
+                    # 3. Not JSON – treat the raw body as the input directly
+                    line = raw_body
+
                 if not line:
-                    return Response(request, '{"error": "input field required"}',
+                    return Response(request, '{"error": "No input provided"}',
                                   content_type="application/json", status=400)
+
+                # 4. Push to the queue!
                 self.console_buffer.input_queue.append(line)
+                self.log(f"Web Console Input Received: '{line}'") # Added to logs tab for debugging
+
                 return Response(request, '{"status": "queued"}',
                               content_type="application/json")
+
             except Exception as e:
+                self.log(f"Web Console Input Error: {e}")
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
@@ -623,6 +813,54 @@ class WebServerManager:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
+        # API: Launch a mode on the device
+        @self.server.route("/api/actions/launch-mode", POST)
+        def launch_mode(request: Request):
+            """Launch a specific game mode on the device.
+
+            Uses the same console-override mechanism as ConsoleManager to
+            request a mode transition from outside the main game loop.
+
+            JSON body fields:
+                mode_id  (str): The mode registry ID to launch (e.g. 'SIMON').
+                tutorial (bool, optional): When true, launch the tutorial variant.
+            """
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                mode_id = data.get("mode_id")
+                if not mode_id:
+                    return Response(request, '{"error": "mode_id required"}',
+                                  content_type="application/json", status=400)
+
+                if self.app is None:
+                    return Response(request, '{"error": "No app instance available"}',
+                                  content_type="application/json", status=503)
+
+                # Request tutorial variant if asked
+                tutorial = data.get("tutorial", False)
+                self.app._pending_mode_variant = "TUTORIAL" if tutorial else None
+
+                # Set high-priority console override (same as ConsoleManager)
+                self.app.console_override_mode = mode_id
+
+                # Interrupt the currently running mode so the app loop transitions
+                if hasattr(self.app, 'active_mode') and self.app.active_mode:
+                    self.app.active_mode._exit_requested = True
+                    if hasattr(self.app, 'active_mode_task') and self.app.active_mode_task:
+                        self.app.active_mode_task.cancel()
+
+                self.log(f"Mode launch requested: {mode_id} (tutorial={tutorial})")
+                return Response(request, f'{{"status": "launching", "mode_id": "{mode_id}"}}',
+                              content_type="application/json")
+            except Exception as e:
+                self.log(f"Error launching mode: {e}")
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
         # API: Get system status
         @self.server.route("/api/system/status", GET)
         def get_system_status(request: Request):
@@ -649,7 +887,13 @@ class WebServerManager:
                 power_data = {}
                 if self.power_manager is not None:
                     try:
-                        power_data = self.power_manager.status
+                        # 1. Trigger a fresh hardware read across all buses
+                        _ = self.power_manager.status
+
+                        # 2. Extract the actual voltage floats for the Web UI
+                        for name, bus in self.power_manager.buses.items():
+                            if bus.v_now is not None:
+                                power_data[name] = bus.v_now
                     except Exception:
                         pass
 
@@ -657,13 +901,30 @@ class WebServerManager:
                 if self.satellite_manager is not None:
                     try:
                         for sid, sat in self.satellite_manager.satellites.items():
-                            sat_data[sid] = {"active": sat.is_active}
+                            sat_data[sid] = {
+                                "active": sat.is_active,
+                                "type": getattr(sat, 'sat_type_name', '01'),
+                            }
                     except Exception:
                         pass
+
+                # Cross-platform RAM check
+                try:
+                    # CircuitPython: returns bytes, convert to KB
+                    free_ram = round(gc.mem_free() / 1024, 1)
+                except AttributeError:
+                    # CPython (Windows Emulator): gc.mem_free does not exist
+                    free_ram = "Emulator"
+
+                system_data = {
+                    "sleeping": self.app._sleeping if hasattr(self.app, "_sleeping") else False,
+                    "free_ram_kb": free_ram
+                }
 
                 payload = json.dumps({
                     "power": power_data,
                     "satellites": sat_data,
+                    "system": system_data,
                     "ts": time.monotonic(),
                 })
                 return Response(request, payload, content_type="application/json")
@@ -893,6 +1154,219 @@ class WebServerManager:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
+        # API: Remote HID state override (web-based interaction)
+        @self.server.route("/api/hid/update", POST)
+        def update_hid_state(request: Request):
+            """Inject virtual HID state changes via web dashboard using override mode.
+
+            Accepts a JSON body with an optional 'sid' field and one or more HID state
+            fields. When 'sid' is 'CORE' or omitted, the command targets the core
+            HIDManager. Otherwise the command is routed to the matching satellite's
+            HIDManager so both core and satellite inputs can be driven remotely.
+
+            All writes use override=True so they bypass the monitor_only guard and
+            do not get clobbered by the next hardware-poll cycle.
+
+            JSON fields:
+                sid (str, optional): Target unit ID. 'CORE' or omitted = core HID.
+                buttons (str, optional): Button states string (e.g. '010').
+                latching_toggles (str, optional): Latching toggle states string (e.g. '10110').
+                momentary_toggles (str, optional): Momentary toggle states string (e.g. 'CUC').
+                encoders (str, optional): Encoder positions string (e.g. '0:25:123').
+                encoder_buttons (str, optional): Encoder button states string (e.g. '1').
+            """
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                sid = data.get("sid", "CORE")
+                buttons = data.get("buttons")
+                latching_toggles = data.get("latching_toggles")
+                momentary_toggles = data.get("momentary_toggles")
+                encoders = data.get("encoders")
+                encoder_buttons = data.get("encoder_buttons")
+
+                if not any([buttons, latching_toggles, momentary_toggles, encoders, encoder_buttons]):
+                    return Response(request, '{"error": "No HID fields provided"}',
+                                  content_type="application/json", status=400)
+
+                # Resolve the target HIDManager
+                if sid == "CORE" or sid is None:
+                    target_hid = self.hid
+                else:
+                    if self.satellite_manager is None:
+                        return Response(request, '{"error": "No satellite manager available"}',
+                                      content_type="application/json", status=503)
+                    sat = self.satellite_manager.satellites.get(sid)
+                    if sat is None:
+                        return Response(request, f'{{"error": "Satellite {sid} not found"}}',
+                                      content_type="application/json", status=404)
+                    target_hid = sat.hid
+
+                if target_hid is None:
+                    return Response(request, '{"status": "no_hid"}',
+                                  content_type="application/json")
+
+                # Apply overrides - each _sw_set_* method accepts override=True to
+                # bypass the monitor_only guard and properly timestamp the interaction.
+                dirty = False
+                if buttons is not None:
+                    if target_hid._sw_set_buttons(buttons, override=True):
+                        dirty = True
+                if latching_toggles is not None:
+                    if target_hid._sw_set_latching_toggles(latching_toggles, override=True):
+                        dirty = True
+                if momentary_toggles is not None:
+                    if target_hid._sw_set_momentary_toggles(momentary_toggles, override=True):
+                        dirty = True
+                if encoders is not None:
+                    if target_hid._sw_set_encoders(encoders, override=True):
+                        dirty = True
+                if encoder_buttons is not None:
+                    if target_hid._sw_set_encoder_buttons(encoder_buttons, override=True):
+                        dirty = True
+
+                self.log(f"HID override applied to {sid}: buttons={buttons} latching={latching_toggles} momentary={momentary_toggles} encoders={encoders} enc_btns={encoder_buttons}")
+                status = "success" if dirty else "no_change"
+                return Response(request, f'{{"status": "{status}"}}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # --- SYSTEM ACTIONS ---
+
+        @self.server.route("/api/action/reboot", POST)
+        def action_reboot(request: Request):
+            """Trigger a soft reboot of the Master Controller."""
+            self.log("Web requested system reboot.")
+            import supervisor
+            import asyncio
+
+            # Spawn a background task to reboot after 1 second
+            # This allows the HTTP 200 OK response to successfully reach the browser first!
+            async def delayed_reboot():
+                await asyncio.sleep(1)
+                supervisor.reload()
+
+            asyncio.create_task(delayed_reboot())
+            return Response(request, '{"status": "rebooting"}', content_type="application/json")
+
+        @self.server.route("/api/action/sleep", POST)
+        def action_sleep(request: Request):
+            """Toggle the low-power sleep state."""
+            if not self.app:
+                return Response(request, '{"error": "App not available"}', status=503)
+            try:
+                data = json.loads(request.body)
+                sleep_req = data.get("sleep", True)
+
+                if sleep_req:
+                    asyncio.create_task(self.app._enter_sleep())
+                    self.log("Web forced system SLEEP.")
+                else:
+                    asyncio.create_task(self.app._wake_system())
+                    self.log("Web forced system WAKE.")
+
+                return Response(request, '{"status": "ok"}', content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}', status=500, content_type="application/json")
+
+        @self.server.route("/api/action/led", POST)
+        def action_led(request: Request):
+            """Apply an animation state to specific LEDs."""
+            if not self.app or not self.app.leds:
+                return Response(request, '{"error": "LED Manager not available"}', status=503)
+            try:
+                data = json.loads(request.body)
+                idx = int(data.get("index", -1))
+                hex_color = data.get("color", "#00FFFF")
+                anim = data.get("anim", "SOLID")
+                speed = float(data.get("speed", 1.0))
+
+                # Parse hex to RGB tuple
+                hex_color = hex_color.lstrip('#')
+                r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+                # Apply to the button LED manager
+                self.app.leds.set_led(idx, color=(r,g,b), anim_mode=anim, speed=speed)
+                self.log(f"Web set LED {idx} -> {anim} @ {speed}x")
+
+                return Response(request, '{"status": "ok"}', content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}', status=500, content_type="application/json")
+
+        # API: Get satellite layout offsets
+        @self.server.route("/api/config/layout", GET)
+        def get_layout(request: Request):
+            """Return current satellite layout offsets and live status."""
+            try:
+                # Get saved offsets from config
+                saved_offsets = self.config.get("satellites", {})
+
+                # Mix in live satellite status if the network manager is running
+                live_sats = {}
+                if self.satellite_manager is not None:
+                    for sid, sat in self.satellite_manager.satellites.items():
+                        live_sats[str(sid)] = {
+                            "active": getattr(sat, 'is_active', False),
+                            "type": getattr(sat, 'sat_type_name', 'UNKNOWN')
+                        }
+
+                response_data = {
+                    "offsets": saved_offsets,
+                    "live": live_sats
+                }
+                return Response(request, json.dumps(response_data),
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Update satellite layout offsets
+        @self.server.route("/api/config/layout", POST)
+        def update_layout(request: Request):
+            """Update satellite layout offsets in config and apply them live."""
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                if "satellites" not in self.config:
+                    self.config["satellites"] = {}
+
+                # 1. Update config dictionary
+                for sid, offsets in data.items():
+                    self.config["satellites"][str(sid)] = {
+                        "offset_x": int(offsets.get("x", 0)),
+                        "offset_y": int(offsets.get("y", 0))
+                    }
+
+                self._save_config()
+
+                # 2. Push live updates to SatelliteNetworkManager immediately
+                if self.satellite_manager is not None:
+                    for sid, offsets in data.items():
+                        try:
+                            self.satellite_manager.set_satellite_offset(
+                                int(sid),
+                                int(offsets.get("x", 0)),
+                                int(offsets.get("y", 0))
+                            )
+                        except ValueError:
+                            pass # Ignore malformed IDs
+
+                self.log("Satellite layout updated via web interface")
+                return Response(request, '{"status": "success"}',
+                              content_type="application/json")
+            except Exception as e:
+                self.log(f"Error updating layout: {e}")
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
     def _save_config(self):
         """Save configuration to config.json."""
         if self._testing:
@@ -904,6 +1378,38 @@ class WebServerManager:
         except Exception as e:
             print(f"Error saving config: {e}")
             raise
+
+    def _stream_file(self, request, filepath, content_type):
+        """Dual-compatible file streaming for both Pico and Windows Emulator."""
+        try:
+            import os
+            os.stat(filepath) # Fast check if file exists
+
+            # 1. Try optimized hardware method (Pico)
+            try:
+                from adafruit_httpserver import FileResponse
+                return FileResponse(request, filename=filepath, root_path="/")
+
+            # 2. Fallback for Windows Emulator
+            except ImportError:
+                def chunked_generator(fp, chunk_size=1024):
+                    with open(fp, "r", encoding="utf-8") as f:
+                        while True:
+                            chunk = f.read(chunk_size)
+                            if not chunk:
+                                break
+                            yield chunk
+
+                try:
+                    from adafruit_httpserver import ChunkedResponse
+                    return ChunkedResponse(request, chunked_generator(filepath), content_type=content_type)
+                except ImportError:
+                    # Absolute worst-case fallback
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        return Response(request, f.read(), content_type=content_type)
+
+        except OSError:
+            return Response(request, "File not found", status=404, content_type="text/plain")
 
     def _list_directory(self, path):
         """List files and directories at the given path."""
@@ -927,55 +1433,6 @@ class WebServerManager:
             return {"path": path, "items": items}
         except Exception as e:
             raise RuntimeError(f"Error listing directory: {e}")
-
-    def _generate_html_page(self):
-        """Load and stream the main HTML configuration page from file."""
-        # Try to load from SD card first, then fall back to local filesystem
-        html_paths = ["/sd/www/index.html", "www/index.html", "src/www/index.html"]
-
-        for html_path in html_paths:
-            try:
-                # Check if file exists before creating generator
-                with open(html_path, "r", encoding="utf-8") as test_f:
-                    pass  # File exists, proceed
-
-                def html_generator(filepath, chunk_size=None):
-                    """Generator that yields HTML file chunks to save RAM."""
-                    if chunk_size is None:
-                        chunk_size = self.CHUNK_SIZE
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        while True:
-                            chunk = f.read(chunk_size)
-                            if not chunk:
-                                break
-                            yield chunk
-
-                # Return generator for chunked streaming
-                return html_generator(html_path)
-            except OSError:
-                continue
-
-        # Fallback: Return minimal error page if HTML file not found
-        return """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>JEB Field Service - Error</title>
-    <style>
-        body { font-family: Arial; background: #1a1a1a; color: #e0e0e0; padding: 40px; text-align: center; }
-        h1 { color: #ff6b6b; }
-    </style>
-</head>
-<body>
-    <h1>Configuration Error</h1>
-    <p>HTML interface file not found. Please ensure index.html is present in:</p>
-    <ul style="list-style: none;">
-        <li>/sd/www/index.html</li>
-        <li>www/index.html</li>
-        <li>src/www/index.html</li>
-    </ul>
-</body>
-</html>"""
 
     async def start(self):
         """Start the web server."""

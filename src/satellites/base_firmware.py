@@ -736,7 +736,7 @@ class SatelliteFirmware:
                     # Check if update needed (event trigger or timeout)
                     if self._status_event.is_set() or time.monotonic() - self.last_tx > 3.0:
                         # Use get_status_bytes() to avoid string allocation overhead
-                        msg_out = Message(self.id, "CORE", "STATUS", self._get_status_bytes())
+                        msg_out = Message(self.id, "CORE", "STATUS", self._get_status_bytes(flush=True))
 
                         if self.transport_up.send(msg_out):
                             self.last_tx = time.monotonic()

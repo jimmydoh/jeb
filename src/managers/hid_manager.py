@@ -263,9 +263,9 @@ class HIDManager:
 
         return True
 
-    def _sw_set_buttons(self, buttons):
+    def _sw_set_buttons(self, buttons, override=False):
         """Set the state of buttons without hardware polling."""
-        if not self.monitor_only:
+        if not self.monitor_only and not override:
             return False
         dirty = False
         now = ticks_ms()
@@ -274,10 +274,14 @@ class HIDManager:
             if val != self.buttons_values[i]:
                 self.buttons_values[i] = val
                 if val:  # Button pressed - record timestamp
+                    JEBLogger.info("HIDM", f"SW set button[{i}] PRESSED.")
                     self.buttons_timestamps[i] = now
                 else:  # Button released - detect tap
                     start_time = self.buttons_timestamps[i]
-                    if start_time > 0 and ticks_diff(now, start_time) < 500:
+                    elapsed = ticks_diff(now, start_time)
+                    JEBLogger.info("HIDM", f"SW set button[{i}] RELEASED after {elapsed} ms.")
+                    if start_time > 0 and elapsed < 500:
+                        JEBLogger.info("HIDM", f"SW set button[{i}] TAPPED.")
                         self.buttons_tapped[i] = True
                 dirty = True
         return dirty
@@ -335,9 +339,9 @@ class HIDManager:
 
         return True
 
-    def _sw_set_latching_toggles(self, latching_toggles):
+    def _sw_set_latching_toggles(self, latching_toggles, override=False):
         """Set the state of a latching toggle without hardware polling."""
-        if not self.monitor_only:
+        if not self.monitor_only and not override:
             return False
         dirty = False
         now = ticks_ms()
@@ -346,10 +350,13 @@ class HIDManager:
             if val != self.latching_values[i]:
                 self.latching_values[i] = val
                 if val:  # Toggle turned on - record timestamp
+                    JEBLogger.info("HIDM", f"SW set latching toggle[{i}] ON.")
                     self.latching_timestamps[i] = now
                 else:  # Toggle turned off - detect tap
+                    JEBLogger.info("HIDM", f"SW set latching toggle[{i}] OFF.")
                     start_time = self.latching_timestamps[i]
                     if start_time > 0 and ticks_diff(now, start_time) < 500:
+                        JEBLogger.info("HIDM", f"SW set latching toggle[{i}] TAPPED.")
                         self.latching_tapped[i] = True
                 dirty = True
         return dirty
@@ -409,7 +416,7 @@ class HIDManager:
 
         return True
 
-    def _sw_set_momentary_toggles(self, momentary_toggles):
+    def _sw_set_momentary_toggles(self, momentary_toggles, override=False):
         """
         Set the state of momentary toggles without hardware polling.
 
@@ -419,7 +426,7 @@ class HIDManager:
 
         :example: "UD" means first toggle up, second toggle down.
         """
-        if not self.monitor_only:
+        if not self.monitor_only and not override:
             return False
         dirty = False
         now = ticks_ms()
@@ -435,19 +442,25 @@ class HIDManager:
                 if up_val != self.momentary_values[i][0]:
                     self.momentary_values[i][0] = up_val
                     if up_val:  # Pressed up - record timestamp
+                        JEBLogger.info("HIDM", f"SW set momentary toggle[{i}] UP.")
                         self.momentary_timestamps[i][0] = now
                     else:  # Released up - detect tap
+                        JEBLogger.info("HIDM", f"SW set momentary toggle[{i}] UP released.")
                         start_time = self.momentary_timestamps[i][0]
                         if start_time > 0 and ticks_diff(now, start_time) < 500:
+                            JEBLogger.info("HIDM", f"SW set momentary toggle[{i}] UP TAPPED.")
                             self.momentary_tapped[i][0] = True
                 # Down Direction
                 if down_val != self.momentary_values[i][1]:
                     self.momentary_values[i][1] = down_val
                     if down_val:  # Pressed down - record timestamp
+                        JEBLogger.info("HIDM", f"SW set momentary toggle[{i}] DOWN.")
                         self.momentary_timestamps[i][1] = now
                     else:  # Released down - detect tap
+                        JEBLogger.info("HIDM", f"SW set momentary toggle[{i}] DOWN released.")
                         start_time = self.momentary_timestamps[i][1]
                         if start_time > 0 and ticks_diff(now, start_time) < 500:
+                            JEBLogger.info("HIDM", f"SW set momentary toggle[{i}] DOWN TAPPED.")
                             self.momentary_tapped[i][1] = True
         return dirty
 
@@ -517,21 +530,25 @@ class HIDManager:
         if not self.monitor_only and 0 <= index < len(self._encoders):
             self._encoders[index].position = value
 
-    def _sw_set_encoders(self, positions):
+    def _sw_set_encoders(self, positions, override=False):
         """
         Set the state of encoders without hardware polling.
         :param positions: A string representing the positions of each encoder.
         :example: "0:25:123" sets encoder 0 to 0, encoder 1 to 25, encoder 2 to 123.
         """
-        if not self.monitor_only:
+        if not self.monitor_only and not override:
             return False
         dirty = False
         parts = positions.split(":")
         for i, pos in enumerate(parts):
             if i < len(self.encoder_positions):
                 try:
-                    if self.encoder_positions[i] != int(pos):
-                        self.encoder_positions[i] = int(pos)
+                    new_val = int(pos)
+                    JEBLogger.info("HIDM", f"SW set encoder[{i}] from {self.encoder_positions[i]} to position {new_val}.")
+                    if self.encoder_positions[i] != new_val:
+                        self.encoder_positions[i] = new_val
+                        if not self.monitor_only and hasattr(self, '_encoders') and self._encoders and i < len(self._encoders):
+                            self._encoders[i].position = new_val
                         dirty = True
                 except (ValueError, IndexError):
                     continue
@@ -602,20 +619,24 @@ class HIDManager:
 
         return True
 
-    def _sw_set_encoder_buttons(self, encoder_buttons):
+    def _sw_set_encoder_buttons(self, encoder_buttons, override=False):
         """Set the state of encoder buttons without hardware polling."""
-        if not self.monitor_only:
+        if not self.monitor_only and not override:
             return False
         dirty = False
         now = ticks_ms()
-        for i, val in enumerate(encoder_buttons):
+        for i, char in enumerate(encoder_buttons):
+            val = char == "1"
             if val != self.encoder_buttons_values[i]:
                 self.encoder_buttons_values[i] = val
                 if val:  # Button pressed - record timestamp
+                    JEBLogger.info("HIDM", f"SW set encoder button[{i}] PRESSED.")
                     self.encoder_buttons_timestamps[i] = now
                 else:  # Button released - detect tap
+                    JEBLogger.info("HIDM", f"SW set encoder button[{i}] RELEASED.")
                     start_time = self.encoder_buttons_timestamps[i]
                     if start_time > 0 and ticks_diff(now, start_time) < 500:
+                        JEBLogger.info("HIDM", f"SW set encoder button[{i}] TAPPED.")
                         self.encoder_buttons_tapped[i] = True
                 dirty = True
         return dirty
@@ -658,10 +679,26 @@ class HIDManager:
     #endregion
 
     #region --- Matrix Keypad Handling ---
+    @property
+    def keypad_values(self):
+        """Returns the current queued key values for the first matrix keypad (index 0) as a string."""
+        return self.get_keypad_values(0)
+
+    def get_keypad_values(self, index=0):
+        """Returns the current queued key values for a matrix keypad as a string."""
+        if 0 <= index < len(self.matrix_keypads_queues):
+            value = "".join(self.matrix_keypads_queues[index])
+            self.matrix_keypads_queues[index].clear()  # Clear after reading
+            return value
+        return ""
+
     def get_keypad_next_key(self, index=0):
         """Get the latest key event from the matrix keypad."""
         if len(self.matrix_keypads_queues[index]) > 0:
-            return self.matrix_keypads_queues[index].pop(0)
+            JEBLogger.info("HIDM", f"Dequeuing keypad {index} event: {self.matrix_keypads_queues[index][0]}")
+            popped = self.matrix_keypads_queues[index].pop(0)
+            JEBLogger.info("HIDM", f"Remaining keypad {index} queue: {self.matrix_keypads_queues[index]}")
+            return popped
         return None
 
     def flush_keypad_queue(self, index=0):
@@ -702,6 +739,7 @@ class HIDManager:
                     break # Break the while loop when queue is empty
 
                 if event.pressed:
+                    JEBLogger.info("HIDM", f"Raw keypad {i} PRESSED event index: {event.key_number}")
                     changed = True # State changed
                     raw_idx = event.key_number
 
@@ -710,6 +748,8 @@ class HIDManager:
                         key_map = self.matrix_keypads_maps[i]
                         if 0 <= raw_idx < len(key_map):
                             self.matrix_keypads_queues[i].append(key_map[raw_idx])
+                elif event.released:
+                    JEBLogger.info("HIDM", f"Raw keypad {i} RELEASE event index: {event.key_number}")
         return changed
 
     def _matrix_keypads_string(self):
@@ -961,7 +1001,7 @@ class HIDManager:
                 JEBLogger.debug("HIDM", f"Driver - E-Stop: {estop}", src=sid)
         return dirty
 
-    def get_status_bytes(self, order=None):
+    def get_status_bytes(self, order=None, flush=False):
         """
         Read inputs and format status packet as bytes with custom ordering and selection.
         Uses pre-allocated buffer to minimize heap fragmentation.
@@ -1008,6 +1048,9 @@ class HIDManager:
         # 4. Add newline
         self._status_buffer[offset] = ord('\n')
         offset += 1
+
+        if flush:
+            self.flush()  # Clear states after reading if flush is requested
 
         # Return only the used portion of the buffer as bytes
         # This avoids the string allocation that occurs with decode()

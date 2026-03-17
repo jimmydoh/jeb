@@ -37,7 +37,7 @@ class GlobalSettings(UtilityMode):
 
             if btn_b_long:
                 self.core.mode = "DASHBOARD"
-                await self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
+                self.core.audio.play("audio/menu/close.wav", self.core.audio.CH_SFX, level=0.8)
                 return "EXIT"
 
             await asyncio.sleep(0.05)

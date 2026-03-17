@@ -61,6 +61,140 @@ class WolframAutomata(BaseMode):
         self._step_count = 0
         self._fill_row = 0          # Index of the next empty row during initial fill
 
+    async def run_tutorial(self):
+        """
+        Guided demonstration of Wolfram 1D Cellular Automata.
+
+        The Voiceover Script (audio/tutes/wolfram_tute.wav) ~46 seconds:
+            [0:00] "Welcome to Wolfram One-Dimensional Cellular Automata."
+            [0:05] "Unlike a 2D grid, these rules look at a single row to calculate the next, scrolling downward."
+            [0:12] "Rule 90 creates a perfect Sierpinski triangle fractal using a simple logic operation."
+            [0:19] "Press button one to cycle rules. Rule 30 generates a chaotic, pseudo-random pattern."
+            [0:26] "Rule 110 is mathematically proven to be Turing-complete."
+            [0:31] "And Rule 184 acts as a traffic-flow simulator."
+            [0:35] "Turn the main dial to adjust the scrolling speed, and press button two to reset the starting seed."
+            [0:43] "Explore the complexity."
+            [0:46] (End of file)
+        """
+        await self.core.clean_slate()
+
+        self.game_state = "TUTORIAL"
+
+        # Trigger audio synchronously (fire-and-forget)
+        self.core.audio.play(
+            "audio/tutes/wolfram_tute.wav",
+            bus_id=self.core.audio.CH_VOICE
+        )
+
+        # Setup standard display state for the tutorial
+        self.width  = self.core.matrix.width
+        self.height = self.core.matrix.height
+        size = self.width * self.height
+
+        self._grid = bytearray(size)
+        self._current_row = bytearray(self.width)
+
+        self._speed_idx = 2 # NORM speed
+        self._rule_idx = 1  # Start with Rule 90 (Sierpinski)
+        self._step_count = 0
+
+        self._reset()
+
+        self.core.display.use_standard_layout()
+        self.core.display.update_header("WOLFRAM 1D")
+        self.core.display.update_footer("B1:Rule  B2:Reset")
+
+        def _refresh_ui():
+            line1, line2 = self._status_line()
+            self.core.display.update_status(line1, line2)
+
+        _refresh_ui()
+
+        async def _sim_wait(duration_s):
+            """Runs the automaton continuously for the specified duration."""
+            start_time = ticks_ms()
+            last_step_tick = start_time
+            target_ms = int(duration_s * 1000)
+
+            while ticks_diff(ticks_ms(), start_time) < target_ms:
+                now = ticks_ms()
+                interval = _SPEED_LEVELS_MS[self._speed_idx]
+
+                if ticks_diff(now, last_step_tick) >= interval:
+                    self._step()
+                    self.core.matrix.show_frame(self._grid)
+
+                    # Update UI roughly every 50 steps
+                    if self._step_count % _DISPLAY_UPDATE_INTERVAL == 0:
+                        _refresh_ui()
+
+                    last_step_tick = now
+                await asyncio.sleep(0.01)
+
+        try:
+            # [0:00 - 0:12] Intro & Core Concept
+            self.core.display.update_status("WOLFRAM AUTOMATA", "1D GENERATION")
+            await _sim_wait(12.0)
+
+            # [0:12 - 0:19] Rule 90 (Sierpinski Fractal)
+            _refresh_ui()
+            await _sim_wait(7.0)
+
+            # [0:19 - 0:26] Rule 30 (Chaos)
+            self.core.display.update_status("BUTTON 1", "CYCLE RULE")
+            await asyncio.sleep(1.0)
+            self._rule_idx = 0 # Rule 30
+            self._reset()
+            _refresh_ui()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(6.0)
+
+            # [0:26 - 0:31] Rule 110 (Turing Complete)
+            self._rule_idx = 2 # Rule 110
+            self._reset()
+            _refresh_ui()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(5.0)
+
+            # [0:31 - 0:35] Rule 184 (Traffic)
+            self._rule_idx = 3 # Rule 184
+            self._reset()
+            _refresh_ui()
+            self.core.buzzer.play_sequence(tones.UI_TICK)
+            await _sim_wait(4.0)
+
+            # [0:35 - 0:43] Speed Dial & Reset Button
+            self.core.display.update_status("MAIN DIAL", "CLOCK SPEED")
+            for speed in [3, 4, 5]: # Ramp up to MAX
+                self._speed_idx = speed
+                _refresh_ui()
+                self.core.buzzer.play_sequence(tones.UI_TICK)
+                await _sim_wait(1.5)
+
+            self.core.display.update_status("BUTTON 2", "RESET SEED")
+            await asyncio.sleep(1.0)
+            self._reset()
+            _refresh_ui()
+            self.core.buzzer.play_sequence(tones.UI_CONFIRM)
+            await _sim_wait(2.5)
+
+            # Wait for audio to finish out if it's still running
+            if hasattr(self.core.audio, 'wait_for_bus'):
+                await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
+            else:
+                await asyncio.sleep(2.0)
+
+            # --- SEAMLESS HANDOFF TO MAIN LOOP ---
+            self.core.display.update_status("TUTORIAL COMPLETE", "HANDING OVER CONTROL")
+            await asyncio.sleep(1.5)
+
+            self.core.hid.flush()
+            self.game_state = "RUNNING"
+            return await self.run()
+
+        finally:
+            await self.core.clean_slate()
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
@@ -107,6 +241,14 @@ class WolframAutomata(BaseMode):
         w = self.width
         h = self.height
         new_row = self._apply_rule(self._current_row)
+
+        # --- AUTO-RESPAWN (The Rule 90 Fix) ---
+        # Rule 90 on a power-of-2 grid width mathematically annihilates itself
+        # into all zeros after exactly Width/2 generations. If the row dies,
+        # we inject a fresh seed so the simulation doesn't stall out forever.
+        if not any(new_row):
+            new_row[w // 2] = self._color()
+
         if self._fill_row < h:
             # Buffer not yet full: write new row at the next empty position
             self._grid[self._fill_row * w:(self._fill_row + 1) * w] = new_row
