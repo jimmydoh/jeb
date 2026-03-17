@@ -1,0 +1,53 @@
+name: JEB Master Release
+
+on:
+  release:
+    types: [published] # Only runs when you click "Publish release" in GitHub
+
+# CRITICAL: The runner needs permission to modify the release page
+permissions:
+  contents: write
+
+jobs:
+  # 1. Trigger the Children (These run in parallel)
+  build-sd:
+    name: Delegate MPY Build
+    uses: ./.github/workflows/build-mpy.yml
+
+  build-fw:
+    name: Delegate UF2 Build
+    uses: ./.github/workflows/build-firmware.yml
+
+  # 2. The Finalizer (Runs only after children finish)
+  attach-to-release:
+    name: Attach Release Artifacts
+    needs: [build-sd, build-fw] # Forces it to wait for the two jobs above
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download SD Assets Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jeb-sd-assets # Must match the exact name from your child workflow
+          path: ./sd-assets
+
+      - name: Download Firmware Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jeb-master-firmware # Must match the exact name from your child workflow
+          path: ./firmware
+
+      - name: Package SD Assets into a ZIP
+        run: |
+          cd sd-assets
+          zip -r ../jeb-ota-payload.zip ./*
+
+      - name: Upload to GitHub Release Page
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Use the pre-installed GitHub CLI to attach the files to the release tag
+          gh release upload ${{ github.event.release.tag_name }} \
+            ./firmware/firmware.uf2 \
+            ./jeb-ota-payload.zip \
+            --clobber
