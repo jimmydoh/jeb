@@ -1,0 +1,138 @@
+name: Build Custom JEB Firmware
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'src/core/**'
+      - 'src/dummies/**'
+      - 'src/managers/**'
+      - 'src/satellites/**'
+      - 'src/transport/**'
+      - 'src/utilities/**'
+      - 'requirements-circup.txt'
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  build-uf2:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # The RP2350 requires GCC 14 to avoid silent corruption
+      - name: Install ARM GCC 14 Toolchain
+        run: |
+          wget https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz
+          tar -xf arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz
+          sudo mv arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi /opt/arm-gnu-toolchain-14
+          echo "/opt/arm-gnu-toolchain-14/bin" >> $GITHUB_PATH
+
+      - name: Clone CircuitPython
+        run: |
+          git clone -b main https://github.com/adafruit/circuitpython.git /tmp/circuitpython
+          cd /tmp/circuitpython
+          make fetch-all-submodules
+          pip install -r requirements-dev.txt
+
+      - name: Build mpy-cross
+        run: |
+          cd /tmp/circuitpython/mpy-cross
+          make
+
+      - name: Fetch Raspberry Pi Port Submodules
+        run: |
+          cd /tmp/circuitpython/ports/raspberrypi
+          make fetch-port-submodules
+
+      - name: Create Custom 'jeb_master' Board
+        run: |
+          cd /tmp/circuitpython/ports/raspberrypi/boards
+          # Clone the Pico 2 W board
+          cp -r raspberry_pi_pico2_w jeb_master
+
+          # Patch the Makefile for 2.5MB Firmware and strip Web Workflow
+          sed -i "s/-DCIRCUITPY_FIRMWARE_SIZE='(1536 \* 1024)'/-DCIRCUITPY_FIRMWARE_SIZE='(2556 \* 1024)'/g" jeb_master/mpconfigboard.mk
+          sed -i "s/CIRCUITPY_WEB_WORKFLOW = 1/CIRCUITPY_WEB_WORKFLOW = 0/g" jeb_master/mpconfigboard.mk
+
+          # Patch the Linker Script (2556K - 4K bootloader = 2552K)
+          sed -i "s/firmware_size = 1532K/firmware_size = 2552K/g" jeb_master/link.ld
+
+      - name: Stage Frozen Modules
+        run: |
+          STAGE_DIR="/tmp/jeb_frozen"
+          mkdir -p $STAGE_DIR
+
+          echo "--> Copying JEB Custom Modules..."
+          # Adjust these paths if your repo structure is different
+          cp -r src/core $STAGE_DIR/ || true
+          cp -r src/dummies $STAGE_DIR/ || true
+          cp -r src/managers $STAGE_DIR/ || true
+          cp -r src/satellites $STAGE_DIR/ || true
+          cp -r src/transport $STAGE_DIR/ || true
+          cp -r src/utilities $STAGE_DIR/ || true
+
+          echo "--> Downloading Adafruit Source Bundle..."
+          wget https://github.com/adafruit/Adafruit_CircuitPython_Bundle/releases/latest/download/adafruit-circuitpython-bundle-py-latest.zip -O /tmp/bundle.zip
+          unzip -q /tmp/bundle.zip -d /tmp/bundle_extracted
+
+          # Find the nested 'lib' folder inside the extracted bundle
+          BUNDLE_LIB=$(find /tmp/bundle_extracted -type d -name "lib" | head -n 1)
+
+          echo "--> Parsing requirements-circup.txt and extracting libraries..."
+          python3 << 'EOF'
+          import os
+          import shutil
+
+          req_file = 'requirements-circup.txt'
+          bundle_lib = os.environ.get('BUNDLE_LIB')
+          stage_dir = '/tmp/jeb_frozen'
+
+          if os.path.exists(req_file):
+              with open(req_file, 'r') as f:
+                  for line in f:
+                      lib_name = line.strip()
+                      if not lib_name or lib_name.startswith('#'):
+                          continue
+
+                      # Check if it's a folder (e.g., adafruit_display_text)
+                      folder_path = os.path.join(bundle_lib, lib_name)
+                      # Check if it's a single file (e.g., neopixel.py)
+                      file_path = os.path.join(bundle_lib, f"{lib_name}.py")
+
+                      if os.path.isdir(folder_path):
+                          print(f"Copying folder: {lib_name}")
+                          shutil.copytree(folder_path, os.path.join(stage_dir, lib_name), dirs_exist_ok=True)
+                      elif os.path.isfile(file_path):
+                          print(f"Copying file: {lib_name}.py")
+                          shutil.copy2(file_path, stage_dir)
+                      else:
+                          print(f"WARNING: Could not find {lib_name} in bundle.")
+          EOF
+
+          echo "--> Applying Dummy Git Trick..."
+          cd $STAGE_DIR
+          git init -q
+          git config user.email "bot@jeb.local"
+          git config user.name "JEB CI"
+          git add .
+          git commit -q -m "CI Freeze"
+          git tag v1.0.0
+
+      - name: Compile Custom Firmware
+        run: |
+          cd /tmp/circuitpython/ports/raspberrypi
+          make BOARD=jeb_master FROZEN_MPY_DIRS="/tmp/jeb_frozen"
+
+      - name: Upload UF2 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jeb-master-firmware
+          path: /tmp/circuitpython/ports/raspberrypi/build-jeb_master/firmware.uf2
+          retention-days: 14
