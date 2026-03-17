@@ -260,7 +260,7 @@ class ReactionDiffusion(BaseMode):
                     for _ in range(iters):
                         self._step()
                     self._render_to_matrix()
-                    self.core.matrix.show_frame()
+
 
                 await asyncio.sleep(0.01)
 
@@ -403,7 +403,7 @@ class ReactionDiffusion(BaseMode):
                     self._step()
 
                 self._render_to_matrix()
-                self.core.matrix.show_frame()
+
                 last_frame_tick = now
 
             await asyncio.sleep(0.01)

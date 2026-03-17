@@ -311,7 +311,7 @@ class PipelineOverload(GameMode):
                         else:
                             # Wrong toggle – fluid spills
                             self.core.matrix.fill(Palette.RED)
-                            self.core.matrix.show_frame()
+
                             asyncio.create_task(
                                 self.core.synth.play_sequence(tones.GAME_OVER)
                             )
@@ -419,7 +419,7 @@ class PipelineOverload(GameMode):
                 self.core.matrix.draw_pixel(f_col,     f_row, fluid_color)
                 self.core.matrix.draw_pixel(f_col + 1, f_row, fluid_color)
 
-        self.core.matrix.show_frame()
+
 
     # -----------------------------------------------------------------------
     # Tutorial
@@ -488,7 +488,7 @@ class PipelineOverload(GameMode):
         # [0:18 – 0:22] Show a "wrong toggle" flash (matrix red)
         self.core.display.update_status("WRONG TOGGLE!", "FLUID SPILLS!")
         self.core.matrix.fill(Palette.RED)
-        self.core.matrix.show_frame()
+
         asyncio.create_task(self.core.buzzer.play_sequence(tones.UI_ERROR))
         await asyncio.sleep(2.0)
 

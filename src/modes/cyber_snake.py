@@ -103,7 +103,7 @@ class CyberSnakeMode(GameMode):
                 self.snake.append(self.snake[-1])
 
                 self.render(ticks_ms())
-                self.core.matrix.show_frame()
+
                 await asyncio.sleep(0.3)
 
         await asyncio.sleep(0.5)
@@ -121,13 +121,13 @@ class CyberSnakeMode(GameMode):
         for _ in range(3):
             self.update_physics()
             self.render(ticks_ms())
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.3)
 
         # Impact! (handle_eat_apple increments score/apples and plays sound)
         self.handle_eat_apple()
         self.render(ticks_ms())
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(1.0)
 
         # [0:15 - 0:19] "Each packet you eat fills the green progress bar..."
@@ -142,7 +142,7 @@ class CyberSnakeMode(GameMode):
             self.handle_eat_apple() # Eats apple 2, then apple 3
             self.update_leds()
             self.render(ticks_ms())
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(1.0)
 
         # [0:19 - 0:24] "Fill the bar completely to level up..."
@@ -159,7 +159,7 @@ class CyberSnakeMode(GameMode):
             self.update_physics()
             self.snake.append(self.snake[-1]) # Maintain length
             self.render(ticks_ms())
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.08) # Blistering fast!
 
         # [0:24 - 0:29] "Don't crash into yourself..."
@@ -170,7 +170,7 @@ class CyberSnakeMode(GameMode):
         self.update_physics()
         self.snake.append(self.snake[-1])
         self.render(ticks_ms())
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(0.08)
 
         self.target_facing = 3 # Turn Left (Crash into body)

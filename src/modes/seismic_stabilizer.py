@@ -308,7 +308,7 @@ class SeismicStabilizer(GameMode):
                         self.core.matrix.draw_pixel(px, _PIVOT_Y, Palette.ORANGE,
                                                     brightness=0.4, show=False)
 
-        self.core.matrix.show_frame()
+
 
     def _send_segment(self, text):
         """Send a string to the satellite 14-segment display (cached)."""

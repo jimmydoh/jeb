@@ -134,7 +134,7 @@ class LunarSalvage(GameMode):
                     self.vel_x *= 0.8
 
                 self._render(tractor_active=tractor, frame_count=int(ticks_ms()/33))
-                self.core.matrix.show_frame()
+
                 await asyncio.sleep(0.03)
 
         # [0:00 - 0:05] "Welcome to Lunar Salvage. A physics-based test of momentum."
@@ -186,7 +186,7 @@ class LunarSalvage(GameMode):
         # [0:30 - 0:35] "Collect the salvage, but don't hit the walls too hard..."
         self.core.display.update_status("CAUTION", "WATCH YOUR SPEED")
         self.core.matrix.clear()
-        self.core.matrix.show_frame()
+
 
         # Wait for the audio track to finish naturally
         if hasattr(self.core.audio, 'wait_for_bus'):
@@ -334,7 +334,7 @@ class LunarSalvage(GameMode):
             if 0 <= vec_x < self.MATRIX_WIDTH and 0 <= vec_y < self.MATRIX_HEIGHT:
                 self.core.matrix.draw_pixel(vec_x, vec_y, Palette.GRAY, brightness=0.2)
 
-        self.core.matrix.show_frame()
+
 
     # ------------------------------------------------------------------
     # Game loop
@@ -397,7 +397,7 @@ class LunarSalvage(GameMode):
                 crashed = self._check_wall_collision()
                 if crashed:
                     self.core.matrix.fill(Palette.RED)
-                    self.core.matrix.show_frame()
+
                     asyncio.create_task(self.core.synth.play_sequence(tones.GAME_OVER))
                     await asyncio.sleep(0.3)
                     return await self.game_over()
@@ -408,7 +408,7 @@ class LunarSalvage(GameMode):
                     if spd > self._crash_speed:
                         # Came in too hot while trying to tractor – crash
                         self.core.matrix.fill(Palette.RED)
-                        self.core.matrix.show_frame()
+
                         asyncio.create_task(self.core.synth.play_sequence(tones.GAME_OVER))
                         await asyncio.sleep(0.3)
                         return await self.game_over()

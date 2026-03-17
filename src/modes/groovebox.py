@@ -192,7 +192,7 @@ class GrooveboxMode(BaseMode):
                     self.current_step = (self.current_step + 1) % NUM_STEPS
 
                 self._render()
-                self.core.matrix.show_frame()
+
                 self._send_segment_display()
                 await asyncio.sleep(0.01)
 
@@ -555,6 +555,6 @@ class GrooveboxMode(BaseMode):
 
             # --- Render the matrix ---
             self._render()
-            self.core.matrix.show_frame()
+
 
             await asyncio.sleep(0.016)  # ~60 fps

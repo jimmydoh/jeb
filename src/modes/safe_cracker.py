@@ -38,7 +38,7 @@ class SafeCracker(GameMode):
 
         self.core.display.update_status("SAFE CRACKER", "FIND THE COMBO")
         self._draw_safe_dial(dial_pos, False)
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(5.0)
 
         # [0:05 - 0:08] "Turn the dial right, then left..."
@@ -50,7 +50,7 @@ class SafeCracker(GameMode):
         for i in range(1, target + 1):
             dial_pos = i
             self._draw_safe_dial(dial_pos, False)
-            self.core.matrix.show_frame()
+
             self.core.display.update_status(f"DIAL POS: {dial_pos:02d}", "TARGET: ??")
 
             # Hot/Cold Pitch mechanic demo
@@ -71,10 +71,10 @@ class SafeCracker(GameMode):
         # Flash white to indicate lock
         for _ in range(3):
             self._draw_safe_dial(dial_pos, True)
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.1)
             self._draw_safe_dial(dial_pos, False)
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.1)
 
         self.core.buzzer.play_sequence(tones.SAVE_OK)
@@ -175,7 +175,7 @@ class SafeCracker(GameMode):
 
             # Render matrix and display
             self._draw_safe_dial(dial_pos, False)
-            self.core.matrix.show_frame()
+
 
             status_text = f"TARGET: {target:02d}" if self.core.is_debugging else "TARGET: ??"
             self.core.display.update_status(f"DIAL POS: {dial_pos:02d}", status_text)
@@ -188,7 +188,7 @@ class SafeCracker(GameMode):
                 # If they haven't moved the encoder since pausing on the target
                 if self.core.hid.encoder_position() == curr_p:
                     self._draw_safe_dial(dial_pos, True)
-                    self.core.matrix.show_frame()
+
                     self.core.buzzer.play_sequence(tones.SAVE_OK)
 
                     self.step += 1

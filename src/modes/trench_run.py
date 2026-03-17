@@ -73,7 +73,7 @@ class TrenchRunMode(GameMode):
         # [0:00 - 0:04] "Welcome to Trench Run..."
         self.core.display.update_status("TRENCH RUN", "HIGH SPEED SURVIVAL")
         self.render()
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(4.0)
 
         # [0:04 - 0:10] "Turn the dial to maneuver your ship..."
@@ -84,7 +84,7 @@ class TrenchRunMode(GameMode):
             for wall in self.walls:
                 wall['y'] += self.current_speed
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.016)
 
         # [0:10 - 0:15] "In third-person mode, your ship moves..."
@@ -96,14 +96,14 @@ class TrenchRunMode(GameMode):
             self.player_pos = pos
             for wall in self.walls: wall['y'] += self.current_speed
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.08)
 
         # Wait for wall to pass
         for _ in range(60):
             for wall in self.walls: wall['y'] += self.current_speed
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.016)
 
         # Move left to gap 3
@@ -111,7 +111,7 @@ class TrenchRunMode(GameMode):
             self.player_pos = pos
             for wall in self.walls: wall['y'] += self.current_speed
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.05)
 
         await asyncio.sleep(1.0)
@@ -138,27 +138,27 @@ class TrenchRunMode(GameMode):
         for _ in range(120):
             for wall in self.walls: wall['y'] += self.current_speed
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.016)
 
         for pos in range(8, 14):
             self.player_pos = pos
             for wall in self.walls: wall['y'] += self.current_speed
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.08)
 
         for _ in range(60):
             for wall in self.walls: wall['y'] += self.current_speed
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.016)
 
         for pos in range(13, 2, -1):
             self.player_pos = pos
             for wall in self.walls: wall['y'] += self.current_speed
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.05)
 
         # [0:25 - 0:31] "The trench will accelerate... Try to survive..."
@@ -173,7 +173,7 @@ class TrenchRunMode(GameMode):
         for _ in range(150):
             for wall in self.walls: wall['y'] += self.current_speed
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.016)
 
         # Clean up and return to the menu

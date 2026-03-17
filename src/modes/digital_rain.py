@@ -223,7 +223,7 @@ class DigitalRainMode(BaseMode):
                     self._step(dt_s)
                     self._render_frame()
                     self._push_to_matrix()
-                    self.core.matrix.show_frame()
+
 
                 await asyncio.sleep(0.01)
 
@@ -353,6 +353,6 @@ class DigitalRainMode(BaseMode):
                 self._step(dt_s)
                 self._render_frame()
                 self._push_to_matrix()
-                self.core.matrix.show_frame()
+
 
             await asyncio.sleep(0.01)

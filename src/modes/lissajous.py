@@ -168,7 +168,7 @@ class LissajousMode(BaseMode):
                     self._plot(fx, fy, r_dot, g_dot, b_dot)
 
                 self._render_to_matrix()
-                self.core.matrix.show_frame()
+
                 await asyncio.sleep(dt_s)
 
         try:

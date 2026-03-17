@@ -130,7 +130,7 @@ class IndustrialStartup(GameMode):
             for y in range(h // 4, h * 3 // 4):
                 self.core.matrix.draw_pixel(w - 1 - step, y, Palette.MAGENTA, show=False)
 
-            self.core.matrix.show_frame()
+
             self.core.buzzer.play_sequence(tones.UI_TICK)
             await asyncio.sleep(0.5)
 

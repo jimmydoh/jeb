@@ -661,7 +661,7 @@ class VanguardOverride(GameMode):
             if sx < _MATRIX_WIDTH - 1:
                 self.core.matrix.draw_pixel(sx + 1, sy, Palette.BLUE, show=False)
 
-        self.core.matrix.show_frame()
+
 
     # ------------------------------------------------------------------
     # Satellite helpers

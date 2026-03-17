@@ -86,7 +86,7 @@ class DataFlowMode(GameMode):
         # [0:00 - 0:06] "Welcome to Data Flow... green source to gold target."
         self.core.display.update_status("DATA FLOW", "ROUTE THE STREAM")
         self.render(ticks_ms())
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(6.0)
 
         # [0:06 - 0:11] "Turn the dial to smoothly move your cursor..."
@@ -98,7 +98,7 @@ class DataFlowMode(GameMode):
             self.cursor_pos += 1
             self.core.synth.play_note(1000.0, "UI_SELECT", duration=0.01)
             self.render(ticks_ms())
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.04)
 
         await asyncio.sleep(1.0)
@@ -115,7 +115,7 @@ class DataFlowMode(GameMode):
             self.cursor_pos += self.grid_w
             self.core.synth.play_note(800.0, "UI_SELECT", duration=0.015)
             self.render(ticks_ms())
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.3)
 
         await asyncio.sleep(1.0)
@@ -131,7 +131,7 @@ class DataFlowMode(GameMode):
         self.core.synth.play_note(600.0, "UI_SELECT", duration=0.05)
         self.calculate_beam() # Beam still shoots off screen because top mirror is wrong
         self.render(ticks_ms())
-        self.core.matrix.show_frame()
+
 
         await asyncio.sleep(4.0)
 
@@ -143,7 +143,7 @@ class DataFlowMode(GameMode):
             self.cursor_pos -= self.grid_w
             self.core.synth.play_note(1200.0, "UI_SELECT", duration=0.015)
             self.render(ticks_ms())
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.3)
 
         # [0:26 - 0:30] "Connect the stream to the target to secure the network!"
@@ -157,13 +157,13 @@ class DataFlowMode(GameMode):
 
         # Trigger the victory sequence visually
         self.render(ticks_ms())
-        self.core.matrix.show_frame()
+
         self.core.matrix.draw_pixel(self.target[0], self.target[1], Palette.WHITE)
         asyncio.create_task(self.core.synth.play_sequence(tones.NOTIFY_INBOX, patch="SUCCESS"))
 
         for pos in self.beam_path:
             self.core.matrix.draw_pixel(pos[0], pos[1], Palette.WHITE)
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.05)
 
         await asyncio.sleep(1.0)

@@ -200,7 +200,7 @@ class AbyssalPing(GameMode):
             self.core.display.update_status(f"F:{100.0 + (step*2):.1f} AZ:50.0", "SIG: ||------")
             self._send_segment("SIG  25%")
             self._render_sweep(step % self.core.matrix.width)
-            self.core.matrix.show_frame()
+
 
             self.core.synth.play_note(scan_pitch, Patches.SONAR, duration=0.15)
             await asyncio.sleep(0.5)
@@ -213,7 +213,7 @@ class AbyssalPing(GameMode):
             self.core.display.update_status(f"F:120.0 AZ:{50.0 + (step*3):.1f}", "SIG: |||-----")
             self._send_segment("SIG  35%")
             self._render_sweep(step % self.core.matrix.width)
-            self.core.matrix.show_frame()
+
 
             self.core.synth.play_note(500.0, Patches.SONAR, duration=0.15)
             # Lots of static
@@ -232,7 +232,7 @@ class AbyssalPing(GameMode):
             self.core.display.update_status(f"F:125.5 AZ:78.0", f"SIG: {'|' * sig_bars}{'-' * (8 - sig_bars)}")
             self._send_segment(f"SIG  {strength_pct}%")
             self._render_sweep(step % self.core.matrix.width)
-            self.core.matrix.show_frame()
+
 
             self.core.synth.play_note(600.0, Patches.SONAR, duration=0.15)
 
@@ -248,10 +248,10 @@ class AbyssalPing(GameMode):
         self._send_segment("SIG 100%")
         self.core.synth.play_note(1760.0, Patches.SONAR, duration=0.4)
         self._render_lock_flash()
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(_LOCK_FLASH_MS / 1000.0)
         self.core.matrix.clear()
-        self.core.matrix.show_frame()
+
 
         await asyncio.sleep(1.5)
         self.core.display.update_status("PHASE 2: PAYLOAD", "SET DEPTH CHARGE")
@@ -282,7 +282,7 @@ class AbyssalPing(GameMode):
 
         # BOOM!
         self._render_explosion()
-        self.core.matrix.show_frame()
+
         self.core.synth.stop_note(drone_note)
         self.core.synth.play_note(80.0, Patches.PUNCH, duration=0.5)
         await asyncio.sleep(0.1)
@@ -292,7 +292,7 @@ class AbyssalPing(GameMode):
         self._send_segment("BOOM    ")
         await asyncio.sleep(1.0)
         self.core.matrix.clear()
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(2.0)
 
         # [0:40 - 0:45] "Sink as many subs as you can before time runs out. Happy hunting."

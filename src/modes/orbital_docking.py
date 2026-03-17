@@ -427,7 +427,7 @@ class OrbitalDocking(GameMode):
             vy = max(0, min(_MATRIX_SIZE - 1, vy))
             self.core.matrix.draw_pixel(vx, vy, Palette.RED)
 
-        self.core.matrix.show_frame()
+
 
     def _render_telemetry(self, phase_hint=""):
         """Update Core OLED with current flight-computer data."""

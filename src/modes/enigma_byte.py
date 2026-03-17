@@ -251,7 +251,7 @@ class EnigmaByte(GameMode):
                 self.core.matrix.draw_pixel(i, _ROW_GUESS_BAR,
                                             Palette.RED, brightness=0.3)
 
-        self.core.matrix.show_frame()
+
 
     # ------------------------------------------------------------------
     # Notepad (keypad → OLED)
@@ -348,7 +348,7 @@ class EnigmaByte(GameMode):
             self.core.matrix.draw_pixel(c, 0, Palette.GREEN, brightness=0.9)
         for c in range(4, 6):
             self.core.matrix.draw_pixel(c, 0, Palette.YELLOW, brightness=0.9)
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(3.0)
 
         # Explain notepad

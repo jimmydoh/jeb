@@ -171,14 +171,14 @@ class DefconCommander(GameMode):
         self.core.display.update_header("STRATCOM LINK: ACTIVE")
         self.core.display.update_status("SYSTEM ORIENTATION", "STAND BY")
         self._render_matrix()
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(7.0)
 
         # [0:07 - 0:12] "When an Emergency Action Message arrives..."
         self.silo_states[0] = SILO_ORDERED
         self.core.display.update_status("EAM RECEIVED", "SILO 01 ORDERED")
         self._render_matrix()
-        self.core.matrix.show_frame()
+
 
         # Simulate EAM Teletype printing the code
         auth_code = "8824"
@@ -204,7 +204,7 @@ class DefconCommander(GameMode):
         self.silo_states[0] = SILO_AUTH
         self.core.display.update_status("AUTH OK", "KEY UNLOCKED")
         self._render_matrix()
-        self.core.matrix.show_frame()
+
         self.core.buzzer.play_sequence(tones.SUCCESS)
         await asyncio.sleep(3.5)
 
@@ -217,7 +217,7 @@ class DefconCommander(GameMode):
         for step in range(10):
             self._charge_timer = (step / 10.0) * _CHARGE_TIME
             self._render_matrix()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.4)
 
         self._charge_timer = _CHARGE_TIME
@@ -231,7 +231,7 @@ class DefconCommander(GameMode):
         for step in range(10):
             self._door_open_frac = (step / 10.0)
             self._render_matrix()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.2)
 
         self._door_open_frac = 1.0
@@ -242,7 +242,7 @@ class DefconCommander(GameMode):
         self.core.display.update_status("PREP FAULT!", "FLIP FLASHING SWITCH")
         self._fault_toggle_idx = 3 # Hardcode fault to toggle 3
         self._render_matrix()
-        self.core.matrix.show_frame()
+
         self.core.buzzer.play_sequence(tones.DANGER)
 
         # Flash the physical hardware toggle on the satellite
@@ -258,7 +258,7 @@ class DefconCommander(GameMode):
         self.silo_states[0] = SILO_READY
         self.core.display.update_status("FAULT CLEARED", "SILO READY")
         self._render_matrix()
-        self.core.matrix.show_frame()
+
         self.core.buzzer.play_sequence(tones.SUCCESS)
 
         try:
@@ -275,7 +275,7 @@ class DefconCommander(GameMode):
         # Simulate Launch!
         self.silo_states[0] = SILO_LAUNCHED
         self._render_matrix()
-        self.core.matrix.show_frame()
+
         self.core.buzzer.play_sequence(tones.LAUNCH)
         self.core.display.update_status("MISSILE AWAY", "DISARM PANEL")
 

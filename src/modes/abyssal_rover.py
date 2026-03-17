@@ -414,7 +414,7 @@ class AbyssalRover(GameMode):
 
         self.core.matrix.clear()
         self._render_flare()
-        self.core.matrix.show_frame()
+
 
         await asyncio.sleep(_FLARE_DURATION)
 
@@ -462,7 +462,7 @@ class AbyssalRover(GameMode):
         # [0:05 – 0:10] Show viewport concept
         self.core.display.update_status("VIEWPORT", "5x5 ILLUMINATED AREA")
         self._render_viewport()
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(5.0)
 
         # [0:10 – 0:15] Demonstrate direction change
@@ -471,7 +471,7 @@ class AbyssalRover(GameMode):
             self._facing = new_facing
             self._update_oled()
             self._render_viewport()
-            self.core.matrix.show_frame()
+
             self.core.synth.play_note(800.0, "UI_SELECT", duration=0.02)
             await asyncio.sleep(1.2)
 
@@ -482,7 +482,7 @@ class AbyssalRover(GameMode):
             if self._try_move(forward=True):
                 self.core.synth.play_note(600.0, "UI_SELECT", duration=0.03)
             self._render_viewport()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.8)
 
         # [0:20 – 0:25] Show sonar reading
@@ -497,7 +497,7 @@ class AbyssalRover(GameMode):
         self.core.display.update_status("FIRE FLARE", "B3 – 1 SEC REVEAL")
         await self._fire_flare()
         self._render_viewport()
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(3.0)
 
         # [0:30 – 0:35] Point at exit
@@ -560,7 +560,7 @@ class AbyssalRover(GameMode):
 
         # Initial render
         self._render_viewport()
-        self.core.matrix.show_frame()
+
         self._update_oled()
         self._update_segment()
 
@@ -590,7 +590,7 @@ class AbyssalRover(GameMode):
                     f"MOVES: {move_count}  TIME: {int(elapsed_s)}s"
                 )
                 self.core.matrix.show_icon("SUCCESS", anim_mode="PULSE", speed=3.0)
-                self.core.matrix.show_frame()
+
                 await asyncio.sleep(1.0)
                 return await self.victory()
 
@@ -612,7 +612,7 @@ class AbyssalRover(GameMode):
                 self._update_segment()
                 self.core.synth.play_note(800.0, "UI_SELECT", duration=0.02)
                 self._render_viewport()
-                self.core.matrix.show_frame()
+
 
             # 4. Movement control
             moved    = False
@@ -663,7 +663,7 @@ class AbyssalRover(GameMode):
                     await self._fire_flare()
                     # Re-render viewport after flare
                     self._render_viewport()
-                    self.core.matrix.show_frame()
+
                     self._update_oled()
                     self._update_segment()
                 else:
@@ -672,7 +672,7 @@ class AbyssalRover(GameMode):
             # 6. Render if rover moved
             elif moved:
                 self._render_viewport()
-                self.core.matrix.show_frame()
+
                 self._update_oled()
                 self._update_segment()
 

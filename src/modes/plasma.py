@@ -151,7 +151,7 @@ class PlasmaMode(BaseMode):
 
                     self._compute_frame()
                     self._render_to_matrix()
-                    self.core.matrix.show_frame()
+
 
                 await asyncio.sleep(0.01)
 

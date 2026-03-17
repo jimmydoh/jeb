@@ -47,7 +47,7 @@ class ZeroPlayerMode(GameMode):
                     p[0] = (p[0] + p[2] * speed_mult) % 16
                     p[1] = (p[1] + p[3] * speed_mult) % 16
                     self.core.matrix.draw_pixel(int(p[0]), int(p[1]), color, show=False)
-                self.core.matrix.show_frame()
+
                 await asyncio.sleep(0.05)
 
         # [0:00 - 0:04] "Welcome to the Zero Player collection."

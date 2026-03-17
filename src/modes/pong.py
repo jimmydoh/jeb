@@ -103,7 +103,7 @@ class Pong(GameMode):
         for y_pos in [7, 6, 5, 4, 3, 4, 5, 6, 7, 8, 9, 10, 11, 10, 9, 8, 7]:
             self.player_bat_y = y_pos
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.12)
 
         await asyncio.sleep(1.0)
@@ -123,7 +123,7 @@ class Pong(GameMode):
             self.ball_x += self.ball_dx
             self.ball_y += self.ball_dy
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.04)
 
         # Impact!
@@ -140,7 +140,7 @@ class Pong(GameMode):
             self.ball_x += self.ball_dx
             self.ball_y += self.ball_dy
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.04)
 
         # Play a crunchy impact sound using the buzzer
@@ -157,10 +157,10 @@ class Pong(GameMode):
         for _ in range(3):
             for y in range(self.MATRIX_HEIGHT):
                 self.core.matrix.draw_pixel(15, y, Palette.RED, show=False)
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.1)
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.1)
 
         await asyncio.sleep(1.0)
@@ -185,7 +185,7 @@ class Pong(GameMode):
             self.player_bat_y = 7 + int(4 * math.sin(step * 0.4))
             self.cpu_bat_y = 7 + int(4 * math.cos(step * 0.4))
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.05)
 
         # Clean up and return to the menu
@@ -508,7 +508,7 @@ class Pong(GameMode):
 
                     active_particles = True
 
-            self.core.matrix.show_frame()
+
 
             # Exit early if all particles are dead or off-screen
             if not active_particles:

@@ -157,7 +157,7 @@ class OrbitalStrike(GameMode):
         # [0:06 - 0:12] "Phase one: Target Grid. Type the requested authorization code..."
         self.core.display.update_status("PHASE 1: GRID", "USE NUMBER PAD")
         self.core.matrix.clear()
-        self.core.matrix.show_frame()
+
         self._send_segment("        ")
 
         # Simulate typing code "8492"
@@ -204,7 +204,7 @@ class OrbitalStrike(GameMode):
         for _ in range(10):
             self._crosshair_x += 1
             self._render_targeting()
-            self.core.matrix.show_frame()
+
             self.core.buzzer.play_sequence([(660, 0.03)])
             await asyncio.sleep(0.2)
 
@@ -212,7 +212,7 @@ class OrbitalStrike(GameMode):
         for _ in range(10):
             self._crosshair_y += 1
             self._render_targeting()
-            self.core.matrix.show_frame()
+
             self.core.buzzer.play_sequence([(660, 0.03)])
             await asyncio.sleep(0.2)
 
@@ -221,7 +221,7 @@ class OrbitalStrike(GameMode):
 
         # [0:28 - 0:34] "Phase four: Execute. Engage the Master Arm and hit the big red button..."
         self._render_locked()
-        self.core.matrix.show_frame()
+
         self.core.display.update_status("PHASE 4: EXECUTE", "ARM + PRESS BUTTON")
         self._send_segment("LOCKED  ")
         self.core.buzzer.play_sequence(tones.ALARM)

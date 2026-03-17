@@ -93,7 +93,7 @@ class AstroBreakerMode(GameMode):
         # [0:00 - 0:04] "Welcome to Astro Breaker..."
         self.core.display.update_status("ASTRO BREAKER", "DEFEND THE SECTOR")
         self.render()
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(4.0)
 
         # [0:04 - 0:09] "Turn the dial to maneuver your shield..."
@@ -103,7 +103,7 @@ class AstroBreakerMode(GameMode):
         for x_pos in [6, 5, 4, 3, 4, 5, 6, 7, 8, 9, 8, 7, 6]:
             self.paddle_x = x_pos
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.15)
 
         await asyncio.sleep(1.0)
@@ -118,7 +118,7 @@ class AstroBreakerMode(GameMode):
             self.ball_x += self.ball_dx
             self.ball_y += self.ball_dy
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.05)
 
         # Ball hits the NORMAL brick at (8,4)
@@ -130,7 +130,7 @@ class AstroBreakerMode(GameMode):
             self.ball_x += self.ball_dx
             self.ball_y += self.ball_dy
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.05)
 
         self.ball_y = -10.0 # Hide ball for the rest of the demo
@@ -143,11 +143,11 @@ class AstroBreakerMode(GameMode):
         for _ in range(4):
             self.bricks[(7, 2)]['type'] = 'NORMAL' # Temporarily change type to flash color cyan
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.3)
             self.bricks[(7, 2)]['type'] = 'CORE'   # Back to protected red
             self.render()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.3)
 
         await asyncio.sleep(0.2)

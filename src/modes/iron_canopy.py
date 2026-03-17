@@ -193,7 +193,7 @@ class IronCanopy(GameMode):
             self._sweep_angle = (self._sweep_angle + self._sweep_speed_normal * 0.2) % 360.0
             self._update_bogeys(0.2, power_mode)
             self._render_radar(power_mode)
-            self.core.matrix.show_frame()
+
             self._update_segment_display(power_mode)
             await asyncio.sleep(0.2)
 
@@ -203,7 +203,7 @@ class IronCanopy(GameMode):
         for _ in range(4):
             self._sweep_angle = (self._sweep_angle + self._sweep_speed_normal * 1.0) % 360.0
             self._render_radar(power_mode)
-            self.core.matrix.show_frame()
+
             self._render_threat_board(power_mode)
             await asyncio.sleep(1.0)
 
@@ -235,7 +235,7 @@ class IronCanopy(GameMode):
             self._update_bogeys(0.1, power_mode)
             self._update_interceptors(0.1)
             self._render_radar(power_mode)
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.1)
 
         # Target destroyed!
@@ -263,7 +263,7 @@ class IronCanopy(GameMode):
             except: pass
 
             self._render_radar(power_mode)
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.2)
 
         self.tube_states[0] = TUBE_READY
@@ -281,7 +281,7 @@ class IronCanopy(GameMode):
         power_mode = POWER_ACTIVE_RADAR
         self._update_segment_display(power_mode)
         self._render_radar(power_mode)
-        self.core.matrix.show_frame()
+
         self.core.buzzer.play_sequence(tones.WARNING)
         await asyncio.sleep(3.0)
 
@@ -294,7 +294,7 @@ class IronCanopy(GameMode):
         self.base_health -= _CIWS_HEALTH_DRAIN # Drains 25% health
         self._update_segment_display(power_mode)
         self._render_radar(power_mode)
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(2.0)
 
         # [0:32 - 0:36] "Manage your power routing and defend the canopy!"

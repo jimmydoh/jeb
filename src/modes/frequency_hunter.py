@@ -110,7 +110,7 @@ class FrequencyHunterMode(GameMode):
             h = 8 + int(4 * math.sin(ticks_ms() / 200))
             for x in range(16):
                 self.core.matrix.draw_pixel(x, h, Palette.CYAN, show=False)
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.5)
 
         # [0:06 - 0:10] "Turn the dial to sweep across the radio spectrum."
@@ -154,7 +154,7 @@ class FrequencyHunterMode(GameMode):
 
                 self.core.matrix.draw_pixel(x, y, color, show=False)
 
-            self.core.matrix.show_frame()
+
 
             # 2. Audio Feedback: Pitch gets closer to a target pitch (e.g., 880Hz)
             # You might use your SynthManager here if you have one, or just the buzzer
@@ -174,7 +174,7 @@ class FrequencyHunterMode(GameMode):
             for x in range(16):
                 y = 8 + int(7 * math.sin(x * 0.8 + (ticks_ms() / 100)))
                 self.core.matrix.draw_pixel(x, max(0, min(15, y)), Palette.GREEN, show=False)
-            self.core.matrix.show_frame()
+
 
             if _ % 10 == 0:
                 self.core.buzzer.play_sequence([(880, 0.1)]) # Pure, steady target tone

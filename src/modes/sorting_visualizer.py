@@ -94,7 +94,7 @@ class SortingVisualizerMode(BaseMode):
             for y in range(16 - val, 16):
                 self.core.matrix.draw_pixel(x, y, color)
 
-        self.core.matrix.show_frame()
+
 
     def _play_tone(self, val, duration=0.05):
         """Play a musical note mapped to the column height (1-16)."""
@@ -276,7 +276,7 @@ class SortingVisualizerMode(BaseMode):
             for x in range(16):
                 if grid[y][x]:
                     self.core.matrix.draw_pixel(x, y, Palette.CYAN)
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(0.5)
 
         # 3. Animate gravity pulling the beads down
@@ -312,7 +312,7 @@ class SortingVisualizerMode(BaseMode):
                                 self.core.matrix.draw_pixel(px, py, Palette.WHITE)
                             else:
                                 self.core.matrix.draw_pixel(px, py, Palette.CYAN)
-                self.core.matrix.show_frame()
+
 
                 if settled_this_frame:
                     # Play a bright tone mapped to the highest column that settled

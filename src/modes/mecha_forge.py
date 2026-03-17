@@ -284,7 +284,7 @@ class MechaForge(BaseMode):
         def _refresh():
             self.core.matrix.clear()
             self._draw_robot()
-            self.core.matrix.show_frame()
+
 
         # [0:00 - 0:05] "Welcome to Mecha Forge..."
         self.core.display.update_status("MECHA FORGE", "ROBOT BUILDER")

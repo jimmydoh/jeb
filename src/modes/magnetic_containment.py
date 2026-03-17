@@ -393,7 +393,7 @@ class MagneticContainment(GameMode):
             if 0 <= nx < _MATRIX_W and 0 <= ny < _MATRIX_H:
                 self.core.matrix.draw_pixel(nx, ny, ball_color, brightness=0.25)
 
-        self.core.matrix.show_frame()
+
 
     # ------------------------------------------------------------------
     # Tutorial

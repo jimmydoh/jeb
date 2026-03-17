@@ -329,7 +329,7 @@ class FluxScavenger(GameMode):
 
         def _refresh(rewinding=False):
             self._render(level, toggles)
-            self.core.matrix.show_frame()
+
             self._update_oled(0, grav_mode, toggles, rewinding)
 
         # --- [0:00 - 0:05] Welcome ---

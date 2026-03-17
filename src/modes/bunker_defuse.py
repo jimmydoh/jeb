@@ -288,7 +288,7 @@ class BunkerDefuse(GameMode):
         self.core.matrix.clear()
         self._render_module_visual()
         self._render_timer_bar()
-        self.core.matrix.show_frame()
+
 
     def _render_module_visual(self):
         """Render a module-specific visual hint in rows 0-12."""
@@ -801,7 +801,7 @@ class BunkerDefuse(GameMode):
         self.core.matrix.fill(Palette.GREEN, show=True)
         await asyncio.sleep(0.3)
         self.core.matrix.clear()
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(1.0)
 
         # Light up a green LED on the satellite for each solved module
@@ -822,7 +822,7 @@ class BunkerDefuse(GameMode):
         self.core.matrix.fill(Palette.RED, show=True)
         await asyncio.sleep(0.5)
         self.core.matrix.clear()
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(0.8)
 
     async def _explode(self):
@@ -852,7 +852,7 @@ class BunkerDefuse(GameMode):
         self.core.matrix.fill(Palette.RED,    show=True)
         await asyncio.sleep(0.2)
         self.core.matrix.clear()
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(2.0)
 
         return await self.game_over()

@@ -243,7 +243,7 @@ class VectorFlowMode(BaseMode):
                             p[0], p[1], p[2] = nx, ny, age
 
                     self._render_to_matrix()
-                    self.core.matrix.show_frame()
+
 
                 await asyncio.sleep(0.01)
 
@@ -399,6 +399,6 @@ class VectorFlowMode(BaseMode):
                         p[0], p[1], p[2] = nx, ny, age
 
                 self._render_to_matrix()
-                self.core.matrix.show_frame()
+
 
             await asyncio.sleep(0.01)

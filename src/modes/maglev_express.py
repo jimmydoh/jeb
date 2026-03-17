@@ -235,7 +235,7 @@ class MaglevExpress(GameMode):
         matrix_animations.animate_vanishing_point(
             self.core.matrix, self._arch_offset, speed_fraction=0.0
         )
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(5.0)
 
         # [0:05 – 0:11]  Demonstrate key + guarded toggle startup
@@ -251,7 +251,7 @@ class MaglevExpress(GameMode):
             matrix_animations.animate_vanishing_point(
                 self.core.matrix, self._arch_offset, speed_fraction=self.velocity / MAX_VELOCITY
             )
-            self.core.matrix.show_frame()
+
             self._update_segment_display()
             await asyncio.sleep(0.2)
 
@@ -270,7 +270,7 @@ class MaglevExpress(GameMode):
                 speed_fraction=self.velocity / MAX_VELOCITY,
                 fault_flash=self._fault_flash
             )
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.2)
 
         # Fault resolved
@@ -296,7 +296,7 @@ class MaglevExpress(GameMode):
             matrix_animations.animate_vanishing_point(
                 self.core.matrix, self._arch_offset, speed_fraction=self.velocity / MAX_VELOCITY
             )
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.2)
 
         await tute_audio
@@ -634,7 +634,7 @@ class MaglevExpress(GameMode):
             self.core.display.update_status("SYSTEM LOCK", "RESET KEY & GUARD TO OFF")
             while self._key_is_on() or self._guard_is_up():
                 self._render_windshield()
-                self.core.matrix.show_frame()
+
                 await asyncio.sleep(0.1)
                 if getattr(self, "_exit_requested", False): return "ABORT"
             self.core.buzzer.play_sequence(tones.UI_TICK)
@@ -644,7 +644,7 @@ class MaglevExpress(GameMode):
         # Phase 1: Wait for Key Switch
         while not self._key_is_on():
             self._render_windshield()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.1)
             if getattr(self, "_exit_requested", False):
                 return "ABORT"
@@ -655,7 +655,7 @@ class MaglevExpress(GameMode):
         # Phase 2: Wait for Guarded Toggle
         while not self._guard_is_up():
             self._render_windshield()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.1)
             if getattr(self, "_exit_requested", False):
                 return "ABORT"
@@ -684,7 +684,7 @@ class MaglevExpress(GameMode):
             self.velocity = max(0.0, self.velocity - EBRAKE_RATE * 0.1)
             self._arch_offset = (self._arch_offset + self.velocity * ARCH_SPEED_SCALE * 0.1) % 1.0
             self._render_windshield()
-            self.core.matrix.show_frame()
+
             self._update_segment_display()
             await asyncio.sleep(0.1)
 
@@ -733,7 +733,7 @@ class MaglevExpress(GameMode):
             self.target_velocity = 0.0
             self._arch_offset = (self._arch_offset + self.velocity * ARCH_SPEED_SCALE * 0.1) % 1.0
             self._render_windshield()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.1)
 
         self.core.display.update_status("STOPPED IN SIDING", "HOLD MT UP → REVERSE")
@@ -758,7 +758,7 @@ class MaglevExpress(GameMode):
             reverse_dist += self.velocity * VELOCITY_TO_METRES * 0.1
             self._arch_offset = (self._arch_offset - self.velocity * ARCH_SPEED_SCALE * 0.1) % 1.0
             self._render_windshield()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.1)
 
         self.velocity = 0.0
@@ -898,7 +898,7 @@ class MaglevExpress(GameMode):
 
                 # -- Render --
                 self._render_windshield()
-                self.core.matrix.show_frame()
+
                 self._update_oled_running(wp, warning_text)
                 self._update_segment_display()
 

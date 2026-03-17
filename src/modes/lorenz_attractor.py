@@ -212,7 +212,7 @@ class LorenzAttractor(BaseMode):
                         self._plot(fx, fy, r, g, b)
 
                     self._render_to_matrix()
-                    self.core.matrix.show_frame()
+
 
                 await asyncio.sleep(0.01)
 
@@ -360,6 +360,6 @@ class LorenzAttractor(BaseMode):
                     self._plot(fx, fy, r, g, b)
 
                 self._render_to_matrix()
-                self.core.matrix.show_frame()
+
 
             await asyncio.sleep(0.01)

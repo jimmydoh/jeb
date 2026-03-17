@@ -132,7 +132,7 @@ class JEBris(GameMode):
         self.piece_y = 2
         self._dirty = True
         self.draw()
-        self.core.matrix.show_frame()
+
 
         await asyncio.sleep(2.0)
 
@@ -140,12 +140,12 @@ class JEBris(GameMode):
         for _ in range(2):
             self.move_piece(-1, 0)
             self.draw()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.5)
 
         self.move_piece(1, 0)
         self.draw()
-        self.core.matrix.show_frame()
+
 
         # [0:04 - 0:07] "Press button one to spin..."
         self.core.display.update_status("JEBRIS TUTORIAL", "PRESS B1 TO ROTATE")
@@ -155,7 +155,7 @@ class JEBris(GameMode):
         for _ in range(2):
             self.rotate_piece()
             self.draw()
-            self.core.matrix.show_frame()
+
             self.core.buzzer.play_sequence(tones.UI_TICK)
             await asyncio.sleep(0.5)
 
@@ -167,13 +167,13 @@ class JEBris(GameMode):
         # Simulate the Fast Drop
         while self.move_piece(0, 1):
             self.draw()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.02)
 
         self.lock_piece()
         self.core.buzzer.play_sequence(tones.BEEP)
         self.draw()
-        self.core.matrix.show_frame()
+
 
         # [0:11 - 0:16] "Complete solid lines across the matrix..."
         self.core.display.update_status("JEBRIS TUTORIAL", "CLEAR LINES TO SCORE")
@@ -191,13 +191,13 @@ class JEBris(GameMode):
         self.piece_y = self.playfield_height - 6
         self.rotate_piece() # Rotate to vertical
         self.draw()
-        self.core.matrix.show_frame()
+
         await asyncio.sleep(1.0)
 
         # Drop it into the hole
         while self.move_piece(0, 1):
             self.draw()
-            self.core.matrix.show_frame()
+
             await asyncio.sleep(0.05)
 
         self.lock_piece()
@@ -205,13 +205,13 @@ class JEBris(GameMode):
         # Trigger the native clear animation manually
         self.start_clear_lines()
         self.draw()
-        self.core.matrix.show_frame()
+
 
         # Wait for the clear animation duration, then finish it
         await asyncio.sleep(0.5)
         self.finish_clear_lines()
         self.draw()
-        self.core.matrix.show_frame()
+
 
         # [0:16 - 0:20] "But be careful, if your stack reaches the top..."
         self.core.display.update_status("JEBRIS TUTORIAL", "DON'T TOP OUT!")

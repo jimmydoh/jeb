@@ -182,7 +182,7 @@ class RhythmMode(GameMode):
 
             # Render frame
             self._render(current_time)
-            self.core.matrix.show_frame()
+
 
             # End of audio track
             if current_time > 34000:
