@@ -37,6 +37,7 @@ any protocol changes.
 """
 
 import asyncio
+import time
 
 try:
     wait_for_ms = asyncio.wait_for_ms
@@ -139,6 +140,8 @@ class FileTransferSender:
         chunk_size=DEFAULT_CHUNK_SIZE,
         timeout=DEFAULT_TIMEOUT,
         max_retries=DEFAULT_MAX_RETRIES,
+        ack_event=None,
+        ack_status_callback=None,
     ):
         """Initialise the sender.
 
@@ -155,6 +158,8 @@ class FileTransferSender:
         self.chunk_size = chunk_size
         self.timeout = timeout
         self.max_retries = max_retries
+        self.ack_event = ack_event
+        self.ack_status_callback = ack_status_callback
 
     async def send_file(self, destination, filepath, remote_filename=None):
         """Transfer *filepath* to *destination*.
@@ -220,6 +225,21 @@ class FileTransferSender:
         Returns:
             bool: ``True`` if ACK received, ``False`` on NACK or timeout.
         """
+        # --- NEW EVENT-DRIVEN LOGIC ---
+        if self.ack_event is not None:
+            try:
+                self.ack_event.clear()
+                # Use wait_for_ms to match CircuitPython compatibility
+                await wait_for_ms(self.ack_event.wait(), 1000 * self.timeout)
+
+                # Check the boolean status provided by the manager
+                if self.ack_status_callback:
+                    return self.ack_status_callback()
+                return False
+            except asyncio.TimeoutError:
+                return False
+
+        # --- OLD DIRECT-READ LOGIC (Fallback) ---
         try:
             msg = await wait_for_ms(self.transport.receive(), 1000 * self.timeout)
             return msg is not None and msg.command == CMD_ACK
@@ -439,11 +459,11 @@ class FileTransferReceiver:
         environments that lack nanosecond resolution.
         """
         try:
-            import time
-            return time.monotonic_ns() // 1_000_000
+            _time_func = time.monotonic_ns
+            def get_monotonic_ms(): return _time_func() // 1_000_000
         except AttributeError:
-            import time
-            return int(time.monotonic() * 1000)
+            _time_func = time.monotonic
+            def get_monotonic_ms(): return int(_time_func() * 1000)
 
     def _send_ack(self, destination):
         self.transport.send(Message(self.source_id, destination, CMD_ACK, ""))
