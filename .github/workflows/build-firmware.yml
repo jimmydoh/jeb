@@ -51,7 +51,7 @@ jobs:
           # Bulletproof replacements (target the numbers directly)
           sed -i 's/1536/2556/g' jeb_master/mpconfigboard.mk
           sed -i 's/CIRCUITPY_WEB_WORKFLOW = 1/CIRCUITPY_WEB_WORKFLOW = 0/g' jeb_master/mpconfigboard.mk
-          sed -i 's/1532K/2552K/g' jeb_master/link.ld
+          sed -i 's/1532k/2552k/g' jeb_master/link.ld
 
           # VERIFICATION: Print the modified lines to the GitHub log so we know it worked
           echo "=== VERIFYING BOARD MODIFICATIONS ==="
