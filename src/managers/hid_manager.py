@@ -680,7 +680,11 @@ class HIDManager:
 
     #region --- Matrix Keypad Handling ---
     @property
-    def keypad_values(self, index=0):
+    def keypad_values(self):
+        """Returns the current queued key values for the first matrix keypad (index 0) as a string."""
+        return self.get_keypad_values(0)
+
+    def get_keypad_values(self, index=0):
         """Returns the current queued key values for a matrix keypad as a string."""
         if 0 <= index < len(self.matrix_keypads_queues):
             value = "".join(self.matrix_keypads_queues[index])
