@@ -25,22 +25,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download SD Assets Artifact
+      - name: Download mpy-files Artifact
         uses: actions/download-artifact@v4
         with:
-          name: jeb-sd-assets # Must match the exact name from your child workflow
-          path: ./sd-assets
+          name: mpy-files
+          path: ./mpy-files
 
-      - name: Download Firmware Artifact
+      - name: Download manifest Artifact
         uses: actions/download-artifact@v4
         with:
-          name: jeb-master-firmware # Must match the exact name from your child workflow
-          path: ./firmware
+          name: manifest
+          path: ./manifest
 
-      - name: Package SD Assets into a ZIP
-        run: |
-          cd sd-assets
-          zip -r ../jeb-ota-payload.zip ./*
+      - name: Download jeb-master-firmware Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jeb-master-firmware
+          path: ./jeb-master-firmware
 
       - name: Upload to GitHub Release Page
         env:
@@ -48,6 +49,7 @@ jobs:
         run: |
           # Use the pre-installed GitHub CLI to attach the files to the release tag
           gh release upload ${{ github.event.release.tag_name }} \
-            ./firmware/firmware.uf2 \
-            ./jeb-ota-payload.zip \
+            ./jeb-master-firmware/jeb-master-firmware.zip \
+            ./mpy-files/mpy-files.zip \
+            ./manifest/manifest.zip \
             --clobber
