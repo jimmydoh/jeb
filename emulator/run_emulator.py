@@ -1,8 +1,14 @@
 import sys
 import os
-import msvcrt
 import asyncio
 import importlib.util
+
+if sys.platform == 'win32':
+    import msvcrt
+else:
+    import select
+    import tty
+    import termios
 
 # ==========================================
 # PATH & SD CARD INJECTION
@@ -738,33 +744,62 @@ async def main():
                 self._print(f"\nWEB>> {line}")
                 return line
 
-            # 2. Check Windows physical keyboard non-blockingly
-            while msvcrt.kbhit():
-                char_bytes = msvcrt.getch()
+            # 2. Check physical keyboard non-blockingly
+            if sys.platform == 'win32':
+                while msvcrt.kbhit():
+                    char_bytes = msvcrt.getch()
 
-                # Ignore special keys (arrows, function keys) which return 2 bytes
-                if char_bytes in (b'\x00', b'\xe0'):
-                    msvcrt.getch() # clear the second byte
-                    continue
+                    # Ignore special keys (arrows, function keys) which return 2 bytes
+                    if char_bytes in (b'\x00', b'\xe0'):
+                        msvcrt.getch() # clear the second byte
+                        continue
 
-                char = char_bytes.decode('utf-8', errors='ignore')
+                    char = char_bytes.decode('utf-8', errors='ignore')
 
-                if char in ('\n', '\r'):
-                    self._print("") # Line break for visual clarity
-                    if serial_line:
-                        # self._print(f"SYS>> {serial_line}") # Optional: echo like hardware
-                        line = serial_line
-                        serial_line = ""
-                        return line
-                elif char == '\x08': # Backspace
-                    if serial_line:
-                        serial_line = serial_line[:-1]
-                        sys.stdout.write('\b \b')
+                    if char in ('\n', '\r'):
+                        self._print("") # Line break for visual clarity
+                        if serial_line:
+                            # self._print(f"SYS>> {serial_line}") # Optional: echo like hardware
+                            line = serial_line
+                            serial_line = ""
+                            return line
+                    elif char == '\x08': # Backspace
+                        if serial_line:
+                            serial_line = serial_line[:-1]
+                            sys.stdout.write('\b \b')
+                            sys.stdout.flush()
+                    else:
+                        serial_line += char
+                        sys.stdout.write(char)
                         sys.stdout.flush()
-                else:
-                    serial_line += char
-                    sys.stdout.write(char)
-                    sys.stdout.flush()
+            else:
+                fd = sys.stdin.fileno()
+                old_settings = termios.tcgetattr(fd)
+                try:
+                    tty.setraw(fd)
+                    rlist, _, _ = select.select([sys.stdin], [], [], 0)
+                    while rlist:
+                        char = sys.stdin.read(1)
+                        if char in ('\n', '\r'):
+                            self._print("")
+                            if serial_line:
+                                line = serial_line
+                                serial_line = ""
+                                return line
+                        elif char in ('\x7f', '\x08'):  # Backspace / DEL
+                            if serial_line:
+                                serial_line = serial_line[:-1]
+                                sys.stdout.write('\b \b')
+                                sys.stdout.flush()
+                        elif char == '\x03':  # Ctrl-C
+                            raise KeyboardInterrupt
+                        else:
+                            serial_line += char
+                            sys.stdout.write(char)
+                            sys.stdout.flush()
+                        rlist, _, _ = select.select([sys.stdin], [], [], 0)
+                finally:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
             await asyncio.sleep(0.05)
 

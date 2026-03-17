@@ -176,7 +176,7 @@ class AstroBreakerMode(GameMode):
         self.core.display.update_status("ASTRO BREAKER", "GOOD LUCK, COMMANDER")
 
         # Wait for the audio track to finish naturally
-        await tute_audio
+        await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
 
         # Clean up and return to the menu
         await self.core.clean_slate()

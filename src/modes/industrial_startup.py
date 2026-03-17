@@ -142,7 +142,7 @@ class IndustrialStartup(GameMode):
         self.core.matrix.show_icon("WARNING", anim_mode="PULSE", speed=1.0)
 
         # Wait for the audio track to finish naturally
-        await tute_audio
+        await self.core.audio.wait_for_bus(self.core.audio.CH_VOICE)
 
         # Clean up and return to the menu
         self.sat.send("DSP", "        ") # Clear display

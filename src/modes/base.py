@@ -71,7 +71,7 @@ class BaseMode:
         try:
             await self.enter()
 
-            if getattr(self, "variant", None) == "TUTORIAL" and hasattr(self, "run_tutorial"):
+            if getattr(self, "variant", None) == "TUTORIAL" and self.__class__.run_tutorial is not BaseMode.run_tutorial:
                 JEBLogger.info("MODE", f"Running tutorial variant of mode: {self.name}")
                 run_task = asyncio.create_task(self.run_tutorial())
             else:

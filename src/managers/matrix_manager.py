@@ -380,12 +380,11 @@ class MatrixManager(BasePixelManager):
 
         Args:
             frame: bytearray or bytes of length width*height, palette indices.
-                   If frame is None, do nothing maybe?
+                   If frame is None, logs a warning and returns without rendering.
             clear: If True, clears all animation slots first. Default True.
         """
         if frame is None:
-            # The render loop should handle the animation step
-            # Not sure why all the modes are still calling show_frame() at all
+            JEBLogger.warning("MTRX", "show_frame() called with frame=None — no frame rendered.")
             return
 
         if clear:

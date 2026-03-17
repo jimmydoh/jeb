@@ -249,14 +249,12 @@ class CoreManager:
         self.loaded_modes = {} # Cache for instantiated mode classes
         self.mode = "DASHBOARD" # Start in main menu mode
 
-        # --- NEW: Console Injection Tracking ---
+        # --- Console Injection Tracking ---
         self.active_mode = None
         self.console_override_mode = None
 
         # Optional variant flag set by ConsoleManager to request tutorial instead of run()
         self._pending_mode_variant = None
-        # Reference to the currently running mode instance (set during execution, None otherwise)
-        self.active_mode = None
 
         # Fail-safe mode tracking to prevent infinite error loops
         self.dashboard_failure_count = 0
