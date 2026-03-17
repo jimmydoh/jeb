@@ -277,7 +277,7 @@ class UARTTransport(BaseTransport):
     """
     # Ring buffer constants
     RING_BUFFER_SIZE = 4096  # Fixed 4KB ring buffer
-    MAX_PACKET_SIZE = 256    # Maximum packet size for scanning and scratchpad
+    MAX_PACKET_SIZE = 512    # Maximum packet size for scanning and scratchpad
     BATCH_LIMIT = 32         # Max messages to process per loop iteration
     MAX_TX_CHUNK = 256        # Max bytes to transmit per iteration to prevent event loop blocking
 

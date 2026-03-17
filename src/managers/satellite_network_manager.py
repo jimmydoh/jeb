@@ -16,6 +16,7 @@ from transport import Message
 from transport.protocol import (
     CMD_ACK,
     CMD_MODE,
+    CMD_NACK,
     CMD_SET_OFFSET,
     CMD_VERSION_CHECK,
     CMD_UPDATE_START,
@@ -103,7 +104,12 @@ class SatelliteNetworkManager:
             "PING": self._handle_ping_command,
             CMD_MODE: self._handle_mode_command,
             CMD_VERSION_CHECK: self._handle_version_check_command,
+            CMD_ACK: self._handle_ack_command,
+            CMD_NACK: self._handle_nack_command,
         }
+
+        self.transfer_ack_event = asyncio.Event()
+        self.last_ack_status = False
 
     def set_debug_mode(self, debug_mode):
         """Enable or disable debug mode for message logging."""
@@ -502,6 +508,14 @@ class SatelliteNetworkManager:
             self._update_in_progress = sid
             self._spawn_update_task(self._initiate_satellite_update, sid, sat_type_id)
 
+    async def _handle_ack_command(self, sid, val):
+        self.last_ack_status = True
+        self.transfer_ack_event.set()
+
+    async def _handle_nack_command(self, sid, val):
+        self.last_ack_status = False
+        self.transfer_ack_event.set()
+
     def _get_satellite_expected_version(self, sat_type_id):
         """Return the expected firmware version for a satellite type.
 
@@ -562,7 +576,12 @@ class SatelliteNetworkManager:
             self.transport.send(Message("CORE", sid, CMD_UPDATE_START, f"{file_count},{total_bytes}"))
 
             from transport.file_transfer import FileTransferSender
-            sender = FileTransferSender(self.transport, "CORE")
+            sender = FileTransferSender(
+                self.transport,
+                "CORE",
+                ack_event=self.transfer_ack_event,
+                ack_status_callback=lambda: self.last_ack_status
+            )
 
             # Send manifest.json first so the satellite can parse it when applying
             success = await sender.send_file(sid, manifest_path, remote_filename="manifest.json")
