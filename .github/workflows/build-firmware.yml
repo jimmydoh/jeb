@@ -1,17 +1,8 @@
 name: Build Custom JEB Firmware
 
 on:
-  push:
-    branches: [ "main" ]
-    paths:
-      - 'src/core/**'
-      - 'src/dummies/**'
-      - 'src/managers/**'
-      - 'src/satellites/**'
-      - 'src/transport/**'
-      - 'src/utilities/**'
-      - 'requirements-circup.txt'
-  workflow_dispatch: # Allows manual triggering
+  workflow_call:
+  workflow_dispatch:
 
 jobs:
   build-uf2:
@@ -36,7 +27,7 @@ jobs:
 
       - name: Clone CircuitPython
         run: |
-          git clone -b main https://github.com/adafruit/circuitpython.git /tmp/circuitpython
+          git clone -b 10.1.3 https://github.com/adafruit/circuitpython.git /tmp/circuitpython
           cd /tmp/circuitpython
           make fetch-all-submodules
           pip install -r requirements-dev.txt
@@ -57,17 +48,31 @@ jobs:
           # Clone the Pico 2 W board
           cp -r raspberry_pi_pico2_w jeb_master
 
-          # Patch the Makefile for 2.5MB Firmware and strip Web Workflow
-          sed -i "s/-DCIRCUITPY_FIRMWARE_SIZE='(1536 \* 1024)'/-DCIRCUITPY_FIRMWARE_SIZE='(2556 \* 1024)'/g" jeb_master/mpconfigboard.mk
-          sed -i "s/CIRCUITPY_WEB_WORKFLOW = 1/CIRCUITPY_WEB_WORKFLOW = 0/g" jeb_master/mpconfigboard.mk
+          # Bulletproof replacements (target the numbers directly)
+          sed -i 's/1536/2556/g' jeb_master/mpconfigboard.mk
+          sed -i 's/CIRCUITPY_WEB_WORKFLOW = 1/CIRCUITPY_WEB_WORKFLOW = 0/g' jeb_master/mpconfigboard.mk
+          sed -i 's/1532k/2552k/g' jeb_master/link.ld
 
-          # Patch the Linker Script (2556K - 4K bootloader = 2552K)
-          sed -i "s/firmware_size = 1532K/firmware_size = 2552K/g" jeb_master/link.ld
+          # VERIFICATION: Print the modified lines to the GitHub log so we know it worked
+          echo "=== VERIFYING BOARD MODIFICATIONS ==="
+          echo "[mpconfigboard.mk]:"
+          grep -E "FIRMWARE_SIZE|WEB_WORKFLOW" jeb_master/mpconfigboard.mk
+          echo "[link.ld]:"
+          grep "firmware_size" jeb_master/link.ld
+          echo "====================================="
 
       - name: Stage Frozen Modules
         run: |
           STAGE_DIR="/tmp/jeb_frozen"
           mkdir -p $STAGE_DIR
+
+          echo "--> Injecting Firmware Version Metadata..."
+          # Dynamically create a version file that will be frozen into the .uf2
+          cat <<EOF > $STAGE_DIR/jeb_version.py
+          FIRMWARE_VERSION = "${{ github.ref_name }}"
+          BUILD_DATE = "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          COMMIT_HASH = "${{ github.sha }}"
+          EOF
 
           echo "--> Copying JEB Custom Modules..."
           # Adjust these paths if your repo structure is different
@@ -79,20 +84,28 @@ jobs:
           cp -r src/utilities $STAGE_DIR/ || true
 
           echo "--> Fetching latest Adafruit Bundle URL..."
-          # Query the GitHub API to find the exact dynamic URL for the -py- bundle
-          BUNDLE_URL=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/adafruit/Adafruit_CircuitPython_Bundle/releases/latest | jq -r '.assets[] | select(.name | contains("-py-")) | select(.name | endswith(".zip")) | .browser_download_url')
-          
-          if [ -z "$BUNDLE_URL" ]; then
-            echo "ERROR: Failed to fetch the bundle URL from GitHub API."
+
+          # 1. Fetch the first release in the array [0] using a secure Bearer token
+          # 2. Extract the .zip file containing "-py-"
+          BUNDLE_URL=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/adafruit/Adafruit_CircuitPython_Bundle/releases \
+            | jq -r '.[0].assets[] | select(.name | contains("-py-") and endswith(".zip")) | .browser_download_url')
+
+          # Check if the URL is completely empty or says 'null'
+          if [ -z "$BUNDLE_URL" ] || [ "$BUNDLE_URL" == "null" ]; then
+            echo "ERROR: Failed to extract the bundle URL. The API might be rate-limiting or returning an error."
+            # Print the raw API response for debugging
+            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/adafruit/Adafruit_CircuitPython_Bundle/releases | jq '.message'
             exit 1
           fi
-          
+
           echo "Downloading from: $BUNDLE_URL"
           wget -q "$BUNDLE_URL" -O /tmp/bundle.zip
+
           unzip -q /tmp/bundle.zip -d /tmp/bundle_extracted
 
           # Find the nested 'lib' folder inside the extracted bundle
-          BUNDLE_LIB=$(find /tmp/bundle_extracted -type d -name "lib" | head -n 1)
+          export BUNDLE_LIB=$(find /tmp/bundle_extracted -type d -name "lib" | head -n 1)
 
           echo "--> Parsing requirements-circup.txt and extracting libraries..."
           python3 << 'EOF'
