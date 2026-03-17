@@ -78,8 +78,17 @@ jobs:
           cp -r src/transport $STAGE_DIR/ || true
           cp -r src/utilities $STAGE_DIR/ || true
 
-          echo "--> Downloading Adafruit Source Bundle..."
-          wget https://github.com/adafruit/Adafruit_CircuitPython_Bundle/releases/latest/download/adafruit-circuitpython-bundle-py-latest.zip -O /tmp/bundle.zip
+          echo "--> Fetching latest Adafruit Bundle URL..."
+          # Query the GitHub API to find the exact dynamic URL for the -py- bundle
+          BUNDLE_URL=$(curl -s https://api.github.com/repos/adafruit/Adafruit_CircuitPython_Bundle/releases/latest | jq -r '.assets[] | select(.name | contains("-py-")) | .browser_download_url')
+          
+          if [ -z "$BUNDLE_URL" ]; then
+            echo "ERROR: Failed to fetch the bundle URL from GitHub API."
+            exit 1
+          fi
+          
+          echo "Downloading from: $BUNDLE_URL"
+          wget -q "$BUNDLE_URL" -O /tmp/bundle.zip
           unzip -q /tmp/bundle.zip -d /tmp/bundle_extracted
 
           # Find the nested 'lib' folder inside the extracted bundle
