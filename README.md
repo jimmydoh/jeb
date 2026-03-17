@@ -62,10 +62,10 @@
 ### Satellite System
 - **Modular Design**: Chainable satellite units for distributed control
 - **Industrial I/O**:
-  - Dual 14-segment LED displays
-  - 4x3 matrix keypad
-  - 4x latching toggle switches
-  - 5x NeoPixel indicators
+  - Dual HT16K33 14-segment LED displays (combined 8-character output)
+  - 3x3 matrix keypad (9 keys)
+  - 8x small latching toggles + 1x guarded latching toggle + 1x key switch + 1x 3-position rotary switch + 1x momentary toggle + 1x execute button
+  - 9x NeoPixel status indicators (one per toggle)
   - Rotary encoder with button
 - **Smart Power Management**:
   - Brownout detection with automatic LED dimming
@@ -166,16 +166,22 @@ The system uses an **asynchronous event-driven architecture** built on CircuitPy
 - **Downstream Control**: P-Channel MOSFET high-side switch
 
 #### User Interface
-- **Displays**: Dual HT16K33 14-segment LED displays (I2C addresses 0x70, 0x71)
-- **Keypad**: 4x3 matrix (rows GP16-18, cols GP19-21)
-- **Switches**: 4x latching toggles + 1x (On-Off-On) momentary
+- **Displays**: Dual HT16K33 14-segment LED displays (I2C addresses 0x70, 0x71) — combined 8-character output
+- **Keypad**: 3x3 matrix keypad (9 keys; rows GP16-18, cols GP19-21)
+- **Switches**:
+  - 8x small latching toggles (2 rows of 4, via MCP23008 Expander 1)
+  - 1x guarded latching toggle (heavy-action with safety cover)
+  - 1x 2-position key switch
+  - 1x 3-position rotary switch
+  - 1x (On-Off-On) momentary toggle
+  - 1x large execute/panic button
 - **Encoder**: Incremental rotary encoder with push button
-- **LEDs**: 5x NeoPixels with async animation engine
+- **LEDs**: 9x NeoPixels (one per latching toggle + guarded toggle, indices 0–8); hardware provisions for up to 3 additional NeoPixel strips
 
 #### Communication
 - **Dual UART**:
   - Upstream (GP0/GP1): Communicates with Core/previous satellite
-  - Downstream (GP4/GP5): Relays to next satellite in chain
+  - Downstream (GP8/GP9): Relays to next satellite in chain
 - **Detection**: Automatic upstream/downstream device sensing
 
 ---
@@ -273,7 +279,20 @@ The system is configured via `config.json` in the root directory:
 | `type_name` | string | Human-readable device name |
 | `mount_sd_card` | boolean | Enable SD card mounting at boot (requires SD card hardware) |
 | `debug_mode` | boolean | Enable verbose debug output |
-| `test_mode` | boolean | Run in test mode (loads `TestManager` instead of production app) |
+| `test_mode` | boolean | Run console manager in test/diagnostic mode |
+| `log_level` | string | Log verbosity: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"` |
+| `uart_baudrate` | integer | UART communication speed (default: `921600`) |
+| `uart_buffer_size` | integer | UART RX buffer size in bytes (default: `4096`) |
+| `led_brightness` | float | Global LED brightness 0.0–1.0 (default: `0.3`) |
+| `web_server_enabled` | boolean | Enable the web-based configurator (Pico 2W) |
+| `web_server_port` | integer | Web server port (default: `8080`) |
+| `wifi_ssid` | string | WiFi network name (Pico 2W, for OTA/web features) |
+| `wifi_password` | string | WiFi password |
+| `update_url` | string | OTA firmware update server base URL |
+| `root_data_dir` | string | Root directory for persistent data (default: `"/sd/"`) |
+| `hardware_features` | object | Selectively disable hardware subsystems (audio, display, matrix, leds, buzzer, power, segment, hid) |
+| `resource_monitor` | object | Resource monitoring settings (`enabled`, `interval_seconds`) |
+| `satellites` | object | Per-satellite configuration (e.g., display offset overrides) |
 
 ---
 
@@ -293,78 +312,161 @@ jeb/
 │   │
 │   ├── satellites/                # Satellite unit implementations
 │   │   ├── __init__.py
-│   │   ├── base.py                # Base satellite class
+│   │   ├── base_firmware.py       # Base satellite firmware class
+│   │   ├── base_driver.py         # Base satellite driver class
 │   │   ├── sat_01_driver.py       # Satellite 01 hardware driver
 │   │   └── sat_01_firmware.py     # Satellite 01 firmware
 │   │
-│   ├── modes/                     # Mode system (UI/UX states)
+│   ├── modes/                     # Mode system (UI/UX states) — 50+ game and visualization modes
 │   │   ├── base.py                # BaseMode class for inheritance
-│   │   ├── main_menu.py           # Main menu mode
-│   │   ├── game_mode.py           # Interactive game modes
-│   │   ├── debug.py               # Debug/diagnostic mode
+│   │   ├── manifest.py            # Mode manifest/registry
+│   │   ├── main_menu.py           # Main menu / dashboard
+│   │   ├── game_mode.py           # Base game mode class
 │   │   ├── utility_mode.py        # System utilities
+│   │   ├── debug.py               # Debug/diagnostic mode
+│   │   ├── global_settings.py     # Global settings mode
+│   │   ├── layout_configurator.py # Display layout configurator
+│   │   ├── power_telemetry.py     # Power monitoring mode
+│   │   ├── zero_player.py         # Zero-player menu
 │   │   ├── industrial_startup.py  # Industrial satellite startup sequence
-│   │   ├── jebris.py              # Tetris-style game mode
-│   │   ├── safe_cracker.py        # Safe cracking game mode
-│   │   ├── simon.py               # Simon Says game mode
-│   │   └── manifest.py            # Mode manifest/registry
+│   │   │
+│   │   ├── # --- CORE Game Modes ---
+│   │   ├── simon.py               # Simon Says
+│   │   ├── jebris.py              # Tetris-style game
+│   │   ├── safe_cracker.py        # Safe cracking puzzle
+│   │   ├── pong.py                # Mini Pong
+│   │   ├── cyber_snake.py         # Cyber Snake
+│   │   ├── astro_breaker.py       # Astro Breaker (Breakout)
+│   │   ├── trench_run.py          # Trench Run
+│   │   ├── lunar_salvage.py       # Lunar Salvage
+│   │   ├── data_flow.py           # Data Flow puzzle
+│   │   ├── virtual_pet.py         # Virtual Pet
+│   │   ├── groovebox.py           # JEB-808 Groovebox (music sequencer)
+│   │   ├── abyssal_rover.py       # Abyssal Rover maze game
+│   │   │
+│   │   ├── # --- CORE+INDUSTRIAL Game Modes ---
+│   │   ├── abyssal_ping.py        # Abyssal Ping (sonar)
+│   │   ├── artillery_command.py   # Artillery Command
+│   │   ├── bunker_defuse.py       # Bunker Defuse (asymmetric co-op)
+│   │   ├── defcon_commander.py    # DEFCON Commander
+│   │   ├── enigma_byte.py         # Enigma Byte cipher
+│   │   ├── flux_scavenger.py      # Flux Scavenger
+│   │   ├── iron_canopy.py         # Iron Canopy
+│   │   ├── magnetic_containment.py # Magnetic Containment
+│   │   ├── maglev_express.py      # Maglev Express
+│   │   ├── mecha_forge.py         # Mecha Forge
+│   │   ├── numbers_station.py     # Numbers Station
+│   │   ├── orbital_docking.py     # Orbital Docking
+│   │   ├── orbital_strike.py      # Orbital Strike
+│   │   ├── pipeline_overload.py   # Pipeline Overload
+│   │   ├── seismic_stabilizer.py  # Seismic Stabilizer
+│   │   ├── vanguard_override.py   # Vanguard Override (shmup)
+│   │   ├── frequency_hunter.py    # Frequency Hunter
+│   │   ├── rhythm_mode.py         # Rhythm mode
+│   │   │
+│   │   └── # --- Zero-Player / Visualizations ---
+│   │       ├── boids.py           # Boid flocking simulation
+│   │       ├── bouncing_sprite.py # Bouncing sprite physics
+│   │       ├── conways_life.py    # Conway's Game of Life
+│   │       ├── digital_rain.py    # Digital rain effect
+│   │       ├── emoji_reveal.py    # Emoji reveal puzzle
+│   │       ├── falling_sand.py    # Falling sand simulation
+│   │       ├── langtons_ant.py    # Langton's Ant
+│   │       ├── lava_lamp.py       # Lava lamp animation
+│   │       ├── lissajous.py       # Lissajous curves
+│   │       ├── lorenz_attractor.py # Lorenz attractor
+│   │       ├── perlin_flow.py     # Perlin noise vector flow
+│   │       ├── plasma.py          # Plasma effect
+│   │       ├── reaction_diffusion.py # Gray-Scott reaction diffusion
+│   │       ├── sorting_visualizer.py # Sorting algorithm visualizer
+│   │       ├── starfield.py       # 3D starfield
+│   │       ├── wireworld.py       # Wireworld cellular automaton
+│   │       └── wolfram_automata.py # Wolfram 1D cellular automata
 │   │
 │   ├── managers/                  # System managers
 │   │   ├── __init__.py
-│   │   ├── hid_manager.py         # Human Interface Device handling
-│   │   ├── uart_manager.py        # UART communication handler
-│   │   ├── audio_manager.py       # Audio system management
-│   │   ├── buzzer_manager.py      # Buzzer control
+│   │   ├── adc_manager.py         # I2C ADC (ADS1115) and native ADC management
+│   │   ├── audio_manager.py       # I2S audio system management
+│   │   ├── base_pixel_manager.py  # Base class for pixel-based displays
+│   │   ├── buzzer_manager.py      # PWM buzzer control
 │   │   ├── console_manager.py     # Serial console management
 │   │   ├── data_manager.py        # Data storage and management
 │   │   ├── display_manager.py     # OLED display control
+│   │   ├── global_animation_controller.py  # Centralized animation coordination
+│   │   ├── hid_manager.py         # Human Interface Device handling
 │   │   ├── led_manager.py         # LED control
-│   │   ├── matrix_manager.py      # LED matrix control
+│   │   ├── matrix_manager.py      # LED matrix control (8×8 to 16×16+)
 │   │   ├── power_manager.py       # Power system monitoring
+│   │   ├── relay_manager.py       # UART message relay
 │   │   ├── render_manager.py      # LED rendering coordination and frame sync
+│   │   ├── resource_manager.py    # System resource tracking
 │   │   ├── satellite_network_manager.py  # Satellite network coordination
 │   │   ├── segment_manager.py     # 14-segment display control
 │   │   ├── synth_manager.py       # Audio synthesis
-│   │   ├── base_pixel_manager.py  # Base class for pixel-based displays
-│   │   └── ring_buffer.py         # Ring buffer utility
+│   │   ├── watchdog_manager.py    # Hardware watchdog timer
+│   │   ├── web_server_manager.py  # Web-based configurator
+│   │   └── wifi_manager.py        # WiFi connectivity (Pico 2W)
 │   │
 │   ├── transport/                 # Communication transport layer
 │   │   ├── __init__.py
 │   │   ├── base_transport.py      # Abstract transport base class
+│   │   ├── file_transfer.py       # File transfer protocol
 │   │   ├── message.py             # Message structure definitions
 │   │   ├── protocol.py            # Protocol definitions and command mappings
 │   │   └── uart_transport.py      # UART transport implementation
 │   │
-│   └── utilities/                 # Helper modules
-│       ├── __init__.py
-│       ├── cobs.py                # COBS encoding/decoding
-│       ├── context.py             # Global context management
-│       ├── crc.py                 # CRC calculations
-│       ├── icons.py               # Icon definitions for display
-│       ├── jeb_pixel.py           # Custom pixel class
-│       ├── mcp_keys.py            # MCP23008 key mappings
-│       ├── palette.py             # Color palette definitions
-│       ├── payload_parser.py      # Binary payload parsing
-│       ├── pins.py                # Pin definitions
-│       ├── synth_registry.py      # Synthesis pattern registry
-│       └── tones.py               # Musical tone definitions
+│   ├── utilities/                 # Helper modules
+│   │   ├── __init__.py
+│   │   ├── audio_analyzer.py      # Audio analysis utilities
+│   │   ├── audio_channels.py      # Audio channel management
+│   │   ├── cobs.py                # COBS encoding/decoding
+│   │   ├── context.py             # Global context management
+│   │   ├── crc.py                 # CRC calculations
+│   │   ├── icons.py               # Icon definitions for display
+│   │   ├── jeb_pixel.py           # Custom pixel class
+│   │   ├── logger.py              # Logging system
+│   │   ├── matrix_animations.py   # Reusable LED matrix animations
+│   │   ├── mcp_keys.py            # MCP23008 key mappings
+│   │   ├── palette.py             # Color palette definitions
+│   │   ├── payload_parser.py      # Binary payload parsing
+│   │   ├── pins.py                # Pin definitions per firmware type
+│   │   ├── power_bus.py           # Power bus management
+│   │   ├── synth_registry.py      # Synthesis pattern registry
+│   │   └── tones.py               # Musical tone definitions
+│   │
+│   └── dummies/                   # Hardware stub implementations for disabled features
 │
 ├── docs/                          # Documentation
 │   ├── hardware-core.md           # CORE hardware specifications
 │   ├── hardware-sat-01.md         # Satellite 01 specifications
+│   ├── ADC_MANAGER_EXTENSION.md   # ADC Manager edge cases and extensibility
+│   ├── ADC_MANAGER_INTEGRATION.md # ADC Manager integration examples
 │   ├── BINARY_PROTOCOL.md         # Binary protocol specification
 │   ├── CRC_IMPLEMENTATION.md      # CRC implementation details
+│   ├── DISPLAY_LAYOUT_QUICK_REFERENCE.md  # Display layout quick reference
+│   ├── DISPLAY_LAYOUT_SYSTEM.md   # Display layout system documentation
+│   ├── DISPLAY_LAYOUT_VISUAL_GUIDE.md     # Display layout visual guide
+│   ├── DISPLAY_MANAGER_REDESIGN_SUMMARY.md  # DisplayManager redesign summary
+│   ├── EMULATOR_ADC_TESTING.md    # ADC emulator testing guide
+│   ├── INDUSTRIAL_STARTUP_16x16.md  # Industrial startup 16×16 matrix
 │   ├── LED_RENDERING.md           # LED rendering optimization and frame sync
+│   ├── MATRIX_ARBITRARY_CONFIGURATIONS.md  # Arbitrary matrix configuration support
 │   ├── OPTIMIZATION_SUMMARY.md    # Performance optimizations and improvements
 │   ├── OTA_UPDATE.md              # Over-The-Air firmware update system
 │   ├── PAYLOAD_ENCODING.md        # Payload encoding documentation
+│   ├── SATELLITE_DEV.md           # Satellite development guide
 │   ├── SYNTHIO_IMPLEMENTATION.md  # Audio synthesis implementation
-│   └── TRANSPORT_ABSTRACTION.md   # Transport layer abstraction
+│   ├── TRANSPORT_ABSTRACTION.md   # Transport layer abstraction
+│   ├── TUPLE_MUTABILITY_ANALYSIS.md  # Tuple/list mutability analysis
+│   └── WEB_CONFIGURATOR.md        # Web-based field service configurator
 │
-├── examples/                      # Example configurations
+├── examples/                      # Example configurations and scripts
 │   ├── config-example-core.json   # CORE config template
 │   ├── config-example-sat-01.json # Satellite config template
-│   └── download_mpy_files.py      # Script for downloading/verifying compiled MPY files
+│   ├── display_custom_layout.py   # Custom display layout demo
+│   ├── display_standard_layout.py # Standard display layout demo
+│   ├── download_mpy_files.py      # Script for downloading/verifying compiled MPY files
+│   └── example_test_web_server.py # Web server integration example
 │
 ├── tests/                         # Test suite (Python/pytest)
 │   ├── test_*.py                  # Unit and integration tests
@@ -508,16 +610,26 @@ Detailed hardware and implementation documentation is available in the `docs/` d
 
 - **[hardware-core.md](docs/hardware-core.md)**: Complete CORE unit specifications, GPIO mapping, and schematics
 - **[hardware-sat-01.md](docs/hardware-sat-01.md)**: Industrial Satellite specifications and pinout
+- **[ADC_MANAGER_EXTENSION.md](docs/ADC_MANAGER_EXTENSION.md)**: ADC Manager edge cases and extensibility guide
+- **[ADC_MANAGER_INTEGRATION.md](docs/ADC_MANAGER_INTEGRATION.md)**: ADC Manager integration examples for voltage monitoring
 - **[BINARY_PROTOCOL.md](docs/BINARY_PROTOCOL.md)**: Binary protocol specification and message format
 - **[CRC_IMPLEMENTATION.md](docs/CRC_IMPLEMENTATION.md)**: CRC implementation and validation details
+- **[DISPLAY_LAYOUT_QUICK_REFERENCE.md](docs/DISPLAY_LAYOUT_QUICK_REFERENCE.md)**: Quick reference for display layout APIs
+- **[DISPLAY_LAYOUT_SYSTEM.md](docs/DISPLAY_LAYOUT_SYSTEM.md)**: Three-zone display layout system (Legacy/Standard/Custom modes)
+- **[DISPLAY_LAYOUT_VISUAL_GUIDE.md](docs/DISPLAY_LAYOUT_VISUAL_GUIDE.md)**: Visual guide to display layout zones
+- **[DISPLAY_MANAGER_REDESIGN_SUMMARY.md](docs/DISPLAY_MANAGER_REDESIGN_SUMMARY.md)**: DisplayManager redesign implementation summary
+- **[EMULATOR_ADC_TESTING.md](docs/EMULATOR_ADC_TESTING.md)**: ADC testing guide for brownout and voltage simulation
+- **[INDUSTRIAL_STARTUP_16x16.md](docs/INDUSTRIAL_STARTUP_16x16.md)**: Industrial startup mode 16×16 matrix investigation
 - **[LED_RENDERING.md](docs/LED_RENDERING.md)**: LED rendering optimization, frame sync, and animation architecture
 - **[MATRIX_ARBITRARY_CONFIGURATIONS.md](docs/MATRIX_ARBITRARY_CONFIGURATIONS.md)**: Arbitrary matrix configuration support for dual, quad, and custom LED matrix layouts
-- **[OPTIMIZATION_SUMMARY.md](docs/OPTIMIZATION_SUMMARY.md)**: Performance optimizations and system improvements
+- **[OPTIMIZATION_SUMMARY.md](docs/OPTIMIZATION_SUMMARY.md)**: Transport layer performance optimizations
 - **[OTA_UPDATE.md](docs/OTA_UPDATE.md)**: Over-The-Air firmware update system (Pico 2W)
-- **[WEB_CONFIGURATOR.md](docs/WEB_CONFIGURATOR.md)**: Web-based field service configurator with remote configuration and monitoring
-- **[PAYLOAD_ENCODING.md](docs/PAYLOAD_ENCODING.md)**: Payload encoding and decoding documentation
+- **[PAYLOAD_ENCODING.md](docs/PAYLOAD_ENCODING.md)**: Payload encoding type safety documentation
+- **[SATELLITE_DEV.md](docs/SATELLITE_DEV.md)**: Guide for creating new satellite firmware classes
 - **[SYNTHIO_IMPLEMENTATION.md](docs/SYNTHIO_IMPLEMENTATION.md)**: Audio synthesis system implementation
 - **[TRANSPORT_ABSTRACTION.md](docs/TRANSPORT_ABSTRACTION.md)**: Transport layer abstraction design
+- **[TUPLE_MUTABILITY_ANALYSIS.md](docs/TUPLE_MUTABILITY_ANALYSIS.md)**: Tuple vs list mutability analysis for payloads
+- **[WEB_CONFIGURATOR.md](docs/WEB_CONFIGURATOR.md)**: Web-based field service configurator with remote configuration and monitoring
 
 Additional resources:
 

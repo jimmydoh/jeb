@@ -1,18 +1,23 @@
 # Emulator ADC Testing Guide
 
-This guide explains how to use the JEB emulator to test ADCManager and voltage monitoring functionality.
+> **Note:** The interactive emulator described in this guide (`tests/emulator/run_emulator.py`)
+> has not yet been implemented. This document captures the intended design and is retained
+> for reference when development begins. For current ADC testing, use the existing unit
+> tests in `tests/test_adc_manager.py`.
+
+This guide describes the planned JEB emulator design for testing ADCManager and voltage monitoring functionality interactively.
 
 ## Overview
 
-The emulator now supports both native ADC (analogio) and I2C ADC (ADS1115) mocking, allowing you to:
+The planned emulator will support both native ADC (analogio) and I2C ADC (ADS1115) mocking, allowing you to:
 - Test brownout detection logic
 - Simulate power failures
 - Test soft_start_satellites() functionality
 - Verify voltage monitoring without physical hardware
 
-## Keyboard Controls
+## Planned Keyboard Controls
 
-The emulator provides the following keyboard shortcuts for voltage manipulation:
+The emulator will provide the following keyboard shortcuts for voltage manipulation:
 
 ### Native ADC (analogio) Controls
 - **V** - Drop voltage on native ADC pin (GP26) to ~0.5V (simulates brownout)
@@ -25,7 +30,7 @@ The emulator provides the following keyboard shortcuts for voltage manipulation:
 ### Other Controls
 - **P** - Toggle satellite cable connection (hot-plug simulation)
 
-## Testing Scenarios
+## Planned Testing Scenarios
 
 ### Scenario 1: Test Brownout Detection (Native ADC)
 
@@ -59,7 +64,7 @@ If your code uses ADCManager with ADS1115:
 6. Press **M** to restore voltage
 7. Try plugging in again - should succeed
 
-## Technical Details
+## Technical Design
 
 ### Native ADC Mock (analogio)
 
@@ -77,11 +82,11 @@ The I2C ADC mock returns float voltage values:
 
 ### HardwareMocks Registry
 
-Both mocks register themselves with the HardwareMocks system:
+Both mocks will register themselves with the HardwareMocks system:
 - Native pins: `HardwareMocks.get("CORE", "analog_pin", "board.GP26")`
 - I2C channels: `HardwareMocks.get("CORE", "ads_channel", 0)` for P0
 
-The Pygame UI uses this registry to manipulate voltage values in real-time.
+The Pygame UI will use this registry to manipulate voltage values in real-time.
 
 ## Default Voltage Values
 
@@ -95,42 +100,16 @@ The Pygame UI uses this registry to manipulate voltage values in real-time.
 - Through 11:1 divider: represents ~27.5V on the rail (2.5V × 11.0)
 - Through 2:1 divider: represents ~5V on the rail (2.5V × 2.0)
 
-## Example Code Usage
+## Current Testing (Unit Tests)
 
-### Programmatically Manipulating Voltage
-
-```python
-from jeb_emulator import HardwareMocks
-
-# Simulate brownout on native ADC
-native_pin = HardwareMocks.get("CORE", "analog_pin", "board.GP26")
-if native_pin:
-    native_pin.value = 10000  # Drops the voltage significantly
-
-# Simulate brownout on I2C ADC
-i2c_pin = HardwareMocks.get("CORE", "ads_channel", 0)  # 0 is P0
-if i2c_pin:
-    i2c_pin.voltage = 0.5  # Drop directly to 0.5V
-```
-
-## Troubleshooting
-
-### "No native analog pin found at GP26"
-This message appears if PowerManager isn't using GP26 for voltage sensing. Check your pin configuration in the Pins class.
-
-### "No I2C ADC channel found at P0"
-This message appears if ADCManager hasn't been initialized or channel 0 wasn't configured. Verify ADCManager is set up in CoreManager.
-
-### Emulator crashes on startup
-Ensure you're importing jeb_emulator.py before any JEB firmware code. The mocks must be set up first.
-
-## Running Tests
-
-The emulator mocks are tested in the test suite:
+Until the interactive emulator is available, use the existing unit tests:
 
 ```bash
 # Run ADC Manager tests
 python tests/test_adc_manager.py
+
+# Run power manager tests
+python tests/test_power_manager_with_adc.py
 
 # All tests should pass with the mocks
 ```
@@ -138,4 +117,4 @@ python tests/test_adc_manager.py
 ## See Also
 
 - [ADC Manager Integration Guide](ADC_MANAGER_INTEGRATION.md) - How to use ADCManager in your code
-- [Emulator README](../tests/emulator/README.md) - General emulator usage
+- [ADC Manager Extension Guide](ADC_MANAGER_EXTENSION.md) - Edge cases and extensibility
