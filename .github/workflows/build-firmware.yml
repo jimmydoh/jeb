@@ -80,7 +80,7 @@ jobs:
 
           echo "--> Fetching latest Adafruit Bundle URL..."
           # Query the GitHub API to find the exact dynamic URL for the -py- bundle
-          BUNDLE_URL=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/adafruit/Adafruit_CircuitPython_Bundle/releases/latest | jq -r '.assets[] | select(.name | contains("-py-")) | .browser_download_url')
+          BUNDLE_URL=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/adafruit/Adafruit_CircuitPython_Bundle/releases/latest | jq -r '.assets[] | select(.name | contains("-py-")) | select(.name | endswith(".zip")) | .browser_download_url')
           
           if [ -z "$BUNDLE_URL" ]; then
             echo "ERROR: Failed to fetch the bundle URL from GitHub API."
