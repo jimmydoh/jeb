@@ -3,6 +3,7 @@ name: JEB Master Release
 on:
   release:
     types: [published] # Only runs when you click "Publish release" in GitHub
+  workflow_dispatch: # Allows manual triggering from the Actions tab
 
 # CRITICAL: The runner needs permission to modify the release page
 permissions:
