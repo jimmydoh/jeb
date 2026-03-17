@@ -2,7 +2,7 @@ name: Build Custom JEB Firmware
 
 on:
   workflow_call:
-  workflow_dispatch: # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
   build-uf2:
