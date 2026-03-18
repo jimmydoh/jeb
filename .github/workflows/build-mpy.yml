@@ -138,22 +138,26 @@ jobs:
             else
               fail_count=$((fail_count + 1))
             fi
-          done < <(find src -name "*.py" -type f)
-          echo "Compiled: $success_count | Failed: $fail_count"
 
-      - name: Generate Smart Manifest
+          echo ""
+          echo "=== Compilation Summary ==="
+          echo "Successfully compiled: $success_count files"
+          echo "Failed to compile: $fail_count files"
+
+          if [ -n "$failed_files" ]; then
+            echo ""
+            echo "Failed files:"
+            echo "$failed_files"
+          fi
+
       - name: Generate Smart Manifest
         run: |
           python3 << 'EOF'
           import os, json, hashlib
-          import os, json, hashlib
 
           def calculate_sha256(filepath):
               h = hashlib.sha256()
-              h = hashlib.sha256()
               with open(filepath, "rb") as f:
-                  for chunk in iter(lambda: f.read(4096), b""): h.update(chunk)
-              return h.hexdigest()
                   for chunk in iter(lambda: f.read(4096), b""): h.update(chunk)
               return h.hexdigest()
 
