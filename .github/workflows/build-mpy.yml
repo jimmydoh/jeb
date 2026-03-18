@@ -139,7 +139,16 @@ jobs:
               fail_count=$((fail_count + 1))
             fi
           done < <(find src -name "*.py" -type f)
-          echo "Compiled: $success_count | Failed: $fail_count"
+          echo ""
+          echo "=== Compilation Summary ==="
+          echo "Successfully compiled: $success_count files"
+          echo "Failed to compile: $fail_count files"
+
+          if [ -n "$failed_files" ]; then
+            echo ""
+            echo "Failed files:"
+            echo "$failed_files"
+          fi
 
       - name: Generate Smart Manifest
       - name: Generate Smart Manifest
@@ -180,6 +189,7 @@ jobs:
           for root, dirs, files in os.walk(payload_dir):
               for file in files:
                   filepath = os.path.join(root, file)
+                  total_size += file_size
                   relpath = os.path.relpath(filepath, payload_dir)
                   file_size = os.path.getsize(filepath)
 

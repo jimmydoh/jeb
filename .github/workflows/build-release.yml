@@ -58,7 +58,12 @@ jobs:
           cp -r ./ota-payload/* release-staging/
           cp ./manifest/* release-staging/
 
-          cd release-staging
+          # Copy the files into the staging area
+          cp -r ./mpy-files/* sd-staging/mpy/
+          cp ./manifest/* sd-staging/
+
+          # Zip it all up into a single file
+          cd sd-staging
           zip -r ../jeb-release-package.zip ./*
           # Zip it all up into a single file
           cd sd-staging
@@ -71,7 +76,9 @@ jobs:
         run: |
           gh release upload ${{ github.event.release.tag_name || inputs.target_tag }} \
             ./jeb-master-firmware/firmware.uf2 \
-            ./jeb-release-package.zip \
+            ./jeb-sd-assets.zip \
+            ./manifest/manifest.json \
+            ./manifest/version.json \
             --repo ${{ github.repository }} \
             ./manifest/manifest.json \
             ./manifest/version.json \
