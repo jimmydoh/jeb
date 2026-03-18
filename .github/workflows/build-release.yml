@@ -71,7 +71,7 @@ jobs:
         run: |
           gh release upload ${{ github.event.release.tag_name || inputs.target_tag }} \
             ./jeb-master-firmware/firmware.uf2 \
-            ./jeb-release-package.zip \
+            ./jeb-sd-assets.zip \
             ./manifest/manifest.json \
             ./manifest/version.json \
             --repo ${{ github.repository }} \
