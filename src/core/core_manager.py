@@ -125,9 +125,10 @@ class CoreManager:
             - is_active: bool
             - slot_id: int
     """
-    def __init__(self, config=None):
+    def __init__(self, config=None, wifi_manager=None):
         # Load config or use defaults
         self.config = config or {}
+        self.wifi_manager = wifi_manager
 
         self.debug_mode = self.config.get("debug_mode", False)
         self.root_data_dir = self.config.get("root_data_dir", "/")

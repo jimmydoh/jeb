@@ -3,11 +3,18 @@ name: JEB Master Release
 on:
   release:
     types: [published] # Only runs when you click "Publish release" in GitHub
-  workflow_dispatch: # Allows manual triggering from the Actions tab
+  workflow_dispatch:
+    inputs:
+      target_tag:
+        description: 'Existing Release Tag to attach files to (e.g., nightly, v1.0.0)'
+        required: true
+        default: 'dev'
 
 # CRITICAL: The runner needs permission to modify the release page
 permissions:
   contents: write
+  pages: write     # To deploy to GitHub Pages
+  id-token: write
 
 jobs:
   # 1. Trigger the Children (These run in parallel)
@@ -59,9 +66,29 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Use --repo to prevent the headless runner git error!
-          gh release upload ${{ github.event.release.tag_name }} \
+          gh release upload ${{ github.event.release.tag_name || inputs.target_tag }} \
             ./jeb-master-firmware/firmware.uf2 \
             ./jeb-release-package.zip \
+            ./manifest/manifest.json \
+            ./manifest/version.json \
             --repo ${{ github.repository }} \
             --clobber
+
+      # --- NEW: Prepare the web host files ---
+      - name: Upload GitHub Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./release-staging
+
+  # --- NEW: Deploy to the web host ---
+  deploy-to-pages:
+    name: Deploy to GitHub Pages
+    needs: attach-to-release # Waits for the artifact to be uploaded above
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Execute Deployment
+        id: deployment
+        uses: actions/deploy-pages@v4
