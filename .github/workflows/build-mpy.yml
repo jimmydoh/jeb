@@ -100,62 +100,45 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "source=date-based fallback" >> $GITHUB_OUTPUT
 
-      - name: Create output directory
+      - name: Create Payload directories
         run: |
-          mkdir -p build/mpy
+          # We create a unified payload folder with two distinct zones
+          mkdir -p build/payload/mpy
+          mkdir -p build/payload/sd
           echo "Build version: ${{ steps.version.outputs.version }}"
-          echo "Version source: ${{ steps.version.outputs.source }}"
+
+      - name: Stage SD Assets
+        run: |
+          # Copy the physical SD directory if it exists in your repo
+          if [ -d "sd" ]; then
+            echo "Staging SD directory..."
+            cp -r sd/* build/payload/sd/
+          else
+            echo "No sd/ directory found in repository. Skipping."
+          fi
 
       - name: Copy boot.py and code.py as-is
         run: |
-          # These files should not be compiled - copy them as-is
-          echo "Copying boot.py and code.py as-is (not compiled)..."
-          if [ -f "src/boot.py" ]; then
-            cp "src/boot.py" "build/mpy/boot.py"
-            echo "  ✓ Copied: src/boot.py -> build/mpy/boot.py"
-          fi
-          if [ -f "src/code.py" ]; then
-            cp "src/code.py" "build/mpy/code.py"
-            echo "  ✓ Copied: src/code.py -> build/mpy/code.py"
-          fi
+          if [ -f "src/boot.py" ]; then cp "src/boot.py" "build/payload/mpy/boot.py"; fi
+          if [ -f "src/code.py" ]; then cp "src/code.py" "build/payload/mpy/code.py"; fi
 
       - name: Compile Python files to MPY
         run: |
-          # Find all .py files in src directory and compile them
-          # Exclude boot.py and code.py as they should not be compiled
-          # Track compilation results
           success_count=0
           fail_count=0
-          failed_files=""
 
           while IFS= read -r pyfile; do
-            # Get the relative path from src
             relpath="${pyfile#src/}"
+            if [ "$relpath" = "boot.py" ] || [ "$relpath" = "code.py" ]; then continue; fi
 
-            # Skip boot.py and code.py - they should not be compiled
-            if [ "$relpath" = "boot.py" ] || [ "$relpath" = "code.py" ]; then
-              echo "Skipping $pyfile (should not be compiled)"
-              continue
-            fi
-
-            # Create directory structure in build/mpy
-            mkdir -p "build/mpy/$(dirname "$relpath")"
-            # Compile to .mpy
-            echo "Compiling $pyfile..."
-            if mpy-cross "$pyfile" -o "build/mpy/${relpath%.py}.mpy" 2>&1; then
-              echo "  ✓ Success: build/mpy/${relpath%.py}.mpy"
+            # Compile directly into the mpy zone of the payload
+            mkdir -p "build/payload/mpy/$(dirname "$relpath")"
+            if mpy-cross "$pyfile" -o "build/payload/mpy/${relpath%.py}.mpy" 2>&1; then
               success_count=$((success_count + 1))
             else
-              echo "  ✗ Failed: $pyfile"
-              if [ -z "$failed_files" ]; then
-                failed_files="$pyfile"
-              else
-                failed_files="$failed_files"$'\n'"$pyfile"
-              fi
               fail_count=$((fail_count + 1))
             fi
           done < <(find src -name "*.py" -type f)
-
           echo ""
           echo "=== Compilation Summary ==="
           echo "Successfully compiled: $success_count files"
@@ -201,10 +184,11 @@ jobs:
           for root, dirs, files in os.walk(payload_dir):
               for file in files:
                   filepath = os.path.join(root, file)
+                  total_size += file_size
                   relpath = os.path.relpath(filepath, payload_dir)
                   file_size = os.path.getsize(filepath)
-
                   total_size += file_size
+
                   action = "update"
 
                   # ZONE 1: CircuitPython Drive Files
@@ -268,43 +252,18 @@ jobs:
         env:
           BUILD_VERSION: ${{ steps.version.outputs.version }}
 
-      - name: Display manifest and version
-        run: |
-          echo "=== Generated Manifest ==="
-          cat build/manifest.json
-          echo ""
-          echo "=== Generated Version ==="
-          cat build/version.json
-
-      - name: Upload MPY files
+      - name: Upload OTA Payload
         uses: actions/upload-artifact@v4
         with:
-          name: mpy-files
-          path: build/mpy/
+          name: ota-payload
+          path: build/payload/
           retention-days: 90
 
-      - name: Upload manifest and version
+      - name: Upload Manifest
         uses: actions/upload-artifact@v4
         with:
           name: manifest
           path: |
             build/manifest.json
             build/version.json
-          retention-days: 90
-
-      - name: Create release artifacts (on tag push)
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          cd build
-          tar -czf mpy-files.tar.gz mpy/
-          zip -r mpy-files.zip mpy/
-
-      - name: Upload release artifacts (on tag push)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-archives
-          path: |
-            build/mpy-files.tar.gz
-            build/mpy-files.zip
           retention-days: 90
