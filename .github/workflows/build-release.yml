@@ -72,7 +72,6 @@ jobs:
           gh release upload ${{ github.event.release.tag_name || inputs.target_tag }} \
             ./jeb-master-firmware/firmware.uf2 \
             ./jeb-release-package.zip \
-            --repo ${{ github.repository }} \
             ./manifest/manifest.json \
             ./manifest/version.json \
             --repo ${{ github.repository }} \
