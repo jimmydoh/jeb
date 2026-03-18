@@ -56,6 +56,17 @@ MODE_REGISTRY |= {
         "requires": ["CORE"],
         "settings": []
     },
+    "OTA_UPDATER": {
+        "id": "OTA_UPDATER",
+        "name": "SYSTEM UPDATE",
+        "module_path": "modes.ota_updater",
+        "class_name": "OtaUpdater",
+        "icon": "ADMIN",
+        "menu": "ADMIN",
+        "order": 1025,
+        "requires": ["CORE", "WIFI"],
+        "settings": [],
+    },
     "GLOBAL_SETTINGS": {
         "id": "GLOBAL_SETTINGS",
         "name": "GLOBAL SETTINGS",
