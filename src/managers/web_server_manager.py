@@ -1176,8 +1176,8 @@ class WebServerManager:
                                 name = line.split(" = {")[0].strip()
                                 if name and name.isupper() and name != "NOTE_FREQUENCIES":
                                     tones_list.append(name)
-                except OSError:
-                    pass  # File not found – device may lack tones.py
+                except OSError as e:
+                    JEBLogger.warning("WEBS", f"Could not open tones.py for audio library scan: {e}")
 
                 # Scan /sd/audio/ recursively for .wav files
                 wav_files = self._list_wav_files("/sd/audio")
@@ -1574,10 +1574,10 @@ class WebServerManager:
                         # Return path relative to /sd/ so it can be passed directly to audio_manager.play()
                         rel = full_path[4:] if full_path.startswith("/sd/") else full_path
                         wav_files.append(rel)
-                except OSError:
-                    pass
-        except OSError:
-            pass  # Directory doesn't exist
+                except OSError as e:
+                    JEBLogger.warning("WEBS", f"Could not stat {full_path} during WAV scan: {e}")
+        except OSError as e:
+            JEBLogger.warning("WEBS", f"WAV scan: directory not found or unreadable: {path} ({e})")
         return wav_files
 
     async def start(self):

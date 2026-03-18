@@ -1009,19 +1009,24 @@ let audioStudioInitialized = false;
 let audioLibraryLoaded = false;
 
 function initAudioStudio() {
-    if (audioStudioInitialized) return;
-    audioStudioInitialized = true;
+    if (!audioStudioInitialized) {
+        audioStudioInitialized = true;
 
-    // Initialize data
-    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        audioSteps.push(new Array(AUDIO_NUM_STEPS).fill(null));
-        audioChannelPatches.push(JSEQ_PATCH_NAMES[c] || 'SELECT');
+        // Initialize sequencer data (one-time only)
+        for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+            audioSteps.push(new Array(AUDIO_NUM_STEPS).fill(null));
+            audioChannelPatches.push(JSEQ_PATCH_NAMES[c] || 'SELECT');
+        }
+
+        _buildChannelRows();
+        _buildNotePicker();
+        _buildDurationPicker();
     }
 
-    _buildChannelRows();
-    _buildNotePicker();
-    _buildDurationPicker();
-    loadAudioLibrary();
+    // Retry loading the audio library on every tab visit until it succeeds
+    if (!audioLibraryLoaded) {
+        loadAudioLibrary();
+    }
 }
 
 function _buildChannelRows() {
