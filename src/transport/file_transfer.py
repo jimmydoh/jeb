@@ -464,6 +464,7 @@ class FileTransferReceiver:
         except AttributeError:
             _time_func = time.monotonic
             def get_monotonic_ms(): return int(_time_func() * 1000)
+        return get_monotonic_ms()
 
     def _send_ack(self, destination):
         self.transport.send(Message(self.source_id, destination, CMD_ACK, ""))
