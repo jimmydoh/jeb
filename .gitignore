@@ -15,7 +15,5 @@ dist/
 eggs/
 *.egg-info/
 scripts/source_emojis/*
-sd/audio/*/*.wav
-sd/data/*
-sd/icons/*
+sd/data/game_data.json
 src/config.json

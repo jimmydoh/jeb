@@ -7,7 +7,7 @@
     "test_mode": true,
     "wifi_ssid": "YOUR_WIFI_SSID",
     "wifi_password": "YOUR_WIFI_PASSWORD",
-    "update_url": "https://your-server.com",
+    "update_url": "https://jimmydoh.github.io/jeb",
     "resource_monitor": {
         "enabled": false,
         "interval_seconds": 15
