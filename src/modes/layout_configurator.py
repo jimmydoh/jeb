@@ -87,11 +87,7 @@ class LayoutConfigurator(UtilityMode):
     METADATA = {
         "id": "LAYOUT_CONFIGURATOR",
         "name": "LAYOUT CONFIG",
-        "module_path": "modes.layout_configurator",
-        "class_name": "LayoutConfigurator",
-        "icon": "ADMIN",
         "requires": ["CORE"],
-        "settings": [],
     }
 
     def __init__(self, core):

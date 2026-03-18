@@ -202,9 +202,25 @@ config["debug_mode"] = debug_mode
 config["test_mode"] = test_mode
 config["resource_monitor"] = resource_monitor
 
+wifi_manager = None
+
+# Do we have an SSID and Password
+if config.get("wifi_ssid") and config.get("wifi_password"):
+    JEBLogger.info("CODE", "Wi-Fi credentials provided in config")
+
+    try:
+        from managers.wifi_manager import WiFiManager
+        wifi_manager = WiFiManager(config)
+        JEBLogger.info("CODE", "WiFi Manager initialized")
+
+    except ImportError:
+        JEBLogger.warning("CODE", "⚠️ WiFiManager not available")
+else:
+    JEBLogger.info("CODE", "No WiFi config")
+
 if role == "CORE" and type_id == "00":
     from core.core_manager import CoreManager
-    app = CoreManager(config=config)
+    app = CoreManager(config=config, wifi_manager=wifi_manager)
 
 elif role == "SAT" and type_id == "01":
     from satellites.sat_01_firmware import IndustrialSatelliteFirmware
@@ -220,67 +236,25 @@ if test_mode:
     from managers.console_manager import ConsoleManager
     CONSOLE = ConsoleManager(role, type_id, app=app)
 
-# Do we have an SSID and Password
-if config.get("wifi_ssid") and config.get("wifi_password"):
-    JEBLogger.info("CODE", "Wi-Fi credentials provided in config")
-
+# WEB SERVER CHECK
+if wifi_manager and config.get("web_server_enabled", False):
     try:
-        from managers.wifi_manager import WiFiManager
-        wifi_manager = WiFiManager(config)
-        JEBLogger.info("CODE", "WiFi Manager initialized")
-
-        # OTA UPDATE CHECK
-        if SD_MOUNTED and config.get("update_url", "") != "":
-            try:
-                from updater import should_check_for_updates, Updater, clear_update_flag
-
-                if should_check_for_updates():
-                    JEBLogger.info("CODE", "Update flag detected - starting OTA update process")
-
-                    try:
-                        updater = Updater(config, sd_mounted=SD_MOUNTED, wifi_manager=wifi_manager)
-                        update_success = updater.run_update()
-
-                        if update_success:
-                            # Only clear flag on successful update
-                            clear_update_flag()
-                            JEBLogger.info("CODE", "✓ Update complete and installed - rebooting...")
-                            updater.reboot()
-                        else:
-                            # Do NOT clear flag - preserve for retry on next boot
-                            JEBLogger.warning("CODE", "⚠️ Update failed - flag preserved for retry")
-                            JEBLogger.warning("CODE", "Device will attempt update again on next boot")
-
-                    except Exception as e:
-                        # Do NOT clear flag on fatal error - preserve for retry
-                        JEBLogger.error("CODE", f"❌ Updater fatal error: {e}")
-                        JEBLogger.warning("CODE", "Flag preserved - device will retry update on next boot")
-                        JEBLogger.warning("CODE", "Continuing with existing firmware")
-            except ImportError:
-                JEBLogger.warning("CODE", "⚠️ Updater module not available")
-
-        # WEB SERVER CHECK
-        elif config.get("web_server_enabled", False):
-            try:
-                from managers.web_server_manager import WebServerManager
-                JEBLogger.info("CODE", " --- WEB SERVER INITIALIZATION --- ")
-                WEB_SERVER = WebServerManager(
-                    config,
-                    wifi_manager=wifi_manager,
-                    app=app,
-                    console_buffer=CONSOLE if CONSOLE else None,
-                )
-                JEBLogger.info("CODE", "Web server manager initialized - will start with app")
-            except ImportError as e:
-                JEBLogger.warning("CODE", "⚠️ WebServerManager not available - check dependencies")
-                JEBLogger.error("CODE", f"Web server initialization error: {e}")
-            except Exception as e:
-                JEBLogger.error("CODE", f"⚠️ Web server initialization error: {e}")
-
-    except ImportError:
-        JEBLogger.warning("CODE", "⚠️ WiFiManager not available - skipping OTA update and web server")
+        from managers.web_server_manager import WebServerManager
+        JEBLogger.info("CODE", " --- WEB SERVER INITIALIZATION --- ")
+        WEB_SERVER = WebServerManager(
+            config,
+            wifi_manager=wifi_manager,
+            app=app,
+            console_buffer=CONSOLE if CONSOLE else None,
+        )
+        JEBLogger.info("CODE", "Web server manager initialized - will start with app")
+    except ImportError as e:
+        JEBLogger.warning("CODE", "⚠️ WebServerManager not available - check dependencies")
+        JEBLogger.error("CODE", f"Web server initialization error: {e}")
+    except Exception as e:
+        JEBLogger.error("CODE", f"⚠️ Web server initialization error: {e}")
 else:
-    JEBLogger.info("CODE", "No WiFi config - skipping OTA update and web server init")
+    JEBLogger.info("CODE", "Skipping web server initialization (Wi-Fi or config disabled)")
 
 async def main():
     """Main asynchronous entry point for running the application and web server."""
