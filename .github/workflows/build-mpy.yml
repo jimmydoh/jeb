@@ -142,33 +142,48 @@ jobs:
           echo "Compiled: $success_count | Failed: $fail_count"
 
       - name: Generate Smart Manifest
+      - name: Generate Smart Manifest
         run: |
           python3 << 'EOF'
+          import os, json, hashlib
           import os, json, hashlib
 
           def calculate_sha256(filepath):
               h = hashlib.sha256()
+              h = hashlib.sha256()
               with open(filepath, "rb") as f:
+                  for chunk in iter(lambda: f.read(4096), b""): h.update(chunk)
+              return h.hexdigest()
                   for chunk in iter(lambda: f.read(4096), b""): h.update(chunk)
               return h.hexdigest()
 
           build_timestamp = os.popen('date -u +"%Y-%m-%dT%H:%M:%SZ"').read().strip()
           version = os.environ.get('BUILD_VERSION', '0.0.0-unknown')
 
-          manifest = {"version": version, "build_timestamp": build_timestamp, "files": []}
+          manifest = {
+              "version": version,
+              "build_timestamp": build_timestamp,
+              "stats": {},
+              "files": []
+          }
 
           FROZEN_DIRS = ["core", "dummies", "managers", "satellites", "transport", "utilities"]
           ROOT_FILES = ["boot.py", "code.py", "updater.mpy"]
           payload_dir = "build/payload"
+
+          # Initialize Size Trackers
           total_size = 0
+          sd_update_size = 0
+          cp_update_size = 0
+          ignored_size = 0
 
           for root, dirs, files in os.walk(payload_dir):
               for file in files:
                   filepath = os.path.join(root, file)
-                  relpath = os.path.relpath(filepath, payload_dir) # e.g. mpy/modes/pong.mpy OR sd/audio/beep.wav
+                  relpath = os.path.relpath(filepath, payload_dir)
                   file_size = os.path.getsize(filepath)
-                  total_size += file_size
 
+                  total_size += file_size
                   action = "update"
 
                   # ZONE 1: CircuitPython Drive Files
@@ -177,9 +192,15 @@ jobs:
                       destination = f"/{target_path}"
 
                       if target_path in ROOT_FILES:
-                          pass # Keep as standard update
+                          action = "update"
                       elif any(target_path.startswith(fd) for fd in FROZEN_DIRS):
                           action = "ignore_if_frozen"
+
+                      # Route the file size to the correct tracker
+                      if action == "ignore_if_frozen":
+                          ignored_size += file_size
+                      else:
+                          cp_update_size += file_size
 
                       manifest["files"].append({
                           "path": target_path,
@@ -192,8 +213,10 @@ jobs:
 
                   # ZONE 2: SD Card Files
                   elif relpath.startswith("sd/"):
+                      sd_update_size += file_size # Always an update
+
                       manifest["files"].append({
-                          "path": relpath, # Leaves 'sd/' intact so updater writes to /sd/...
+                          "path": relpath,
                           "download_path": relpath,
                           "sha256": calculate_sha256(filepath),
                           "size": file_size,
@@ -201,11 +224,25 @@ jobs:
                           "destination": f"/{relpath}"
                       })
 
+          # Finalize the stats dictionary
+          manifest["stats"] = {
+              "total_bytes": total_size,
+              "sd_update_bytes": sd_update_size,
+              "cp_update_bytes": cp_update_size,
+              "ignored_bytes": ignored_size
+          }
+
           manifest["files"].sort(key=lambda x: x["path"])
 
           with open("build/manifest.json", "w") as f: json.dump(manifest, f, indent=2)
+
+          # We also inject the stats into the lightweight version.json
           with open("build/version.json", "w") as f:
-              json.dump({"version": version, "file_count": len(manifest["files"]), "total_size": total_size}, f)
+              json.dump({
+                  "version": version,
+                  "file_count": len(manifest["files"]),
+                  "stats": manifest["stats"]
+              }, f, indent=2)
           EOF
         env:
           BUILD_VERSION: ${{ steps.version.outputs.version }}
