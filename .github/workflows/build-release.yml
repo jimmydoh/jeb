@@ -26,44 +26,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download mpy-files Artifact
+      - name: Download OTA Payload
         uses: actions/download-artifact@v4
         with:
-          name: mpy-files
-          path: ./mpy-files
+          name: ota-payload
+          path: ./ota-payload
 
-      - name: Download manifest Artifact
+      - name: Download Manifest
         uses: actions/download-artifact@v4
         with:
           name: manifest
           path: ./manifest
 
-      - name: Download jeb-master-firmware Artifact
+      - name: Download Firmware
         uses: actions/download-artifact@v4
         with:
           name: jeb-master-firmware
           path: ./jeb-master-firmware
 
-      - name: Package SD Assets into a ZIP
+      - name: Package Release ZIP
         run: |
-          # Create a temporary staging folder to build the SD card root structure
-          mkdir -p sd-staging/mpy
+          # Combine the payload folders and the manifests into one master zip
+          mkdir -p release-staging
+          cp -r ./ota-payload/* release-staging/
+          cp ./manifest/* release-staging/
 
-          # Copy the files into the staging area
-          cp -r ./mpy-files/* sd-staging/mpy/
-          cp ./manifest/* sd-staging/
-
-          # Zip it all up into a single file
-          cd sd-staging
-          zip -r ../jeb-sd-assets.zip ./*
+          cd release-staging
+          zip -r ../jeb-release-package.zip ./*
           cd ..
 
       - name: Upload to GitHub Release Page
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Upload the raw UF2 directly, and the newly created zip for the SD card
+          # Use --repo to prevent the headless runner git error!
           gh release upload ${{ github.event.release.tag_name }} \
             ./jeb-master-firmware/firmware.uf2 \
-            ./jeb-sd-assets.zip \
+            ./jeb-release-package.zip \
+            --repo ${{ github.repository }} \
             --clobber
