@@ -18,3 +18,4 @@ scripts/source_emojis/*
 sd/data/game_data.json
 src/config.json
 emulator_tmp/
+version.json
