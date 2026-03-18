@@ -2,12 +2,28 @@
     "role": "CORE",
     "type_id": "00",
     "type_name": "CORE",
-    "mount_sd_card": false,
+    "mount_sd_card": true,
     "debug_mode": false,
-    "test_mode": false,
+    "test_mode": true,
     "wifi_ssid": "YOUR_WIFI_SSID",
     "wifi_password": "YOUR_WIFI_PASSWORD",
-    "update_url": "https://your-server.com",
+    "update_url": "https://jimmydoh.github.io/jeb",
+    "resource_monitor": {
+        "enabled": false,
+        "interval_seconds": 15
+    },
+    "web_server_enabled": true,
+    "web_server_port": 8080,
+    "hardware_features": {
+        "audio": true,
+        "display": true,
+        "matrix": true,
+        "leds": true,
+        "buzzer": true,
+        "power": true,
+        "segment": true,
+        "hid": true
+    },
     "satellites": {
         "0101": {"offset_x": 0, "offset_y": 16},
         "0102": {"offset_x": 8, "offset_y": 16}
