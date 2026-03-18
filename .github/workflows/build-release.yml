@@ -74,13 +74,6 @@ jobs:
             ./manifest/version.json \
             --clobber
 
-      - name: Deploy Unzipped Payload to GitHub Pages (Web Host)
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./release-staging
-          force_orphan: true
-
       # --- NEW: Prepare the web host files ---
       - name: Upload GitHub Pages Artifact
         uses: actions/upload-pages-artifact@v3
