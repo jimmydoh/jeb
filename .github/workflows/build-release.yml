@@ -3,7 +3,12 @@ name: JEB Master Release
 on:
   release:
     types: [published] # Only runs when you click "Publish release" in GitHub
-  workflow_dispatch: # Allows manual triggering from the Actions tab
+  workflow_dispatch:
+    inputs:
+      target_tag:
+        description: 'Existing Release Tag to attach files to (e.g., nightly, v1.0.0)'
+        required: true
+        default: 'dev'
 
 # CRITICAL: The runner needs permission to modify the release page
 permissions:
@@ -64,12 +69,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Upload the raw UF2 directly, and the newly created zip for the SD card
-          gh release upload ${{ github.event.release.tag_name }} \
+          gh release upload ${{ github.event.release.tag_name || inputs.target_tag }} \
             ./jeb-master-firmware/firmware.uf2 \
-            ./jeb-release-package.zip \
+            ./jeb-sd-assets.zip \
             ./manifest/manifest.json \
             ./manifest/version.json \
+            --repo ${{ github.repository }} \
             --clobber
 
       # --- NEW: Prepare the web host files ---
