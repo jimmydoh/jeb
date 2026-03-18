@@ -60,9 +60,6 @@ jobs:
 
           cd release-staging
           zip -r ../jeb-release-package.zip ./*
-          # Zip it all up into a single file
-          cd sd-staging
-          zip -r ../jeb-release-package.zip ./*
           cd ..
 
       - name: Upload to GitHub Release Page
@@ -71,7 +68,7 @@ jobs:
         run: |
           gh release upload ${{ github.event.release.tag_name || inputs.target_tag }} \
             ./jeb-master-firmware/firmware.uf2 \
-            ./jeb-sd-assets.zip \
+            ./jeb-release-package.zip \
             ./manifest/manifest.json \
             ./manifest/version.json \
             --repo ${{ github.repository }} \
@@ -81,8 +78,7 @@ jobs:
       - name: Upload GitHub Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # We upload the sd-staging folder so manifest.json is at the root
-          path: ./sd-staging
+          path: ./release-staging
 
   # --- NEW: Deploy to the web host ---
   deploy-to-pages:
