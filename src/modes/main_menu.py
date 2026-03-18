@@ -60,8 +60,17 @@ class MainMenu(UtilityMode):
             # meta["requires"] is List[str] of hardware dependencies
             requirements_met = True
             for req in meta.get("requires", []):
-                if req == "CORE":
+                if req in ("CORE", "DISPLAY", "HID", "AUDIO"):
                     continue
+
+                # Evaluate Wi-Fi capability
+                if req == "WIFI":
+                    # Fails if wifi was never passed to the core, or if the hardware failed to init
+                    if getattr(self.core, "wifi_manager", None) is None:
+                        requirements_met = False
+                        break
+                    continue
+
                 # Check for specific satellite type presence
                 # self.core.satellites is Dict[slot_id: int, Satellite]
                 # Each Satellite has: sat_type_name (str), is_active (bool), slot_id (int)

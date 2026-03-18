@@ -8,6 +8,8 @@ on:
 # CRITICAL: The runner needs permission to modify the release page
 permissions:
   contents: write
+  pages: write     # To deploy to GitHub Pages
+  id-token: write
 
 jobs:
   # 1. Trigger the Children (These run in parallel)
@@ -53,6 +55,9 @@ jobs:
 
           cd release-staging
           zip -r ../jeb-release-package.zip ./*
+          # Zip it all up into a single file
+          cd sd-staging
+          zip -r ../jeb-release-package.zip ./*
           cd ..
 
       - name: Upload to GitHub Release Page
@@ -64,4 +69,34 @@ jobs:
             ./jeb-master-firmware/firmware.uf2 \
             ./jeb-release-package.zip \
             --repo ${{ github.repository }} \
+            ./jeb-release-package.zip \
+            ./manifest/manifest.json \
+            ./manifest/version.json \
             --clobber
+
+      - name: Deploy Unzipped Payload to GitHub Pages (Web Host)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./release-staging
+          force_orphan: true
+
+      # --- NEW: Prepare the web host files ---
+      - name: Upload GitHub Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # We upload the sd-staging folder so manifest.json is at the root
+          path: ./sd-staging
+
+  # --- NEW: Deploy to the web host ---
+  deploy-to-pages:
+    name: Deploy to GitHub Pages
+    needs: attach-to-release # Waits for the artifact to be uploaded above
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Execute Deployment
+        id: deployment
+        uses: actions/deploy-pages@v4
