@@ -109,12 +109,16 @@ jobs:
 
       - name: Stage SD Assets
         run: |
-          # Copy the physical SD directory if it exists in your repo
+          # Check for lowercase 'sd'
           if [ -d "sd" ]; then
-            echo "Staging SD directory..."
+            echo "Staging lowercase 'sd' directory..."
             cp -r sd/* build/payload/sd/
+          # Check for uppercase 'SD'
+          elif [ -d "SD" ]; then
+            echo "Staging uppercase 'SD' directory..."
+            cp -r SD/* build/payload/sd/
           else
-            echo "No sd/ directory found in repository. Skipping."
+            echo "No sd/ or SD/ directory found in repository. Skipping."
           fi
 
       - name: Copy boot.py and code.py as-is
@@ -138,6 +142,7 @@ jobs:
             else
               fail_count=$((fail_count + 1))
             fi
+          done < <(find src -name "*.py" -type f)
 
           echo ""
           echo "=== Compilation Summary ==="
