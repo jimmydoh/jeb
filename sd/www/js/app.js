@@ -1006,6 +1006,7 @@ let audioChannelPatches = [];
 let activeNote = null;       // e.g. 'C4'
 let activeDuration = 1.0;    // in beats (quarter note default)
 let audioStudioInitialized = false;
+let audioLibraryLoaded = false;
 
 function initAudioStudio() {
     if (audioStudioInitialized) return;
@@ -1020,6 +1021,7 @@ function initAudioStudio() {
     _buildChannelRows();
     _buildNotePicker();
     _buildDurationPicker();
+    loadAudioLibrary();
 }
 
 function _buildChannelRows() {
@@ -1204,6 +1206,117 @@ async function audioStop() {
         }
     } catch (e) {
         showStatus('audioStatus', 'Error: ' + e, 'error');
+    }
+}
+
+async function loadAudioLibrary() {
+    if (audioLibraryLoaded) return;
+    try {
+        const resp = await fetch('/api/audio/library');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        audioLibraryLoaded = true;
+
+        // Populate tone select
+        const toneSelect = document.getElementById('toneSelect');
+        if (toneSelect) {
+            toneSelect.innerHTML = '';
+            if (data.tones && data.tones.length > 0) {
+                data.tones.forEach(name => {
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = name;
+                    toneSelect.appendChild(opt);
+                });
+            } else {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No tones available';
+                toneSelect.appendChild(opt);
+            }
+        }
+
+        // Populate WAV select
+        const wavSelect = document.getElementById('wavSelect');
+        if (wavSelect) {
+            wavSelect.innerHTML = '';
+            if (data.wavs && data.wavs.length > 0) {
+                data.wavs.forEach(filename => {
+                    const opt = document.createElement('option');
+                    opt.value = filename;
+                    opt.textContent = filename;
+                    wavSelect.appendChild(opt);
+                });
+            } else {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No WAV files found';
+                wavSelect.appendChild(opt);
+            }
+        }
+    } catch (e) {
+        // Reset flag so the user can retry by switching away and back to the tab
+        audioLibraryLoaded = false;
+        const toneSelect = document.getElementById('toneSelect');
+        if (toneSelect) toneSelect.innerHTML = '<option value="">Error loading library</option>';
+        const wavSelect = document.getElementById('wavSelect');
+        if (wavSelect) wavSelect.innerHTML = '<option value="">Error loading library</option>';
+    }
+}
+
+async function playTone() {
+    const select = document.getElementById('toneSelect');
+    const name = select ? select.value : '';
+    if (!name) {
+        showStatus('toneStatus', 'Please select a tone', 'error');
+        return;
+    }
+    const targetEl = document.querySelector('input[name="toneTarget"]:checked');
+    const target = targetEl ? targetEl.value : 'synth';
+    try {
+        const resp = await fetch('/api/audio/play', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'tone', name, target }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+            showStatus('toneStatus', `▶ Playing "${name}" on ${target}`, 'success');
+        } else if (data.status === 'no_buzzer') {
+            showStatus('toneStatus', 'Buzzer manager not connected', 'error');
+        } else if (data.status === 'no_synth') {
+            showStatus('toneStatus', 'Synth manager not connected', 'error');
+        } else {
+            showStatus('toneStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (e) {
+        showStatus('toneStatus', 'Error: ' + e, 'error');
+    }
+}
+
+async function playWav() {
+    const select = document.getElementById('wavSelect');
+    const filename = select ? select.value : '';
+    if (!filename) {
+        showStatus('wavStatus', 'Please select a WAV file', 'error');
+        return;
+    }
+    try {
+        const resp = await fetch('/api/audio/play', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'wav', filename }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+            showStatus('wavStatus', `▶ Playing "${filename}"`, 'success');
+        } else if (data.status === 'no_audio') {
+            showStatus('wavStatus', 'Audio manager not connected', 'error');
+        } else {
+            showStatus('wavStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (e) {
+        showStatus('wavStatus', 'Error: ' + e, 'error');
     }
 }
 
