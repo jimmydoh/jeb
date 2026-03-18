@@ -189,6 +189,12 @@ class Updater:
             print(f"✓ Manifest fetched: version {self.manifest['version']}")
             print(f"  Files in manifest: {len(self.manifest['files'])}")
 
+            if "stats" in self.manifest:
+                stats = self.manifest["stats"]
+                print(f"  Total Release Size:  {stats.get('total_bytes', 0) / 1024:.1f} KB")
+                print(f"  CircuitPython Files: {stats.get('cp_update_bytes', 0) / 1024:.1f} KB")
+                print(f"  SD Card Assets:      {stats.get('sd_update_bytes', 0) / 1024:.1f} KB")
+
             return self.manifest
 
         except Exception as e:
@@ -266,6 +272,64 @@ class Updater:
         print(f"  Files to update: {len(files_to_update)}")
 
         return files_to_update, files_ok
+
+    def check_disk_space(self, files_to_update):
+        """
+        Verify there is enough disk space for staging and installation.
+        Calculates exact net-change for internal flash overwrites.
+        """
+        print("\nChecking disk space requirements...")
+
+        # --- 1. Check SD Card Staging Space ---
+        # Staging needs enough space to hold all downloaded files simultaneously
+        staging_needed = sum(f.get("size", 0) for f in files_to_update)
+        staging_needed = int(staging_needed * 1.1) # 10% safety buffer for FAT overhead
+
+        try:
+            # os.statvfs returns (f_bsize, f_frsize, f_blocks, f_bfree, ...)
+            # Index 0 is block size, Index 3 is free blocks
+            sd_stat = os.statvfs(self.download_dir.split('/')[1]) # gets 'sd' from '/sd/update'
+            sd_free = sd_stat[0] * sd_stat[3]
+            print(f"  SD Staging Free: {sd_free / 1024:.1f} KB (Needed: {staging_needed / 1024:.1f} KB)")
+
+            if sd_free < staging_needed:
+                raise UpdaterError(f"Insufficient SD card space. Needed {staging_needed} bytes, have {sd_free} bytes.")
+        except OSError as e:
+            print(f"  ⚠️ Could not verify SD space: {e}")
+
+        # --- 2. Check Internal Flash Space ---
+        flash_net_change = 0
+
+        for f in files_to_update:
+            # Determine where the file is physically going
+            dest = f.get("destination", f"/{f['path']}")
+
+            # We only care about files going to CircuitPython root
+            if not dest.startswith("/sd/"):
+                new_size = f.get("size", 0)
+                try:
+                    # os.stat index 6 is file size in bytes
+                    current_size = os.stat(dest)[6]
+                except OSError:
+                    current_size = 0 # File doesn't exist yet
+
+                flash_net_change += (new_size - current_size)
+
+        # We need enough space for the net increase, plus an 8KB safety buffer
+        flash_needed = max(0, flash_net_change) + 8192
+
+        try:
+            flash_stat = os.statvfs("/")
+            flash_free = flash_stat[0] * flash_stat[3]
+            print(f"  Internal Free:   {flash_free / 1024:.1f} KB (Net Change: {flash_net_change / 1024:.1f} KB)")
+
+            if flash_free < flash_needed:
+                raise UpdaterError(f"Insufficient internal flash space. Need {flash_needed} bytes free buffer, only have {flash_free} bytes.")
+        except OSError as e:
+            print(f"  ⚠️ Could not verify internal flash space: {e}")
+
+        print("  ✓ Disk space OK")
+        return True
 
     def download_file(self, file_info):
         """
@@ -548,6 +612,14 @@ class Updater:
 
             # Step 4: Verify files
             files_to_update, _ = self.verify_files()
+
+            if not files_to_update:
+                print("\n✓ All files match manifest. System is up to date.")
+                self.write_version_info() # Ensure version.json is synced
+                return True
+
+            # Step 4.5: Pre-Flight Disk Space Check
+            self.check_disk_space(files_to_update)
 
             # Step 5: Download files to SD card staging area
             if not self.update_files(files_to_update):
