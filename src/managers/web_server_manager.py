@@ -861,6 +861,33 @@ class WebServerManager:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
+        # API: Admin - get firmware version info
+        @self.server.route("/api/admin/version", GET)
+        def get_admin_version(request: Request):
+            """Return local and remote firmware version info for the Admin tab."""
+            try:
+                local_version = None
+                try:
+                    with open("/version.json", "r") as vf:
+                        import json as _json
+                        vdata = _json.loads(vf.read())
+                        local_version = vdata.get("version")
+                except Exception:
+                    pass
+
+                update_url = self.config.get("update_url", "")
+
+                payload = {
+                    "local_version": local_version,
+                    "remote_version": None,
+                    "update_url": update_url,
+                }
+                return Response(request, json.dumps(payload),
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
         # API: Get system status
         @self.server.route("/api/system/status", GET)
         def get_system_status(request: Request):

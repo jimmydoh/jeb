@@ -1,5 +1,33 @@
 let currentPath = '/sd';
 
+// =====================================================
+// ADMIN EASTER EGG - Click title 5× to reveal Admin tab
+// =====================================================
+let _adminClickCount = 0;
+let _adminClickTimer = null;
+let _adminUnlocked = false;
+
+function adminEasterEgg() {
+    if (_adminUnlocked) return;
+    _adminClickCount++;
+
+    // Reset counter after 2 seconds of inactivity
+    clearTimeout(_adminClickTimer);
+    _adminClickTimer = setTimeout(() => { _adminClickCount = 0; }, 2000);
+
+    if (_adminClickCount >= 5) {
+        _adminUnlocked = true;
+        const btn = document.getElementById('adminTabBtn');
+        if (btn) {
+            btn.classList.remove('admin-tab-hidden');
+            btn.classList.add('admin-tab-visible');
+        }
+        const title = document.getElementById('mainTitle');
+        if (title) title.style.color = '#FF9800';
+        _adminClickCount = 0;
+    }
+}
+
 function showTab(tabName) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -19,6 +47,171 @@ function showTab(tabName) {
     if (tabName === 'pixelart') initPixelArtStudio();
     if (tabName === 'audiostudio') initAudioStudio();
     if (tabName === 'layout') loadLayout();
+    if (tabName === 'admin') loadAdmin();
+}
+
+// =====================================================
+// ADMIN TAB
+// =====================================================
+
+function loadAdmin() {
+    loadAdminVersionInfo();
+    loadAdminLayout();
+}
+
+async function loadAdminVersionInfo() {
+    const container = document.getElementById('adminVersionInfo');
+    if (!container) return;
+    container.innerHTML = '<em style="color:#555; font-size:0.9em;">Loading...</em>';
+    try {
+        const resp = await fetch('/api/admin/version');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+
+        const localVer  = data.local_version  || '—';
+        const remoteVer = data.remote_version || '—';
+        const updateUrl = data.update_url     || '—';
+        const isLatest  = localVer !== '—' && localVer === remoteVer;
+
+        container.innerHTML = `
+            <div class="admin-version-grid">
+                <div class="admin-version-card">
+                    <div class="label">Local Version</div>
+                    <div class="value ${isLatest ? 'up-to-date' : 'outdated'}">${localVer}</div>
+                </div>
+                <div class="admin-version-card">
+                    <div class="label">Remote Version</div>
+                    <div class="value">${remoteVer}</div>
+                </div>
+                <div class="admin-version-card" style="grid-column: 1/-1;">
+                    <div class="label">Update URL</div>
+                    <div class="value" style="font-size:0.85em; word-break:break-all; color:#888;">${updateUrl}</div>
+                </div>
+            </div>
+            ${isLatest ? '<p style="color:#4CAF50; font-size:0.85em; margin-top:6px;">✔ Firmware is up to date.</p>' : (localVer !== '—' ? '<p style="color:#FF9800; font-size:0.85em; margin-top:6px;">⚠ An update may be available.</p>' : '')}
+        `;
+    } catch (e) {
+        container.innerHTML = '<em style="color:#666; font-size:0.9em;">Version info unavailable (device may not support this endpoint).</em>';
+    }
+}
+
+async function triggerOTALaunch() {
+    if (!confirm('Launch the OTA Updater mode on the device? This will interrupt the current mode.')) return;
+    try {
+        const resp = await fetch('/api/actions/launch-mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode_id: 'OTA_UPDATER' })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            showStatus('adminOtaStatus', '🚀 OTA Updater launched on device. Check the OLED for progress.', 'success');
+        } else {
+            showStatus('adminOtaStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (e) {
+        showStatus('adminOtaStatus', 'Error: ' + e, 'error');
+    }
+}
+
+// =====================================================
+// ADMIN LAYOUT (mirror of loadLayout / saveLayout for Admin tab)
+// =====================================================
+
+let _adminLayoutData = {};
+
+async function loadAdminLayout() {
+    try {
+        const resp = await fetch('/api/config/layout');
+        _adminLayoutData = resp.ok ? await resp.json() : {};
+    } catch (e) {
+        _adminLayoutData = {};
+    }
+    _renderAdminLayout();
+}
+
+function _renderAdminLayout() {
+    const controls = document.getElementById('adminLayoutControls');
+    const canvas   = document.getElementById('adminLayoutCanvasContainer');
+    if (!controls || !canvas) return;
+
+    canvas.innerHTML = '<div style="position:absolute;top:calc(50% - 64px);left:calc(50% - 64px);width:128px;height:128px;background:rgba(0,150,255,0.1);border:2px solid #0096FF;display:flex;align-items:center;justify-content:center;color:#0096FF;font-weight:bold;font-size:0.85em;z-index:10;box-sizing:border-box;">CORE (0,0)</div>';
+    controls.innerHTML = '<h4 style="margin-bottom:15px;color:#4CAF50;font-size:0.9em;">Offsets</h4>';
+
+    const allSids = new Set([...Object.keys((_adminLayoutData.offsets)||{}), ...Object.keys((_adminLayoutData.live)||{})]);
+    if (allSids.size === 0) {
+        controls.innerHTML += '<em style="color:#666;">No satellites configured or connected.</em>';
+        return;
+    }
+
+    Array.from(allSids).sort((a,b) => Number(a)-Number(b)).forEach(sid => {
+        const saved = ((_adminLayoutData.offsets)||{})[sid] || { offset_x:0, offset_y:0 };
+        const live  = ((_adminLayoutData.live)||{})[sid]    || { active:false, type:'OFFLINE/UNKNOWN' };
+        const badgeClass = live.active ? 'online' : 'offline';
+        const badgeText  = live.active ? 'ONLINE'  : 'OFFLINE';
+
+        const row = document.createElement('div');
+        row.style.cssText = 'margin-bottom:15px;padding:15px;background:#1a1a1a;border:1px solid #333;border-radius:4px;';
+        row.innerHTML = `
+            <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+                <strong style="color:#e0e0e0;">SAT ${sid} <span style="font-weight:normal;color:#888;font-size:0.85em;">(${live.type})</span></strong>
+                <span class="sat-badge ${badgeClass}">${badgeText}</span>
+            </div>
+            <div style="display:flex;gap:15px;">
+                <div style="flex:1;"><label style="font-size:0.8em;">X Offset:</label>
+                    <input type="number" id="alayout_x_${sid}" value="${saved.offset_x}" oninput="updateAdminCanvasPreview('${sid}')">
+                </div>
+                <div style="flex:1;"><label style="font-size:0.8em;">Y Offset:</label>
+                    <input type="number" id="alayout_y_${sid}" value="${saved.offset_y}" oninput="updateAdminCanvasPreview('${sid}')">
+                </div>
+            </div>`;
+        controls.appendChild(row);
+
+        const satBox = document.createElement('div');
+        satBox.id = `admin_canvas_sat_${sid}`;
+        satBox.style.cssText = 'position:absolute;width:64px;height:128px;background:rgba(255,152,0,0.15);border:2px dashed #FF9800;display:flex;align-items:center;justify-content:center;color:#FF9800;font-weight:bold;font-size:0.85em;transition:top 0.1s ease,left 0.1s ease;box-sizing:border-box;';
+        satBox.textContent = `SAT ${sid}`;
+        canvas.appendChild(satBox);
+        updateAdminCanvasPreview(sid);
+    });
+}
+
+function updateAdminCanvasPreview(sid) {
+    const xInput = document.getElementById(`alayout_x_${sid}`);
+    const yInput = document.getElementById(`alayout_y_${sid}`);
+    if (!xInput || !yInput) return;
+    const x = parseInt(xInput.value) || 0;
+    const y = parseInt(yInput.value) || 0;
+    const satBox = document.getElementById(`admin_canvas_sat_${sid}`);
+    if (satBox) {
+        const scale = 8;
+        satBox.style.left = `calc(50% - 64px + ${x * scale}px)`;
+        satBox.style.top  = `calc(50% - 64px + ${y * scale}px)`;
+    }
+}
+
+async function saveAdminLayout() {
+    const payload = {};
+    document.querySelectorAll('[id^="alayout_x_"]').forEach(xInput => {
+        const sid = xInput.id.split('_')[2];
+        const yInput = document.getElementById(`alayout_y_${sid}`);
+        payload[sid] = { x: parseInt(xInput.value) || 0, y: parseInt(yInput.value) || 0 };
+    });
+    try {
+        const resp = await fetch('/api/config/layout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (resp.ok) {
+            showStatus('adminLayoutStatus', 'Layout saved to config & applied live!', 'success');
+        } else {
+            const data = await resp.json();
+            showStatus('adminLayoutStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (e) {
+        showStatus('adminLayoutStatus', 'Error: ' + e, 'error');
+    }
 }
 
 async function loadSystemStatus() {

@@ -546,3 +546,71 @@ canvas.sparkline {
     border-color: #4CAF50;
     color: #000;
 }
+/* =====================================================
+   ADMIN TAB - Hidden easter egg tab
+   ===================================================== */
+.admin-tab-hidden {
+    display: none;
+}
+.admin-tab-visible {
+    background: #2a1a0a;
+    border: 1px solid #FF9800;
+    color: #FF9800;
+    animation: admin-appear 0.4s ease;
+}
+.admin-tab-visible.active {
+    background: #FF9800;
+    color: #000;
+    border-color: #FF9800;
+}
+@keyframes admin-appear {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.admin-card {
+    border-top: 3px solid #FF9800;
+    background: #1e1a10;
+}
+.admin-card:last-child {
+    border-top-color: #4CAF50;
+    background: #111a11;
+}
+.admin-danger-btn {
+    padding: 10px 20px;
+    background: #c05000;
+    color: #fff;
+    border: 1px solid #FF9800;
+    border-radius: 3px;
+    cursor: pointer;
+    font-weight: bold;
+}
+.admin-danger-btn:hover {
+    background: #e06000;
+    border-color: #ffb040;
+}
+.admin-version-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 5px;
+}
+.admin-version-card {
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 12px 14px;
+}
+.admin-version-card .label {
+    font-size: 0.75em;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+}
+.admin-version-card .value {
+    font-size: 1.1em;
+    font-family: monospace;
+    color: #e0e0e0;
+}
+.admin-version-card .value.up-to-date { color: #4CAF50; }
+.admin-version-card .value.outdated   { color: #FF9800; }

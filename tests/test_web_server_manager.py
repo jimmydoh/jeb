@@ -2974,6 +2974,59 @@ def test_launch_mode_missing_mode_id():
     print("  ✓ POST /api/actions/launch-mode missing mode_id test passed")
 
 
+def test_admin_version_route_registered():
+    """Test that GET /api/admin/version route is registered."""
+    print("\nTesting GET /api/admin/version route registration...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True,
+        "update_url": "https://github.com/jimmydoh/jeb/releases/download/latest",
+    }
+
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    route = next((func for path, method, func in manager.server.routes if path == "/api/admin/version"), None)
+    assert route is not None, "/api/admin/version route not found"
+
+    print("  ✓ GET /api/admin/version route is registered")
+
+
+def test_admin_version_returns_update_url():
+    """Test that /api/admin/version returns the configured update_url."""
+    print("\nTesting GET /api/admin/version returns update_url...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True,
+        "update_url": "https://example.com/updates",
+    }
+
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    route = next((func for path, method, func in manager.server.routes if path == "/api/admin/version"), None)
+    assert route is not None
+
+    request = MockRequest()
+    response = route(request)
+    assert response.status == 200, f"Expected 200, got {response.status}"
+
+    payload = json.loads(response.body)
+    assert payload.get("update_url") == "https://example.com/updates", (
+        f"update_url mismatch: {payload.get('update_url')!r}"
+    )
+    assert "local_version" in payload, "local_version key missing from response"
+    assert "remote_version" in payload, "remote_version key missing from response"
+
+    print("  ✓ GET /api/admin/version returns correct update_url")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -3054,6 +3107,8 @@ def run_all_tests():
         test_launch_mode_standard,
         test_launch_mode_tutorial,
         test_launch_mode_missing_mode_id,
+        test_admin_version_route_registered,
+        test_admin_version_returns_update_url,
     ]
 
     try:
