@@ -193,7 +193,7 @@ class MockApp:
     need those managers should pass an instance of this class as the
     ``app`` argument instead of using the old per-manager kwargs.
     """
-    def __init__(self, power=None, sat_network=None, matrix=None, synth=None, hid=None, data=None, mode_registry=None):
+    def __init__(self, power=None, sat_network=None, matrix=None, synth=None, hid=None, data=None, mode_registry=None, audio=None, buzzer=None):
         self.power = power
         self.sat_network = sat_network
         self.matrix = matrix
@@ -201,6 +201,8 @@ class MockApp:
         self.hid = hid
         self.data = data
         self.mode_registry = mode_registry or {}
+        self.audio = audio
+        self.buzzer = buzzer
 
 
 def test_initialization():
@@ -2167,6 +2169,346 @@ def test_synth_stop_no_synth():
     print("  ✓ Synth stop (no synth) test passed")
 
 
+# ---------------------------------------------------------------------------
+# Audio Library and Play API Tests
+# ---------------------------------------------------------------------------
+
+class MockAudioManager:
+    """Mock AudioManager for testing WAV playback API."""
+    def __init__(self):
+        self.play_called = False
+        self.play_file_arg = None
+
+    def play(self, file, bus_id=1, loop=False, level=1.0, wait=False, interrupt=True):
+        self.play_called = True
+        self.play_file_arg = file
+
+
+class MockBuzzerManager:
+    """Mock BuzzerManager for testing tone trigger API."""
+    def __init__(self):
+        self.play_sequence_called = False
+        self.play_sequence_arg = None
+
+    def play_sequence(self, sequence_data, loop=None):
+        self.play_sequence_called = True
+        self.play_sequence_arg = sequence_data
+
+
+def _make_audio_manager(audio=None, buzzer=None, synth=None, config=None):
+    if config is None:
+        config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_app = MockApp(audio=audio, buzzer=buzzer, synth=synth)
+    manager = WebServerManager(config, MockWiFiManager(), app=mock_app, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+    return manager
+
+
+def test_audio_library_route_registered():
+    """Test that /api/audio/library route is registered."""
+    print("\nTesting /api/audio/library route registration...")
+    manager = _make_audio_manager()
+    registered = [p for p, _, _ in manager.server.routes]
+    assert "/api/audio/library" in registered, "/api/audio/library not registered"
+    assert "/api/audio/play" in registered, "/api/audio/play not registered"
+    print("  ✓ Audio library/play routes registered test passed")
+
+
+def test_audio_library_no_file():
+    """Test GET /api/audio/library when tones.py cannot be opened."""
+    print("\nTesting /api/audio/library with missing tones file...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/library")
+    assert handler is not None
+
+    req = MockRequest()
+    resp = handler(req)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    # With no tones.py and no /sd/audio/, both lists should be empty
+    assert "tones" in data
+    assert "wavs" in data
+    assert isinstance(data["tones"], list)
+    assert isinstance(data["wavs"], list)
+    print("  ✓ Audio library (no file) test passed")
+
+
+def test_audio_library_with_tones_file():
+    """Test GET /api/audio/library parses a tones.py file correctly."""
+    import tempfile
+    import unittest.mock
+    print("\nTesting /api/audio/library with mocked tones.py...")
+
+    fake_tones_content = (
+        "NOTE_FREQUENCIES = {\n"
+        "    'C4': 261.63,\n"
+        "}\n"
+        "W = 4.0\n"
+        "SYSTEM_BOOT = {\n"
+        "    'bpm': 120,\n"
+        "    'sequence': [('C4', 0.25)]\n"
+        "}\n"
+        "UI_TICK = {\n"
+        "    'bpm': 200,\n"
+        "    'sequence': [('C5', 0.125)]\n"
+        "}\n"
+    )
+
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/library")
+
+    # Patch open() so /utilities/tones.py reads from an in-memory StringIO
+    import io
+    original_open = open
+    def patched_open(path, *args, **kwargs):
+        if path == "/utilities/tones.py":
+            return io.StringIO(fake_tones_content)
+        return original_open(path, *args, **kwargs)
+
+    with unittest.mock.patch("builtins.open", side_effect=patched_open):
+        req = MockRequest()
+        resp = handler(req)
+
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert "SYSTEM_BOOT" in data["tones"]
+    assert "UI_TICK" in data["tones"]
+    assert "NOTE_FREQUENCIES" not in data["tones"]
+    assert "W" not in data["tones"]  # Duration constant, not a sequence
+    print("  ✓ Audio library (tones file) test passed")
+
+
+def test_audio_play_invalid_json():
+    """Test POST /api/audio/play with invalid JSON."""
+    print("\nTesting /api/audio/play with invalid JSON...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/play")
+    assert handler is not None
+
+    req = MockRequest()
+    req.json = lambda: None
+    resp = handler(req)
+    assert resp.status == 400
+    data = json.loads(resp.body)
+    assert "error" in data
+    print("  ✓ Audio play invalid JSON test passed")
+
+
+def test_audio_play_invalid_type():
+    """Test POST /api/audio/play with unknown type."""
+    print("\nTesting /api/audio/play with unknown type...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "unknown"}
+    resp = handler(req)
+    assert resp.status == 400
+    data = json.loads(resp.body)
+    assert "error" in data
+    print("  ✓ Audio play unknown type test passed")
+
+
+def test_audio_play_tone_no_name():
+    """Test POST /api/audio/play tone without a name."""
+    print("\nTesting /api/audio/play tone missing name...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "tone", "target": "buzzer"}
+    resp = handler(req)
+    assert resp.status == 400
+    print("  ✓ Audio play tone missing name test passed")
+
+
+def test_audio_play_tone_invalid_target():
+    """Test POST /api/audio/play tone with an invalid target."""
+    print("\nTesting /api/audio/play tone invalid target...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "tone", "name": "SYSTEM_BOOT", "target": "speakers"}
+    resp = handler(req)
+    assert resp.status == 400
+    print("  ✓ Audio play tone invalid target test passed")
+
+
+def test_audio_play_tone_buzzer_no_manager():
+    """Test POST /api/audio/play tone on buzzer with no buzzer manager."""
+    print("\nTesting /api/audio/play tone on buzzer (no manager)...")
+    manager = _make_audio_manager(buzzer=None)
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "tone", "name": "SYSTEM_BOOT", "target": "buzzer"}
+    resp = handler(req)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["status"] == "no_buzzer"
+    print("  ✓ Audio play tone (no buzzer) test passed")
+
+
+def test_audio_play_tone_buzzer_calls_manager():
+    """Test POST /api/audio/play tone on buzzer calls buzzer_manager.play_sequence."""
+    print("\nTesting /api/audio/play tone on buzzer with manager...")
+    mock_buzzer = MockBuzzerManager()
+    manager = _make_audio_manager(buzzer=mock_buzzer)
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "tone", "name": "UI_CONFIRM", "target": "buzzer"}
+    resp = handler(req)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["status"] == "success"
+    assert mock_buzzer.play_sequence_called is True
+    assert mock_buzzer.play_sequence_arg == "UI_CONFIRM"
+    print("  ✓ Audio play tone on buzzer test passed")
+
+
+def test_audio_play_tone_synth_no_manager():
+    """Test POST /api/audio/play tone on synth with no synth manager."""
+    print("\nTesting /api/audio/play tone on synth (no manager)...")
+    manager = _make_audio_manager(synth=None)
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "tone", "name": "SYSTEM_BOOT", "target": "synth"}
+    resp = handler(req)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["status"] == "no_synth"
+    print("  ✓ Audio play tone (no synth) test passed")
+
+
+def test_audio_play_wav_no_filename():
+    """Test POST /api/audio/play wav without filename."""
+    print("\nTesting /api/audio/play wav missing filename...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "wav"}
+    resp = handler(req)
+    assert resp.status == 400
+    print("  ✓ Audio play wav missing filename test passed")
+
+
+def test_audio_play_wav_path_traversal():
+    """Test POST /api/audio/play wav rejects path traversal and out-of-directory filenames."""
+    print("\nTesting /api/audio/play wav path traversal rejection...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/play")
+
+    # These should all be rejected (not under /sd/audio/)
+    for bad_path in [
+        "../etc/passwd",           # Traversal
+        "/etc/passwd",             # Absolute path
+        "audio/../secret.wav",     # Traversal into /sd/ root
+        "../../outside.wav",       # Traversal outside /sd/
+        "config.json",             # Not in audio directory
+    ]:
+        req = MockRequest()
+        req.json = lambda bp=bad_path: {"type": "wav", "filename": bp}
+        resp = handler(req)
+        assert resp.status == 400, f"Expected 400 for path: {bad_path}"
+    print("  ✓ Audio play wav path traversal test passed")
+
+
+def test_audio_play_wav_no_manager():
+    """Test POST /api/audio/play wav with no audio manager."""
+    print("\nTesting /api/audio/play wav (no audio manager)...")
+    manager = _make_audio_manager(audio=None)
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "wav", "filename": "audio/menu/tick.wav"}
+    resp = handler(req)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["status"] == "no_audio"
+    print("  ✓ Audio play wav (no audio manager) test passed")
+
+
+def test_audio_play_wav_calls_manager():
+    """Test POST /api/audio/play wav calls audio_manager.play with correct filename."""
+    print("\nTesting /api/audio/play wav with audio manager...")
+    mock_audio = MockAudioManager()
+    manager = _make_audio_manager(audio=mock_audio)
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "wav", "filename": "audio/menu/tick.wav"}
+    resp = handler(req)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["status"] == "success"
+    assert mock_audio.play_called is True
+    assert mock_audio.play_file_arg == "audio/menu/tick.wav"
+    print("  ✓ Audio play wav with manager test passed")
+
+
+def test_audio_manager_and_buzzer_manager_properties():
+    """Test that audio_manager and buzzer_manager properties delegate to app."""
+    print("\nTesting audio_manager and buzzer_manager property delegation...")
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+
+    mock_audio = MockAudioManager()
+    mock_buzzer = MockBuzzerManager()
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(audio=mock_audio, buzzer=mock_buzzer), testing=True)
+    assert manager.audio_manager is mock_audio
+    assert manager.buzzer_manager is mock_buzzer
+
+    manager2 = WebServerManager(config, MockWiFiManager(), testing=True)
+    assert manager2.audio_manager is None
+    assert manager2.buzzer_manager is None
+    print("  ✓ audio_manager and buzzer_manager properties test passed")
+
+
+def test_list_wav_files_empty():
+    """Test _list_wav_files returns empty list when directory doesn't exist."""
+    print("\nTesting _list_wav_files with non-existent directory...")
+    manager = _make_audio_manager()
+    result = manager._list_wav_files("/nonexistent/path")
+    assert result == []
+    print("  ✓ _list_wav_files (non-existent directory) test passed")
+
+
+def test_list_wav_files_real_directory():
+    """Test _list_wav_files recursively finds .wav files."""
+    import tempfile
+    print("\nTesting _list_wav_files with real directory structure...")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create a fake audio directory structure
+        audio_dir = os.path.join(tmpdir, "audio")
+        menu_dir = os.path.join(audio_dir, "menu")
+        os.makedirs(audio_dir)
+        os.makedirs(menu_dir)
+
+        for fname, data in [
+            (os.path.join(audio_dir, "tick.wav"), b"RIFF"),
+            (os.path.join(audio_dir, "notes.txt"), b"not a wav"),
+            (os.path.join(menu_dir, "select.wav"), b"RIFF"),
+            (os.path.join(menu_dir, "back.wav"), b"RIFF"),
+        ]:
+            with open(fname, "wb") as f:
+                f.write(data)
+
+        manager = _make_audio_manager()
+        result = manager._list_wav_files(audio_dir)
+        # Should find 3 wav files (not txt file)
+        assert len(result) == 3
+        wav_names = [r.split("/")[-1] for r in result]
+        assert "tick.wav" in wav_names
+        assert "select.wav" in wav_names
+        assert "back.wav" in wav_names
+        assert "notes.txt" not in wav_names
+    print("  ✓ _list_wav_files recursive test passed")
+
+
 def test_hid_manager_stored():
     """Test that hid is stored on WebServerManager when provided."""
     print("\nTesting hid parameter storage...")
@@ -3085,6 +3427,23 @@ def run_all_tests():
         test_synth_save_validation,
         test_synth_stop_route,
         test_synth_stop_no_synth,
+        test_audio_library_route_registered,
+        test_audio_library_no_file,
+        test_audio_library_with_tones_file,
+        test_audio_play_invalid_json,
+        test_audio_play_invalid_type,
+        test_audio_play_tone_no_name,
+        test_audio_play_tone_invalid_target,
+        test_audio_play_tone_buzzer_no_manager,
+        test_audio_play_tone_buzzer_calls_manager,
+        test_audio_play_tone_synth_no_manager,
+        test_audio_play_wav_no_filename,
+        test_audio_play_wav_path_traversal,
+        test_audio_play_wav_no_manager,
+        test_audio_play_wav_calls_manager,
+        test_audio_manager_and_buzzer_manager_properties,
+        test_list_wav_files_empty,
+        test_list_wav_files_real_directory,
         test_hid_manager_stored,
         test_hid_update_route_registered,
         test_hid_update_no_hid_manager,

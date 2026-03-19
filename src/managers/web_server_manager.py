@@ -26,6 +26,7 @@ import asyncio
 import json
 import os
 import gc
+import sys
 import time
 
 from adafruit_httpserver import Server, Request, Response, GET, POST
@@ -99,6 +100,14 @@ class WebServerManager:
     @property
     def synth_manager(self):
         return getattr(self.app, 'synth', None) if self.app else None
+
+    @property
+    def audio_manager(self):
+        return getattr(self.app, 'audio', None) if self.app else None
+
+    @property
+    def buzzer_manager(self):
+        return getattr(self.app, 'buzzer', None) if self.app else None
 
     @property
     def hid(self):
@@ -1181,6 +1190,123 @@ class WebServerManager:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
+        # API: Audio library – list available tones and WAV files
+        @self.server.route("/api/audio/library", GET)
+        def get_audio_library(request: Request):
+            """Return available tone names from tones.py and .wav files from /sd/audio/."""
+            try:
+                tones_list = []
+                try:
+                    # Force a fresh load from disk to catch live web-edits
+                    sys.modules.pop('utilities.tones', None)
+                    import utilities.tones as _tones
+
+                    # Safely extract all uppercase dictionary constants dynamically
+                    for name in dir(_tones):
+                        if name.isupper() and name != "NOTE_FREQUENCIES":
+                            if isinstance(getattr(_tones, name), dict):
+                                tones_list.append(name)
+                except ImportError:
+                    pass  # Module not found
+
+                # Scan /sd/audio/ recursively for .wav files
+                wav_files = self._list_wav_files("/sd/audio")
+
+                return Response(request, json.dumps({"tones": tones_list, "wavs": wav_files}),
+                                content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                                content_type="application/json", status=500)
+
+        # API: Play a tone/sequence or WAV file
+        @self.server.route("/api/audio/play", POST)
+        def play_audio(request: Request):
+            """Play a pre-defined tone/sequence or a WAV file.
+
+            JSON body for tone/sequence:
+                {"type": "tone", "name": "UI_CONFIRM", "target": "buzzer"}
+                {"type": "tone", "name": "SYSTEM_BOOT", "target": "synth"}
+
+            JSON body for WAV playback:
+                {"type": "wav", "filename": "audio/menu/tick.wav"}
+            """
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                play_type = data.get("type", "")
+
+                if play_type == "tone":
+                    name = data.get("name", "").strip().upper()
+                    target = data.get("target", "synth").strip().lower()
+
+                    if not name:
+                        return Response(request, '{"error": "name is required"}',
+                                      content_type="application/json", status=400)
+
+                    if target not in ("buzzer", "synth"):
+                        return Response(request, '{"error": "target must be buzzer or synth"}',
+                                      content_type="application/json", status=400)
+
+                    if target == "buzzer":
+                        if self.buzzer_manager is None:
+                            return Response(request, '{"status": "no_buzzer", "message": "Buzzer manager not available"}',
+                                          content_type="application/json")
+                        # BuzzerManager.play_sequence() resolves name strings internally
+                        self.buzzer_manager.play_sequence(name)
+                    else:
+                        if self.synth_manager is None:
+                            return Response(request, '{"status": "no_synth", "message": "Synth manager not available"}',
+                                          content_type="application/json")
+                        try:
+                            import utilities.tones as _tones
+                            tone_data = getattr(_tones, name, None)
+                            if tone_data is None or not isinstance(tone_data, dict):
+                                return Response(request, f'{{"error": "Tone {name} not found in tones.py"}}',
+                                              content_type="application/json", status=404)
+                            self.synth_manager.preview_channels([tone_data])
+                        except ImportError:
+                            return Response(request, '{"error": "tones module not available on this device"}',
+                                          content_type="application/json", status=503)
+
+                    self.log(f"Audio play: tone '{name}' on {target}")
+                    return Response(request, '{"status": "success"}',
+                                  content_type="application/json")
+
+                elif play_type == "wav":
+                    filename = data.get("filename", "").strip()
+                    if not filename:
+                        return Response(request, '{"error": "filename is required"}',
+                                      content_type="application/json", status=400)
+
+                    # Security: sanitize path and ensure it resolves within /sd/audio/
+                    sanitized = self._sanitize_path("/sd", filename)
+                    if not sanitized.startswith("/sd/audio/"):
+                        return Response(request, '{"error": "invalid filename"}',
+                                      content_type="application/json", status=400)
+
+                    # Pass the path relative to /sd/ (what audio_manager.play() expects)
+                    safe_filename = sanitized[4:]  # Strip "/sd/" prefix (4 chars)
+
+                    if self.audio_manager is None:
+                        return Response(request, '{"status": "no_audio", "message": "Audio manager not available"}',
+                                      content_type="application/json")
+
+                    self.audio_manager.play(safe_filename)
+                    self.log(f"Audio play: WAV '{safe_filename}'")
+                    return Response(request, '{"status": "success"}',
+                                  content_type="application/json")
+
+                else:
+                    return Response(request, '{"error": "type must be tone or wav"}',
+                                  content_type="application/json", status=400)
+
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
         # API: Remote HID state override (web-based interaction)
         @self.server.route("/api/hid/update", POST)
         def update_hid_state(request: Request):
@@ -1460,6 +1586,29 @@ class WebServerManager:
             return {"path": path, "items": items}
         except Exception as e:
             raise RuntimeError(f"Error listing directory: {e}")
+
+    def _list_wav_files(self, path, _root=None):
+        """Recursively list .wav files under path, returning paths relative to /sd/."""
+        if _root is None:
+            _root = path
+        wav_files = []
+        try:
+            for item in os.listdir(path):
+                full_path = f"{path}/{item}"
+                try:
+                    stat = os.stat(full_path)
+                    is_dir = (stat[0] & 0x4000) != 0
+                    if is_dir:
+                        wav_files.extend(self._list_wav_files(full_path, _root))
+                    elif item.lower().endswith(".wav"):
+                        # Return path relative to /sd/ so it can be passed directly to audio_manager.play()
+                        rel = full_path[4:] if full_path.startswith("/sd/") else full_path
+                        wav_files.append(rel)
+                except OSError as e:
+                    JEBLogger.warning("WEBS", f"Could not stat {full_path} during WAV scan: {e}")
+        except OSError as e:
+            JEBLogger.warning("WEBS", f"WAV scan: directory not found or unreadable: {path} ({e})")
+        return wav_files
 
     async def start(self):
         """Start the web server."""
