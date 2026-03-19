@@ -95,17 +95,20 @@ async function loadAdminVersionInfo() {
     }
 }
 
-async function triggerOTALaunch() {
-    if (!confirm('Launch the OTA Updater mode on the device? This will interrupt the current mode.')) return;
+async function triggerOTAUpdateAction(variant) {
+    const actionName = variant === 'AUTO_FULL' ? 'Full Firmware Update' : 'SD Asset Repair';
+    if (!confirm(`Trigger ${actionName} on the device? This will interrupt the current running mode.`)) return;
+
     try {
         const resp = await fetch('/api/actions/launch-mode', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode_id: 'OTA_UPDATER' })
+            body: JSON.stringify({ mode_id: 'OTA_UPDATER', variant: variant })
         });
         const data = await resp.json();
+
         if (resp.ok) {
-            showStatus('adminOtaStatus', '🚀 OTA Updater launched on device. Check the OLED for progress.', 'success');
+            showStatus('adminOtaStatus', `🚀 ${actionName} launched. Check the device OLED for live progress.`, 'success');
         } else {
             showStatus('adminOtaStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
         }

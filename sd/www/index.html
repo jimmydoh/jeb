@@ -408,7 +408,8 @@
                 </div>
 
                 <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                    <button class="admin-danger-btn" onclick="triggerOTALaunch()">🚀 Launch OTA Updater</button>
+                    <button class="admin-danger-btn" onclick="triggerOTAUpdateAction('AUTO_FULL')">🚀 Run Full Update</button>
+                    <button class="secondary" onclick="triggerOTAUpdateAction('AUTO_SD')">Repair SD Assets</button>
                     <button class="secondary" onclick="loadAdminVersionInfo()" style="font-size: 0.85em;">↺ Refresh</button>
                 </div>
                 <div id="adminOtaStatus" class="status" style="display:none; margin-top: 15px;"></div>
