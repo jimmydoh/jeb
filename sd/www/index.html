@@ -8,7 +8,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🔧 JEB Field Service Configurator</h1>
+        <h1 id="mainTitle" onclick="adminEasterEgg()" title="🔧 JEB Field Service Configurator" style="cursor: default;">🔧 JEB Field Service Configurator</h1>
 
         <div class="tabs">
             <button class="tab active" onclick="showTab('system')">System Status</button>
@@ -21,7 +21,7 @@
             <button class="tab" onclick="showTab('audiostudio')">Audio Studio</button>
             <button class="tab" onclick="showTab('hidemulator')">HID Emulator</button>
             <button class="tab" onclick="showTab('hid')">Remote HID</button>
-            <button class="tab" onclick="showTab('layout')">Layout</button>
+            <button id="adminTabBtn" class="tab admin-tab-hidden" onclick="showTab('admin')">⚙ Admin</button>
         </div>
 
         <div id="system" class="tab-content active">
@@ -388,6 +388,55 @@
                         <div style="position: absolute; top: calc(50% - 64px); left: calc(50% - 64px); width: 128px; height: 128px; background: rgba(0, 150, 255, 0.1); border: 2px solid #0096FF; display: flex; align-items: center; justify-content: center; color: #0096FF; font-weight: bold; font-size: 0.85em; z-index: 10; box-sizing: border-box;">CORE (0,0)</div>
                     </div>
                     <p style="color: #888; font-size: 0.8em; margin-top: 10px; text-align: center;">1 Grid Square = 1 LED Pixel. Coordinates map outward from the Core.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="admin" class="tab-content">
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px;">
+                <h2>⚙ Admin</h2>
+                <span style="font-size: 0.75em; color: #555; background: #111; padding: 4px 10px; border-radius: 3px; border: 1px solid #2a2a2a; letter-spacing: 0.08em;">RESTRICTED ACCESS</span>
+            </div>
+
+            <!-- OTA Update Card -->
+            <div class="panel admin-card" style="margin-bottom: 24px;">
+                <h3 class="panel-title" style="color: #FF9800;">🔄 OTA Firmware Update</h3>
+                <p style="color: #b0b0b0; margin-bottom: 15px; font-size: 0.9em;">Monitor firmware versions and trigger the over-the-air update workflow. The device must be connected to Wi-Fi.</p>
+
+                <div id="adminVersionInfo" style="margin-bottom: 18px;">
+                    <em style="color: #555; font-size: 0.9em;">Loading version info...</em>
+                </div>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                    <button class="admin-danger-btn" onclick="triggerOTAUpdateAction('AUTO_FULL')">🚀 Run Full Update</button>
+                    <button class="secondary" onclick="triggerOTAUpdateAction('AUTO_SD')">Repair SD Assets</button>
+                    <button class="secondary" onclick="loadAdminVersionInfo()" style="font-size: 0.85em;">↺ Refresh</button>
+                </div>
+                <div id="adminOtaStatus" class="status" style="display:none; margin-top: 15px;"></div>
+            </div>
+
+            <!-- Layout Configurator Card (migrated from main nav) -->
+            <div class="panel admin-card">
+                <h3 class="panel-title" style="color: #4CAF50;">📐 Layout Configurator</h3>
+                <p style="color: #b0b0b0; margin-bottom: 15px; font-size: 0.9em;">Configure the spatial offsets (X, Y) for connected satellites on the global animation canvas.</p>
+
+                <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 280px;">
+                        <div id="adminLayoutControls"></div>
+                        <div style="margin-top: 20px; display: flex; gap: 10px;">
+                            <button onclick="saveAdminLayout()">💾 Save &amp; Apply</button>
+                            <button class="secondary" onclick="loadAdminLayout()">↺ Revert</button>
+                        </div>
+                        <div id="adminLayoutStatus" class="status" style="display:none; margin-top: 15px;"></div>
+                    </div>
+
+                    <div style="flex: 2; min-width: 340px;">
+                        <h4 style="margin-bottom: 10px; color: #4CAF50; font-size: 0.9em;">Live Canvas Preview</h4>
+                        <div id="adminLayoutCanvasContainer" style="position: relative; width: 100%; height: 360px; background: #111; border: 1px solid #444; border-radius: 3px; overflow: hidden;">
+                            <div style="position: absolute; top: calc(50% - 64px); left: calc(50% - 64px); width: 128px; height: 128px; background: rgba(0, 150, 255, 0.1); border: 2px solid #0096FF; display: flex; align-items: center; justify-content: center; color: #0096FF; font-weight: bold; font-size: 0.85em; z-index: 10; box-sizing: border-box;">CORE (0,0)</div>
+                        </div>
+                        <p style="color: #888; font-size: 0.75em; margin-top: 8px; text-align: center;">1 Grid Square = 1 LED Pixel. Coordinates map outward from the Core.</p>
+                    </div>
                 </div>
             </div>
         </div>

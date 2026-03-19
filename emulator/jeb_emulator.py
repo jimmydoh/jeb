@@ -31,15 +31,29 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
 SRC_DIR = os.path.join(PROJECT_ROOT, 'src')
 SD_DIR = os.path.join(PROJECT_ROOT, 'sd') # <--- Get absolute path to the SD folder
 
+# OTA Emulator Sandbox - all OTA downloads and installs are redirected here
+# to prevent any writes to the host machine's source repository.
+OTA_SANDBOX_DIR = os.path.join(PROJECT_ROOT, 'emulator_tmp', 'ota')
+
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
 _orig_stat = os.stat
 _orig_mkdir = os.mkdir
+_orig_makedirs = os.makedirs
 _orig_listdir = os.listdir    # <-- Added listdir
 _orig_open = builtins.open
 _orig_remove = os.remove
 _orig_rmdir = os.rmdir
+
+# Host OS root directory names that should NOT be remapped to the OTA mock root.
+# CircuitPython device paths (e.g. /modes, /lib, /.fs_test) are short names
+# that do not appear in this list.
+_HOST_ROOT_DIRS = frozenset({
+    'home', 'usr', 'tmp', 'var', 'opt', 'proc', 'sys', 'dev',
+    'run', 'boot', 'root', 'etc', 'bin', 'sbin', 'mnt', 'media',
+    'Users', 'Windows', 'Program Files', 'Program Files (x86)',
+})
 
 def smart_path_mapper(path):
     if not isinstance(path, str):
@@ -50,7 +64,20 @@ def smart_path_mapper(path):
         JEBLogger.emulator("MOCK", f"Path {path} mapped -> {SD_DIR}")
         return SD_DIR
 
-    # 2. Match for subdirectories and files
+    # 2. OTA download staging area: /sd/update → emulator_tmp/ota/staging/
+    #    This must be checked before the general /sd/ handler below.
+    if path.lower().startswith('/sd/update'):
+        rest = path[len('/sd/update'):]
+        if rest == '' or rest.startswith('/'):
+            clean = rest.lstrip('/')
+            mapped_path = os.path.normpath(
+                os.path.join(OTA_SANDBOX_DIR, 'staging', clean)
+                if clean else os.path.join(OTA_SANDBOX_DIR, 'staging')
+            )
+            JEBLogger.emulator("MOCK", f"Path {path} mapped -> {mapped_path} [OTA staging]")
+            return mapped_path
+
+    # 3. Match for subdirectories and files in /sd/
     if path.lower().startswith('/sd/') or path.lower().startswith('sd/'):
         # Strip the '/sd/' prefix and append the rest to our absolute SD_DIR
         clean_path = path[4:] if path.lower().startswith('/sd/') else path[3:]
@@ -59,6 +86,20 @@ def smart_path_mapper(path):
         mapped_path = os.path.normpath(os.path.join(SD_DIR, clean_path))
         JEBLogger.emulator("MOCK", f"Path {path} mapped -> {mapped_path}")
         return mapped_path
+
+    # 4. Non-SD absolute paths that look like CircuitPython device paths
+    #    (e.g. /.fs_test, /modes/ota_updater.mpy, /lib/something.mpy) are
+    #    redirected to the OTA mock root so that:
+    #    - verify_files() compares hashes against safe sandbox copies
+    #    - install_file() writes to the sandbox rather than the host filesystem
+    #    Full host-OS paths (starting with /home, /usr, etc.) are left unchanged.
+    if path.startswith('/') and not path.startswith('/sd'):
+        first_seg = path.split('/', 2)[1] if path.count('/') >= 1 else ''
+        if first_seg not in _HOST_ROOT_DIRS and not path.startswith(PROJECT_ROOT):
+            clean_path = path.lstrip('/')
+            mapped_path = os.path.normpath(os.path.join(OTA_SANDBOX_DIR, 'mock_root', clean_path))
+            JEBLogger.emulator("MOCK", f"Path {path} mapped -> {mapped_path} [OTA mock root]")
+            return mapped_path
 
     return path
 
@@ -78,6 +119,10 @@ def _mock_open(file, *args, **kwargs):
 def _mock_mkdir(path, *args, **kwargs):
     JEBLogger.emulator("MOCK", f"Intercepted os.mkdir for path: {path}")
     return _orig_mkdir(smart_path_mapper(path), *args, **kwargs)
+
+def _mock_makedirs(path, *args, **kwargs):
+    JEBLogger.emulator("MOCK", f"Intercepted os.makedirs for path: {path}")
+    return _orig_makedirs(smart_path_mapper(path), *args, **kwargs)
 
 def _mock_remove(path, *args, **kwargs):
     JEBLogger.emulator("MOCK", f"Intercepted os.remove for path: {path}")
@@ -99,10 +144,19 @@ sys.modules['storage'] = MockStorage()
 # Apply the patches globally for the emulator session
 os.stat = _mock_stat
 os.mkdir = _mock_mkdir
+os.makedirs = _mock_makedirs
 os.listdir = _mock_listdir
 os.remove = _mock_remove
 os.rmdir = _mock_rmdir
 builtins.open = _mock_open
+
+# Ensure the OTA sandbox directories exist so downloads and installs have a
+# safe destination the moment the OTA updater first runs in the emulator.
+try:
+    _orig_makedirs(os.path.join(OTA_SANDBOX_DIR, 'staging'), exist_ok=True)
+    _orig_makedirs(os.path.join(OTA_SANDBOX_DIR, 'mock_root'), exist_ok=True)
+except OSError:
+    pass
 
 # Console Mocks
 class MockRuntime:
@@ -1229,6 +1283,85 @@ class MockSocketPoolModule:
     SocketPool = MockSocketPool
 
 sys.modules['socketpool'] = MockSocketPoolModule()
+
+# --- ADAFRUIT_REQUESTS MOCK ---
+# Uses Python's urllib to make real HTTPS requests so the OTA updater can
+# contact the live production server.  This intentionally does NOT intercept
+# or stub the network traffic - the emulator is allowed to reach the internet.
+
+import urllib.request as _urllib_request
+import urllib.error as _urllib_error
+
+class MockAdafruitRequestsResponse:
+    """Response object matching the adafruit_requests.Response API.
+
+    Wraps a real urllib HTTP response so the OTA engine can call
+    .status_code, .json(), .iter_content(), and .close() exactly as it
+    would on real hardware.
+    """
+
+    def __init__(self, url, timeout=10):
+        self._response = None
+        self._content = None
+        try:
+            req = _urllib_request.Request(
+                url, headers={'User-Agent': 'JEB-Emulator/1.0'}
+            )
+            self._response = _urllib_request.urlopen(req, timeout=timeout)
+            self.status_code = self._response.status
+        except _urllib_error.HTTPError as e:
+            JEBLogger.emulator("MOCK", f"[HTTP] {e.code} on {url}")
+            self.status_code = e.code
+            self._content = b""
+        except Exception as e:
+            JEBLogger.emulator("MOCK", f"[HTTP] Request failed for {url}: {e}")
+            self.status_code = 0
+            self._content = b""
+
+    def _read_all(self):
+        if self._content is None:
+            self._content = self._response.read() if self._response else b""
+        return self._content
+
+    def json(self):
+        import json as _json
+        return _json.loads(self._read_all().decode('utf-8'))
+
+    def iter_content(self, chunk_size=1024):
+        """Yield response body in chunks of chunk_size bytes."""
+        if self._response:
+            while True:
+                chunk = self._response.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        elif self._content:
+            for i in range(0, len(self._content), chunk_size):
+                yield self._content[i:i + chunk_size]
+
+    def close(self):
+        if self._response:
+            try:
+                self._response.close()
+            except Exception:
+                pass
+
+
+class MockAdafruitRequestsSession:
+    """Mock adafruit_requests.Session that delegates to real urllib."""
+
+    def __init__(self, pool, ssl_context):
+        pass  # Pool and SSL context are not needed when using urllib
+
+    def get(self, url, timeout=10):
+        JEBLogger.emulator("MOCK", f"[HTTP] GET {url}")
+        return MockAdafruitRequestsResponse(url, timeout)
+
+
+class _MockAdafruitRequestsModule:
+    Session = MockAdafruitRequestsSession
+
+sys.modules['adafruit_requests'] = _MockAdafruitRequestsModule()
 
 # --- ADAFRUIT_HTTPSERVER MOCK ---
 # A functional HTTP server implementation that binds to a real TCP socket on
