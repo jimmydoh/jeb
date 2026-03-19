@@ -1214,8 +1214,8 @@ async function audioStop() {
     }
 }
 
-async function loadAudioLibrary() {
-    if (audioLibraryLoaded) return;
+async function loadAudioLibrary(force = false) {
+    if (audioLibraryLoaded && !force) return;
     try {
         const resp = await fetch('/api/audio/library');
         if (!resp.ok) throw new Error('HTTP ' + resp.status);

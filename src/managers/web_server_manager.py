@@ -26,6 +26,7 @@ import asyncio
 import json
 import os
 import gc
+import sys
 import time
 
 from adafruit_httpserver import Server, Request, Response, GET, POST
@@ -1167,26 +1168,28 @@ class WebServerManager:
         def get_audio_library(request: Request):
             """Return available tone names from tones.py and .wav files from /sd/audio/."""
             try:
-                # Parse tones.py line-by-line to find UPPER_CASE dict constants
                 tones_list = []
                 try:
-                    with open("/utilities/tones.py") as f:
-                        for line in f:
-                            if " = {" in line:
-                                name = line.split(" = {")[0].strip()
-                                if name and name.isupper() and name != "NOTE_FREQUENCIES":
-                                    tones_list.append(name)
-                except OSError as e:
-                    JEBLogger.warning("WEBS", f"Could not open tones.py for audio library scan: {e}")
+                    # Force a fresh load from disk to catch live web-edits
+                    sys.modules.pop('utilities.tones', None)
+                    import utilities.tones as _tones
+
+                    # Safely extract all uppercase dictionary constants dynamically
+                    for name in dir(_tones):
+                        if name.isupper() and name != "NOTE_FREQUENCIES":
+                            if isinstance(getattr(_tones, name), dict):
+                                tones_list.append(name)
+                except ImportError:
+                    pass  # Module not found
 
                 # Scan /sd/audio/ recursively for .wav files
                 wav_files = self._list_wav_files("/sd/audio")
 
                 return Response(request, json.dumps({"tones": tones_list, "wavs": wav_files}),
-                              content_type="application/json")
+                                content_type="application/json")
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',
-                              content_type="application/json", status=500)
+                                content_type="application/json", status=500)
 
         # API: Play a tone/sequence or WAV file
         @self.server.route("/api/audio/play", POST)
