@@ -12,6 +12,7 @@ import os
 import hashlib
 import time
 import microcontroller
+from utilities.logger import JEBLogger
 
 from .utility_mode import UtilityMode
 
@@ -80,6 +81,7 @@ class AsyncOTAEngine:
             if response.status_code != 200:
                 raise UpdaterError("Failed to fetch version.json")
             self.remote_version = response.json()
+            JEBLogger.info("OTA", f"Remote version info: {self.remote_version}")
         finally:
             if response: response.close()
 
@@ -90,6 +92,7 @@ class AsyncOTAEngine:
             if response.status_code != 200:
                 raise UpdaterError("Failed to fetch manifest.json")
             self.manifest = response.json()
+            JEBLogger.info("OTA", f"Manifest contains {len(self.manifest.get('files', []))} files to check")
         finally:
             if response: response.close()
 
@@ -100,6 +103,8 @@ class AsyncOTAEngine:
             action = f_info.get("action", "update")
             dest = f_info.get("destination", f"/{f_info['path']}")
             expected_hash = f_info["sha256"]
+
+            JEBLogger.debug("OTA", f"Verifying file: {dest} (action: {action} dest: {dest} expected_hash: {expected_hash})")
 
             if action == "ignore_if_frozen":
                 continue
@@ -114,10 +119,11 @@ class AsyncOTAEngine:
                         h.update(chunk)
                 local_hash = h.hexdigest()
             except OSError:
-                pass # File missing
+                JEBLogger.debug("OTA", f"File not found for hashing: {dest}")
 
             if local_hash != expected_hash:
                 files_to_update.append(f_info)
+                JEBLogger.info("OTA", f"File marked for update: {dest} (local hash: {local_hash})")
 
             await asyncio.sleep(0) # Yield so system doesn't hang on large SD card scans
 
@@ -125,13 +131,15 @@ class AsyncOTAEngine:
 
     def check_disk_space(self, files_to_update):
         """Calculates exact net-change for internal flash overwrites."""
+        JEBLogger.info("OTA", "Checking disk space for updates...")
         staging_needed = int(sum(f.get("size", 0) for f in files_to_update) * 1.1)
         try:
+            JEBLogger.info("OTA", f"Staging space needed on SD: {staging_needed} bytes")
             sd_stat = os.statvfs("/sd")
             if (sd_stat[0] * sd_stat[3]) < staging_needed:
                 raise UpdaterError("Insufficient SD staging space")
-        except OSError:
-            pass
+        except (OSError, AttributeError):
+            JEBLogger.warning("OTA", "Could not determine SD card space, skipping check")
 
         flash_net_change = 0
         for f in files_to_update:
@@ -145,27 +153,34 @@ class AsyncOTAEngine:
 
         flash_needed = max(0, flash_net_change) + 8192
         try:
+            JEBLogger.info("OTA", f"Net flash change: {flash_net_change} bytes, total staging needed on flash: {flash_needed} bytes")
             flash_stat = os.statvfs("/")
             if (flash_stat[0] * flash_stat[3]) < flash_needed:
                 raise UpdaterError("Insufficient internal flash space")
-        except OSError:
-            pass
+        except (OSError, AttributeError):
+            JEBLogger.warning("OTA", "Could not determine internal flash space, skipping check")
 
     async def download_file(self, file_info, progress_cb):
         download_path = file_info["download_path"]
         local_path = f"{self.download_dir}/{file_info['path']}"
-        file_url = f"{self.update_url}/{self.remote_version['version']}/{download_path}"
+        file_url = f"{self.update_url}/{download_path}"
+
+        JEBLogger.info("OTA", f"Downloading {file_url} to {local_path} (size: {file_info.get('size', 'unknown')} bytes)")
 
         # Ensure dir
         d_dir = os.path.dirname(local_path)
         if d_dir:
-            try: os.makedirs(d_dir)
-            except OSError: pass
+            try:
+                os.makedirs(d_dir)
+            except OSError:
+                JEBLogger.warning("OTA", f"Directory already exists or failed to create: {d_dir}")
 
         response = None
         try:
+            JEBLogger.debug("OTA", f"Starting HTTP GET for {file_url}")
             response = self.http_session.get(file_url, timeout=30)
             if response.status_code != 200:
+                JEBLogger.error("OTA", f"HTTP error {response.status_code} for {file_url}")
                 raise UpdaterError(f"HTTP {response.status_code} on {download_path}")
 
             hasher = hashlib.sha256()
@@ -180,7 +195,10 @@ class AsyncOTAEngine:
                     await asyncio.sleep(0) # Keep UI alive during big downloads!
 
             if hasher.hexdigest() != file_info["sha256"]:
+                JEBLogger.error("OTA", f"Hash mismatch for {local_path}: expected {file_info['sha256']}, got {hasher.hexdigest()}")
                 raise UpdaterError("Hash mismatch after download")
+
+            JEBLogger.info("OTA", f"Download complete and verified for {local_path}")
         finally:
             if response: response.close()
 
@@ -188,10 +206,14 @@ class AsyncOTAEngine:
         src = f"{self.download_dir}/{file_info['path']}"
         dest = file_info.get("destination", f"/{file_info['path']}")
 
+        JEBLogger.info("OTA", f"Installing file from {src} to {dest}")
+
         d_dir = os.path.dirname(dest)
         if d_dir and d_dir not in ["", "/", "/sd"]:
-            try: os.makedirs(d_dir)
-            except OSError: pass
+            try:
+                os.makedirs(d_dir)
+            except OSError:
+                JEBLogger.warning("OTA", f"Directory already exists or failed to create: {d_dir}")
 
         with open(src, "rb") as s, open(dest, "wb") as d:
             while True:
@@ -200,8 +222,12 @@ class AsyncOTAEngine:
                 d.write(chunk)
                 await asyncio.sleep(0) # Keep UI alive
 
-        try: os.remove(src)
-        except OSError: pass
+        try:
+            JEBLogger.debug("OTA", f"Removing staging file: {src}")
+            os.remove(src)
+            JEBLogger.info("OTA", f"Installation complete for {dest}, staging file removed")
+        except OSError:
+            JEBLogger.warning("OTA", f"Failed to remove staging file: {src}")
 
 
 class OtaUpdater(UtilityMode):
@@ -212,7 +238,7 @@ class OtaUpdater(UtilityMode):
 
         # NOTE: Update this URL to point to your actual GitHub Releases structure
         self.update_url = core.config.get("update_url", "https://github.com/jimmydoh/jeb/releases/download/latest")
-        self.engine = AsyncOTAEngine(self.update_url, core.wifi)
+        self.engine = AsyncOTAEngine(self.update_url, core.wifi_manager)
 
         self.core_writable = False
         self.menu_options = []
@@ -239,6 +265,25 @@ class OtaUpdater(UtilityMode):
 
         # 1. Hardware Permissions Check
         self.core_writable = self.engine.is_core_writable()
+
+        # --- AUTOSTART BYPASS FOR WEB UI ---
+        if getattr(self, "variant", None) == "AUTO_FULL":
+            if not self.core_writable:
+                self.core.display.use_standard_layout()
+                self.core.display.update_header("UPDATE FAILED")
+                self.core.display.update_status("USB LOCK ACTIVE", "Cannot write to Core")
+                self.core.display.update_footer("Exiting in 3s...")
+                self.core.audio.play("audio/menu/error.wav", self.core.audio.CH_SFX)
+                await asyncio.sleep(3)
+                self.core.mode = "DASHBOARD"
+                return "CANCELLED"
+            await self._perform_update(sd_only=False)
+            return "FINISHED"
+
+        if getattr(self, "variant", None) == "AUTO_SD":
+            await self._perform_update(sd_only=True)
+            return "FINISHED"
+        # -----------------------------------
 
         if self.core_writable:
             self.menu_options = ["FULL FIRMWARE UPDATE", "REPAIR SD ASSETS", "EXIT"]
@@ -309,6 +354,8 @@ class OtaUpdater(UtilityMode):
             self.core.display.update_header("SCANNING...")
             self.core.display.update_status("LOCAL FILES", "Calculating hashes")
             files_to_update = await self.engine.verify_files(sd_only=sd_only)
+
+            JEBLogger.info("OTA", f"{len(files_to_update)} files need update (sd_only={sd_only})")
 
             if not files_to_update:
                 self.core.display.update_header("UP TO DATE")

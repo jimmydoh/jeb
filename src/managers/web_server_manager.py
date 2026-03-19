@@ -851,7 +851,15 @@ class WebServerManager:
 
                 # Request tutorial variant if asked
                 tutorial = data.get("tutorial", False)
-                self.app._pending_mode_variant = "TUTORIAL" if tutorial else None
+                variant = data.get("variant")
+
+                # Allow custom string variants, fallback to TUTORIAL bool for legacy UI calls
+                if variant:
+                    self.app._pending_mode_variant = variant
+                elif tutorial:
+                    self.app._pending_mode_variant = "TUTORIAL"
+                else:
+                    self.app._pending_mode_variant = None
 
                 # Set high-priority console override (same as ConsoleManager)
                 self.app.console_override_mode = mode_id
@@ -875,20 +883,41 @@ class WebServerManager:
         def get_admin_version(request: Request):
             """Return local and remote firmware version info for the Admin tab."""
             try:
+                # 1. Get Local Version
                 local_version = None
                 try:
-                    with open("/version.json", "r") as vf:
+                    # Look for the version file in the root directory (where ota_updater writes it)
+                    with open("version.json", "r") as vf:
                         import json as _json
                         vdata = _json.loads(vf.read())
                         local_version = vdata.get("version")
                 except Exception:
                     pass
 
+                # 2. Get Remote Version
                 update_url = self.config.get("update_url", "")
+                remote_version = None
+
+                if update_url and self._is_wifi_connected():
+                    try:
+                        JEBLogger.info
+                        # Borrow the wifi manager's HTTP session to quickly fetch the remote version
+                        session = self.wifi_manager.create_http_session()
+                        v_url = f"{update_url.rstrip('/')}/version.json"
+
+                        # Keep the timeout very short (3s) so we don't freeze the web UI
+                        # if the github servers are hanging
+                        response = session.get(v_url, timeout=3)
+                        if response.status_code == 200:
+                            remote_data = response.json()
+                            remote_version = remote_data.get("version")
+                        response.close()
+                    except Exception as e:
+                        self.log(f"Failed to fetch remote version: {e}")
 
                 payload = {
                     "local_version": local_version,
-                    "remote_version": None,
+                    "remote_version": remote_version,
                     "update_url": update_url,
                 }
                 return Response(request, json.dumps(payload),
