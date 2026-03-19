@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JEB Field Service Configurator</title>
-    <link rel="stylesheet" href="/css/style.min.css">
+    <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
     <div class="container">
@@ -278,6 +278,40 @@
                 </div>
                 <div id="audioStatus" class="status" style="display:none;"></div>
             </div>
+
+            <!-- Tone / Sequence Trigger Card -->
+            <div style="background:#1a1a1a; border:1px solid #333; border-radius:6px; padding:16px; margin-top:20px;">
+                <h3 style="margin:0 0 10px 0; color:#80ccff;">🔔 Tone &amp; Sequence Trigger</h3>
+                <p style="color:#b0b0b0; margin-bottom:12px; font-size:0.9em;">Trigger a pre-programmed tone or sequence from <code>tones.py</code> live on the hardware.</p>
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                    <select id="toneSelect" style="flex:1; min-width:200px; max-width:340px;">
+                        <option value="">Loading tones…</option>
+                    </select>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <label style="color:#b0b0b0; font-size:0.9em;">Target:</label>
+                        <label style="color:#eee; font-size:0.9em;"><input type="radio" name="toneTarget" value="synth" checked> Synth</label>
+                        <label style="color:#eee; font-size:0.9em;"><input type="radio" name="toneTarget" value="buzzer"> Buzzer</label>
+                    </div>
+                    <button onclick="playTone()">▶ Play Tone</button>
+                </div>
+                <div id="toneStatus" class="status" style="display:none; margin-top:8px;"></div>
+            </div>
+
+            <!-- WAV Player Card -->
+            <div style="background:#1a1a1a; border:1px solid #333; border-radius:6px; padding:16px; margin-top:16px;">
+                <h3 style="margin:0 0 10px 0; color:#80ccff;">
+                    📼 WAV File Player
+                    <button onclick="loadAudioLibrary(true)" style="background:none; border:none; cursor:pointer; font-size:1em;" title="Refresh Library">🔄</button>
+                </h3>
+                <p style="color:#b0b0b0; margin-bottom:12px; font-size:0.9em;">Play a <code>.wav</code> file from <code>/sd/audio/</code> through the primary audio bus.</p>
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                    <select id="wavSelect" style="flex:1; min-width:200px; max-width:400px;">
+                        <option value="">Loading WAV files…</option>
+                    </select>
+                    <button onclick="playWav()">▶ Play WAV</button>
+                </div>
+                <div id="wavStatus" class="status" style="display:none; margin-top:8px;"></div>
+            </div>
         </div>
 
         <div id="hidemulator" class="tab-content">
@@ -359,6 +393,6 @@
         </div>
     </div>
 
-    <script src="/js/app.min.js"></script>
+    <script src="/js/app.js"></script>
 </body>
 </html>
