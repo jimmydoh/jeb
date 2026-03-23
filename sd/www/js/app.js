@@ -1285,7 +1285,11 @@ async function pixelLoadIcon(source) {
         // The server resolves it from the Icons class and returns raw bytes
         try {
             const resp = await fetch('/api/pixel/load?name=' + encodeURIComponent(name));
-            if (!resp.ok) throw new Error(await resp.text());
+            if (!resp.ok) {
+                let errMsg = 'Unknown error';
+                try { const errData = await resp.json(); errMsg = errData.error || errMsg; } catch (_) {}
+                throw new Error(errMsg);
+            }
             const buf = await resp.arrayBuffer();
             _applyPixelBuffer(new Uint8Array(buf));
             // Library icons don't have a user-facing filename; leave the save field as-is
@@ -1302,7 +1306,11 @@ async function pixelLoadIcon(source) {
         }
         try {
             const resp = await fetch('/api/pixel/load?name=' + encodeURIComponent(filename));
-            if (!resp.ok) throw new Error(await resp.text());
+            if (!resp.ok) {
+                let errMsg = 'Unknown error';
+                try { const errData = await resp.json(); errMsg = errData.error || errMsg; } catch (_) {}
+                throw new Error(errMsg);
+            }
             const buf = await resp.arrayBuffer();
             _applyPixelBuffer(new Uint8Array(buf));
             // Auto-populate the save-as name so the user can overwrite in one click

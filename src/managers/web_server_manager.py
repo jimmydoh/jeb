@@ -1117,8 +1117,6 @@ class WebServerManager:
             try:
                 icons_list = []
                 try:
-                    # Force a fresh load from disk to catch live web-edits
-                    sys.modules.pop('utilities.icons', None)
                     import utilities.icons as _icons
 
                     # Safely extract all uppercase bytes constants dynamically
