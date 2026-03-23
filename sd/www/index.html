@@ -198,8 +198,13 @@
             <h2>🎨 Pixel Art Studio</h2>
             <p style="color: #b0b0b0; margin-bottom: 15px;">Draw 16×16 pixel art and preview it live on the LED matrix, then save as an icon.</p>
             <div class="pixel-studio-layout">
-                <div>
-                    <div class="pixel-grid" id="pixelGrid" onmousedown="pixelMouseDown(event)" onmousemove="pixelMouseMove(event)" onmouseup="pixelMouseUp()"></div>
+                <div class="pixel-canvas-wrap">
+                    <div class="pixel-grid" id="pixelGrid"
+                         onmousedown="pixelMouseDown(event)"
+                         onmousemove="pixelMouseMove(event)"
+                         onmouseup="pixelMouseUp()"
+                         onmouseleave="pixelMouseLeave()"></div>
+                    <div id="pixelTooltip" class="pixel-tooltip" style="display:none;"></div>
                 </div>
                 <div class="pixel-studio-controls">
                     <div class="form-group">
@@ -210,15 +215,39 @@
                         <label>Palette:</label>
                         <div class="palette-grid" id="paletteGrid"></div>
                     </div>
-                    <div class="form-group" style="margin-top:15px;">
-                        <label>Icon Name:</label>
-                        <input type="text" id="iconName" placeholder="my_icon" maxlength="32" style="width:180px;">
+
+                    <!-- File Operations -->
+                    <div style="background:#1a1a1a; border:1px solid #333; border-radius:4px; padding:10px; margin-top:15px;">
+                        <h4 style="margin:0 0 10px 0; color:#80ccff; font-size:0.9em;">📂 File Operations</h4>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+                            <label style="color:#b0b0b0; font-size:0.85em; white-space:nowrap;">icons.py:</label>
+                            <select id="iconLibSelect" style="flex:1; min-width:130px;">
+                                <option value="">Loading…</option>
+                            </select>
+                            <button onclick="pixelLoadIcon('lib')">📂 Load</button>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <label style="color:#b0b0b0; font-size:0.85em; white-space:nowrap;">SD Card:</label>
+                            <select id="iconBinSelect" style="flex:1; min-width:130px;">
+                                <option value="">Loading…</option>
+                            </select>
+                            <button onclick="pixelLoadIcon('bin')">📂 Load</button>
+                        </div>
                     </div>
-                    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-                        <button onclick="previewPixelArt()">▶ Preview on Matrix</button>
-                        <button onclick="savePixelArt()">💾 Save Icon</button>
-                        <button class="secondary" onclick="clearCanvas()">Clear</button>
+
+                    <!-- Save section -->
+                    <div style="margin-top:12px;">
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+                            <label style="color:#b0b0b0; white-space:nowrap;">Save As:</label>
+                            <input type="text" id="iconName" placeholder="my_icon" maxlength="32" style="flex:1; min-width:130px;">
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button onclick="previewPixelArt()">▶ Preview on Matrix</button>
+                            <button onclick="savePixelArt()">💾 Save Icon</button>
+                            <button class="secondary" onclick="clearCanvas()">Clear</button>
+                        </div>
                     </div>
+
                     <div id="pixelArtStatus" class="status" style="display:none;margin-top:10px;"></div>
                 </div>
             </div>

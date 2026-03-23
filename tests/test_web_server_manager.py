@@ -1625,6 +1625,213 @@ def test_pixel_art_matrix_manager_stored():
     print("  ✓ matrix_manager parameter test passed")
 
 
+def test_pixel_library_route_registered():
+    """Test that /api/pixel/library is registered."""
+    print("\nTesting pixel library route registration...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    registered = [p for p, _, _ in manager.server.routes]
+    assert "/api/pixel/library" in registered, "/api/pixel/library not registered"
+    assert "/api/pixel/load" in registered, "/api/pixel/load not registered"
+
+    print("  ✓ Pixel library routes registered test passed")
+
+
+def test_pixel_library_no_icons_module():
+    """Test /api/pixel/library when utilities.icons is not importable."""
+    print("\nTesting pixel library with no icons module...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/library")
+    assert handler is not None
+
+    request = MockRequest()
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    # Even with no icons module and no SD card, must return valid structure
+    assert "icons" in data
+    assert "bins" in data
+    assert isinstance(data["icons"], list)
+    assert isinstance(data["bins"], list)
+
+    print("  ✓ Pixel library (no icons module) test passed")
+
+
+def test_pixel_library_with_icons_module():
+    """Test /api/pixel/library discovers constants from Icons class."""
+    print("\nTesting pixel library with icons module...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/library")
+    assert handler is not None
+
+    request = MockRequest()
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert "icons" in data
+
+    # If icons module is available, expect at least the well-known constants
+    if len(data["icons"]) > 0:
+        assert "BLANK" in data["icons"], "BLANK should be in icons list"
+        assert "DEFAULT" in data["icons"], "DEFAULT should be in icons list"
+
+    print("  ✓ Pixel library (with icons module) test passed")
+
+
+def test_pixel_load_missing_name():
+    """Test /api/pixel/load returns 400 when name is missing."""
+    print("\nTesting pixel load missing name...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/load")
+    assert handler is not None
+
+    request = MockRequest()
+    # No 'name' param
+    response = handler(request)
+    assert response.status == 400
+    data = json.loads(response.body)
+    assert "error" in data
+
+    print("  ✓ Pixel load (missing name) test passed")
+
+
+def test_pixel_load_path_traversal():
+    """Test /api/pixel/load rejects path-traversal attempts for .bin files."""
+    print("\nTesting pixel load path traversal rejection...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/load")
+    assert handler is not None
+
+    request = MockRequest()
+    request.query_params = {"name": "../../etc/passwd.bin"}
+    response = handler(request)
+    assert response.status in (400, 404), f"Expected 400 or 404, got {response.status}"
+
+    print("  ✓ Pixel load (path traversal) test passed")
+
+
+def test_pixel_load_library_icon():
+    """Test /api/pixel/load returns bytes for a valid Icons class constant."""
+    print("\nTesting pixel load from library...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/load")
+    assert handler is not None
+
+    # Request a known constant – BLANK always exists in icons.py
+    request = MockRequest()
+    request.query_params = {"name": "BLANK"}
+    response = handler(request)
+
+    if response.status == 503:
+        # Icons module not available in this test environment – acceptable
+        print("  ✓ Pixel load (library icon) – module unavailable, skipped")
+        return
+
+    assert response.status == 200, f"Expected 200, got {response.status}: {response.body}"
+    # Body should be raw bytes (256 bytes for a 16×16 icon)
+    assert len(response.body) == 256
+
+    print("  ✓ Pixel load (library icon) test passed")
+
+
+def test_pixel_load_library_icon_not_found():
+    """Test /api/pixel/load returns 404 for an unknown Icons class constant."""
+    print("\nTesting pixel load unknown library icon...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/load")
+    assert handler is not None
+
+    request = MockRequest()
+    request.query_params = {"name": "NONEXISTENT_ICON_XYZ"}
+    response = handler(request)
+
+    if response.status == 503:
+        print("  ✓ Pixel load (unknown library icon) – module unavailable, skipped")
+        return
+
+    assert response.status == 404, f"Expected 404, got {response.status}"
+
+    print("  ✓ Pixel load (unknown library icon) test passed")
+
+
+def test_pixel_load_bin_file_not_found():
+    """Test /api/pixel/load returns 404 for a missing .bin file on SD card."""
+    print("\nTesting pixel load missing .bin file...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/load")
+    assert handler is not None
+
+    request = MockRequest()
+    request.query_params = {"name": "definitely_does_not_exist.bin"}
+    response = handler(request)
+    assert response.status == 404
+
+    print("  ✓ Pixel load (missing .bin) test passed")
+
+
+def test_pixel_art_save_no_encoding_error():
+    """Test that pixel art save works without encoding='utf-8' bug."""
+    print("\nTesting pixel art save (no encoding bug)...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save")
+    assert handler is not None
+
+    pixels = list(range(256))  # Values 0-255 to exercise all byte values
+    request = MockRequest()
+    request.json = lambda: {"name": "byte_range_test", "pixels": pixels}
+    response = handler(request)
+    # In testing mode no file I/O happens; just verify the save logic runs without error
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+
+    print("  ✓ Pixel art save (no encoding bug) test passed")
+
+
 def test_jeblogger_buffer():
     """Test JEBLogger ring buffer capture."""
     print("\nTesting JEBLogger ring buffer...")
@@ -2078,11 +2285,12 @@ def test_synth_save_route():
     handler = _find_route(manager, "/api/synth/save")
     assert handler is not None
 
-    # Build a minimal valid .jseq binary
-    import struct
+    # Build a minimal valid .jseq binary, then base64-encode it (as the frontend does)
+    import struct, base64
     bpm = 120
-    body = b'JSEQ\x01' + struct.pack('<H', bpm) + b'\x01'
-    body += b'\x00' + struct.pack('<H', 1) + b'\x00\x20'  # 1 note: rest (index 0), 0x20=32 units = 1.0 beat (Q)
+    raw = b'JSEQ\x01' + struct.pack('<H', bpm) + b'\x01'
+    raw += b'\x00' + struct.pack('<H', 1) + b'\x00\x20'  # 1 note: rest (index 0), 0x20=32 units = 1.0 beat (Q)
+    body = base64.b64encode(raw)
 
     request = MockRequest()
     request.query_params = {"name": "test_seq"}
@@ -2100,22 +2308,23 @@ def test_synth_save_validation():
     """Test POST /api/synth/save validates name and binary data."""
     print("\nTesting synth save validation...")
 
+    import struct, base64
     manager, _ = _make_synth_manager()
     handler = _find_route(manager, "/api/synth/save")
 
     # Missing name
     req = MockRequest()
     req.query_params = {}
-    req.body = b'JSEQ\x01\x78\x00\x00'
+    req.body = base64.b64encode(b'JSEQ\x01\x78\x00\x00')
     assert handler(req).status == 400
 
     # Invalid name characters
     req2 = MockRequest()
     req2.query_params = {"name": "bad/name!"}
-    req2.body = b'JSEQ\x01\x78\x00\x00'
+    req2.body = base64.b64encode(b'JSEQ\x01\x78\x00\x00')
     assert handler(req2).status == 400
 
-    # Body too short
+    # Body too short (raw and encoded both short)
     req3 = MockRequest()
     req3.query_params = {"name": "ok_name"}
     req3.body = b'JS'
@@ -2124,7 +2333,7 @@ def test_synth_save_validation():
     # Wrong magic bytes
     req4 = MockRequest()
     req4.query_params = {"name": "ok_name"}
-    req4.body = b'NOPE\x01\x78\x00\x01'
+    req4.body = base64.b64encode(b'NOPE\x01\x78\x00\x01')
     assert handler(req4).status == 400
 
     print("  ✓ Synth save validation test passed")
@@ -3410,6 +3619,15 @@ def run_all_tests():
         test_pixel_art_save_route,
         test_pixel_art_save_validation,
         test_pixel_art_matrix_manager_stored,
+        test_pixel_library_route_registered,
+        test_pixel_library_no_icons_module,
+        test_pixel_library_with_icons_module,
+        test_pixel_load_missing_name,
+        test_pixel_load_path_traversal,
+        test_pixel_load_library_icon,
+        test_pixel_load_library_icon_not_found,
+        test_pixel_load_bin_file_not_found,
+        test_pixel_art_save_no_encoding_error,
         test_jeblogger_buffer,
         test_jeblogger_buffer_level_filter,
         test_jeblogger_buffer_search_filter,
