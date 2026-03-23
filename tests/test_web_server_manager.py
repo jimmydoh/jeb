@@ -2285,11 +2285,12 @@ def test_synth_save_route():
     handler = _find_route(manager, "/api/synth/save")
     assert handler is not None
 
-    # Build a minimal valid .jseq binary
-    import struct
+    # Build a minimal valid .jseq binary, then base64-encode it (as the frontend does)
+    import struct, base64
     bpm = 120
-    body = b'JSEQ\x01' + struct.pack('<H', bpm) + b'\x01'
-    body += b'\x00' + struct.pack('<H', 1) + b'\x00\x20'  # 1 note: rest (index 0), 0x20=32 units = 1.0 beat (Q)
+    raw = b'JSEQ\x01' + struct.pack('<H', bpm) + b'\x01'
+    raw += b'\x00' + struct.pack('<H', 1) + b'\x00\x20'  # 1 note: rest (index 0), 0x20=32 units = 1.0 beat (Q)
+    body = base64.b64encode(raw)
 
     request = MockRequest()
     request.query_params = {"name": "test_seq"}
@@ -2307,22 +2308,23 @@ def test_synth_save_validation():
     """Test POST /api/synth/save validates name and binary data."""
     print("\nTesting synth save validation...")
 
+    import struct, base64
     manager, _ = _make_synth_manager()
     handler = _find_route(manager, "/api/synth/save")
 
     # Missing name
     req = MockRequest()
     req.query_params = {}
-    req.body = b'JSEQ\x01\x78\x00\x00'
+    req.body = base64.b64encode(b'JSEQ\x01\x78\x00\x00')
     assert handler(req).status == 400
 
     # Invalid name characters
     req2 = MockRequest()
     req2.query_params = {"name": "bad/name!"}
-    req2.body = b'JSEQ\x01\x78\x00\x00'
+    req2.body = base64.b64encode(b'JSEQ\x01\x78\x00\x00')
     assert handler(req2).status == 400
 
-    # Body too short
+    # Body too short (raw and encoded both short)
     req3 = MockRequest()
     req3.query_params = {"name": "ok_name"}
     req3.body = b'JS'
@@ -2331,7 +2333,7 @@ def test_synth_save_validation():
     # Wrong magic bytes
     req4 = MockRequest()
     req4.query_params = {"name": "ok_name"}
-    req4.body = b'NOPE\x01\x78\x00\x01'
+    req4.body = base64.b64encode(b'NOPE\x01\x78\x00\x01')
     assert handler(req4).status == 400
 
     print("  ✓ Synth save validation test passed")
