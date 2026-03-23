@@ -29,7 +29,7 @@ except Exception as e:
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
 SRC_DIR = os.path.join(PROJECT_ROOT, 'src')
-SD_DIR = os.path.join(PROJECT_ROOT, 'sd') # <--- Get absolute path to the SD folder
+SD_DIR = os.path.join(PROJECT_ROOT, 'emulator_tmp/sd') # <--- Get absolute path to the SD folder
 
 # OTA Emulator Sandbox - all OTA downloads and installs are redirected here
 # to prevent any writes to the host machine's source repository.
