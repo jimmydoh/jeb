@@ -23,6 +23,7 @@ Dependencies:
 """
 
 import asyncio
+import binascii
 import json
 import os
 import gc
@@ -851,7 +852,15 @@ class WebServerManager:
 
                 # Request tutorial variant if asked
                 tutorial = data.get("tutorial", False)
-                self.app._pending_mode_variant = "TUTORIAL" if tutorial else None
+                variant = data.get("variant")
+
+                # Allow custom string variants, fallback to TUTORIAL bool for legacy UI calls
+                if variant:
+                    self.app._pending_mode_variant = variant
+                elif tutorial:
+                    self.app._pending_mode_variant = "TUTORIAL"
+                else:
+                    self.app._pending_mode_variant = None
 
                 # Set high-priority console override (same as ConsoleManager)
                 self.app.console_override_mode = mode_id
@@ -867,6 +876,54 @@ class WebServerManager:
                               content_type="application/json")
             except Exception as e:
                 self.log(f"Error launching mode: {e}")
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Admin - get firmware version info
+        @self.server.route("/api/admin/version", GET)
+        def get_admin_version(request: Request):
+            """Return local and remote firmware version info for the Admin tab."""
+            try:
+                # 1. Get Local Version
+                local_version = None
+                try:
+                    # Look for the version file in the root directory (where ota_updater writes it)
+                    with open("version.json", "r") as vf:
+                        import json as _json
+                        vdata = _json.loads(vf.read())
+                        local_version = vdata.get("version")
+                except Exception:
+                    pass
+
+                # 2. Get Remote Version
+                update_url = self.config.get("update_url", "")
+                remote_version = None
+
+                if update_url and self._is_wifi_connected():
+                    try:
+                        JEBLogger.info
+                        # Borrow the wifi manager's HTTP session to quickly fetch the remote version
+                        session = self.wifi_manager.create_http_session()
+                        v_url = f"{update_url.rstrip('/')}/version.json"
+
+                        # Keep the timeout very short (3s) so we don't freeze the web UI
+                        # if the github servers are hanging
+                        response = session.get(v_url, timeout=3)
+                        if response.status_code == 200:
+                            remote_data = response.json()
+                            remote_version = remote_data.get("version")
+                        response.close()
+                    except Exception as e:
+                        self.log(f"Failed to fetch remote version: {e}")
+
+                payload = {
+                    "local_version": local_version,
+                    "remote_version": remote_version,
+                    "update_url": update_url,
+                }
+                return Response(request, json.dumps(payload),
+                              content_type="application/json")
+            except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
@@ -1125,20 +1182,31 @@ class WebServerManager:
                     return Response(request, '{"error": "request body must contain .jseq binary data (minimum 8 bytes)"}',
                                   content_type="application/json", status=400)
 
-                if body[:4] != b'JSEQ':
+                # Decode the safe Base64 text back into pristine, uncorrupted bytes
+                try:
+                    raw_bytes = binascii.a2b_base64(body)
+                except Exception:
+                    return Response(request, '{"error": "invalid base64 payload"}',
+                                  content_type="application/json", status=400)
+
+                if len(raw_bytes) < 8:
+                    return Response(request, '{"error": "request body must contain .jseq binary data (minimum 8 bytes)"}',
+                                  content_type="application/json", status=400)
+
+                if raw_bytes[:4] != b'JSEQ':
                     return Response(request, '{"error": "invalid .jseq file: missing JSEQ magic bytes"}',
                                   content_type="application/json", status=400)
 
                 filepath = f"/sd/sequences/{name.lower()}.jseq"
 
-                if not self._testing:
+                if not getattr(self, "_testing", False):
                     try:
                         os.mkdir("/sd/sequences")
                     except OSError:
                         pass  # Directory already exists
 
                     with open(filepath, "wb") as f:
-                        f.write(body)
+                        f.write(raw_bytes)
 
                 self.log(f"Synth sequence saved: {filepath}")
                 return Response(request, f'{{"status": "success", "path": "{filepath}"}}',
@@ -1185,11 +1253,47 @@ class WebServerManager:
                 # Scan /sd/audio/ recursively for .wav files
                 wav_files = self._list_wav_files("/sd/audio")
 
-                return Response(request, json.dumps({"tones": tones_list, "wavs": wav_files}),
+                # Scan /sd/sequences/ for .jseq files
+                jseq_list = []
+                try:
+                    for f in os.listdir("/sd/sequences"):
+                        if f.lower().endswith(".jseq"):
+                            jseq_list.append(f)
+                except OSError:
+                    pass
+
+                return Response(request, json.dumps({"tones": tones_list, "wavs": wav_files, "jseqs": jseq_list}),
                                 content_type="application/json")
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                                 content_type="application/json", status=500)
+
+        # API: Load a .jseq sequence file from /sd/sequences/
+        @self.server.route("/api/synth/load", GET)
+        def load_synth_sequence(request: Request):
+            """Load a .jseq binary sequence file from /sd/sequences/."""
+            try:
+                name = request.query_params.get("name", "").strip()
+                if not name:
+                    return Response(request, '{"error": "name query parameter required"}',
+                                  content_type="application/json", status=400)
+
+                sanitized = self._sanitize_path("/sd/sequences", name)
+                if not sanitized.startswith("/sd/sequences/"):
+                    return Response(request, '{"error": "invalid path"}',
+                                  content_type="application/json", status=400)
+
+                try:
+                    with open(sanitized, "rb") as f:
+                        content = f.read()
+                    return Response(request, content, content_type="application/octet-stream")
+                except OSError:
+                    return Response(request, '{"error": "File not found"}',
+                                  content_type="application/json", status=404)
+
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
 
         # API: Play a tone/sequence or WAV file
         @self.server.route("/api/audio/play", POST)

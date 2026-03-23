@@ -831,8 +831,17 @@ class CoreManager:
                 requirements_met = True
 
                 for req in requirements:
-                    if req == "CORE":
+                    if req in ("CORE", "DISPLAY", "HID", "AUDIO"):
                         continue
+
+                    # Evaluate Wi-Fi capability
+                    if req == "WIFI":
+                        # Fails if wifi was never passed to the core, or if the hardware failed to init
+                        if getattr(self, "wifi_manager", None) is None:
+                            requirements_met = False
+                            break
+                        continue
+
                     found = False
                     # Check self.satellites: Dict[slot_id: int, Satellite]
                     for sat in self.satellites.values():
@@ -892,6 +901,14 @@ class CoreManager:
                             self._pending_mode_variant = None  # Clear the flag immediately after consuming it
                         except Exception as e:
                             JEBLogger.error("CORE", f"Tutorial error for '{self.active_mode}': {e}")
+                    elif self._pending_mode_variant is not None:
+                        JEBLogger.info("CORE", f"Applying custom variant '{self._pending_mode_variant}' for mode '{self.active_mode}'")
+                        try:
+                            mode_instance.variant = self._pending_mode_variant  # Set the mode instance to the custom variant
+                            self._pending_mode_variant = None  # Clear the flag immediately after consuming it
+                        except Exception as e:
+                            JEBLogger.error("CORE", f"Custom variant error for '{self.active_mode}': {e}")
+
 
                     run_robust = True
                     while run_robust:
@@ -908,10 +925,8 @@ class CoreManager:
                             self.display.update_status(
                                 "LINK LOST", "RECONNECT IN 60s"
                             )
-                            asyncio.create_task(
-                                self.audio.play(
-                                    "link_lost.wav", bus_id=self.audio.CH_SFX
-                                )
+                            self.audio.play(
+                                "link_lost.wav", bus_id=self.audio.CH_SFX
                             )
                             await asyncio.sleep(1)
                             # 60 second countdown
@@ -930,10 +945,8 @@ class CoreManager:
                                 self.display.update_status(
                                     "LINK RESTORED", "RESUMING..."
                                 )
-                                asyncio.create_task(
-                                    self.audio.play(
-                                        "link_restored.wav", bus_id=self.audio.CH_SFX
-                                    )
+                                self.audio.play(
+                                    "link_restored.wav", bus_id=self.audio.CH_SFX
                                 )
                                 await asyncio.sleep(1)
                         elif result == "MODE_ERROR":

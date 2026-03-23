@@ -1,5 +1,33 @@
 let currentPath = '/sd';
 
+// =====================================================
+// ADMIN EASTER EGG - Click title 5× to reveal Admin tab
+// =====================================================
+let _adminClickCount = 0;
+let _adminClickTimer = null;
+let _adminUnlocked = false;
+
+function adminEasterEgg() {
+    if (_adminUnlocked) return;
+    _adminClickCount++;
+
+    // Reset counter after 2 seconds of inactivity
+    clearTimeout(_adminClickTimer);
+    _adminClickTimer = setTimeout(() => { _adminClickCount = 0; }, 2000);
+
+    if (_adminClickCount >= 5) {
+        _adminUnlocked = true;
+        const btn = document.getElementById('adminTabBtn');
+        if (btn) {
+            btn.classList.remove('admin-tab-hidden');
+            btn.classList.add('admin-tab-visible');
+        }
+        const title = document.getElementById('mainTitle');
+        if (title) title.style.color = '#FF9800';
+        _adminClickCount = 0;
+    }
+}
+
 function showTab(tabName) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -19,6 +47,174 @@ function showTab(tabName) {
     if (tabName === 'pixelart') initPixelArtStudio();
     if (tabName === 'audiostudio') initAudioStudio();
     if (tabName === 'layout') loadLayout();
+    if (tabName === 'admin') loadAdmin();
+}
+
+// =====================================================
+// ADMIN TAB
+// =====================================================
+
+function loadAdmin() {
+    loadAdminVersionInfo();
+    loadAdminLayout();
+}
+
+async function loadAdminVersionInfo() {
+    const container = document.getElementById('adminVersionInfo');
+    if (!container) return;
+    container.innerHTML = '<em style="color:#555; font-size:0.9em;">Loading...</em>';
+    try {
+        const resp = await fetch('/api/admin/version');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+
+        const localVer  = data.local_version  || '—';
+        const remoteVer = data.remote_version || '—';
+        const updateUrl = data.update_url     || '—';
+        const isLatest  = localVer !== '—' && localVer === remoteVer;
+
+        container.innerHTML = `
+            <div class="admin-version-grid">
+                <div class="admin-version-card">
+                    <div class="label">Local Version</div>
+                    <div class="value ${isLatest ? 'up-to-date' : 'outdated'}">${localVer}</div>
+                </div>
+                <div class="admin-version-card">
+                    <div class="label">Remote Version</div>
+                    <div class="value">${remoteVer}</div>
+                </div>
+                <div class="admin-version-card" style="grid-column: 1/-1;">
+                    <div class="label">Update URL</div>
+                    <div class="value" style="font-size:0.85em; word-break:break-all; color:#888;">${updateUrl}</div>
+                </div>
+            </div>
+            ${isLatest ? '<p style="color:#4CAF50; font-size:0.85em; margin-top:6px;">✔ Firmware is up to date.</p>' : (localVer !== '—' ? '<p style="color:#FF9800; font-size:0.85em; margin-top:6px;">⚠ An update may be available.</p>' : '')}
+        `;
+    } catch (e) {
+        container.innerHTML = '<em style="color:#666; font-size:0.9em;">Version info unavailable (device may not support this endpoint).</em>';
+    }
+}
+
+async function triggerOTAUpdateAction(variant) {
+    const actionName = variant === 'AUTO_FULL' ? 'Full Firmware Update' : 'SD Asset Repair';
+    if (!confirm(`Trigger ${actionName} on the device? This will interrupt the current running mode.`)) return;
+
+    try {
+        const resp = await fetch('/api/actions/launch-mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode_id: 'OTA_UPDATER', variant: variant })
+        });
+        const data = await resp.json();
+
+        if (resp.ok) {
+            showStatus('adminOtaStatus', `🚀 ${actionName} launched. Check the device OLED for live progress.`, 'success');
+        } else {
+            showStatus('adminOtaStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (e) {
+        showStatus('adminOtaStatus', 'Error: ' + e, 'error');
+    }
+}
+
+// =====================================================
+// ADMIN LAYOUT (mirror of loadLayout / saveLayout for Admin tab)
+// =====================================================
+
+let _adminLayoutData = {};
+
+async function loadAdminLayout() {
+    try {
+        const resp = await fetch('/api/config/layout');
+        _adminLayoutData = resp.ok ? await resp.json() : {};
+    } catch (e) {
+        _adminLayoutData = {};
+    }
+    _renderAdminLayout();
+}
+
+function _renderAdminLayout() {
+    const controls = document.getElementById('adminLayoutControls');
+    const canvas   = document.getElementById('adminLayoutCanvasContainer');
+    if (!controls || !canvas) return;
+
+    canvas.innerHTML = '<div style="position:absolute;top:calc(50% - 64px);left:calc(50% - 64px);width:128px;height:128px;background:rgba(0,150,255,0.1);border:2px solid #0096FF;display:flex;align-items:center;justify-content:center;color:#0096FF;font-weight:bold;font-size:0.85em;z-index:10;box-sizing:border-box;">CORE (0,0)</div>';
+    controls.innerHTML = '<h4 style="margin-bottom:15px;color:#4CAF50;font-size:0.9em;">Offsets</h4>';
+
+    const allSids = new Set([...Object.keys((_adminLayoutData.offsets)||{}), ...Object.keys((_adminLayoutData.live)||{})]);
+    if (allSids.size === 0) {
+        controls.innerHTML += '<em style="color:#666;">No satellites configured or connected.</em>';
+        return;
+    }
+
+    Array.from(allSids).sort((a,b) => Number(a)-Number(b)).forEach(sid => {
+        const saved = ((_adminLayoutData.offsets)||{})[sid] || { offset_x:0, offset_y:0 };
+        const live  = ((_adminLayoutData.live)||{})[sid]    || { active:false, type:'OFFLINE/UNKNOWN' };
+        const badgeClass = live.active ? 'online' : 'offline';
+        const badgeText  = live.active ? 'ONLINE'  : 'OFFLINE';
+
+        const row = document.createElement('div');
+        row.style.cssText = 'margin-bottom:15px;padding:15px;background:#1a1a1a;border:1px solid #333;border-radius:4px;';
+        row.innerHTML = `
+            <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+                <strong style="color:#e0e0e0;">SAT ${sid} <span style="font-weight:normal;color:#888;font-size:0.85em;">(${live.type})</span></strong>
+                <span class="sat-badge ${badgeClass}">${badgeText}</span>
+            </div>
+            <div style="display:flex;gap:15px;">
+                <div style="flex:1;"><label style="font-size:0.8em;">X Offset:</label>
+                    <input type="number" id="alayout_x_${sid}" value="${saved.offset_x}" oninput="updateAdminCanvasPreview('${sid}')">
+                </div>
+                <div style="flex:1;"><label style="font-size:0.8em;">Y Offset:</label>
+                    <input type="number" id="alayout_y_${sid}" value="${saved.offset_y}" oninput="updateAdminCanvasPreview('${sid}')">
+                </div>
+            </div>`;
+        controls.appendChild(row);
+
+        const satBox = document.createElement('div');
+        satBox.id = `admin_canvas_sat_${sid}`;
+        satBox.style.cssText = 'position:absolute;width:64px;height:128px;background:rgba(255,152,0,0.15);border:2px dashed #FF9800;display:flex;align-items:center;justify-content:center;color:#FF9800;font-weight:bold;font-size:0.85em;transition:top 0.1s ease,left 0.1s ease;box-sizing:border-box;';
+        satBox.textContent = `SAT ${sid}`;
+        canvas.appendChild(satBox);
+        updateAdminCanvasPreview(sid);
+    });
+}
+
+function updateAdminCanvasPreview(sid) {
+    const xInput = document.getElementById(`alayout_x_${sid}`);
+    const yInput = document.getElementById(`alayout_y_${sid}`);
+    if (!xInput || !yInput) return;
+    const x = parseInt(xInput.value) || 0;
+    const y = parseInt(yInput.value) || 0;
+    const satBox = document.getElementById(`admin_canvas_sat_${sid}`);
+    if (satBox) {
+        const scale = 8;
+        satBox.style.left = `calc(50% - 64px + ${x * scale}px)`;
+        satBox.style.top  = `calc(50% - 64px + ${y * scale}px)`;
+    }
+}
+
+async function saveAdminLayout() {
+    const payload = {};
+    document.querySelectorAll('[id^="alayout_x_"]').forEach(xInput => {
+        const sid = xInput.id.split('_')[2];
+        const yInput = document.getElementById(`alayout_y_${sid}`);
+        payload[sid] = { x: parseInt(xInput.value) || 0, y: parseInt(yInput.value) || 0 };
+    });
+    try {
+        const resp = await fetch('/api/config/layout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (resp.ok) {
+            showStatus('adminLayoutStatus', 'Layout saved to config & applied live!', 'success');
+        } else {
+            const data = await resp.json();
+            showStatus('adminLayoutStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (e) {
+        showStatus('adminLayoutStatus', 'Error: ' + e, 'error');
+    }
 }
 
 async function loadSystemStatus() {
@@ -978,33 +1174,38 @@ async function savePixelArt() {
 }
 
 // =====================================================================
-// Audio Studio
+// Audio Studio - Dynamic Timeline Sequencer
 // =====================================================================
 const AUDIO_NUM_CHANNELS = 3;
-const AUDIO_NUM_STEPS    = 16;
+const BASE_RES = 0.125;  // Core data resolution locked to 1/32nd notes
+const BASE_WIDTH = 14;   // Physical CSS width of 1/32nd block (px)
+const GAP = 2;           // Physical CSS gap between blocks (px)
 
-// Patch names – must match JSEQ_PATCH_NAMES in synth_manager.py
 const JSEQ_PATCH_NAMES = [
     'RETRO_LEAD', 'RETRO_BASS', 'RETRO_NOISE',
     'BEEP', 'BEEP_SQUARE', 'PAD', 'PUNCH',
     'ALARM', 'SCANNER', 'CLICK', 'NOISE', 'SELECT',
 ];
 
-// Available note names for the picker
 const AUDIO_OCTAVES = [2, 3, 4, 5, 6, 7];
 const AUDIO_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
-// Duration options: [label, beats]
 const DURATION_OPTIONS = [
-    ['1/32', 0.125], ['1/16', 0.25], ['1/8', 0.5],
-    ['1/4', 1.0], ['1/2', 2.0], ['1', 4.0],
+    ['𝅘𝅥𝅰 1/32', 0.125], ['𝅘𝅥𝅯 1/16', 0.25],
+    ['♪ 1/8', 0.5], ['♪. Dot 1/8', 0.75],
+    ['♩ 1/4', 1.0], ['♩. Dot 1/4', 1.5],
+    ['𝅗𝅥 1/2', 2.0], ['𝅝 1/1', 4.0],
 ];
 
-// Sequence data: audioSteps[ch][step] = {note, duration} or null (rest)
+// Grid Configuration State
+let audioBars = 2;
+let audioRes = 0.25;       // Visual Snap Resolution
+let audioNumSteps = 64;    // Calculated strictly on BASE_RES
+
 let audioSteps = [];
 let audioChannelPatches = [];
-let activeNote = null;       // e.g. 'C4'
-let activeDuration = 1.0;    // in beats (quarter note default)
+let activeNote = null;
+let activeDuration = 1.0;
 let audioStudioInitialized = false;
 let audioLibraryLoaded = false;
 
@@ -1012,41 +1213,71 @@ function initAudioStudio() {
     if (!audioStudioInitialized) {
         audioStudioInitialized = true;
 
-        // Initialize sequencer data (one-time only)
         for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-            audioSteps.push(new Array(AUDIO_NUM_STEPS).fill(null));
+            audioSteps.push(new Array(audioNumSteps).fill(null));
             audioChannelPatches.push(JSEQ_PATCH_NAMES[c] || 'SELECT');
         }
 
-        _buildChannelRows();
         _buildNotePicker();
         _buildDurationPicker();
+        _resizeGrid();
     }
 
-    // Retry loading the audio library on every tab visit until it succeeds
     if (!audioLibraryLoaded) {
         loadAudioLibrary();
     }
 }
 
-function _buildChannelRows() {
+function updateGridConfig() {
+    audioBars = parseInt(document.getElementById('audioBarsInput').value) || 2;
+    audioRes = parseFloat(document.getElementById('audioResInput').value) || 0.25;
+    _resizeGrid();
+}
+
+function _resizeGrid() {
+    audioNumSteps = Math.round((audioBars * 4) / BASE_RES);
+
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        if (!audioSteps[c]) audioSteps[c] = [];
+        audioSteps[c].length = audioNumSteps;
+
+        for(let s = 0; s < audioNumSteps; s++) {
+            if (audioSteps[c][s] === undefined) audioSteps[c][s] = null;
+        }
+
+        // Truncate notes that overshoot the new global timeline length
+        for (let s = audioNumSteps - 1; s >= 0; s--) {
+            const cell = audioSteps[c][s];
+            if (cell && cell.note !== undefined) {
+                if (s + cell.span > audioNumSteps) {
+                    cell.span = audioNumSteps - s;
+                    cell.duration = cell.span * BASE_RES;
+                }
+                break;
+            }
+        }
+    }
+
+    _buildGridHeader();
     const container = document.getElementById('channelRows');
     container.innerHTML = '';
+
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
         const row = document.createElement('div');
         row.className = 'channel-row';
-        row.id = `channelRow_${c}`;
+        row.style.cssText = 'display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; margin-bottom: 6px;';
 
-        // Label
+        const controls = document.createElement('div');
+        controls.style.cssText = 'display: flex; gap: 5px; flex: 0 0 140px;';
+
         const lbl = document.createElement('div');
         lbl.className = 'channel-label';
         lbl.textContent = `Ch${c + 1}`;
-        row.appendChild(lbl);
+        controls.appendChild(lbl);
 
-        // Patch selector
         const sel = document.createElement('select');
         sel.className = 'channel-patch';
-        sel.id = `channelPatch_${c}`;
+        sel.style.width = '90px';
         JSEQ_PATCH_NAMES.forEach(name => {
             const opt = document.createElement('option');
             opt.value = name;
@@ -1055,37 +1286,256 @@ function _buildChannelRows() {
             sel.appendChild(opt);
         });
         sel.onchange = () => { audioChannelPatches[c] = sel.value; };
-        row.appendChild(sel);
+        controls.appendChild(sel);
 
-        // Step grid
+        row.appendChild(controls);
+
         const grid = document.createElement('div');
-        grid.className = 'step-grid';
         grid.id = `stepGrid_${c}`;
-        for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
-            const btn = document.createElement('button');
-            btn.className = 'step-btn';
-            btn.id = `step_${c}_${s}`;
-            btn.textContent = '—';
-            btn.onclick = () => _toggleStep(c, s);
-            grid.appendChild(btn);
-        }
+        grid.style.cssText = 'display: flex; flex-wrap: nowrap; gap: 2px;';
         row.appendChild(grid);
         container.appendChild(row);
+
+        _renderChannel(c);
     }
+}
+
+function _buildGridHeader() {
+    const header = document.getElementById('audioGridHeader');
+    header.innerHTML = '';
+
+    const spacer = document.createElement('div');
+    spacer.style.flex = '0 0 148px';
+    header.appendChild(spacer);
+
+    const gridHeader = document.createElement('div');
+    gridHeader.style.cssText = 'display: flex; gap: 2px;';
+
+    // Draw the ruler based on the user's visual Snap setting
+    const snapSteps = Math.round((audioBars * 4) / audioRes);
+    const snapSpan = Math.round(audioRes / BASE_RES);
+
+    for (let i = 0; i < snapSteps; i++) {
+        const beatFloat = (i * audioRes);
+        const isBeatStart = beatFloat % 1 === 0;
+
+        const div = document.createElement('div');
+        const w = snapSpan * BASE_WIDTH + (snapSpan - 1) * GAP;
+        div.style.flex = `0 0 ${w}px`;
+        div.style.fontSize = '0.7em';
+        div.style.color = isBeatStart ? '#888' : '#444';
+        div.style.textAlign = 'center';
+        div.style.borderLeft = isBeatStart ? '1px solid #555' : '1px solid #222';
+        div.textContent = isBeatStart ? Math.floor(beatFloat) + 1 : '';
+        gridHeader.appendChild(div);
+    }
+    header.appendChild(gridHeader);
+}
+
+let audioTooltip = null;
+
+function _getNoteFreq(noteName) {
+    if (!noteName || noteName === '-') return 0;
+    const semitones = { 'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11 };
+    const m = noteName.match(/^([A-G]#?)(\d+)$/);
+    if (!m) return 0;
+
+    // Calculate standard MIDI index, then convert to Hz (A4 = 69 = 440Hz)
+    const midi = (parseInt(m[2]) + 1) * 12 + semitones[m[1]];
+    return (440.0 * Math.pow(2.0, (midi - 69) / 12.0)).toFixed(1);
+}
+
+function _showTooltip(e, text) {
+    if (!audioTooltip) {
+        audioTooltip = document.createElement('div');
+        audioTooltip.style.position = 'absolute';
+        audioTooltip.style.background = '#222';
+        audioTooltip.style.color = '#ddd';
+        audioTooltip.style.padding = '8px 12px';
+        audioTooltip.style.borderRadius = '4px';
+        audioTooltip.style.fontSize = '0.85em';
+        audioTooltip.style.fontFamily = 'monospace';
+        audioTooltip.style.pointerEvents = 'none'; // Prevents flickering
+        audioTooltip.style.zIndex = '9999';
+        audioTooltip.style.whiteSpace = 'pre';
+        audioTooltip.style.border = '1px solid #555';
+        audioTooltip.style.boxShadow = '0 4px 8px rgba(0,0,0,0.4)';
+        document.body.appendChild(audioTooltip);
+    }
+    audioTooltip.textContent = text;
+    audioTooltip.style.display = 'block';
+    // Offset slightly so it doesn't block the cursor
+    audioTooltip.style.left = (e.pageX + 15) + 'px';
+    audioTooltip.style.top = (e.pageY + 15) + 'px';
+}
+
+function _hideTooltip() {
+    if (audioTooltip) audioTooltip.style.display = 'none';
+}
+
+function _getNoteColor(noteName) {
+    if (!noteName || noteName === '-') return { bg: '#444', border: '#666', text: '#999' };
+
+    const semitones = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const m = noteName.match(/^([A-G]#?)(\d+)$/);
+    if (!m) return { bg: '#444', border: '#666', text: '#999' };
+
+    const noteIdx = semitones.indexOf(m[1]);
+    const octave = parseInt(m[2]);
+
+    // Hue: Spread the 12 notes evenly around the 360° color wheel
+    const hue = noteIdx * 30;
+
+    // Lightness: Octave 2 = 35% (Dark), Octave 7 = 85% (Bright/Pastel)
+    const lightness = 15 + (octave * 10);
+
+    // High contrast text: Dark text for bright high notes, white text for dark low notes
+    const textColor = lightness > 55 ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.95)';
+
+    return {
+        bg: `hsl(${hue}, 80%, ${lightness}%)`,
+        border: `hsl(${hue}, 80%, ${lightness - 15}%)`,
+        text: textColor
+    };
+}
+
+function _renderChannel(ch) {
+    const gridEl = document.getElementById(`stepGrid_${ch}`);
+    if (!gridEl) return;
+    gridEl.innerHTML = '';
+
+    const snapSpan = Math.round(audioRes / BASE_RES);
+
+    for (let s = 0; s < audioNumSteps; ) {
+        const cell = audioSteps[ch][s];
+        if (cell && cell.covered) { s++; continue; }
+
+        const btn = document.createElement('button');
+        let span = 1;
+        let isActive = false;
+        let label = '—';
+
+       if (cell && cell.note !== undefined) {
+            span = cell.span;
+            isActive = true;
+
+            // Render dotted indicator if note aligns with standard dotted times
+            let displayLabel = cell.note || '—';
+            if (cell.note && (cell.duration === 0.75 || cell.duration === 1.5 || cell.duration === 3.0)) {
+                displayLabel += ' •';
+            }
+            label = displayLabel;
+
+            btn.className = 'step-btn active';
+
+            // Apply the dynamic HSL colors
+            const colors = _getNoteColor(cell.note);
+            btn.style.background = colors.bg;
+            btn.style.borderColor = colors.border;
+            btn.style.color = colors.text;
+            btn.style.fontWeight = 'bold';
+
+            // Add a subtle text shadow so the labels pop against the colored background
+            if (cell.note) {
+                btn.style.textShadow = colors.text.includes('0,0,0')
+                    ? '0px 1px 1px rgba(255,255,255,0.3)'
+                    : '0px 1px 2px rgba(0,0,0,0.6)';
+            }
+
+            // --- NEW: Add Tooltip Hover Events ---
+            if (cell.note) {
+                const freq = _getNoteFreq(cell.note);
+                const tooltipText = `Note: ${cell.note}\nFreq: ${freq} Hz\nDur:  ${cell.duration} Beats`;
+                btn.onmousemove = (e) => _showTooltip(e, tooltipText);
+                btn.onmouseleave = _hideTooltip;
+            } else {
+                const tooltipText = `Rest\nDur:  ${cell.duration} Beats`;
+                btn.onmousemove = (e) => _showTooltip(e, tooltipText);
+                btn.onmouseleave = _hideTooltip;
+            }
+        } else {
+            // Group empty 1/32nd blocks into larger clickable "Snap" targets
+            let nextBoundary = Math.ceil((s + 1) / snapSpan) * snapSpan;
+            if (nextBoundary > audioNumSteps) nextBoundary = audioNumSteps;
+            span = nextBoundary - s;
+
+            // Stop grouping if we hit a note
+            for (let k = 1; k < span; k++) {
+                if (audioSteps[ch][s + k] && audioSteps[ch][s + k].note !== undefined) {
+                    span = k;
+                    break;
+                }
+            }
+            btn.className = 'step-btn';
+        }
+
+        const w = span * BASE_WIDTH + (span - 1) * GAP;
+        btn.style.flex = `0 0 ${w}px`;
+        btn.style.height = '36px';
+        btn.style.boxSizing = 'border-box';
+        btn.style.overflow = 'hidden';
+        btn.style.cursor = 'pointer';
+        btn.textContent = label;
+
+        const clickIndex = s;
+        btn.onclick = () => _toggleStep(ch, clickIndex);
+
+        gridEl.appendChild(btn);
+        s += span;
+    }
+}
+
+function _toggleStep(ch, s) {
+    const cell = audioSteps[ch][s];
+
+    if (cell && cell.note !== undefined && cell.note === activeNote && cell.duration === activeDuration) {
+        for(let i=0; i<cell.span; i++) audioSteps[ch][s+i] = null;
+        _renderChannel(ch);
+        return;
+    }
+
+    const span = Math.min(Math.max(1, Math.round(activeDuration / BASE_RES)), audioNumSteps - s);
+
+    for (let i = s - 1; i >= 0; i--) {
+        const earlier = audioSteps[ch][i];
+        if (earlier && earlier.note !== undefined) {
+            if (i + earlier.span > s) {
+                earlier.span = s - i;
+                earlier.duration = earlier.span * BASE_RES;
+                for(let k = s; k < i + earlier.span; k++) {
+                    if(audioSteps[ch][k] && audioSteps[ch][k].covered) audioSteps[ch][k] = null;
+                }
+            }
+            break;
+        }
+    }
+
+    for (let i = s; i < s + span; i++) {
+        const existing = audioSteps[ch][i];
+        if (existing && existing.note !== undefined) {
+            for(let k = i + 1; k < i + existing.span; k++) {
+                if(audioSteps[ch][k] && audioSteps[ch][k].covered) audioSteps[ch][k] = null;
+            }
+        }
+
+        if (i === s) {
+            audioSteps[ch][i] = { note: activeNote, duration: span * BASE_RES, span: span };
+        } else {
+            audioSteps[ch][i] = { covered: true };
+        }
+    }
+
+    _renderChannel(ch);
 }
 
 function _buildNotePicker() {
     const picker = document.getElementById('notePicker');
     picker.innerHTML = '';
-
-    // Rest button
     const restBtn = document.createElement('button');
     restBtn.className = 'note-pick-btn rest';
     restBtn.textContent = '— Rest';
     restBtn.onclick = () => _selectNote(null);
     picker.appendChild(restBtn);
-
-    // Note buttons by octave
     AUDIO_OCTAVES.forEach(oct => {
         AUDIO_NOTE_NAMES.forEach(n => {
             const noteName = n + oct;
@@ -1119,79 +1569,74 @@ function _selectNote(noteName) {
         const btn = document.getElementById(`notePick_${noteName}`);
         if (btn) btn.classList.add('selected');
     } else {
-        const restBtns = document.querySelectorAll('.note-pick-btn.rest');
-        restBtns.forEach(b => b.classList.add('selected'));
+        document.querySelectorAll('.note-pick-btn.rest').forEach(b => b.classList.add('selected'));
     }
 }
 
 function _selectDuration(beats, label, clickedBtn) {
     activeDuration = beats;
-    document.getElementById('activeDurLabel').textContent = label + ' (' + beats + ' beat' + (beats === 1 ? '' : 's') + ')';
+    document.getElementById('activeDurLabel').textContent = label;
     document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('selected'));
     clickedBtn.classList.add('selected');
 }
 
-function _toggleStep(ch, step) {
-    const current = audioSteps[ch][step];
-    if (current !== null && activeNote === current.note) {
-        // Same note clicked again → clear (rest)
-        audioSteps[ch][step] = null;
-    } else if (activeNote === null) {
-        // Rest selected → clear
-        audioSteps[ch][step] = null;
-    } else {
-        // Place or replace note
-        audioSteps[ch][step] = { note: activeNote, duration: activeDuration };
-    }
-    _refreshStepButton(ch, step);
-}
-
-function _refreshStepButton(ch, step) {
-    const btn = document.getElementById(`step_${ch}_${step}`);
-    if (!btn) return;
-    const s = audioSteps[ch][step];
-    if (s) {
-        btn.textContent = s.note;
-        btn.classList.add('active');
-    } else {
-        btn.textContent = '—';
-        btn.classList.remove('active');
-    }
-}
-
 function audioClearAll() {
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        audioSteps[c] = new Array(AUDIO_NUM_STEPS).fill(null);
-        for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
-            _refreshStepButton(c, s);
+        audioSteps[c] = new Array(audioNumSteps).fill(null);
+        _renderChannel(c);
+    }
+}
+
+function _buildSequenceForChannel(ch) {
+    let sequence = [];
+    let accumulatedRest = 0;
+
+    for (let s = 0; s < audioNumSteps; s++) {
+        const cell = audioSteps[ch][s];
+        if (!cell) {
+            accumulatedRest += BASE_RES;
+        } else if (cell.covered) {
+            continue;
+        } else if (cell.note !== undefined) {
+            while (accumulatedRest > 0) {
+                const chunk = Math.min(4.0, accumulatedRest);
+                sequence.push(['-', chunk]);
+                accumulatedRest -= chunk;
+            }
+            sequence.push([cell.note || '-', cell.duration]);
         }
     }
+
+    while (accumulatedRest > 0) {
+        const chunk = Math.min(4.0, accumulatedRest);
+        sequence.push(['-', chunk]);
+        accumulatedRest -= chunk;
+    }
+    return sequence;
 }
 
 function _buildPreviewPayload() {
     const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
     const channels = [];
-    const REST_DURATION = 1.0; // Quarter note default for rest steps
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        const sequence = audioSteps[c].map(s => s ? [s.note, s.duration] : ['-', REST_DURATION]);
-        channels.push({ patch: audioChannelPatches[c], sequence });
+        channels.push({
+            patch: audioChannelPatches[c],
+            sequence: _buildSequenceForChannel(c)
+        });
     }
     return { bpm, channels };
 }
 
 async function audioPreview() {
-    const payload = _buildPreviewPayload();
     try {
         const resp = await fetch('/api/synth/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(_buildPreviewPayload()),
         });
         const data = await resp.json();
         if (resp.ok && data.status === 'success') {
             showStatus('audioStatus', '▶ Preview started on device', 'success');
-        } else if (data.status === 'no_synth') {
-            showStatus('audioStatus', 'Synth manager not connected to web server', 'error');
         } else {
             showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
         }
@@ -1202,17 +1647,199 @@ async function audioPreview() {
 
 async function audioStop() {
     try {
-        const resp = await fetch('/api/synth/stop', { method: 'POST' });
+        await fetch('/api/synth/stop', { method: 'POST' });
+        showStatus('audioStatus', '■ Playback stopped', 'success');
+    } catch (e) { }
+}
+
+function _noteToJseqIndex(noteName) {
+    if (!noteName || noteName === '-') return 0;
+    const semitones = { 'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11 };
+    const m = noteName.match(/^([A-G]#?)(\d+)$/);
+    if (!m) return 0;
+    const midi = (parseInt(m[2]) + 1) * 12 + (semitones[m[1]] !== undefined ? semitones[m[1]] : 0);
+    return midi + 1;
+}
+
+function _jseqIndexToNote(index) {
+    if (index === 0) return null;
+    const midi = index - 1;
+    const octave = Math.floor(midi / 12) - 1;
+    const semitones = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    return semitones[midi % 12] + octave;
+}
+
+function _durationToJseqUnits(beats) {
+    return Math.max(1, Math.min(255, Math.round(beats * 32)));
+}
+
+function _jseqUnitsToDuration(units) {
+    return units / 32.0;
+}
+
+function _encodeJseq() {
+    const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
+    const compiledChannels = [];
+    let size = 8;
+
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        const seq = _buildSequenceForChannel(c);
+        compiledChannels.push(seq);
+        size += 3 + seq.length * 2;
+    }
+
+    const buf = new ArrayBuffer(size);
+    const view = new DataView(buf);
+    let pos = 0;
+
+    view.setUint8(pos++, 0x4A); view.setUint8(pos++, 0x53);
+    view.setUint8(pos++, 0x45); view.setUint8(pos++, 0x51);
+    view.setUint8(pos++, 1);
+    view.setUint16(pos, bpm, true); pos += 2;
+    view.setUint8(pos++, AUDIO_NUM_CHANNELS);
+
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        const patchIdx = JSEQ_PATCH_NAMES.indexOf(audioChannelPatches[c]);
+        view.setUint8(pos++, patchIdx >= 0 ? patchIdx : 0);
+
+        const seq = compiledChannels[c];
+        view.setUint16(pos, seq.length, true); pos += 2;
+
+        for (let i = 0; i < seq.length; i++) {
+            const step = seq[i];
+            view.setUint8(pos++, step[0] === '-' ? 0 : _noteToJseqIndex(step[0]));
+            view.setUint8(pos++, _durationToJseqUnits(step[1]));
+        }
+    }
+    return buf;
+}
+
+function _bufferToBase64(buffer) {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+}
+
+async function audioSave() {
+    const name = document.getElementById('audioSeqName').value.trim();
+    if (!name) return showStatus('audioStatus', 'Please enter a sequence name', 'error');
+
+    try {
+        const base64Data = _bufferToBase64(_encodeJseq());
+        const resp = await fetch(`/api/synth/save?name=${encodeURIComponent(name)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: base64Data,
+        });
         const data = await resp.json();
         if (resp.ok) {
-            showStatus('audioStatus', '■ Playback stopped', 'success');
-        } else {
-            showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
-        }
+            showStatus('audioStatus', `💾 Saved to ${data.path}`, 'success');
+            loadAudioLibrary(true);
+        } else showStatus('audioStatus', 'Error: ' + data.error, 'error');
     } catch (e) {
         showStatus('audioStatus', 'Error: ' + e, 'error');
     }
 }
+
+async function audioLoad() {
+    const select = document.getElementById('jseqSelect');
+    const filename = select ? select.value : '';
+    if (!filename) return showStatus('audioStatus', 'Please select a sequence to load', 'error');
+
+    try {
+        const resp = await fetch('/api/synth/load?name=' + encodeURIComponent(filename));
+        if (!resp.ok) throw new Error(await resp.text());
+
+        const buf = await resp.arrayBuffer();
+        const view = new DataView(buf);
+        let pos = 0;
+
+        if (buf.byteLength < 8) throw new Error("File too small");
+        if (view.getUint8(pos++) !== 0x4A || view.getUint8(pos++) !== 0x53 ||
+            view.getUint8(pos++) !== 0x45 || view.getUint8(pos++) !== 0x51) {
+            throw new Error("Invalid .jseq magic bytes");
+        }
+
+        const version = view.getUint8(pos++);
+        document.getElementById('audioBpm').value = view.getUint16(pos, true); pos += 2;
+        const numChannels = view.getUint8(pos++);
+
+        let maxBeats = 4;
+        let minDur = 0.25;
+        const loadedChannels = [];
+
+        for (let c = 0; c < numChannels; c++) {
+            if (pos + 3 > buf.byteLength) {
+                console.warn("JSEQ file truncated at channel header");
+                break;
+            }
+
+            const patchName = JSEQ_PATCH_NAMES[view.getUint8(pos++)] || 'SELECT';
+            const numSteps = view.getUint16(pos, true); pos += 2;
+
+            let chanBeats = 0;
+            const seq = [];
+
+            for (let s = 0; s < numSteps; s++) {
+                if (pos + 2 > buf.byteLength) {
+                    console.warn(`File truncated at Ch ${c+1} Step ${s+1}.`);
+                    break;
+                }
+
+                const noteIdx = view.getUint8(pos++);
+                const dur = _jseqUnitsToDuration(view.getUint8(pos++));
+
+                if (dur > 0 && dur < minDur) minDur = dur;
+                chanBeats += dur;
+                seq.push({ note: _jseqIndexToNote(noteIdx), dur });
+            }
+            if (chanBeats > maxBeats) maxBeats = chanBeats;
+            loadedChannels.push({ patch: patchName, seq });
+        }
+
+        document.getElementById('audioBarsInput').value = Math.max(1, Math.ceil(maxBeats / 4));
+        if (minDur <= 0.125) document.getElementById('audioResInput').value = 0.125;
+        else if (minDur <= 0.25) document.getElementById('audioResInput').value = 0.25;
+        else document.getElementById('audioResInput').value = 0.5;
+
+        updateGridConfig();
+        audioClearAll();
+
+        for (let c = 0; c < loadedChannels.length; c++) {
+            if (c >= AUDIO_NUM_CHANNELS) break;
+
+            audioChannelPatches[c] = loadedChannels[c].patch;
+            const patchSelect = document.querySelector(`#stepGrid_${c}`).parentElement.querySelector('select');
+            if (patchSelect) patchSelect.value = loadedChannels[c].patch;
+
+            let currentStep = 0;
+            for (const item of loadedChannels[c].seq) {
+                const span = Math.round(item.dur / BASE_RES);
+                if (currentStep + span > audioNumSteps) break;
+
+                if (item.note) {
+                    audioSteps[c][currentStep] = { note: item.note, duration: item.dur, span: span };
+                    for (let i = 1; i < span; i++) {
+                        audioSteps[c][currentStep + i] = { covered: true };
+                    }
+                }
+                currentStep += span;
+            }
+            _renderChannel(c);
+        }
+
+        document.getElementById('audioSeqName').value = filename.replace('.jseq', '');
+        showStatus('audioStatus', '📂 Loaded ' + filename, 'success');
+
+    } catch (e) {
+        showStatus('audioStatus', 'Error loading sequence: ' + e.message, 'error');
+    }
+}
+
+// --- Audio Library & Asset Playback ---
 
 async function loadAudioLibrary(force = false) {
     if (audioLibraryLoaded && !force) return;
@@ -1259,6 +1886,29 @@ async function loadAudioLibrary(force = false) {
                 wavSelect.appendChild(opt);
             }
         }
+
+        // Populate JSEQ select
+        const jseqSelect = document.getElementById('jseqSelect');
+        if (jseqSelect) {
+            jseqSelect.innerHTML = '';
+            if (data.jseqs && data.jseqs.length > 0) {
+                const defOpt = document.createElement('option');
+                defOpt.value = '';
+                defOpt.textContent = 'Select sequence...';
+                jseqSelect.appendChild(defOpt);
+                data.jseqs.forEach(filename => {
+                    const opt = document.createElement('option');
+                    opt.value = filename;
+                    opt.textContent = filename;
+                    jseqSelect.appendChild(opt);
+                });
+            } else {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No .jseq files found';
+                jseqSelect.appendChild(opt);
+            }
+        }
     } catch (e) {
         // Reset flag so the user can retry by switching away and back to the tab
         audioLibraryLoaded = false;
@@ -1266,6 +1916,8 @@ async function loadAudioLibrary(force = false) {
         if (toneSelect) toneSelect.innerHTML = '<option value="">Error loading library</option>';
         const wavSelect = document.getElementById('wavSelect');
         if (wavSelect) wavSelect.innerHTML = '<option value="">Error loading library</option>';
+        const jseqSelect = document.getElementById('jseqSelect');
+        if (jseqSelect) jseqSelect.innerHTML = '<option value="">Error loading library</option>';
     }
 }
 
@@ -1322,76 +1974,6 @@ async function playWav() {
         }
     } catch (e) {
         showStatus('wavStatus', 'Error: ' + e, 'error');
-    }
-}
-
-// Encode a note name to .jseq MIDI index (0 = rest, 1 = MIDI note 0)
-// MIDI numbering: C-1=0, C0=12, C1=24, C2=36, C4=60, A4=69
-// Formula: (octave + 1) * 12 + semitone gives standard MIDI note number
-function _noteToJseqIndex(noteName) {
-    if (!noteName || noteName === '-') return 0;
-    const semitones = { 'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11 };
-    const m = noteName.match(/^([A-G]#?)(\d+)$/);
-    if (!m) return 0;
-    const midi = (parseInt(m[2]) + 1) * 12 + (semitones[m[1]] !== undefined ? semitones[m[1]] : 0);
-    return midi + 1; // +1: index 0 reserved for rest
-}
-
-function _durationToJseqUnits(beats) {
-    return Math.max(1, Math.min(255, Math.round(beats * 32)));
-}
-
-function _encodeJseq() {
-    const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
-    // Calculate buffer size: 8-byte header + per-channel data
-    let size = 8;
-    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) size += 3 + AUDIO_NUM_STEPS * 2;
-
-    const buf = new ArrayBuffer(size);
-    const view = new DataView(buf);
-    let pos = 0;
-
-    // Magic "JSEQ"
-    view.setUint8(pos++, 0x4A); view.setUint8(pos++, 0x53);
-    view.setUint8(pos++, 0x45); view.setUint8(pos++, 0x51);
-    view.setUint8(pos++, 1); // version
-    view.setUint16(pos, bpm, true); pos += 2;
-    view.setUint8(pos++, AUDIO_NUM_CHANNELS);
-
-    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        const patchIdx = JSEQ_PATCH_NAMES.indexOf(audioChannelPatches[c]);
-        view.setUint8(pos++, patchIdx >= 0 ? patchIdx : 0);
-        view.setUint16(pos, AUDIO_NUM_STEPS, true); pos += 2;
-        for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
-            const step = audioSteps[c][s];
-            view.setUint8(pos++, step ? _noteToJseqIndex(step.note) : 0);
-            view.setUint8(pos++, step ? _durationToJseqUnits(step.duration) : _durationToJseqUnits(activeDuration));
-        }
-    }
-    return buf;
-}
-
-async function audioSave() {
-    const name = document.getElementById('audioSeqName').value.trim();
-    if (!name) {
-        showStatus('audioStatus', 'Please enter a sequence name', 'error');
-        return;
-    }
-    try {
-        const buf = _encodeJseq();
-        const resp = await fetch(`/api/synth/save?name=${encodeURIComponent(name)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/octet-stream' },
-            body: buf,
-        });
-        const data = await resp.json();
-        if (resp.ok && data.status === 'success') {
-            showStatus('audioStatus', `💾 Saved to ${data.path}`, 'success');
-        } else {
-            showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
-        }
-    } catch (e) {
-        showStatus('audioStatus', 'Error: ' + e, 'error');
     }
 }
 
