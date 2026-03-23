@@ -230,31 +230,36 @@
 
             <div class="audio-studio-layout">
                 <!-- Transport controls -->
-                <div class="audio-transport">
-                    <label>BPM:</label>
-                    <input type="number" id="audioBpm" value="120" min="20" max="300" style="width:70px;">
-                    <button onclick="audioPreview()">▶ Play Preview</button>
-                    <button class="secondary" onclick="audioStop()">■ Stop</button>
-                    <button class="secondary" onclick="audioClearAll()">Clear All</button>
+                <div class="audio-transport" style="display:flex; flex-wrap:wrap; gap:15px; align-items:center;">
+                    <div style="display:flex; gap:10px; align-items:center; background:#222; padding:5px 10px; border-radius:4px;">
+                        <label>BPM:</label>
+                        <input type="number" id="audioBpm" value="120" min="20" max="300" style="width:60px;">
+                        <button onclick="audioPreview()">▶ Play Preview</button>
+                        <button class="secondary" onclick="audioStop()">■ Stop</button>
+                    </div>
+
+                    <div style="display:flex; gap:10px; align-items:center; background:#222; padding:5px 10px; border-radius:4px;">
+                        <label>Length:</label>
+                        <input type="number" id="audioBarsInput" value="2" min="1" max="16" style="width:50px;" onchange="updateGridConfig()">
+                        <span style="color:#888; font-size:0.9em;">Bars</span>
+
+                        <label style="margin-left:10px;">Grid:</label>
+                        <select id="audioResInput" onchange="updateGridConfig()">
+                            <option value="0.5">1/8 Note</option>
+                            <option value="0.25" selected>1/16 Note</option>
+                            <option value="0.125">1/32 Note</option>
+                        </select>
+                    </div>
+
+                    <button class="secondary" onclick="audioClearAll()" style="margin-left:auto;">Clear All</button>
                 </div>
 
-                <!-- Step number ruler -->
-                <div style="display:flex; align-items:center; gap:6px; padding: 0 8px;">
-                    <div style="width:164px; flex-shrink:0;"></div>
-                    <div class="step-number-row" style="flex:1;">
-                        <div class="step-number">1</div><div class="step-number">2</div>
-                        <div class="step-number">3</div><div class="step-number">4</div>
-                        <div class="step-number">5</div><div class="step-number">6</div>
-                        <div class="step-number">7</div><div class="step-number">8</div>
-                        <div class="step-number">9</div><div class="step-number">10</div>
-                        <div class="step-number">11</div><div class="step-number">12</div>
-                        <div class="step-number">13</div><div class="step-number">14</div>
-                        <div class="step-number">15</div><div class="step-number">16</div>
+                <div style="overflow-x: auto; background: #111; border: 1px solid #333; border-radius: 4px; padding-bottom: 10px; margin-top: 15px;">
+                    <div style="min-width: max-content; padding: 10px;">
+                        <div id="audioGridHeader" style="display: flex; margin-bottom: 5px;"></div>
+                        <div id="channelRows"></div>
                     </div>
                 </div>
-
-                <!-- Channel rows (3 channels) -->
-                <div id="channelRows"></div>
 
                 <!-- Note & Duration Picker -->
                 <div style="background:#1a1a1a; border:1px solid #333; border-radius:4px; padding:10px; margin-top:4px;">
@@ -271,12 +276,23 @@
                 </div>
 
                 <!-- Save section -->
-                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px;">
-                    <label style="color:#b0b0b0;">Sequence Name:</label>
-                    <input type="text" id="audioSeqName" placeholder="my_sequence" maxlength="32" style="width:180px;">
-                    <button onclick="audioSave()">💾 Save .jseq</button>
+                <div style="background:#1a1a1a; border:1px solid #333; border-radius:4px; padding:10px; margin-top:15px;">
+                    <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <label style="color:#b0b0b0;">Load:</label>
+                            <select id="jseqSelect" style="width:160px;">
+                                <option value="">Loading...</option>
+                            </select>
+                            <button onclick="audioLoad()">📂 Load</button>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <label style="color:#b0b0b0;">Save As:</label>
+                            <input type="text" id="audioSeqName" placeholder="my_sequence" maxlength="32" style="width:160px;">
+                            <button onclick="audioSave()">💾 Save .jseq</button>
+                        </div>
+                    </div>
                 </div>
-                <div id="audioStatus" class="status" style="display:none;"></div>
+                <div id="audioStatus" class="status" style="display:none; margin-top: 10px;"></div>
             </div>
 
             <!-- Tone / Sequence Trigger Card -->

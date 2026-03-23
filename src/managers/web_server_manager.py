@@ -23,6 +23,7 @@ Dependencies:
 """
 
 import asyncio
+import binascii
 import json
 import os
 import gc
@@ -1181,20 +1182,31 @@ class WebServerManager:
                     return Response(request, '{"error": "request body must contain .jseq binary data (minimum 8 bytes)"}',
                                   content_type="application/json", status=400)
 
-                if body[:4] != b'JSEQ':
+                # Decode the safe Base64 text back into pristine, uncorrupted bytes
+                try:
+                    raw_bytes = binascii.a2b_base64(body)
+                except Exception:
+                    return Response(request, '{"error": "invalid base64 payload"}',
+                                  content_type="application/json", status=400)
+
+                if len(raw_bytes) < 8:
+                    return Response(request, '{"error": "request body must contain .jseq binary data (minimum 8 bytes)"}',
+                                  content_type="application/json", status=400)
+
+                if raw_bytes[:4] != b'JSEQ':
                     return Response(request, '{"error": "invalid .jseq file: missing JSEQ magic bytes"}',
                                   content_type="application/json", status=400)
 
                 filepath = f"/sd/sequences/{name.lower()}.jseq"
 
-                if not self._testing:
+                if not getattr(self, "_testing", False):
                     try:
                         os.mkdir("/sd/sequences")
                     except OSError:
                         pass  # Directory already exists
 
                     with open(filepath, "wb") as f:
-                        f.write(body)
+                        f.write(raw_bytes)
 
                 self.log(f"Synth sequence saved: {filepath}")
                 return Response(request, f'{{"status": "success", "path": "{filepath}"}}',
@@ -1241,11 +1253,47 @@ class WebServerManager:
                 # Scan /sd/audio/ recursively for .wav files
                 wav_files = self._list_wav_files("/sd/audio")
 
-                return Response(request, json.dumps({"tones": tones_list, "wavs": wav_files}),
+                # Scan /sd/sequences/ for .jseq files
+                jseq_list = []
+                try:
+                    for f in os.listdir("/sd/sequences"):
+                        if f.lower().endswith(".jseq"):
+                            jseq_list.append(f)
+                except OSError:
+                    pass
+
+                return Response(request, json.dumps({"tones": tones_list, "wavs": wav_files, "jseqs": jseq_list}),
                                 content_type="application/json")
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                                 content_type="application/json", status=500)
+
+        # API: Load a .jseq sequence file from /sd/sequences/
+        @self.server.route("/api/synth/load", GET)
+        def load_synth_sequence(request: Request):
+            """Load a .jseq binary sequence file from /sd/sequences/."""
+            try:
+                name = request.query_params.get("name", "").strip()
+                if not name:
+                    return Response(request, '{"error": "name query parameter required"}',
+                                  content_type="application/json", status=400)
+
+                sanitized = self._sanitize_path("/sd/sequences", name)
+                if not sanitized.startswith("/sd/sequences/"):
+                    return Response(request, '{"error": "invalid path"}',
+                                  content_type="application/json", status=400)
+
+                try:
+                    with open(sanitized, "rb") as f:
+                        content = f.read()
+                    return Response(request, content, content_type="application/octet-stream")
+                except OSError:
+                    return Response(request, '{"error": "File not found"}',
+                                  content_type="application/json", status=404)
+
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
 
         # API: Play a tone/sequence or WAV file
         @self.server.route("/api/audio/play", POST)

@@ -1174,33 +1174,34 @@ async function savePixelArt() {
 }
 
 // =====================================================================
-// Audio Studio
+// Audio Studio - Dynamic Timeline Sequencer
 // =====================================================================
 const AUDIO_NUM_CHANNELS = 3;
-const AUDIO_NUM_STEPS    = 16;
 
-// Patch names – must match JSEQ_PATCH_NAMES in synth_manager.py
 const JSEQ_PATCH_NAMES = [
     'RETRO_LEAD', 'RETRO_BASS', 'RETRO_NOISE',
     'BEEP', 'BEEP_SQUARE', 'PAD', 'PUNCH',
     'ALARM', 'SCANNER', 'CLICK', 'NOISE', 'SELECT',
 ];
 
-// Available note names for the picker
 const AUDIO_OCTAVES = [2, 3, 4, 5, 6, 7];
 const AUDIO_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
-// Duration options: [label, beats]
 const DURATION_OPTIONS = [
-    ['1/32', 0.125], ['1/16', 0.25], ['1/8', 0.5],
-    ['1/4', 1.0], ['1/2', 2.0], ['1', 4.0],
+    ['𝅘𝅥𝅰 Thirty-Second', 0.125], ['𝅘𝅥𝅯 Sixteenth', 0.25], ['♪ Eighth', 0.5],
+    ['♩ Quarter', 1.0], ['𝅗𝅥 Half', 2.0], ['𝅝 Whole', 4.0],
 ];
 
-// Sequence data: audioSteps[ch][step] = {note, duration} or null (rest)
+// Grid Configuration State
+let audioBars = 2;         // Default to 2 bars of 4/4 time
+let audioRes = 0.25;       // 1 grid cell = 0.25 beats (1/16th note)
+let audioNumSteps = 32;    // Calculated: (bars * 4) / res
+
+// audioSteps[ch][step] = { note: 'C4', duration: 1.0, span: 4 } OR { covered: true } OR null
 let audioSteps = [];
 let audioChannelPatches = [];
-let activeNote = null;       // e.g. 'C4'
-let activeDuration = 1.0;    // in beats (quarter note default)
+let activeNote = null;
+let activeDuration = 1.0;
 let audioStudioInitialized = false;
 let audioLibraryLoaded = false;
 
@@ -1208,41 +1209,71 @@ function initAudioStudio() {
     if (!audioStudioInitialized) {
         audioStudioInitialized = true;
 
-        // Initialize sequencer data (one-time only)
         for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-            audioSteps.push(new Array(AUDIO_NUM_STEPS).fill(null));
+            audioSteps.push(new Array(audioNumSteps).fill(null));
             audioChannelPatches.push(JSEQ_PATCH_NAMES[c] || 'SELECT');
         }
 
-        _buildChannelRows();
         _buildNotePicker();
         _buildDurationPicker();
+        _resizeGrid(); // Builds the header and rows
     }
 
-    // Retry loading the audio library on every tab visit until it succeeds
     if (!audioLibraryLoaded) {
         loadAudioLibrary();
     }
 }
 
-function _buildChannelRows() {
+function updateGridConfig() {
+    audioBars = parseInt(document.getElementById('audioBarsInput').value) || 2;
+    audioRes = parseFloat(document.getElementById('audioResInput').value) || 0.25;
+    _resizeGrid();
+}
+
+function _resizeGrid() {
+    audioNumSteps = Math.round((audioBars * 4) / audioRes);
+
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        if (!audioSteps[c]) audioSteps[c] = [];
+        audioSteps[c].length = audioNumSteps;
+
+        // Fill new empty space and repair truncated notes
+        for(let s = 0; s < audioNumSteps; s++) {
+            if (audioSteps[c][s] === undefined) audioSteps[c][s] = null;
+        }
+        for (let s = audioNumSteps - 1; s >= 0; s--) {
+            const cell = audioSteps[c][s];
+            if (cell && cell.note !== undefined) {
+                if (s + cell.span > audioNumSteps) {
+                    // Truncate note that overshoots the new grid size
+                    cell.span = audioNumSteps - s;
+                    cell.duration = cell.span * audioRes;
+                }
+                break;
+            }
+        }
+    }
+
+    _buildGridHeader();
     const container = document.getElementById('channelRows');
     container.innerHTML = '';
+
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
         const row = document.createElement('div');
         row.className = 'channel-row';
-        row.id = `channelRow_${c}`;
+        row.style.cssText = 'display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; margin-bottom: 6px;';
 
-        // Label
+        const controls = document.createElement('div');
+        controls.style.cssText = 'display: flex; gap: 5px; flex: 0 0 140px;';
+
         const lbl = document.createElement('div');
         lbl.className = 'channel-label';
         lbl.textContent = `Ch${c + 1}`;
-        row.appendChild(lbl);
+        controls.appendChild(lbl);
 
-        // Patch selector
         const sel = document.createElement('select');
         sel.className = 'channel-patch';
-        sel.id = `channelPatch_${c}`;
+        sel.style.width = '90px';
         JSEQ_PATCH_NAMES.forEach(name => {
             const opt = document.createElement('option');
             opt.value = name;
@@ -1251,37 +1282,145 @@ function _buildChannelRows() {
             sel.appendChild(opt);
         });
         sel.onchange = () => { audioChannelPatches[c] = sel.value; };
-        row.appendChild(sel);
+        controls.appendChild(sel);
 
-        // Step grid
+        row.appendChild(controls);
+
         const grid = document.createElement('div');
-        grid.className = 'step-grid';
         grid.id = `stepGrid_${c}`;
-        for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
-            const btn = document.createElement('button');
-            btn.className = 'step-btn';
-            btn.id = `step_${c}_${s}`;
-            btn.textContent = '—';
-            btn.onclick = () => _toggleStep(c, s);
-            grid.appendChild(btn);
-        }
+        grid.style.cssText = 'display: flex; flex-wrap: nowrap; gap: 2px;';
         row.appendChild(grid);
         container.appendChild(row);
+
+        _renderChannel(c);
     }
 }
 
+function _buildGridHeader() {
+    const header = document.getElementById('audioGridHeader');
+    header.innerHTML = '';
+
+    const spacer = document.createElement('div');
+    spacer.style.flex = '0 0 148px';
+    header.appendChild(spacer);
+
+    const gridHeader = document.createElement('div');
+    gridHeader.style.cssText = 'display: flex; gap: 2px;';
+
+    for (let s = 0; s < audioNumSteps; s++) {
+        const beatFloat = (s * audioRes);
+        const isBeatStart = beatFloat % 1 === 0;
+
+        const div = document.createElement('div');
+        div.style.flex = '0 0 40px';
+        div.style.fontSize = '0.7em';
+        div.style.color = isBeatStart ? '#888' : '#444';
+        div.style.textAlign = 'center';
+        div.style.borderLeft = isBeatStart ? '1px solid #333' : 'none';
+        div.textContent = isBeatStart ? Math.floor(beatFloat) + 1 : '.';
+        gridHeader.appendChild(div);
+    }
+    header.appendChild(gridHeader);
+}
+
+function _renderChannel(ch) {
+    const gridEl = document.getElementById(`stepGrid_${ch}`);
+    if (!gridEl) return;
+    gridEl.innerHTML = '';
+
+    for (let s = 0; s < audioNumSteps; s++) {
+        const cell = audioSteps[ch][s];
+        if (cell && cell.covered) continue;
+
+        const btn = document.createElement('button');
+        let span = 1;
+        let isActive = false;
+        let label = '—';
+
+        if (cell && cell.note !== undefined) {
+            span = cell.span;
+            isActive = true;
+            label = cell.note || '—';
+        }
+
+        btn.className = 'step-btn' + (isActive ? ' active' : '');
+        if (isActive && !cell.note) {
+            btn.style.background = '#444';
+            btn.style.borderColor = '#666';
+            btn.style.color = '#999';
+        }
+
+        // Calculate proportional physical width based on duration span!
+        // Base width is 40px. Add the 2px gap spacing for every spanned cell.
+        btn.style.flex = `0 0 ${span * 40 + (span - 1) * 2}px`;
+        btn.style.height = '36px';
+        btn.style.boxSizing = 'border-box';
+        btn.style.overflow = 'hidden';
+        btn.style.cursor = 'pointer';
+
+        btn.textContent = label;
+        btn.onclick = () => _toggleStep(ch, s);
+        gridEl.appendChild(btn);
+    }
+}
+
+function _toggleStep(ch, s) {
+    const cell = audioSteps[ch][s];
+
+    // Toggle off if matching note is clicked
+    if (cell && cell.note !== undefined && cell.note === activeNote && cell.duration === activeDuration) {
+        for(let i=0; i<cell.span; i++) audioSteps[ch][s+i] = null;
+        _renderChannel(ch);
+        return;
+    }
+
+    // Determine how many cells this new note will span
+    const span = Math.min(Math.max(1, Math.round(activeDuration / audioRes)), audioNumSteps - s);
+
+    // 1. Truncate any existing note that started BEFORE 's' but overlaps into 's'
+    for (let i = s - 1; i >= 0; i--) {
+        const earlier = audioSteps[ch][i];
+        if (earlier && earlier.note !== undefined) {
+            if (i + earlier.span > s) {
+                earlier.span = s - i;
+                earlier.duration = earlier.span * audioRes;
+                for(let k = s; k < i + earlier.span; k++) {
+                    if(audioSteps[ch][k] && audioSteps[ch][k].covered) audioSteps[ch][k] = null;
+                }
+            }
+            break;
+        }
+    }
+
+    // 2. Overwrite target cells (safely destroying overlapping notes that start within the span)
+    for (let i = s; i < s + span; i++) {
+        const existing = audioSteps[ch][i];
+        if (existing && existing.note !== undefined) {
+            // Scrub out the tail covers of the note we are squashing
+            for(let k = i + 1; k < i + existing.span; k++) {
+                if(audioSteps[ch][k] && audioSteps[ch][k].covered) audioSteps[ch][k] = null;
+            }
+        }
+
+        if (i === s) {
+            audioSteps[ch][i] = { note: activeNote, duration: span * audioRes, span: span };
+        } else {
+            audioSteps[ch][i] = { covered: true };
+        }
+    }
+
+    _renderChannel(ch);
+}
+
+// --- Pickers ---
 function _buildNotePicker() {
     const picker = document.getElementById('notePicker');
     picker.innerHTML = '';
-
-    // Rest button
     const restBtn = document.createElement('button');
     restBtn.className = 'note-pick-btn rest';
     restBtn.textContent = '— Rest';
     restBtn.onclick = () => _selectNote(null);
     picker.appendChild(restBtn);
-
-    // Note buttons by octave
     AUDIO_OCTAVES.forEach(oct => {
         AUDIO_NOTE_NAMES.forEach(n => {
             const noteName = n + oct;
@@ -1315,8 +1454,7 @@ function _selectNote(noteName) {
         const btn = document.getElementById(`notePick_${noteName}`);
         if (btn) btn.classList.add('selected');
     } else {
-        const restBtns = document.querySelectorAll('.note-pick-btn.rest');
-        restBtns.forEach(b => b.classList.add('selected'));
+        document.querySelectorAll('.note-pick-btn.rest').forEach(b => b.classList.add('selected'));
     }
 }
 
@@ -1327,67 +1465,67 @@ function _selectDuration(beats, label, clickedBtn) {
     clickedBtn.classList.add('selected');
 }
 
-function _toggleStep(ch, step) {
-    const current = audioSteps[ch][step];
-    if (current !== null && activeNote === current.note) {
-        // Same note clicked again → clear (rest)
-        audioSteps[ch][step] = null;
-    } else if (activeNote === null) {
-        // Rest selected → clear
-        audioSteps[ch][step] = null;
-    } else {
-        // Place or replace note
-        audioSteps[ch][step] = { note: activeNote, duration: activeDuration };
-    }
-    _refreshStepButton(ch, step);
-}
-
-function _refreshStepButton(ch, step) {
-    const btn = document.getElementById(`step_${ch}_${step}`);
-    if (!btn) return;
-    const s = audioSteps[ch][step];
-    if (s) {
-        btn.textContent = s.note;
-        btn.classList.add('active');
-    } else {
-        btn.textContent = '—';
-        btn.classList.remove('active');
-    }
-}
-
 function audioClearAll() {
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        audioSteps[c] = new Array(AUDIO_NUM_STEPS).fill(null);
-        for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
-            _refreshStepButton(c, s);
+        audioSteps[c] = new Array(audioNumSteps).fill(null);
+        _renderChannel(c);
+    }
+}
+
+// --- Compilers ---
+function _buildSequenceForChannel(ch) {
+    let sequence = [];
+    let accumulatedRest = 0;
+
+    for (let s = 0; s < audioNumSteps; s++) {
+        const cell = audioSteps[ch][s];
+        if (!cell) {
+            accumulatedRest += audioRes;
+        } else if (cell.covered) {
+            continue;
+        } else if (cell.note !== undefined) {
+            // Flush accumulated rests in safe max-4-beat chunks
+            while (accumulatedRest > 0) {
+                const chunk = Math.min(4.0, accumulatedRest);
+                sequence.push(['-', chunk]);
+                accumulatedRest -= chunk;
+            }
+            sequence.push([cell.note || '-', cell.duration]);
         }
     }
+
+    // Flush any remaining rests at the end of the timeline
+    while (accumulatedRest > 0) {
+        const chunk = Math.min(4.0, accumulatedRest);
+        sequence.push(['-', chunk]);
+        accumulatedRest -= chunk;
+    }
+    return sequence;
 }
 
 function _buildPreviewPayload() {
     const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
     const channels = [];
-    const REST_DURATION = 1.0; // Quarter note default for rest steps
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        const sequence = audioSteps[c].map(s => s ? [s.note, s.duration] : ['-', REST_DURATION]);
-        channels.push({ patch: audioChannelPatches[c], sequence });
+        channels.push({
+            patch: audioChannelPatches[c],
+            sequence: _buildSequenceForChannel(c)
+        });
     }
     return { bpm, channels };
 }
 
+// --- Transport ---
 async function audioPreview() {
-    const payload = _buildPreviewPayload();
     try {
         const resp = await fetch('/api/synth/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(_buildPreviewPayload()),
         });
         const data = await resp.json();
         if (resp.ok && data.status === 'success') {
             showStatus('audioStatus', '▶ Preview started on device', 'success');
-        } else if (data.status === 'no_synth') {
-            showStatus('audioStatus', 'Synth manager not connected to web server', 'error');
         } else {
             showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
         }
@@ -1398,17 +1536,206 @@ async function audioPreview() {
 
 async function audioStop() {
     try {
-        const resp = await fetch('/api/synth/stop', { method: 'POST' });
+        await fetch('/api/synth/stop', { method: 'POST' });
+        showStatus('audioStatus', '■ Playback stopped', 'success');
+    } catch (e) { }
+}
+
+// --- File operations ---
+function _noteToJseqIndex(noteName) {
+    if (!noteName || noteName === '-') return 0;
+    const semitones = { 'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11 };
+    const m = noteName.match(/^([A-G]#?)(\d+)$/);
+    if (!m) return 0;
+    const midi = (parseInt(m[2]) + 1) * 12 + (semitones[m[1]] !== undefined ? semitones[m[1]] : 0);
+    return midi + 1;
+}
+
+function _jseqIndexToNote(index) {
+    if (index === 0) return null;
+    const midi = index - 1;
+    const octave = Math.floor(midi / 12) - 1;
+    const semitones = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    return semitones[midi % 12] + octave;
+}
+
+function _durationToJseqUnits(beats) {
+    return Math.max(1, Math.min(255, Math.round(beats * 32)));
+}
+
+function _jseqUnitsToDuration(units) {
+    return units / 32.0;
+}
+
+function _encodeJseq() {
+    const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
+    const compiledChannels = [];
+    let size = 8;
+
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        const seq = _buildSequenceForChannel(c);
+        compiledChannels.push(seq);
+        size += 3 + seq.length * 2;
+    }
+
+    const buf = new ArrayBuffer(size);
+    const view = new DataView(buf);
+    let pos = 0;
+
+    view.setUint8(pos++, 0x4A); view.setUint8(pos++, 0x53);
+    view.setUint8(pos++, 0x45); view.setUint8(pos++, 0x51);
+    view.setUint8(pos++, 1);
+    view.setUint16(pos, bpm, true); pos += 2;
+    view.setUint8(pos++, AUDIO_NUM_CHANNELS);
+
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        const patchIdx = JSEQ_PATCH_NAMES.indexOf(audioChannelPatches[c]);
+        view.setUint8(pos++, patchIdx >= 0 ? patchIdx : 0);
+
+        const seq = compiledChannels[c];
+        view.setUint16(pos, seq.length, true); pos += 2;
+
+        for (let i = 0; i < seq.length; i++) {
+            const step = seq[i];
+            view.setUint8(pos++, step[0] === '-' ? 0 : _noteToJseqIndex(step[0]));
+            view.setUint8(pos++, _durationToJseqUnits(step[1]));
+        }
+    }
+    return buf;
+}
+
+function _bufferToBase64(buffer) {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+}
+
+async function audioSave() {
+    const name = document.getElementById('audioSeqName').value.trim();
+    if (!name) return showStatus('audioStatus', 'Please enter a sequence name', 'error');
+
+    try {
+        const base64Data = _bufferToBase64(_encodeJseq());
+
+        const resp = await fetch(`/api/synth/save?name=${encodeURIComponent(name)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: base64Data,
+        });
         const data = await resp.json();
         if (resp.ok) {
-            showStatus('audioStatus', '■ Playback stopped', 'success');
-        } else {
-            showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
-        }
+            showStatus('audioStatus', `💾 Saved to ${data.path}`, 'success');
+            loadAudioLibrary(true);
+        } else showStatus('audioStatus', 'Error: ' + data.error, 'error');
     } catch (e) {
         showStatus('audioStatus', 'Error: ' + e, 'error');
     }
 }
+
+async function audioLoad() {
+    const select = document.getElementById('jseqSelect');
+    const filename = select ? select.value : '';
+    if (!filename) return showStatus('audioStatus', 'Please select a sequence to load', 'error');
+
+    try {
+        const resp = await fetch('/api/synth/load?name=' + encodeURIComponent(filename));
+        if (!resp.ok) throw new Error(await resp.text());
+
+        const buf = await resp.arrayBuffer();
+        const view = new DataView(buf);
+        let pos = 0;
+
+        if (buf.byteLength < 8) throw new Error("File too small");
+        if (view.getUint8(pos++) !== 0x4A || view.getUint8(pos++) !== 0x53 ||
+            view.getUint8(pos++) !== 0x45 || view.getUint8(pos++) !== 0x51) {
+            throw new Error("Invalid .jseq magic bytes");
+        }
+
+        const version = view.getUint8(pos++);
+        document.getElementById('audioBpm').value = view.getUint16(pos, true); pos += 2;
+        const numChannels = view.getUint8(pos++);
+
+        let maxBeats = 4;
+        let minDur = 0.25;
+        const loadedChannels = [];
+
+        // 1. Parse binary and find bounds (with safe bounds checking!)
+        for (let c = 0; c < numChannels; c++) {
+            // Ensure we have enough bytes left for the channel header (1 byte patch + 2 bytes numSteps)
+            if (pos + 3 > buf.byteLength) {
+                console.warn("JSEQ file truncated at channel header");
+                break;
+            }
+
+            const patchName = JSEQ_PATCH_NAMES[view.getUint8(pos++)] || 'SELECT';
+            const numSteps = view.getUint16(pos, true); pos += 2;
+
+            let chanBeats = 0;
+            const seq = [];
+
+            for (let s = 0; s < numSteps; s++) {
+                // Ensure we have enough bytes left for a full step (1 byte pitch + 1 byte duration)
+                if (pos + 2 > buf.byteLength) {
+                    console.warn(`File truncated at Ch ${c+1} Step ${s+1}. Likely a legacy v1 sequence.`);
+                    break;
+                }
+
+                const noteIdx = view.getUint8(pos++);
+                const dur = _jseqUnitsToDuration(view.getUint8(pos++));
+
+                if (dur > 0 && dur < minDur) minDur = dur;
+                chanBeats += dur;
+                seq.push({ note: _jseqIndexToNote(noteIdx), dur });
+            }
+            if (chanBeats > maxBeats) maxBeats = chanBeats;
+            loadedChannels.push({ patch: patchName, seq });
+        }
+
+        // 2. Configure Global UI Extents
+        document.getElementById('audioBarsInput').value = Math.max(1, Math.ceil(maxBeats / 4));
+        if (minDur <= 0.125) document.getElementById('audioResInput').value = 0.125;
+        else if (minDur <= 0.25) document.getElementById('audioResInput').value = 0.25;
+        else document.getElementById('audioResInput').value = 0.5;
+
+        updateGridConfig(); // Resizes and clears audioSteps
+        audioClearAll();
+
+        // 3. Populate Timeline
+        for (let c = 0; c < loadedChannels.length; c++) {
+            if (c >= AUDIO_NUM_CHANNELS) break;
+
+            audioChannelPatches[c] = loadedChannels[c].patch;
+            const patchSelect = document.querySelector(`#stepGrid_${c}`).parentElement.querySelector('select');
+            if (patchSelect) patchSelect.value = loadedChannels[c].patch;
+
+            let currentStep = 0;
+            for (const item of loadedChannels[c].seq) {
+                const span = Math.round(item.dur / audioRes);
+                if (currentStep + span > audioNumSteps) break;
+
+                if (item.note) {
+                    audioSteps[c][currentStep] = { note: item.note, duration: item.dur, span: span };
+                    for (let i = 1; i < span; i++) {
+                        audioSteps[c][currentStep + i] = { covered: true };
+                    }
+                }
+                currentStep += span;
+            }
+            _renderChannel(c);
+        }
+
+        document.getElementById('audioSeqName').value = filename.replace('.jseq', '');
+        showStatus('audioStatus', '📂 Loaded ' + filename, 'success');
+
+    } catch (e) {
+        showStatus('audioStatus', 'Error loading sequence: ' + e.message, 'error');
+    }
+}
+
+// --- Audio Library & Asset Playback ---
 
 async function loadAudioLibrary(force = false) {
     if (audioLibraryLoaded && !force) return;
@@ -1455,6 +1782,29 @@ async function loadAudioLibrary(force = false) {
                 wavSelect.appendChild(opt);
             }
         }
+
+        // Populate JSEQ select
+        const jseqSelect = document.getElementById('jseqSelect');
+        if (jseqSelect) {
+            jseqSelect.innerHTML = '';
+            if (data.jseqs && data.jseqs.length > 0) {
+                const defOpt = document.createElement('option');
+                defOpt.value = '';
+                defOpt.textContent = 'Select sequence...';
+                jseqSelect.appendChild(defOpt);
+                data.jseqs.forEach(filename => {
+                    const opt = document.createElement('option');
+                    opt.value = filename;
+                    opt.textContent = filename;
+                    jseqSelect.appendChild(opt);
+                });
+            } else {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No .jseq files found';
+                jseqSelect.appendChild(opt);
+            }
+        }
     } catch (e) {
         // Reset flag so the user can retry by switching away and back to the tab
         audioLibraryLoaded = false;
@@ -1462,6 +1812,8 @@ async function loadAudioLibrary(force = false) {
         if (toneSelect) toneSelect.innerHTML = '<option value="">Error loading library</option>';
         const wavSelect = document.getElementById('wavSelect');
         if (wavSelect) wavSelect.innerHTML = '<option value="">Error loading library</option>';
+        const jseqSelect = document.getElementById('jseqSelect');
+        if (jseqSelect) jseqSelect.innerHTML = '<option value="">Error loading library</option>';
     }
 }
 
@@ -1518,76 +1870,6 @@ async function playWav() {
         }
     } catch (e) {
         showStatus('wavStatus', 'Error: ' + e, 'error');
-    }
-}
-
-// Encode a note name to .jseq MIDI index (0 = rest, 1 = MIDI note 0)
-// MIDI numbering: C-1=0, C0=12, C1=24, C2=36, C4=60, A4=69
-// Formula: (octave + 1) * 12 + semitone gives standard MIDI note number
-function _noteToJseqIndex(noteName) {
-    if (!noteName || noteName === '-') return 0;
-    const semitones = { 'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11 };
-    const m = noteName.match(/^([A-G]#?)(\d+)$/);
-    if (!m) return 0;
-    const midi = (parseInt(m[2]) + 1) * 12 + (semitones[m[1]] !== undefined ? semitones[m[1]] : 0);
-    return midi + 1; // +1: index 0 reserved for rest
-}
-
-function _durationToJseqUnits(beats) {
-    return Math.max(1, Math.min(255, Math.round(beats * 32)));
-}
-
-function _encodeJseq() {
-    const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
-    // Calculate buffer size: 8-byte header + per-channel data
-    let size = 8;
-    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) size += 3 + AUDIO_NUM_STEPS * 2;
-
-    const buf = new ArrayBuffer(size);
-    const view = new DataView(buf);
-    let pos = 0;
-
-    // Magic "JSEQ"
-    view.setUint8(pos++, 0x4A); view.setUint8(pos++, 0x53);
-    view.setUint8(pos++, 0x45); view.setUint8(pos++, 0x51);
-    view.setUint8(pos++, 1); // version
-    view.setUint16(pos, bpm, true); pos += 2;
-    view.setUint8(pos++, AUDIO_NUM_CHANNELS);
-
-    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        const patchIdx = JSEQ_PATCH_NAMES.indexOf(audioChannelPatches[c]);
-        view.setUint8(pos++, patchIdx >= 0 ? patchIdx : 0);
-        view.setUint16(pos, AUDIO_NUM_STEPS, true); pos += 2;
-        for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
-            const step = audioSteps[c][s];
-            view.setUint8(pos++, step ? _noteToJseqIndex(step.note) : 0);
-            view.setUint8(pos++, step ? _durationToJseqUnits(step.duration) : _durationToJseqUnits(activeDuration));
-        }
-    }
-    return buf;
-}
-
-async function audioSave() {
-    const name = document.getElementById('audioSeqName').value.trim();
-    if (!name) {
-        showStatus('audioStatus', 'Please enter a sequence name', 'error');
-        return;
-    }
-    try {
-        const buf = _encodeJseq();
-        const resp = await fetch(`/api/synth/save?name=${encodeURIComponent(name)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/octet-stream' },
-            body: buf,
-        });
-        const data = await resp.json();
-        if (resp.ok && data.status === 'success') {
-            showStatus('audioStatus', `💾 Saved to ${data.path}`, 'success');
-        } else {
-            showStatus('audioStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
-        }
-    } catch (e) {
-        showStatus('audioStatus', 'Error: ' + e, 'error');
     }
 }
 
