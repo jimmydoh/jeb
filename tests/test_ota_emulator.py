@@ -55,7 +55,7 @@ def _inject_cp_stubs():
         'adafruit_display_text', 'adafruit_display_text.label',
         'adafruit_ticks', 'adafruit_ht16k33', 'adafruit_ht16k33.segments',
         'adafruit_mcp230xx', 'adafruit_mcp230xx.mcp23017',
-        'adafruit_mcp230xx.mcp23008', 'adafruit_pixel_framebuf',
+        'adafruit_mcp230xx.mcp23008',
         'keypad', 'rotaryio', 'storage', 'supervisor', 'pwmio',
         'sdcardio', 'adafruit_httpserver', 'adafruit_requests',
     ]
@@ -204,7 +204,7 @@ class MockCore:
         self.display = MockDisplay()
         self.hid = MockHID()
         self.audio = MockAudio()
-        self.wifi = wifi_manager or MockWiFiManager()
+        self.wifi_manager = wifi_manager or MockWiFiManager()
         self.mode = "OTA_UPDATER"
         self.config = {
             "update_url": "https://github.com/jimmydoh/jeb/releases/download/latest",
