@@ -1177,6 +1177,9 @@ async function savePixelArt() {
 // Audio Studio - Dynamic Timeline Sequencer
 // =====================================================================
 const AUDIO_NUM_CHANNELS = 3;
+const BASE_RES = 0.125;  // Core data resolution locked to 1/32nd notes
+const BASE_WIDTH = 14;   // Physical CSS width of 1/32nd block (px)
+const GAP = 2;           // Physical CSS gap between blocks (px)
 
 const JSEQ_PATCH_NAMES = [
     'RETRO_LEAD', 'RETRO_BASS', 'RETRO_NOISE',
@@ -1188,16 +1191,17 @@ const AUDIO_OCTAVES = [2, 3, 4, 5, 6, 7];
 const AUDIO_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
 const DURATION_OPTIONS = [
-    ['𝅘𝅥𝅰 Thirty-Second', 0.125], ['𝅘𝅥𝅯 Sixteenth', 0.25], ['♪ Eighth', 0.5],
-    ['♩ Quarter', 1.0], ['𝅗𝅥 Half', 2.0], ['𝅝 Whole', 4.0],
+    ['𝅘𝅥𝅰 1/32', 0.125], ['𝅘𝅥𝅯 1/16', 0.25],
+    ['♪ 1/8', 0.5], ['♪. Dot 1/8', 0.75],
+    ['♩ 1/4', 1.0], ['♩. Dot 1/4', 1.5],
+    ['𝅗𝅥 1/2', 2.0], ['𝅝 1/1', 4.0],
 ];
 
 // Grid Configuration State
-let audioBars = 2;         // Default to 2 bars of 4/4 time
-let audioRes = 0.25;       // 1 grid cell = 0.25 beats (1/16th note)
-let audioNumSteps = 32;    // Calculated: (bars * 4) / res
+let audioBars = 2;
+let audioRes = 0.25;       // Visual Snap Resolution
+let audioNumSteps = 64;    // Calculated strictly on BASE_RES
 
-// audioSteps[ch][step] = { note: 'C4', duration: 1.0, span: 4 } OR { covered: true } OR null
 let audioSteps = [];
 let audioChannelPatches = [];
 let activeNote = null;
@@ -1216,7 +1220,7 @@ function initAudioStudio() {
 
         _buildNotePicker();
         _buildDurationPicker();
-        _resizeGrid(); // Builds the header and rows
+        _resizeGrid();
     }
 
     if (!audioLibraryLoaded) {
@@ -1231,23 +1235,23 @@ function updateGridConfig() {
 }
 
 function _resizeGrid() {
-    audioNumSteps = Math.round((audioBars * 4) / audioRes);
+    audioNumSteps = Math.round((audioBars * 4) / BASE_RES);
 
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
         if (!audioSteps[c]) audioSteps[c] = [];
         audioSteps[c].length = audioNumSteps;
 
-        // Fill new empty space and repair truncated notes
         for(let s = 0; s < audioNumSteps; s++) {
             if (audioSteps[c][s] === undefined) audioSteps[c][s] = null;
         }
+
+        // Truncate notes that overshoot the new global timeline length
         for (let s = audioNumSteps - 1; s >= 0; s--) {
             const cell = audioSteps[c][s];
             if (cell && cell.note !== undefined) {
                 if (s + cell.span > audioNumSteps) {
-                    // Truncate note that overshoots the new grid size
                     cell.span = audioNumSteps - s;
-                    cell.duration = cell.span * audioRes;
+                    cell.duration = cell.span * BASE_RES;
                 }
                 break;
             }
@@ -1307,20 +1311,92 @@ function _buildGridHeader() {
     const gridHeader = document.createElement('div');
     gridHeader.style.cssText = 'display: flex; gap: 2px;';
 
-    for (let s = 0; s < audioNumSteps; s++) {
-        const beatFloat = (s * audioRes);
+    // Draw the ruler based on the user's visual Snap setting
+    const snapSteps = Math.round((audioBars * 4) / audioRes);
+    const snapSpan = Math.round(audioRes / BASE_RES);
+
+    for (let i = 0; i < snapSteps; i++) {
+        const beatFloat = (i * audioRes);
         const isBeatStart = beatFloat % 1 === 0;
 
         const div = document.createElement('div');
-        div.style.flex = '0 0 40px';
+        const w = snapSpan * BASE_WIDTH + (snapSpan - 1) * GAP;
+        div.style.flex = `0 0 ${w}px`;
         div.style.fontSize = '0.7em';
         div.style.color = isBeatStart ? '#888' : '#444';
         div.style.textAlign = 'center';
-        div.style.borderLeft = isBeatStart ? '1px solid #333' : 'none';
-        div.textContent = isBeatStart ? Math.floor(beatFloat) + 1 : '.';
+        div.style.borderLeft = isBeatStart ? '1px solid #555' : '1px solid #222';
+        div.textContent = isBeatStart ? Math.floor(beatFloat) + 1 : '';
         gridHeader.appendChild(div);
     }
     header.appendChild(gridHeader);
+}
+
+let audioTooltip = null;
+
+function _getNoteFreq(noteName) {
+    if (!noteName || noteName === '-') return 0;
+    const semitones = { 'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11 };
+    const m = noteName.match(/^([A-G]#?)(\d+)$/);
+    if (!m) return 0;
+
+    // Calculate standard MIDI index, then convert to Hz (A4 = 69 = 440Hz)
+    const midi = (parseInt(m[2]) + 1) * 12 + semitones[m[1]];
+    return (440.0 * Math.pow(2.0, (midi - 69) / 12.0)).toFixed(1);
+}
+
+function _showTooltip(e, text) {
+    if (!audioTooltip) {
+        audioTooltip = document.createElement('div');
+        audioTooltip.style.position = 'absolute';
+        audioTooltip.style.background = '#222';
+        audioTooltip.style.color = '#ddd';
+        audioTooltip.style.padding = '8px 12px';
+        audioTooltip.style.borderRadius = '4px';
+        audioTooltip.style.fontSize = '0.85em';
+        audioTooltip.style.fontFamily = 'monospace';
+        audioTooltip.style.pointerEvents = 'none'; // Prevents flickering
+        audioTooltip.style.zIndex = '9999';
+        audioTooltip.style.whiteSpace = 'pre';
+        audioTooltip.style.border = '1px solid #555';
+        audioTooltip.style.boxShadow = '0 4px 8px rgba(0,0,0,0.4)';
+        document.body.appendChild(audioTooltip);
+    }
+    audioTooltip.textContent = text;
+    audioTooltip.style.display = 'block';
+    // Offset slightly so it doesn't block the cursor
+    audioTooltip.style.left = (e.pageX + 15) + 'px';
+    audioTooltip.style.top = (e.pageY + 15) + 'px';
+}
+
+function _hideTooltip() {
+    if (audioTooltip) audioTooltip.style.display = 'none';
+}
+
+function _getNoteColor(noteName) {
+    if (!noteName || noteName === '-') return { bg: '#444', border: '#666', text: '#999' };
+
+    const semitones = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const m = noteName.match(/^([A-G]#?)(\d+)$/);
+    if (!m) return { bg: '#444', border: '#666', text: '#999' };
+
+    const noteIdx = semitones.indexOf(m[1]);
+    const octave = parseInt(m[2]);
+
+    // Hue: Spread the 12 notes evenly around the 360° color wheel
+    const hue = noteIdx * 30;
+
+    // Lightness: Octave 2 = 35% (Dark), Octave 7 = 85% (Bright/Pastel)
+    const lightness = 15 + (octave * 10);
+
+    // High contrast text: Dark text for bright high notes, white text for dark low notes
+    const textColor = lightness > 55 ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.95)';
+
+    return {
+        bg: `hsl(${hue}, 80%, ${lightness}%)`,
+        border: `hsl(${hue}, 80%, ${lightness - 15}%)`,
+        text: textColor
+    };
 }
 
 function _renderChannel(ch) {
@@ -1328,62 +1404,104 @@ function _renderChannel(ch) {
     if (!gridEl) return;
     gridEl.innerHTML = '';
 
-    for (let s = 0; s < audioNumSteps; s++) {
+    const snapSpan = Math.round(audioRes / BASE_RES);
+
+    for (let s = 0; s < audioNumSteps; ) {
         const cell = audioSteps[ch][s];
-        if (cell && cell.covered) continue;
+        if (cell && cell.covered) { s++; continue; }
 
         const btn = document.createElement('button');
         let span = 1;
         let isActive = false;
         let label = '—';
 
-        if (cell && cell.note !== undefined) {
+       if (cell && cell.note !== undefined) {
             span = cell.span;
             isActive = true;
-            label = cell.note || '—';
+
+            // Render dotted indicator if note aligns with standard dotted times
+            let displayLabel = cell.note || '—';
+            if (cell.note && (cell.duration === 0.75 || cell.duration === 1.5 || cell.duration === 3.0)) {
+                displayLabel += ' •';
+            }
+            label = displayLabel;
+
+            btn.className = 'step-btn active';
+
+            // Apply the dynamic HSL colors
+            const colors = _getNoteColor(cell.note);
+            btn.style.background = colors.bg;
+            btn.style.borderColor = colors.border;
+            btn.style.color = colors.text;
+            btn.style.fontWeight = 'bold';
+
+            // Add a subtle text shadow so the labels pop against the colored background
+            if (cell.note) {
+                btn.style.textShadow = colors.text.includes('0,0,0')
+                    ? '0px 1px 1px rgba(255,255,255,0.3)'
+                    : '0px 1px 2px rgba(0,0,0,0.6)';
+            }
+
+            // --- NEW: Add Tooltip Hover Events ---
+            if (cell.note) {
+                const freq = _getNoteFreq(cell.note);
+                const tooltipText = `Note: ${cell.note}\nFreq: ${freq} Hz\nDur:  ${cell.duration} Beats`;
+                btn.onmousemove = (e) => _showTooltip(e, tooltipText);
+                btn.onmouseleave = _hideTooltip;
+            } else {
+                const tooltipText = `Rest\nDur:  ${cell.duration} Beats`;
+                btn.onmousemove = (e) => _showTooltip(e, tooltipText);
+                btn.onmouseleave = _hideTooltip;
+            }
+        } else {
+            // Group empty 1/32nd blocks into larger clickable "Snap" targets
+            let nextBoundary = Math.ceil((s + 1) / snapSpan) * snapSpan;
+            if (nextBoundary > audioNumSteps) nextBoundary = audioNumSteps;
+            span = nextBoundary - s;
+
+            // Stop grouping if we hit a note
+            for (let k = 1; k < span; k++) {
+                if (audioSteps[ch][s + k] && audioSteps[ch][s + k].note !== undefined) {
+                    span = k;
+                    break;
+                }
+            }
+            btn.className = 'step-btn';
         }
 
-        btn.className = 'step-btn' + (isActive ? ' active' : '');
-        if (isActive && !cell.note) {
-            btn.style.background = '#444';
-            btn.style.borderColor = '#666';
-            btn.style.color = '#999';
-        }
-
-        // Calculate proportional physical width based on duration span!
-        // Base width is 40px. Add the 2px gap spacing for every spanned cell.
-        btn.style.flex = `0 0 ${span * 40 + (span - 1) * 2}px`;
+        const w = span * BASE_WIDTH + (span - 1) * GAP;
+        btn.style.flex = `0 0 ${w}px`;
         btn.style.height = '36px';
         btn.style.boxSizing = 'border-box';
         btn.style.overflow = 'hidden';
         btn.style.cursor = 'pointer';
-
         btn.textContent = label;
-        btn.onclick = () => _toggleStep(ch, s);
+
+        const clickIndex = s;
+        btn.onclick = () => _toggleStep(ch, clickIndex);
+
         gridEl.appendChild(btn);
+        s += span;
     }
 }
 
 function _toggleStep(ch, s) {
     const cell = audioSteps[ch][s];
 
-    // Toggle off if matching note is clicked
     if (cell && cell.note !== undefined && cell.note === activeNote && cell.duration === activeDuration) {
         for(let i=0; i<cell.span; i++) audioSteps[ch][s+i] = null;
         _renderChannel(ch);
         return;
     }
 
-    // Determine how many cells this new note will span
-    const span = Math.min(Math.max(1, Math.round(activeDuration / audioRes)), audioNumSteps - s);
+    const span = Math.min(Math.max(1, Math.round(activeDuration / BASE_RES)), audioNumSteps - s);
 
-    // 1. Truncate any existing note that started BEFORE 's' but overlaps into 's'
     for (let i = s - 1; i >= 0; i--) {
         const earlier = audioSteps[ch][i];
         if (earlier && earlier.note !== undefined) {
             if (i + earlier.span > s) {
                 earlier.span = s - i;
-                earlier.duration = earlier.span * audioRes;
+                earlier.duration = earlier.span * BASE_RES;
                 for(let k = s; k < i + earlier.span; k++) {
                     if(audioSteps[ch][k] && audioSteps[ch][k].covered) audioSteps[ch][k] = null;
                 }
@@ -1392,18 +1510,16 @@ function _toggleStep(ch, s) {
         }
     }
 
-    // 2. Overwrite target cells (safely destroying overlapping notes that start within the span)
     for (let i = s; i < s + span; i++) {
         const existing = audioSteps[ch][i];
         if (existing && existing.note !== undefined) {
-            // Scrub out the tail covers of the note we are squashing
             for(let k = i + 1; k < i + existing.span; k++) {
                 if(audioSteps[ch][k] && audioSteps[ch][k].covered) audioSteps[ch][k] = null;
             }
         }
 
         if (i === s) {
-            audioSteps[ch][i] = { note: activeNote, duration: span * audioRes, span: span };
+            audioSteps[ch][i] = { note: activeNote, duration: span * BASE_RES, span: span };
         } else {
             audioSteps[ch][i] = { covered: true };
         }
@@ -1412,7 +1528,6 @@ function _toggleStep(ch, s) {
     _renderChannel(ch);
 }
 
-// --- Pickers ---
 function _buildNotePicker() {
     const picker = document.getElementById('notePicker');
     picker.innerHTML = '';
@@ -1460,7 +1575,7 @@ function _selectNote(noteName) {
 
 function _selectDuration(beats, label, clickedBtn) {
     activeDuration = beats;
-    document.getElementById('activeDurLabel').textContent = label + ' (' + beats + ' beat' + (beats === 1 ? '' : 's') + ')';
+    document.getElementById('activeDurLabel').textContent = label;
     document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('selected'));
     clickedBtn.classList.add('selected');
 }
@@ -1472,7 +1587,6 @@ function audioClearAll() {
     }
 }
 
-// --- Compilers ---
 function _buildSequenceForChannel(ch) {
     let sequence = [];
     let accumulatedRest = 0;
@@ -1480,11 +1594,10 @@ function _buildSequenceForChannel(ch) {
     for (let s = 0; s < audioNumSteps; s++) {
         const cell = audioSteps[ch][s];
         if (!cell) {
-            accumulatedRest += audioRes;
+            accumulatedRest += BASE_RES;
         } else if (cell.covered) {
             continue;
         } else if (cell.note !== undefined) {
-            // Flush accumulated rests in safe max-4-beat chunks
             while (accumulatedRest > 0) {
                 const chunk = Math.min(4.0, accumulatedRest);
                 sequence.push(['-', chunk]);
@@ -1494,7 +1607,6 @@ function _buildSequenceForChannel(ch) {
         }
     }
 
-    // Flush any remaining rests at the end of the timeline
     while (accumulatedRest > 0) {
         const chunk = Math.min(4.0, accumulatedRest);
         sequence.push(['-', chunk]);
@@ -1515,7 +1627,6 @@ function _buildPreviewPayload() {
     return { bpm, channels };
 }
 
-// --- Transport ---
 async function audioPreview() {
     try {
         const resp = await fetch('/api/synth/preview', {
@@ -1541,7 +1652,6 @@ async function audioStop() {
     } catch (e) { }
 }
 
-// --- File operations ---
 function _noteToJseqIndex(noteName) {
     if (!noteName || noteName === '-') return 0;
     const semitones = { 'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11 };
@@ -1619,10 +1729,9 @@ async function audioSave() {
 
     try {
         const base64Data = _bufferToBase64(_encodeJseq());
-
         const resp = await fetch(`/api/synth/save?name=${encodeURIComponent(name)}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/octet-stream' },
+            headers: { 'Content-Type': 'text/plain' },
             body: base64Data,
         });
         const data = await resp.json();
@@ -1662,9 +1771,7 @@ async function audioLoad() {
         let minDur = 0.25;
         const loadedChannels = [];
 
-        // 1. Parse binary and find bounds (with safe bounds checking!)
         for (let c = 0; c < numChannels; c++) {
-            // Ensure we have enough bytes left for the channel header (1 byte patch + 2 bytes numSteps)
             if (pos + 3 > buf.byteLength) {
                 console.warn("JSEQ file truncated at channel header");
                 break;
@@ -1677,9 +1784,8 @@ async function audioLoad() {
             const seq = [];
 
             for (let s = 0; s < numSteps; s++) {
-                // Ensure we have enough bytes left for a full step (1 byte pitch + 1 byte duration)
                 if (pos + 2 > buf.byteLength) {
-                    console.warn(`File truncated at Ch ${c+1} Step ${s+1}. Likely a legacy v1 sequence.`);
+                    console.warn(`File truncated at Ch ${c+1} Step ${s+1}.`);
                     break;
                 }
 
@@ -1694,16 +1800,14 @@ async function audioLoad() {
             loadedChannels.push({ patch: patchName, seq });
         }
 
-        // 2. Configure Global UI Extents
         document.getElementById('audioBarsInput').value = Math.max(1, Math.ceil(maxBeats / 4));
         if (minDur <= 0.125) document.getElementById('audioResInput').value = 0.125;
         else if (minDur <= 0.25) document.getElementById('audioResInput').value = 0.25;
         else document.getElementById('audioResInput').value = 0.5;
 
-        updateGridConfig(); // Resizes and clears audioSteps
+        updateGridConfig();
         audioClearAll();
 
-        // 3. Populate Timeline
         for (let c = 0; c < loadedChannels.length; c++) {
             if (c >= AUDIO_NUM_CHANNELS) break;
 
@@ -1713,7 +1817,7 @@ async function audioLoad() {
 
             let currentStep = 0;
             for (const item of loadedChannels[c].seq) {
-                const span = Math.round(item.dur / audioRes);
+                const span = Math.round(item.dur / BASE_RES);
                 if (currentStep + span > audioNumSteps) break;
 
                 if (item.note) {
