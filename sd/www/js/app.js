@@ -1026,6 +1026,7 @@ let selectedColorIndex = 0;
 let selectedColorRGB = '#000000';
 let paletteColors = {};
 let pixelArtInitialized = false;
+let pixelLibraryLoaded = false;
 let isDrawing = false;
 
 function rgbToHex(r, g, b) {
@@ -1036,9 +1037,10 @@ async function initPixelArtStudio() {
     if (pixelArtInitialized) return;
     pixelArtInitialized = true;
 
-    // Build the 16x16 grid
+    // Build the 16x16 grid with dynamic column count for resolution independence
     const grid = document.getElementById('pixelGrid');
     grid.innerHTML = '';
+    grid.style.gridTemplateColumns = `repeat(${GRID_SIZE}, 1fr)`;
     for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
         const cell = document.createElement('div');
         cell.className = 'pixel-cell';
@@ -1068,6 +1070,10 @@ async function initPixelArtStudio() {
         swatch.dataset.index = idx;
         swatch.onclick = () => selectColor(parseInt(idx));
         paletteGrid.appendChild(swatch);
+    }
+
+    if (!pixelLibraryLoaded) {
+        loadPixelLibrary();
     }
 }
 
@@ -1114,13 +1120,41 @@ function pixelMouseDown(e) {
 }
 
 function pixelMouseMove(e) {
-    if (!isDrawing) return;
     const idx = getCellIndexFromEvent(e);
-    if (idx >= 0) paintCell(idx);
+    if (isDrawing && idx >= 0) paintCell(idx);
+    _updatePixelTooltip(e, idx);
 }
 
 function pixelMouseUp() {
     isDrawing = false;
+}
+
+function pixelMouseLeave() {
+    isDrawing = false;
+    const tip = document.getElementById('pixelTooltip');
+    if (tip) tip.style.display = 'none';
+}
+
+function _updatePixelTooltip(e, idx) {
+    const tip = document.getElementById('pixelTooltip');
+    if (!tip) return;
+    if (idx < 0) {
+        tip.style.display = 'none';
+        return;
+    }
+    const x = idx % GRID_SIZE;
+    const y = Math.floor(idx / GRID_SIZE);
+    const colorIdx = pixelData[idx];
+    const color = paletteColors[String(colorIdx)];
+    let colorInfo = 'OFF';
+    if (color && colorIdx !== 0) {
+        const hex = rgbToHex(color.r, color.g, color.b);
+        colorInfo = `${color.name}  ${hex.toUpperCase()}  rgb(${color.r},${color.g},${color.b})`;
+    }
+    tip.textContent = `(${x}, ${y})  ${colorInfo}`;
+    tip.style.display = 'block';
+    tip.style.left = (e.clientX + 14) + 'px';
+    tip.style.top  = (e.clientY + 14) + 'px';
 }
 
 function clearCanvas() {
@@ -1165,11 +1199,139 @@ async function savePixelArt() {
         const data = await resp.json();
         if (resp.ok && data.status === 'success') {
             showStatus('pixelArtStatus', `Saved to ${data.path}`, 'success');
+            // Refresh SD card list so the newly saved file appears immediately
+            loadPixelLibrary(true);
         } else {
             showStatus('pixelArtStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
         }
     } catch (e) {
         showStatus('pixelArtStatus', 'Error: ' + e, 'error');
+    }
+}
+
+// --- Pixel Library & Asset Loading ---
+
+async function loadPixelLibrary(force = false) {
+    if (pixelLibraryLoaded && !force) return;
+    try {
+        const resp = await fetch('/api/pixel/library');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        pixelLibraryLoaded = true;
+
+        // Populate icons.py library dropdown
+        const libSelect = document.getElementById('iconLibSelect');
+        if (libSelect) {
+            libSelect.innerHTML = '';
+            if (data.icons && data.icons.length > 0) {
+                const defOpt = document.createElement('option');
+                defOpt.value = '';
+                defOpt.textContent = 'Select icon…';
+                libSelect.appendChild(defOpt);
+                data.icons.forEach(name => {
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = name;
+                    libSelect.appendChild(opt);
+                });
+            } else {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No icons available';
+                libSelect.appendChild(opt);
+            }
+        }
+
+        // Populate SD card .bin dropdown
+        const binSelect = document.getElementById('iconBinSelect');
+        if (binSelect) {
+            binSelect.innerHTML = '';
+            if (data.bins && data.bins.length > 0) {
+                const defOpt = document.createElement('option');
+                defOpt.value = '';
+                defOpt.textContent = 'Select file…';
+                binSelect.appendChild(defOpt);
+                data.bins.forEach(filename => {
+                    const opt = document.createElement('option');
+                    opt.value = filename;
+                    opt.textContent = filename;
+                    binSelect.appendChild(opt);
+                });
+            } else {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No .bin files on SD';
+                binSelect.appendChild(opt);
+            }
+        }
+    } catch (e) {
+        pixelLibraryLoaded = false;
+        const libSelect = document.getElementById('iconLibSelect');
+        if (libSelect) libSelect.innerHTML = '<option value="">Error loading library</option>';
+        const binSelect = document.getElementById('iconBinSelect');
+        if (binSelect) binSelect.innerHTML = '<option value="">Error loading library</option>';
+    }
+}
+
+async function pixelLoadIcon(source) {
+    if (source === 'lib') {
+        const select = document.getElementById('iconLibSelect');
+        const name = select ? select.value : '';
+        if (!name) {
+            showStatus('pixelArtStatus', 'Please select an icon from the library', 'error');
+            return;
+        }
+        // Load hardcoded icon: fetch the binary file by requesting the icon name
+        // The server resolves it from the Icons class and returns raw bytes
+        try {
+            const resp = await fetch('/api/pixel/load?name=' + encodeURIComponent(name));
+            if (!resp.ok) throw new Error(await resp.text());
+            const buf = await resp.arrayBuffer();
+            _applyPixelBuffer(new Uint8Array(buf));
+            // Library icons don't have a user-facing filename; leave the save field as-is
+            showStatus('pixelArtStatus', `📂 Loaded ${name} from icons.py`, 'success');
+        } catch (e) {
+            showStatus('pixelArtStatus', 'Error loading icon: ' + e.message, 'error');
+        }
+    } else {
+        const select = document.getElementById('iconBinSelect');
+        const filename = select ? select.value : '';
+        if (!filename) {
+            showStatus('pixelArtStatus', 'Please select a .bin file from the SD card', 'error');
+            return;
+        }
+        try {
+            const resp = await fetch('/api/pixel/load?name=' + encodeURIComponent(filename));
+            if (!resp.ok) throw new Error(await resp.text());
+            const buf = await resp.arrayBuffer();
+            _applyPixelBuffer(new Uint8Array(buf));
+            // Auto-populate the save-as name so the user can overwrite in one click
+            const baseName = filename.replace(/\.bin$/i, '');
+            document.getElementById('iconName').value = baseName;
+            showStatus('pixelArtStatus', `📂 Loaded ${filename}`, 'success');
+        } catch (e) {
+            showStatus('pixelArtStatus', 'Error loading icon: ' + e.message, 'error');
+        }
+    }
+}
+
+function _applyPixelBuffer(bytes) {
+    if (bytes.length < GRID_SIZE * GRID_SIZE) {
+        showStatus('pixelArtStatus', `Error: file too small (${bytes.length} bytes, expected ${GRID_SIZE * GRID_SIZE})`, 'error');
+        return;
+    }
+    for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+        const v = bytes[i];
+        pixelData[i] = v;
+        const cell = document.querySelector(`.pixel-cell[data-index="${i}"]`);
+        if (cell) {
+            if (v === 0) {
+                cell.style.background = '#000';
+            } else {
+                const color = paletteColors[String(v)];
+                cell.style.background = color ? rgbToHex(color.r, color.g, color.b) : '#000';
+            }
+        }
     }
 }
 

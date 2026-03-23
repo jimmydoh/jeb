@@ -1100,12 +1100,92 @@ class WebServerManager:
                     except OSError:
                         pass  # Directory already exists
 
-                    with open(filepath, "wb", encoding="utf-8") as f:
+                    with open(filepath, "wb") as f:
                         f.write(bytes(pixels))
 
                 self.log(f"Pixel art saved: {filepath}")
                 return Response(request, f'{{"status": "success", "path": "{filepath}"}}',
                               content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Pixel library – list hardcoded icons.py constants and SD card .bin files
+        @self.server.route("/api/pixel/library", GET)
+        def get_pixel_library(request: Request):
+            """Return icon names from Icons class and .bin files from /sd/icons/."""
+            try:
+                icons_list = []
+                try:
+                    # Force a fresh load from disk to catch live web-edits
+                    sys.modules.pop('utilities.icons', None)
+                    import utilities.icons as _icons
+
+                    # Safely extract all uppercase bytes constants dynamically
+                    for name in dir(_icons.Icons):
+                        if name.isupper():
+                            if isinstance(getattr(_icons.Icons, name), bytes):
+                                icons_list.append(name)
+                except ImportError:
+                    pass  # Module not found on this device
+
+                # Scan /sd/icons/ for .bin files
+                bin_files = []
+                try:
+                    for f in os.listdir("/sd/icons"):
+                        if f.lower().endswith(".bin"):
+                            bin_files.append(f)
+                    bin_files.sort()
+                except OSError:
+                    pass
+
+                return Response(request, json.dumps({"icons": icons_list, "bins": bin_files}),
+                                content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                                content_type="application/json", status=500)
+
+        # API: Load a binary icon – from /sd/icons/ (.bin) or from hardcoded Icons class
+        @self.server.route("/api/pixel/load", GET)
+        def load_pixel_icon(request: Request):
+            """Return raw pixel bytes (256 bytes) for a given icon.
+
+            If ``name`` ends in ``.bin``, the file is read from ``/sd/icons/``.
+            Otherwise ``name`` is treated as a constant from the ``Icons`` class
+            in ``utilities.icons`` and the bytes are returned directly.
+            """
+            try:
+                name = request.query_params.get("name", "").strip()
+                if not name:
+                    return Response(request, '{"error": "name query parameter required"}',
+                                  content_type="application/json", status=400)
+
+                if name.lower().endswith(".bin"):
+                    # Load from SD card
+                    sanitized = self._sanitize_path("/sd/icons", name)
+                    if not sanitized.startswith("/sd/icons/"):
+                        return Response(request, '{"error": "invalid path"}',
+                                      content_type="application/json", status=400)
+                    try:
+                        with open(sanitized, "rb") as f:
+                            content = f.read()
+                        return Response(request, content, content_type="application/octet-stream")
+                    except OSError:
+                        return Response(request, '{"error": "File not found"}',
+                                      content_type="application/json", status=404)
+                else:
+                    # Load from hardcoded Icons class constant
+                    try:
+                        import utilities.icons as _icons
+                        icon_bytes = getattr(_icons.Icons, name, None)
+                        if icon_bytes is None or not isinstance(icon_bytes, bytes):
+                            return Response(request, f'{{"error": "Icon {name} not found in Icons class"}}',
+                                          content_type="application/json", status=404)
+                        return Response(request, bytes(icon_bytes), content_type="application/octet-stream")
+                    except ImportError:
+                        return Response(request, '{"error": "icons module not available on this device"}',
+                                      content_type="application/json", status=503)
+
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
