@@ -256,7 +256,7 @@ canvas.sparkline {
     flex-wrap: wrap;
     gap: 4px;
     margin-top: 10px;
-    max-width: 400px;
+    max-width: 340px;
 }
 .palette-swatch {
     width: 28px;
@@ -304,7 +304,7 @@ canvas.sparkline {
 .channel-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 0px;
     background: #1a1a1a;
     border: 1px solid #333;
     border-radius: 4px;

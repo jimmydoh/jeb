@@ -1265,7 +1265,7 @@ function _resizeGrid() {
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
         const row = document.createElement('div');
         row.className = 'channel-row';
-        row.style.cssText = 'display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; margin-bottom: 6px;';
+        row.style.cssText = 'display: flex; flex-wrap: nowrap; align-items: center; margin-bottom: 6px;';
 
         const controls = document.createElement('div');
         controls.style.cssText = 'display: flex; gap: 5px; flex: 0 0 140px;';
