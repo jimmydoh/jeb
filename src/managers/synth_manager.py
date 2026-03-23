@@ -124,7 +124,10 @@ class SynthManager:
         for item in sequence_data['sequence']:
             # Handle both (freq, dur) and ('NoteName', dur) formats
             tone_val, duration_beats = item
-            freq = note(tone_val)
+            if isinstance(tone_val, (int, float)):
+                freq = tone_val
+            else:
+                freq = note(tone_val)
             duration_sec = duration_beats * beat_duration
 
             if freq > 0:
@@ -281,6 +284,12 @@ class SynthManager:
         except asyncio.CancelledError:
             self.release_all()
             raise
+
+    def start_jseq(self, filepath):
+        """Non-blocking playback of a .jseq file, managed as the active chiptune task."""
+        self.stop_chiptune()
+        self._chiptune_task = asyncio.create_task(self.play_jseq(filepath))
+        return self._chiptune_task
 
     def preview_channels(self, channels_data):
         """Start a one-shot playback of multichannel sequence data.
