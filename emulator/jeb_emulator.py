@@ -396,7 +396,8 @@ sys.modules['microcontroller'] = type('MockMicrocontroller', (), {
     'pin': type('MockPin', (), {})(),
     'watchdog': mock_watchdog,
     'WatchDogMode': MockWatchdog.WatchDogMode, # Some versions use this path
-    'cpu': MockCPU()  # Inject the mock CPU here
+    'cpu': MockCPU(),  # Inject the mock CPU here
+    'reset': lambda: JEBLogger.emulator("MOCK", "⚠️ microcontroller.reset() called. Exiting...") or sys.exit(0)
 })
 
 # busio (UART and I2C)
