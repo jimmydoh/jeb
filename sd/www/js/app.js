@@ -561,39 +561,6 @@ async function sendConsoleInput() {
     }
 }
 
-async function triggerOTAUpdate() {
-    if (!confirm('Trigger OTA update? Device will update on next boot.')) return;
-
-    try {
-        const response = await fetch('/api/actions/ota-update', { method: 'POST' });
-        const data = await response.json();
-
-        if (response.ok) {
-            showStatus('actionStatus', 'OTA update scheduled for next boot', 'success');
-        } else {
-            showStatus('actionStatus', 'Error: ' + data.error, 'error');
-        }
-    } catch (error) {
-        showStatus('actionStatus', 'Error: ' + error, 'error');
-    }
-}
-
-async function toggleDebugMode() {
-    try {
-        const response = await fetch('/api/actions/toggle-debug', { method: 'POST' });
-        const data = await response.json();
-
-        if (response.ok) {
-            showStatus('actionStatus', 'Debug mode toggled successfully', 'success');
-            loadSystemStatus();  // Refresh status
-        } else {
-            showStatus('actionStatus', 'Error: ' + data.error, 'error');
-        }
-    } catch (error) {
-        showStatus('actionStatus', 'Error: ' + error, 'error');
-    }
-}
-
 let currentSleepState = false;
 
 function triggerReboot() {

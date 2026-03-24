@@ -634,7 +634,7 @@ def test_emulator_sandbox_constant_location():
     emulator_path = os.path.join(PROJECT_ROOT, 'emulator', 'jeb_emulator.py')
     assert os.path.exists(emulator_path), "jeb_emulator.py not found"
 
-    with open(emulator_path) as fh:
+    with open(emulator_path, "r", encoding="utf-8") as fh:
         source = fh.read()
 
     assert "OTA_SANDBOX_DIR" in source, (
@@ -649,7 +649,7 @@ def test_emulator_sandbox_constant_location():
 def test_emulator_path_mapper_redirects_sd_update():
     """smart_path_mapper() must redirect /sd/update to the OTA staging sandbox."""
     emulator_path = os.path.join(PROJECT_ROOT, 'emulator', 'jeb_emulator.py')
-    with open(emulator_path) as fh:
+    with open(emulator_path, "r", encoding="utf-8") as fh:
         source = fh.read()
 
     # Verify the key redirection logic is present in the emulator source
@@ -665,7 +665,7 @@ def test_emulator_path_mapper_redirects_sd_update():
 def test_emulator_adafruit_requests_mock_present():
     """jeb_emulator.py should include an adafruit_requests mock using urllib."""
     emulator_path = os.path.join(PROJECT_ROOT, 'emulator', 'jeb_emulator.py')
-    with open(emulator_path) as fh:
+    with open(emulator_path, "r", encoding="utf-8") as fh:
         source = fh.read()
 
     assert "adafruit_requests" in source, (

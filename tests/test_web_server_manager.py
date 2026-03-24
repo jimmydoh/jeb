@@ -750,49 +750,6 @@ def test_ota_update_trigger():
         builtins.open = original_open
 
 
-def test_debug_mode_toggle():
-    """Test debug mode toggle endpoint."""
-    print("\nTesting debug mode toggle...")
-
-    config = {
-        "wifi_ssid": "TestNetwork",
-        "wifi_password": "TestPassword123",
-        "web_server_enabled": True,
-        "debug_mode": False
-    }
-
-    manager = WebServerManager(config, MockWiFiManager(), testing=True)
-    manager.server = MockServer(None, "/static")
-    manager.setup_routes()
-
-    # Find the toggle debug route
-    debug_route = None
-    for path, method, func in manager.server.routes:
-        if "toggle-debug" in path:
-            debug_route = func
-            break
-
-    assert debug_route is not None, "Toggle debug route not found"
-
-    # Test: Toggle debug mode on
-    request = MockRequest()
-    assert manager.config["debug_mode"] == False, "Debug mode should start as False"
-
-    response = debug_route(request)
-    assert response.status == 200, f"Should accept toggle, got {response.status}"
-    assert manager.config["debug_mode"] == True, "Debug mode should be toggled to True"
-    assert "debug_enabled" in response.body, f"Should indicate enabled, got {response.body}"
-
-    # Test: Toggle debug mode off
-    request = MockRequest()
-    response = debug_route(request)
-    assert response.status == 200, f"Should accept toggle, got {response.status}"
-    assert manager.config["debug_mode"] == False, "Debug mode should be toggled to False"
-    assert "debug_disabled" in response.body, f"Should indicate disabled, got {response.body}"
-
-    print("  ✓ Debug mode toggle test passed")
-
-
 def test_system_status():
     """Test system status endpoint."""
     print("\nTesting system status endpoint...")
@@ -904,8 +861,6 @@ def test_route_registration():
         '/api/files/upload',
         '/api/logs',
         '/api/console',
-        '/api/actions/ota-update',
-        '/api/actions/toggle-debug',
         '/api/actions/reorder-satellites',
         '/api/actions/launch-mode',
         '/api/system/status',

@@ -19,8 +19,7 @@
             <button class="tab" onclick="showTab('console')">Console</button>
             <button class="tab" onclick="showTab('pixelart')">Pixel Art Studio</button>
             <button class="tab" onclick="showTab('audiostudio')">Audio Studio</button>
-            <button class="tab" onclick="showTab('hidemulator')">HID Emulator</button>
-            <button class="tab" onclick="showTab('hid')">Remote HID</button>
+            <button class="tab" onclick="showTab('hid')">HID</button>
             <button id="adminTabBtn" class="tab admin-tab-hidden" onclick="showTab('admin')">⚙ Admin</button>
         </div>
 
@@ -54,8 +53,6 @@
                         <div class="action-grid">
                             <button id="btnSleepToggle" onclick="toggleSleep()" style="background: #555;">Checking...</button>
                             <button onclick="triggerReboot()" style="background: #d32f2f;">Reboot</button>
-                            <button class="secondary" onclick="triggerOTAUpdate()">OTA Update</button>
-                            <button class="secondary" onclick="toggleDebugMode()">Toggle Debug</button>
                         </div>
                         <div id="actionStatus" class="status" style="display:none; margin-top: 15px;"></div>
                     </div>
@@ -359,82 +356,11 @@
             </div>
         </div>
 
-        <div id="hidemulator" class="tab-content">
-            <h2>🕹️ HID Emulator (CORE)</h2>
-            <p style="color: #b0b0b0; margin-bottom: 20px;">Inject virtual hardware inputs into the live CORE HID state. Hold buttons to simulate tap/hold detection.</p>
-            <div class="hid-emulator-grid">
-
-                <!-- Buttons -->
-                <div class="hid-section">
-                    <h3>Buttons</h3>
-                    <div class="hid-btn-grid">
-                        <button class="hid-push-btn" id="hidBtn0"
-                            onmousedown="hidBtnPress(0)" onmouseup="hidBtnRelease(0)" onmouseleave="hidBtnRelease(0)"
-                            ontouchstart="event.preventDefault(); hidBtnPress(0)" ontouchend="hidBtnRelease(0)" ontouchcancel="hidBtnRelease(0)">B1</button>
-                        <button class="hid-push-btn" id="hidBtn1"
-                            onmousedown="hidBtnPress(1)" onmouseup="hidBtnRelease(1)" onmouseleave="hidBtnRelease(1)"
-                            ontouchstart="event.preventDefault(); hidBtnPress(1)" ontouchend="hidBtnRelease(1)" ontouchcancel="hidBtnRelease(1)">B2</button>
-                        <button class="hid-push-btn" id="hidBtn2"
-                            onmousedown="hidBtnPress(2)" onmouseup="hidBtnRelease(2)" onmouseleave="hidBtnRelease(2)"
-                            ontouchstart="event.preventDefault(); hidBtnPress(2)" ontouchend="hidBtnRelease(2)" ontouchcancel="hidBtnRelease(2)">B3</button>
-                        <button class="hid-push-btn" id="hidBtn3"
-                            onmousedown="hidBtnPress(3)" onmouseup="hidBtnRelease(3)" onmouseleave="hidBtnRelease(3)"
-                            ontouchstart="event.preventDefault(); hidBtnPress(3)" ontouchend="hidBtnRelease(3)" ontouchcancel="hidBtnRelease(3)">B4</button>
-                    </div>
-                </div>
-
-                <!-- Encoder -->
-                <div class="hid-section">
-                    <h3>Encoder</h3>
-                    <div class="hid-encoder-controls">
-                        <button class="hid-enc-step-btn" onclick="hidEncoderStep(-5)" title="-5" aria-label="Decrease by 5">«</button>
-                        <button class="hid-enc-step-btn" onclick="hidEncoderStep(-1)" title="-1" aria-label="Decrease by 1">−</button>
-                        <div class="hid-encoder-display" id="hidEncoderVal" aria-live="polite" aria-label="Encoder position">0</div>
-                        <button class="hid-enc-step-btn" onclick="hidEncoderStep(1)" title="+1" aria-label="Increase by 1">+</button>
-                        <button class="hid-enc-step-btn" onclick="hidEncoderStep(5)" title="+5" aria-label="Increase by 5">»</button>
-                        <button class="hid-enc-step-btn" onclick="hidEncoderReset()" title="Reset to 0" aria-label="Reset to 0" style="font-size:0.7em;">RST</button>
-                    </div>
-                    <div class="hid-enc-btn-wrap">
-                        <button class="hid-enc-push-btn" id="hidEncBtn"
-                            onmousedown="hidEncBtnPress()" onmouseup="hidEncBtnRelease()" onmouseleave="hidEncBtnRelease()"
-                            ontouchstart="event.preventDefault(); hidEncBtnPress()" ontouchend="hidEncBtnRelease()" ontouchcancel="hidEncBtnRelease()">ENC BTN</button>
-                    </div>
-                </div>
-
-            </div>
-            <div id="hidStatus" class="status" style="display:none; margin-top:15px;"></div>
-        </div>
-
         <div id="hid" class="tab-content">
-            <h2>🕹️ Remote HID</h2>
+            <h2>🕹️ HID</h2>
             <p style="color: #b0b0b0; margin-bottom: 20px;">Inject virtual hardware inputs into the live HID state for each connected unit. Panels are generated dynamically from the active satellite topology. Connect to Telemetry to populate.</p>
             <div id="hidDynamicContainer" style="display: flex; gap: 20px; flex-wrap: wrap;"></div>
             <div id="hidRemoteStatus" class="status" style="display:none; margin-top:15px;"></div>
-        </div>
-
-        <div id="layout" class="tab-content">
-            <h2>📐 Layout Configurator</h2>
-            <p style="color: #b0b0b0; margin-bottom: 15px;">Configure the spatial offsets (X, Y) for connected satellites on the global animation canvas.</p>
-
-            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-                <div class="panel" style="flex: 1; min-width: 320px; padding: 20px; background: #222; border-radius: 5px;">
-                    <div id="layoutControls">
-                        </div>
-                    <div style="margin-top: 20px; display: flex; gap: 10px;">
-                        <button onclick="saveLayout()">💾 Save & Apply</button>
-                        <button class="secondary" onclick="loadLayout()">↺ Revert</button>
-                    </div>
-                    <div id="layoutStatus" class="status" style="display:none; margin-top: 15px;"></div>
-                </div>
-
-                <div class="panel" style="flex: 2; min-width: 400px; padding: 20px; background: #222; border-radius: 5px;">
-                    <h3 style="margin-bottom: 15px; color: #4CAF50;">Live Canvas Preview</h3>
-                    <div id="layoutCanvasContainer" style="position: relative; width: 100%; height: 400px; background: #111; border: 1px solid #444; border-radius: 3px; overflow: hidden;">
-                        <div style="position: absolute; top: calc(50% - 64px); left: calc(50% - 64px); width: 128px; height: 128px; background: rgba(0, 150, 255, 0.1); border: 2px solid #0096FF; display: flex; align-items: center; justify-content: center; color: #0096FF; font-weight: bold; font-size: 0.85em; z-index: 10; box-sizing: border-box;">CORE (0,0)</div>
-                    </div>
-                    <p style="color: #888; font-size: 0.8em; margin-top: 10px; text-align: center;">1 Grid Square = 1 LED Pixel. Coordinates map outward from the Core.</p>
-                </div>
-            </div>
         </div>
 
         <div id="admin" class="tab-content">

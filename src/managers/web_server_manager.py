@@ -8,12 +8,11 @@ Features:
 - Configuration editor (global and mode settings)
 - File browser (upload/download SD card files)
 - Console output viewer
-- Log viewer
-- Manual OTA update trigger
-- Debug mode toggle
+- Log viewer with filtering
 - Satellite reordering
 - Pixel Art Studio (live LED matrix drawing canvas)
 - Audio Studio (multi-channel chiptune sequence editor and .jseq export)
+- Admin mode with OTA update triggers
 
 Dependencies:
 - JEBLogger (for logging within the web server)
@@ -749,50 +748,6 @@ class WebServerManager:
 
             except Exception as e:
                 self.log(f"Web Console Input Error: {e}")
-                return Response(request, f'{{"error": "{str(e)}"}}',
-                              content_type="application/json", status=500)
-
-        # API: Trigger OTA update
-        @self.server.route("/api/actions/ota-update", POST)
-        def trigger_ota_update(request: Request):
-            """Trigger a manual OTA update."""
-            try:
-                # Set update flag
-                try:
-                    with open("/sd/UPDATE_FLAG.txt", "w", encoding="utf-8") as f:
-                        f.write("UPDATE_REQUESTED\n")
-                except OSError as e:
-                    # Provide more specific error message
-                    if e.errno == 30:  # Read-only filesystem
-                        error_msg = "SD card is read-only"
-                    elif e.errno == 28:  # No space left on device
-                        error_msg = "SD card is full"
-                    else:
-                        error_msg = f"Failed to write update flag: {e}"
-                    return Response(request, f'{{"error": "{error_msg}"}}',
-                                  content_type="application/json", status=500)
-
-                self.log("OTA update triggered - device will update on next boot")
-                return Response(request, '{"status": "update_scheduled"}',
-                              content_type="application/json")
-            except Exception as e:
-                return Response(request, f'{{"error": "{str(e)}"}}',
-                              content_type="application/json", status=500)
-
-        # API: Toggle debug mode
-        @self.server.route("/api/actions/toggle-debug", POST)
-        def toggle_debug(request: Request):
-            """Toggle debug mode."""
-            try:
-                self.config["debug_mode"] = not self.config.get("debug_mode", False)
-                self._save_config()
-
-                status = "enabled" if self.config["debug_mode"] else "disabled"
-                self.log(f"Debug mode {status}")
-
-                return Response(request, f'{{"status": "debug_{status}"}}',
-                              content_type="application/json")
-            except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
