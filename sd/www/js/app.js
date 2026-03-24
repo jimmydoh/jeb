@@ -2514,7 +2514,7 @@ function _topoDrawNode(ctx, x, y, topLabel, bottomLabel, isCore, isOnline) {
     ctx.textBaseline = 'middle';
     ctx.fillStyle = isCore ? '#90CAF9' : (isOnline ? '#90EE90' : '#777');
     ctx.font = 'bold 9px monospace';
-    const hasBottom = bottomLabel !== null && bottomLabel !== undefined && bottomLabel !== '';
+    const hasBottom = bottomLabel != null && bottomLabel !== '';
     ctx.fillText(topLabel, x, y - (hasBottom ? 5 : 0));
 
     // Secondary label (bottom line inside circle)
@@ -2524,7 +2524,7 @@ function _topoDrawNode(ctx, x, y, topLabel, bottomLabel, isCore, isOnline) {
         ctx.fillText(bottomLabel, x, y + 6);
     }
 
-    // Subtitle below node (type name)
+    // Subtitle below node (type name) is rendered by the caller after invoking _topoDrawNode.
 }
 
 /** Render the full topology canvas, including any active pulses. */
@@ -2539,8 +2539,10 @@ function _topoRender() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, w, _TOPO_H);
 
-    // --- Connection lines ---
-    for (let i = 0; i <= sids.length - 1; i++) {
+    // --- Connection lines (Core→Sat[0]→Sat[1]→…) ---
+    // Each segment i connects node i (Core=0 or satellite) to node i+1.
+    // The colour is determined by the satellite at the far end (sids[i]).
+    for (let i = 0; i < sids.length; i++) {
         const from = _topoNodePos(i, w);
         const to = _topoNodePos(i + 1, w);
         const sat = _topoSatData[sids[i]];
@@ -2598,8 +2600,9 @@ function _topoRender() {
         if (sidIdx < 0) return;
 
         const progress = (now - pulse.ts) / PULSE_DURATION;
-        // Pulse travels from the satellite node towards the Core, hop by hop
-        // For simplicity travel directly from sat to core along the chain path
+        // Pulse animates directly from the satellite node to the Core node.
+        // A true hop-by-hop animation would require tracking intermediate positions;
+        // direct travel is visually clear and cheaper to compute.
         const from = _topoNodePos(sidIdx + 1, w);
         const to = _topoNodePos(0, w);
 
@@ -2671,7 +2674,9 @@ function _topoInitListeners() {
         if (hidTabBtn) {
             hidTabBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         }
-        // After tab switch, try to scroll to the matching panel header
+        // Delay allows the browser to complete the tab-switch DOM update before
+        // attempting to scroll to the target panel header.
+        const TAB_SWITCH_DELAY_MS = 120;
         setTimeout(() => {
             const allHeaders = document.querySelectorAll('#hidDynamicContainer h3');
             for (const h of allHeaders) {
@@ -2680,7 +2685,7 @@ function _topoInitListeners() {
                     break;
                 }
             }
-        }, 120);
+        }, TAB_SWITCH_DELAY_MS);
     });
 
     canvas.addEventListener('mousemove', function (e) {
@@ -2700,13 +2705,15 @@ function drawTopologyMap(satellites) {
     _topoSatData = satellites || {};
     _topoInitListeners();
 
-    // Spawn a data-flow pulse for every active satellite on each telemetry update
+    // Spawn a data-flow pulse for every active satellite on each telemetry update.
+    // Throttle so we don't flood the pulse list on rapid consecutive calls.
+    const PULSE_SPAWN_THROTTLE_MS = 400;
     const now = Date.now();
     Object.keys(_topoSatData).forEach(sid => {
         if (_topoSatData[sid].active) {
             // Only spawn a new pulse if the previous one for this sid has progressed enough
             const existing = _topoPulses.find(p => p.sid === sid);
-            if (!existing || (now - existing.ts) > 400) {
+            if (!existing || (now - existing.ts) > PULSE_SPAWN_THROTTLE_MS) {
                 _topoPulses.push({ sid, ts: now });
             }
         }
