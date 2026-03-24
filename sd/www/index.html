@@ -47,12 +47,6 @@
                     </div>
 
                     <div class="panel">
-                        <h3 class="panel-title">Hardware Topology</h3>
-                        <canvas id="topoCanvas" width="300" height="120" class="topo-canvas"></canvas>
-                        <p class="topo-hint">Click a node to jump to its HID panel</p>
-                    </div>
-
-                    <div class="panel">
                         <h3 class="panel-title">System Controls</h3>
                         <div class="action-grid">
                             <button id="btnSleepToggle" onclick="toggleSleep()" style="background: #555;">Checking...</button>
@@ -78,6 +72,12 @@
                         </div>
 
                         <div id="telemetryCharts" style="display: flex; flex-direction: column; gap: 15px; margin-top: 20px;"></div>
+                    </div>
+
+                    <div class="panel">
+                        <h3 class="panel-title">Hardware Topology</h3>
+                        <canvas id="topoCanvas" width="600" height="150" class="topo-canvas"></canvas>
+                        <p class="topo-hint">Click a node to jump to its HID panel</p>
                     </div>
 
                     <div class="panel">

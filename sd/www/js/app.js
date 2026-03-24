@@ -839,7 +839,7 @@ let _topoInitialized = false;
 const _TOPO_NODE_R = 26;        // Node circle radius
 const _TOPO_H_STEP = 130;       // Horizontal spacing between nodes
 const _TOPO_ORIGIN_X = 55;      // X of the Core node
-const _TOPO_H = 120;            // Canvas internal height
+const _TOPO_H = 150;            // Canvas internal height
 
 
 async function fetchTelemetry() {
