@@ -115,6 +115,9 @@ class DisplayManager:
         self._audio_group = displayio.Group()
         self._audio_group.append(self._audio_grid)
 
+        # ===== ANIMATION COMPONENTS =====
+        self._custom_anim_task = None
+
         self.use_standard_layout()  # Start in standard layout by default
 
     # ===== LAYOUT MODE METHODS =====
@@ -607,3 +610,70 @@ class DisplayManager:
             else:
                 # Hide unused labels if the list is shorter than 3 items
                 lbl.hidden = True
+
+    # ===== SPRITE ANIMATOR METHODS =====
+
+    def play_fullscreen_animation(self, filepath, frame_count, fps=15, loop=False):
+        """Starts a background task to play a sprite sheet animation on the OLED.
+
+        Args:
+            filepath: Path to a .bmp sprite sheet (e.g., "/sd/anim/win.bmp")
+            frame_count: The total number of frames in the sprite sheet
+            fps: Playback speed
+            loop: If True, plays forever until cleared. If False, plays once.
+        """
+        # Cancel any currently running animation
+        if self._custom_anim_task is not None:
+            self._custom_anim_task.cancel()
+            self._custom_anim_task = None
+
+        self.use_custom_layout()
+
+        # Spawn the background rendering task
+        self._custom_anim_task = asyncio.create_task(
+            self._animate_spritesheet(filepath, frame_count, fps, loop)
+        )
+
+    async def _animate_spritesheet(self, filepath, frame_count, fps, loop):
+        """Background coroutine that ticks the TileGrid frames."""
+        try:
+            JEBLogger.info("DISP", f"Loading animation: {filepath}")
+
+            # OnDiskBitmap streams directly from Flash/SD, saving massive amounts of RAM
+            bitmap = displayio.OnDiskBitmap(filepath)
+
+            # Create a TileGrid that treats the sprite sheet as a grid of 128x64 tiles
+            sprite_grid = displayio.TileGrid(
+                bitmap,
+                pixel_shader=bitmap.pixel_shader,
+                width=1,            # We only show 1 tile on screen at a time
+                height=1,
+                tile_width=128,     # OLED screen width
+                tile_height=64      # OLED screen height
+            )
+
+            anim_group = displayio.Group()
+            anim_group.append(sprite_grid)
+            self.set_custom_content(anim_group)
+
+            frame_delay = 1.0 / fps
+            current_frame = 0
+
+            while True:
+                # Update the visible tile index
+                sprite_grid[0] = current_frame
+                current_frame += 1
+
+                # Handle end of animation
+                if current_frame >= frame_count:
+                    if loop:
+                        current_frame = 0
+                    else:
+                        break  # Exit the loop and leave the last frame on screen
+
+                await asyncio.sleep(frame_delay)
+
+        except asyncio.CancelledError:
+            JEBLogger.debug("DISP", "Animation task cancelled by new layout.")
+        except Exception as e:
+            JEBLogger.error("DISP", f"Failed to play animation '{filepath}': {e}")
