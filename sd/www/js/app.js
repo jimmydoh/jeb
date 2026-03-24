@@ -2731,17 +2731,20 @@ function audioPreviewBrowser() {
 
         for (let s = 0; s < audioNumSteps; s++) {
             const step = audioSteps[c][s];
-            const durationBeats = step ? step.duration : activeDuration;
-            const durationSec = durationBeats * beatDuration;
+            // Each array index occupies exactly BASE_RES beats regardless of note length.
+            // Using step.duration (or activeDuration) here was wrong: covered-cell steps
+            // have no .duration, causing cursor += NaN and silencing all subsequent notes.
+            const slotSec = BASE_RES * beatDuration;
 
             if (step && step.note && step.note !== '-') {
+                const noteSec = step.duration * beatDuration;
                 const freq = _jseqIndexToFreq(_noteToJseqIndex(step.note));
                 if (freq > 0) {
-                    _browserScheduleNote(audioCtx, freq, patchName, cursor, durationSec);
+                    _browserScheduleNote(audioCtx, freq, patchName, cursor, noteSec);
                     hasNotes = true;
                 }
             }
-            cursor += durationSec;
+            cursor += slotSec;
         }
     }
 
