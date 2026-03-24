@@ -234,6 +234,25 @@ canvas.sparkline {
 }
 .sat-badge.online { background: #2d5016; color: #90EE90; }
 .sat-badge.offline { background: #501616; color: #ffcccb; }
+/* Hardware Topology Visualizer */
+canvas.topo-canvas {
+    display: block;
+    background: #0d0d0d;
+    cursor: default;
+    image-rendering: crisp-edges;
+}
+.topo-hint {
+    margin: 6px 0 0;
+    font-size: 0.72em;
+    color: #444;
+    text-align: center;
+}
+.topo-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+}
 /* Pixel Art Studio */
 .pixel-canvas-wrap {
     position: relative;

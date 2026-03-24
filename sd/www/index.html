@@ -47,11 +47,6 @@
                     </div>
 
                     <div class="panel">
-                        <h3 class="panel-title">Satellite Links</h3>
-                        <div id="telemetrySatellites"><em style="color: #666; font-size: 0.9em;">No satellites detected</em></div>
-                    </div>
-
-                    <div class="panel">
                         <h3 class="panel-title">System Controls</h3>
                         <div class="action-grid">
                             <button id="btnSleepToggle" onclick="toggleSleep()" style="background: #555;">Checking...</button>
@@ -77,6 +72,14 @@
                         </div>
 
                         <div id="telemetryCharts" style="display: flex; flex-direction: column; gap: 15px; margin-top: 20px;"></div>
+                    </div>
+
+                    <div class="panel">
+                        <h3 class="panel-title">Hardware Topology</h3>
+                        <div class="topo-wrapper">
+                            <canvas id="topoCanvas" height="200" class="topo-canvas"></canvas>
+                        </div>
+                        <p class="topo-hint">Click a node to jump to its HID panel</p>
                     </div>
 
                     <div class="panel">
