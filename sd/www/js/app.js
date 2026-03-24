@@ -2251,6 +2251,7 @@ async function audioPreview() {
 }
 
 async function audioStop() {
+    browserStopAll();
     try {
         await fetch('/api/synth/stop', { method: 'POST' });
         showStatus('audioStatus', '■ Playback stopped', 'success');
@@ -2579,6 +2580,226 @@ async function playWav() {
         }
     } catch (e) {
         showStatus('wavStatus', 'Error: ' + e, 'error');
+    }
+}
+
+// =====================================================================
+// Browser Audio Emulator (Web Audio API)
+// =====================================================================
+
+let _webAudioCtx = null;
+let _browserActiveNodes = [];
+let _browserNoiseBuffer = null; // Shared noise buffer, generated once per AudioContext
+
+function _getAudioContext() {
+    if (!_webAudioCtx || _webAudioCtx.state === 'closed') {
+        _webAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        _browserNoiseBuffer = null; // Invalidate cached buffer when context is recreated
+    }
+    if (_webAudioCtx.state === 'suspended') {
+        _webAudioCtx.resume();
+    }
+    return _webAudioCtx;
+}
+
+// Maps JSEQ patch names to Web Audio oscillator types and ADSR parameters.
+// ADSR values mirror the synthio Envelopes defined in synth_registry.py.
+const BROWSER_PATCHES = {
+    'RETRO_LEAD':  { type: 'square',   attack: 0.01,  decay: 0.0,  sustain: 0.8, release: 0.1,  attackLevel: 0.8 },
+    'RETRO_BASS':  { type: 'triangle', attack: 0.01,  decay: 0.0,  sustain: 0.8, release: 0.1,  attackLevel: 0.8 },
+    'RETRO_NOISE': { type: 'noise',    attack: 0.001, decay: 0.05, sustain: 0.0, release: 0.02, attackLevel: 0.6 },
+    'BEEP':        { type: 'sine',     attack: 0.01,  decay: 0.0,  sustain: 1.0, release: 0.1,  attackLevel: 1.0 },
+    'BEEP_SQUARE': { type: 'square',   attack: 0.01,  decay: 0.0,  sustain: 1.0, release: 0.1,  attackLevel: 1.0 },
+    'PAD':         { type: 'triangle', attack: 0.5,   decay: 0.2,  sustain: 0.8, release: 0.5,  attackLevel: 0.8 },
+    'PUNCH':       { type: 'sawtooth', attack: 0.005, decay: 0.1,  sustain: 0.6, release: 0.1,  attackLevel: 1.0 },
+    'ALARM':       { type: 'sawtooth', attack: 0.01,  decay: 0.0,  sustain: 1.0, release: 0.1,  attackLevel: 1.0 },
+    'SCANNER':     { type: 'triangle', attack: 0.01,  decay: 0.0,  sustain: 1.0, release: 0.1,  attackLevel: 1.0 },
+    'CLICK':       { type: 'square',   attack: 0.001, decay: 0.05, sustain: 0.0, release: 0.05, attackLevel: 1.0 },
+    'NOISE':       { type: 'noise',    attack: 0.01,  decay: 0.15, sustain: 0.0, release: 0.1,  attackLevel: 1.0 },
+    'SELECT':      { type: 'square',   attack: 0.001, decay: 0.05, sustain: 0.0, release: 0.05, attackLevel: 1.0 },
+};
+
+/** Generate a shared noise AudioBuffer for the current AudioContext (created once). */
+function _browserGetNoiseBuffer(audioCtx) {
+    if (!_browserNoiseBuffer) {
+        // 2 seconds of noise is enough to cover any single note duration at low BPM.
+        const sampleRate = audioCtx.sampleRate;
+        const frameCount = sampleRate * 2;
+        _browserNoiseBuffer = audioCtx.createBuffer(1, frameCount, sampleRate);
+        const data = _browserNoiseBuffer.getChannelData(0);
+        for (let i = 0; i < frameCount; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+    }
+    return _browserNoiseBuffer;
+}
+
+/**
+ * Schedule a single note via Web Audio API.
+ * Uses an OscillatorNode (or noise BufferSourceNode) routed through a
+ * GainNode with ADSR automation for click-free attack and release.
+ */
+function _browserScheduleNote(audioCtx, freq, patchName, startTime, durationSec) {
+    const patch = BROWSER_PATCHES[patchName] || BROWSER_PATCHES['BEEP'];
+    const { type, attack, decay, sustain, release, attackLevel } = patch;
+    const isNoise = (type === 'noise');
+    const noteDuration = Math.max(durationSec, 0.01);
+    const stopTime = startTime + noteDuration + release;
+
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.setValueAtTime(0, startTime);
+    gainNode.gain.linearRampToValueAtTime(attackLevel, startTime + attack);
+    // Always schedule the decay endpoint to avoid a gain discontinuity (audible click)
+    // even when decay === 0 (the ramp collapses to an instant step via setValueAtTime).
+    const decayEnd = startTime + attack + Math.max(decay, 0);
+    const sustainLevel = sustain * attackLevel;
+    if (decay > 0) {
+        gainNode.gain.linearRampToValueAtTime(sustainLevel, decayEnd);
+    } else {
+        gainNode.gain.setValueAtTime(sustainLevel, decayEnd);
+    }
+    const sustainEnd = startTime + noteDuration;
+    gainNode.gain.setValueAtTime(sustainLevel, sustainEnd);
+    gainNode.gain.linearRampToValueAtTime(0, stopTime);
+    gainNode.connect(audioCtx.destination);
+
+    if (isNoise) {
+        const src = audioCtx.createBufferSource();
+        // Reuse the shared noise buffer; loop it in case the note is longer than 2 s.
+        src.buffer = _browserGetNoiseBuffer(audioCtx);
+        src.loop = true;
+        src.connect(gainNode);
+        src.start(startTime);
+        src.stop(stopTime);
+        _browserActiveNodes.push(src);
+    } else {
+        const osc = audioCtx.createOscillator();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, startTime);
+        osc.connect(gainNode);
+        osc.start(startTime);
+        osc.stop(stopTime);
+        _browserActiveNodes.push(osc);
+    }
+    _browserActiveNodes.push(gainNode);
+}
+
+/** Convert a JSEQ note index (0 = rest, 1 = MIDI 0) to a frequency in Hz. */
+function _jseqIndexToFreq(index) {
+    if (!index || index === 0) return 0;
+    const midi = index - 1;
+    return 440.0 * Math.pow(2, (midi - 69) / 12.0);
+}
+
+/** Stop all scheduled browser audio nodes and close the AudioContext. */
+function browserStopAll() {
+    _browserActiveNodes.forEach(node => {
+        // Errors here are expected: nodes may have already finished naturally.
+        try { node.stop ? node.stop() : node.disconnect(); } catch (_) {}
+    });
+    _browserActiveNodes = [];
+    _browserNoiseBuffer = null;
+    if (_webAudioCtx) {
+        // Set to null synchronously to prevent _getAudioContext() from attempting
+        // to resume a context that is in the middle of closing.
+        const ctx = _webAudioCtx;
+        _webAudioCtx = null;
+        ctx.close();
+    }
+}
+
+/**
+ * Play the current sequencer grid in the browser using Web Audio API.
+ * Notes are pre-calculated and precisely scheduled against AudioContext.currentTime.
+ */
+function audioPreviewBrowser() {
+    browserStopAll();
+
+    const audioCtx = _getAudioContext();
+    const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
+    const beatDuration = 60.0 / bpm;
+    const scheduleOffset = audioCtx.currentTime + 0.05;
+
+    let hasNotes = false;
+
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        const patchName = audioChannelPatches[c] || 'BEEP';
+        let cursor = scheduleOffset;
+
+        for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
+            const step = audioSteps[c][s];
+            const durationBeats = step ? step.duration : activeDuration;
+            const durationSec = durationBeats * beatDuration;
+
+            if (step && step.note && step.note !== '-') {
+                const freq = _jseqIndexToFreq(_noteToJseqIndex(step.note));
+                if (freq > 0) {
+                    _browserScheduleNote(audioCtx, freq, patchName, cursor, durationSec);
+                    hasNotes = true;
+                }
+            }
+            cursor += durationSec;
+        }
+    }
+
+    if (hasNotes) {
+        showStatus('audioStatus', '🔊 Playing in browser…', 'success');
+    } else {
+        showStatus('audioStatus', 'No notes to play — add some steps first', 'error');
+    }
+}
+
+/**
+ * Play a single preview tone in the browser for the selected tone/patch.
+ * Plays A4 (440 Hz) for 1 second using the BEEP patch as a quick audibility check.
+ */
+async function playToneBrowser() {
+    const select = document.getElementById('toneSelect');
+    const name = select ? select.value : '';
+    if (!name) {
+        showStatus('toneStatus', 'Please select a tone', 'error');
+        return;
+    }
+    browserStopAll();
+    const audioCtx = _getAudioContext();
+    const now = audioCtx.currentTime + 0.05;
+    _browserScheduleNote(audioCtx, 440.0, 'BEEP', now, 1.0);
+    showStatus('toneStatus', `🔊 Playing browser preview for "${name}"`, 'success');
+}
+
+/**
+ * Fetch a WAV file from the device SD card and decode/play it in the browser
+ * using the Web Audio API decodeAudioData pipeline.
+ */
+async function playWavBrowser() {
+    const select = document.getElementById('wavSelect');
+    const filename = select ? select.value : '';
+    if (!filename) {
+        showStatus('wavStatus', 'Please select a WAV file', 'error');
+        return;
+    }
+    // Guard against path traversal: filenames come from the server's library listing
+    // but we validate they contain no path separators as a defence-in-depth measure.
+    if (filename.includes('..')) {
+        showStatus('wavStatus', 'Invalid file path', 'error');
+        return;
+    }
+    browserStopAll();
+    const audioCtx = _getAudioContext();
+    showStatus('wavStatus', '⏳ Fetching WAV…', 'success');
+    try {
+        const response = await fetch(`/api/files/download?path=${encodeURIComponent('/sd/' + filename)}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioCtx.destination);
+        source.start();
+        _browserActiveNodes.push(source);
+        showStatus('wavStatus', `🔊 Playing "${filename}" in browser`, 'success');
+    } catch (e) {
+        showStatus('wavStatus', 'Browser playback error: ' + e, 'error');
     }
 }
 

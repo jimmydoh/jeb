@@ -302,7 +302,8 @@
                     <div style="display:flex; gap:10px; align-items:center; background:#222; padding:5px 10px; border-radius:4px;">
                         <label>BPM:</label>
                         <input type="number" id="audioBpm" value="120" min="20" max="300" style="width:60px;">
-                        <button onclick="audioPreview()">▶ Play Preview</button>
+                        <button onclick="audioPreview()">▶ Play on Hardware</button>
+                        <button onclick="audioPreviewBrowser()">🔊 Play in Browser</button>
                         <button class="secondary" onclick="audioStop()">■ Stop</button>
                     </div>
 
@@ -376,7 +377,8 @@
                         <label style="color:#eee; font-size:0.9em;"><input type="radio" name="toneTarget" value="synth" checked> Synth</label>
                         <label style="color:#eee; font-size:0.9em;"><input type="radio" name="toneTarget" value="buzzer"> Buzzer</label>
                     </div>
-                    <button onclick="playTone()">▶ Play Tone</button>
+                    <button onclick="playTone()">▶ Hardware</button>
+                    <button onclick="playToneBrowser()">🔊 Browser</button>
                 </div>
                 <div id="toneStatus" class="status" style="display:none; margin-top:8px;"></div>
             </div>
@@ -392,7 +394,8 @@
                     <select id="wavSelect" style="flex:1; min-width:200px; max-width:400px;">
                         <option value="">Loading WAV files…</option>
                     </select>
-                    <button onclick="playWav()">▶ Play WAV</button>
+                    <button onclick="playWav()">▶ Hardware</button>
+                    <button onclick="playWavBrowser()">🔊 Browser</button>
                 </div>
                 <div id="wavStatus" class="status" style="display:none; margin-top:8px;"></div>
             </div>
