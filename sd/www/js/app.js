@@ -514,13 +514,11 @@ let _consoleAutoRefreshTimer = null;
 
 function toggleConsoleAutoRefresh() {
     const enabled = document.getElementById('consoleAutoRefresh').checked;
+    clearInterval(_consoleAutoRefreshTimer); // Safely kill any existing loop
+    _consoleAutoRefreshTimer = null;
+
     if (enabled) {
         _consoleAutoRefreshTimer = setInterval(loadConsole, 2000);
-    } else {
-        if (_consoleAutoRefreshTimer) {
-            clearInterval(_consoleAutoRefreshTimer);
-            _consoleAutoRefreshTimer = null;
-        }
     }
 }
 
@@ -1008,12 +1006,14 @@ async function initPixelArtStudio() {
     const grid = document.getElementById('pixelGrid');
     grid.innerHTML = '';
     grid.style.gridTemplateColumns = `repeat(${GRID_SIZE}, 1fr)`;
+    const fragment = document.createDocumentFragment();
     for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
         const cell = document.createElement('div');
         cell.className = 'pixel-cell';
         cell.dataset.index = i;
-        grid.appendChild(cell);
+        fragment.appendChild(cell);
     }
+    grid.appendChild(fragment);
 
     // Fetch palette from server
     try {

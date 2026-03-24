@@ -367,7 +367,7 @@ class WebServerManager:
                     if chunk_size is None:
                         chunk_size = self.CHUNK_SIZE
                     try:
-                        with open(filepath, "rb", encoding="utf-8") as f:
+                        with open(filepath, "rb") as f:
                             while True:
                                 chunk = f.read(chunk_size)
                                 if not chunk:
@@ -449,7 +449,7 @@ class WebServerManager:
                 bytes_written = 0
                 upload_method = "unknown"
 
-                with open(filepath, "wb", encoding="utf-8") as f:
+                with open(filepath, "wb") as f:
                     # Try to use streaming interface if available
                     # First, check for request.stream (newer adafruit_httpserver versions)
                     if hasattr(request, 'stream') and request.stream:
@@ -856,7 +856,7 @@ class WebServerManager:
 
                 if update_url and self._is_wifi_connected():
                     try:
-                        JEBLogger.info
+                        JEBLogger.info("WEBS","Fetching remote version info from update URL")
                         # Borrow the wifi manager's HTTP session to quickly fetch the remote version
                         session = self.wifi_manager.create_http_session()
                         v_url = f"{update_url.rstrip('/')}/version.json"
