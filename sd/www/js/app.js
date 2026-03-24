@@ -831,6 +831,17 @@ const VOLTAGE_LABELS = {
     led_5v:     'LED (5V)',
 };
 
+// Hardware Topology Visualizer state (declared here so _topoRender() is safe to call early)
+let _topoSatData = {};
+let _topoPulses = [];
+let _topoRafId = null;
+let _topoInitialized = false;
+const _TOPO_NODE_R = 26;        // Node circle radius
+const _TOPO_H_STEP = 130;       // Horizontal spacing between nodes
+const _TOPO_ORIGIN_X = 55;      // X of the Core node
+const _TOPO_H = 120;            // Canvas internal height
+
+
 async function fetchTelemetry() {
     try {
         const response = await fetch('/api/telemetry/status');
@@ -920,18 +931,9 @@ function updateTelemetryUI(data) {
     }
     voltEl.innerHTML = html;
 
-    // --- Satellite badges ---
+    // --- Hardware Topology Visualizer ---
     const sats = data.satellites || {};
-    const satEl = document.getElementById('telemetrySatellites');
-    const satKeys = Object.keys(sats);
-    if (satKeys.length === 0) {
-        satEl.innerHTML = '<em style="color: #666;">No satellites detected</em>';
-    } else {
-        satEl.innerHTML = satKeys.map(sid => {
-            const online = sats[sid].active;
-            return `<span class="sat-badge ${online ? 'online' : 'offline'}">SAT ${sid}: ${online ? 'ONLINE' : 'OFFLINE'}</span>`;
-        }).join('');
-    }
+    drawTopologyMap(sats);
 
     // --- Sparkline charts for ALL voltages ---
     const chartsContainer = document.getElementById('telemetryCharts');
@@ -1007,6 +1009,9 @@ function drawSparkline(canvasId, values, label) {
 // Auto-load initial data
 loadSystemStatus();
 startTelemetry();
+
+// Draw topology canvas in its empty state so it's visible before telemetry connects
+_topoRender();
 
 // --- Pixel Art Studio ---
 const GRID_SIZE = 16;
@@ -2458,6 +2463,259 @@ function _buildHIDPanel(sid, typeName, profile, btnIndexStart, encIndexStart) {
     }
 
     return panel;
+}
+
+// =====================================================================
+// Hardware Topology Visualizer
+// =====================================================================
+// Constants and state are declared near the top of this file alongside
+// the telemetry variables to avoid temporal dead zone errors.
+
+/** Return the canvas-space centre of a topology node.
+ *  index 0 = Core, 1..N = satellites in sorted order. */
+function _topoNodePos(index, canvasWidth) {
+    return {
+        x: _TOPO_ORIGIN_X + index * _TOPO_H_STEP,
+        y: _TOPO_H / 2,
+    };
+}
+
+/** Compute the required internal canvas width for the current satellite set. */
+function _topoCanvasWidth(sidCount) {
+    return Math.max(300, _TOPO_ORIGIN_X + (sidCount + 1) * _TOPO_H_STEP);
+}
+
+/** Draw one node (Core or Satellite) on the canvas context. */
+function _topoDrawNode(ctx, x, y, topLabel, bottomLabel, isCore, isOnline) {
+    const r = _TOPO_NODE_R;
+
+    // Glow
+    if (isCore || isOnline) {
+        const glow = ctx.createRadialGradient(x, y, r * 0.4, x, y, r * 1.8);
+        glow.addColorStop(0, isCore ? 'rgba(33,150,243,0.25)' : 'rgba(76,175,80,0.18)');
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.beginPath();
+        ctx.arc(x, y, r * 1.8, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+    }
+
+    // Circle fill
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = isCore ? '#0d2744' : (isOnline ? '#0d2a0d' : '#1e1010');
+    ctx.strokeStyle = isCore ? '#2196F3' : (isOnline ? '#4CAF50' : '#555');
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
+
+    // Primary label (top line inside circle)
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = isCore ? '#90CAF9' : (isOnline ? '#90EE90' : '#777');
+    ctx.font = 'bold 9px monospace';
+    const hasBottom = bottomLabel !== null && bottomLabel !== undefined && bottomLabel !== '';
+    ctx.fillText(topLabel, x, y - (hasBottom ? 5 : 0));
+
+    // Secondary label (bottom line inside circle)
+    if (hasBottom) {
+        ctx.font = '8px monospace';
+        ctx.fillStyle = isCore ? '#5b9bd5' : (isOnline ? '#5a9a5a' : '#555');
+        ctx.fillText(bottomLabel, x, y + 6);
+    }
+
+    // Subtitle below node (type name)
+}
+
+/** Render the full topology canvas, including any active pulses. */
+function _topoRender() {
+    const canvas = document.getElementById('topoCanvas');
+    if (!canvas) return;
+
+    const sids = Object.keys(_topoSatData).sort();
+    const w = _topoCanvasWidth(sids.length);
+    if (canvas.width !== w) canvas.width = w;
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, w, _TOPO_H);
+
+    // --- Connection lines ---
+    for (let i = 0; i <= sids.length - 1; i++) {
+        const from = _topoNodePos(i, w);
+        const to = _topoNodePos(i + 1, w);
+        const sat = _topoSatData[sids[i]];
+        const online = sat && sat.active;
+
+        ctx.strokeStyle = online ? '#1e4d1e' : '#2a2a2a';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(from.x + _TOPO_NODE_R, from.y);
+        ctx.lineTo(to.x - _TOPO_NODE_R, to.y);
+        ctx.stroke();
+    }
+
+    // --- Core node ---
+    const corePos = _topoNodePos(0, w);
+    _topoDrawNode(ctx, corePos.x, corePos.y, 'CORE', null, true, true);
+
+    // Subtitle below Core
+    ctx.font = '8px monospace';
+    ctx.fillStyle = '#2a6090';
+    ctx.textAlign = 'center';
+    ctx.fillText('CORE', corePos.x, corePos.y + _TOPO_NODE_R + 11);
+
+    // --- Satellite nodes ---
+    sids.forEach((sid, i) => {
+        const pos = _topoNodePos(i + 1, w);
+        const sat = _topoSatData[sid];
+        const online = sat && sat.active;
+        const typeLabel = (sat && sat.type) ? sat.type : '??';
+        _topoDrawNode(ctx, pos.x, pos.y, `SAT`, sid, false, online);
+
+        // Type subtitle below node
+        ctx.font = '8px monospace';
+        ctx.fillStyle = online ? '#3a6a3a' : '#444';
+        ctx.textAlign = 'center';
+        ctx.fillText(typeLabel, pos.x, pos.y + _TOPO_NODE_R + 11);
+    });
+
+    // Empty state message
+    if (sids.length === 0) {
+        ctx.font = '11px monospace';
+        ctx.fillStyle = '#555';
+        ctx.textAlign = 'center';
+        ctx.fillText('No satellites detected', w / 2, _TOPO_H / 2);
+    }
+
+    // --- Pulse animations (data flow: satellite → core) ---
+    const now = Date.now();
+    const PULSE_DURATION = 1100; // ms
+    _topoPulses = _topoPulses.filter(p => now - p.ts < PULSE_DURATION);
+
+    _topoPulses.forEach(pulse => {
+        const sidIdx = sids.indexOf(pulse.sid);
+        if (sidIdx < 0) return;
+
+        const progress = (now - pulse.ts) / PULSE_DURATION;
+        // Pulse travels from the satellite node towards the Core, hop by hop
+        // For simplicity travel directly from sat to core along the chain path
+        const from = _topoNodePos(sidIdx + 1, w);
+        const to = _topoNodePos(0, w);
+
+        const px = from.x + (to.x - from.x) * progress;
+        const py = from.y + (to.y - from.y) * progress;
+
+        const alpha = 1 - progress * 0.5;
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, 9);
+        grad.addColorStop(0, `rgba(76,175,80,${alpha})`);
+        grad.addColorStop(0.5, `rgba(76,175,80,${alpha * 0.5})`);
+        grad.addColorStop(1, 'rgba(76,175,80,0)');
+        ctx.beginPath();
+        ctx.arc(px, py, 9, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+    });
+
+    // Keep animation loop alive while pulses remain
+    if (_topoPulses.length > 0) {
+        _topoRafId = requestAnimationFrame(_topoRender);
+    } else {
+        _topoRafId = null;
+    }
+}
+
+/** Find which node (if any) lies under canvas-space point (mx, my).
+ *  Returns 'CORE', a satellite SID string, or null. */
+function _topoHitTest(mx, my, canvasWidth) {
+    const sids = Object.keys(_topoSatData).sort();
+    const corePos = _topoNodePos(0, canvasWidth);
+    if (Math.hypot(mx - corePos.x, my - corePos.y) <= _TOPO_NODE_R) return 'CORE';
+    for (let i = 0; i < sids.length; i++) {
+        const pos = _topoNodePos(i + 1, canvasWidth);
+        if (Math.hypot(mx - pos.x, my - pos.y) <= _TOPO_NODE_R) return sids[i];
+    }
+    return null;
+}
+
+/** Convert a mouse event to canvas-space coordinates (accounts for CSS scaling). */
+function _topoEventCoords(canvas, e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        mx: (e.clientX - rect.left) * (canvas.width / rect.width),
+        my: (e.clientY - rect.top) * (canvas.height / rect.height),
+    };
+}
+
+/** Attach click and hover listeners to the topology canvas (once). */
+function _topoInitListeners() {
+    if (_topoInitialized) return;
+    _topoInitialized = true;
+
+    const canvas = document.getElementById('topoCanvas');
+    if (!canvas) return;
+
+    canvas.addEventListener('click', function (e) {
+        const { mx, my } = _topoEventCoords(canvas, e);
+        const hit = _topoHitTest(mx, my, canvas.width);
+        if (!hit) return;
+
+        if (hit === 'CORE') {
+            // Scroll to top of System tab (already active)
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
+        // Navigate to HID tab and scroll to the satellite's panel
+        const hidTabBtn = document.querySelector('.tab[onclick="showTab(\'hid\')"]');
+        if (hidTabBtn) {
+            hidTabBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        }
+        // After tab switch, try to scroll to the matching panel header
+        setTimeout(() => {
+            const allHeaders = document.querySelectorAll('#hidDynamicContainer h3');
+            for (const h of allHeaders) {
+                if (h.textContent.includes(hit)) {
+                    h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    break;
+                }
+            }
+        }, 120);
+    });
+
+    canvas.addEventListener('mousemove', function (e) {
+        const { mx, my } = _topoEventCoords(canvas, e);
+        const hit = _topoHitTest(mx, my, canvas.width);
+        canvas.style.cursor = hit ? 'pointer' : 'default';
+    });
+
+    canvas.addEventListener('mouseleave', function () {
+        canvas.style.cursor = 'default';
+    });
+}
+
+/** Main entry point called from updateTelemetryUI.
+ *  Updates satellite state, spawns a pulse for each active satellite, then redraws. */
+function drawTopologyMap(satellites) {
+    _topoSatData = satellites || {};
+    _topoInitListeners();
+
+    // Spawn a data-flow pulse for every active satellite on each telemetry update
+    const now = Date.now();
+    Object.keys(_topoSatData).forEach(sid => {
+        if (_topoSatData[sid].active) {
+            // Only spawn a new pulse if the previous one for this sid has progressed enough
+            const existing = _topoPulses.find(p => p.sid === sid);
+            if (!existing || (now - existing.ts) > 400) {
+                _topoPulses.push({ sid, ts: now });
+            }
+        }
+    });
+
+    // Cancel any in-flight RAF and start a fresh render pass
+    if (_topoRafId !== null) cancelAnimationFrame(_topoRafId);
+    _topoRafId = null;
+    _topoRender();
 }
 
 function rebuildHIDInterface(satellites) {
