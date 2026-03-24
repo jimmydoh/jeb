@@ -10,7 +10,7 @@ Features:
 - Console output viewer
 - Log viewer with filtering
 - Satellite reordering
-- Pixel Art Studio (live LED matrix drawing canvas)
+- Pixel Art Studio (live LED matrix drawing canvas, multi-frame animation editor)
 - Audio Studio (multi-channel chiptune sequence editor and .jseq export)
 - Admin mode with OTA update triggers
 
@@ -1087,17 +1087,21 @@ class WebServerManager:
                 except ImportError:
                     pass  # Module not found on this device
 
-                # Scan /sd/icons/ for .bin files
+                # Scan /sd/icons/ for .bin files and .janim animation files
                 bin_files = []
+                janim_files = []
                 try:
                     for f in os.listdir("/sd/icons"):
                         if f.lower().endswith(".bin"):
                             bin_files.append(f)
+                        elif f.lower().endswith(".janim"):
+                            janim_files.append(f)
                     bin_files.sort()
+                    janim_files.sort()
                 except OSError:
                     pass
 
-                return Response(request, json.dumps({"icons": icons_list, "bins": bin_files}),
+                return Response(request, json.dumps({"icons": icons_list, "bins": bin_files, "janims": janim_files}),
                                 content_type="application/json")
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',
@@ -1109,6 +1113,7 @@ class WebServerManager:
             """Return raw pixel bytes (256 bytes) for a given icon.
 
             If ``name`` ends in ``.bin``, the file is read from ``/sd/icons/``.
+            If ``name`` ends in ``.janim``, the raw animation bytes are returned.
             Otherwise ``name`` is treated as a constant from the ``Icons`` class
             in ``utilities.icons`` and the bytes are returned directly.
             """
@@ -1118,7 +1123,7 @@ class WebServerManager:
                     return Response(request, '{"error": "name query parameter required"}',
                                   content_type="application/json", status=400)
 
-                if name.lower().endswith(".bin"):
+                if name.lower().endswith(".bin") or name.lower().endswith(".janim"):
                     # Load from SD card
                     sanitized = self._sanitize_path("/sd/icons", name)
                     if not sanitized.startswith("/sd/icons/"):
@@ -1144,6 +1149,111 @@ class WebServerManager:
                         return Response(request, '{"error": "icons module not available on this device"}',
                                       content_type="application/json", status=503)
 
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Save a multi-frame animation as a .janim file
+        @self.server.route("/api/pixel-art/save-animation", POST)
+        def save_animation(request: Request):
+            """Save a multi-frame sprite animation as a .janim file to /sd/icons/.
+
+            The request body must be a valid .janim V2 binary blob:
+              - 4 bytes magic: b'JANM'
+              - 1 byte: frame count (1-255)
+              - frame_count * 258 bytes: (2-byte duration + 256-byte pixel data)
+            """
+            try:
+                name = request.query_params.get("name", "").strip()
+                if not name:
+                    return Response(request, '{"error": "name query parameter required"}',
+                                  content_type="application/json", status=400)
+
+                valid_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+                if not all(c in valid_chars for c in name):
+                    return Response(request, '{"error": "name must contain only letters, numbers, and underscores"}',
+                                  content_type="application/json", status=400)
+
+                body = request.body
+                min_size = 4 + 1 + 258  # magic + frame_count + 1 frame
+                if not body or len(body) < min_size:
+                    return Response(request, f'{{"error": "request body must be a valid .janim binary (minimum {min_size} bytes)"}}',
+                                  content_type="application/json", status=400)
+
+                if body[:4] != b'JANM':
+                    return Response(request, '{"error": "invalid .janim file: missing JANM magic bytes"}',
+                                  content_type="application/json", status=400)
+
+                frame_count = body[4]
+                expected_size = 5 + frame_count * 258
+                if len(body) < expected_size:
+                    return Response(request, '{"error": "truncated .janim file: not enough frame data"}',
+                                  content_type="application/json", status=400)
+
+                if frame_count < 1 or frame_count > 255:
+                    return Response(request, '{"error": "frame_count must be 1-255"}',
+                                  content_type="application/json", status=400)
+
+                filepath = f"/sd/icons/{name.lower()}.janim"
+
+                if not self._testing:
+                    try:
+                        os.mkdir("/sd/icons")
+                    except OSError:
+                        pass  # Directory already exists
+
+                    with open(filepath, "wb") as f:
+                        f.write(body)
+
+                self.log(f"Animation saved: {filepath} ({frame_count} frames)")
+                return Response(request, f'{{"status": "success", "path": "{filepath}", "frames": {frame_count}}}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Preview a multi-frame animation on the live LED matrix
+        @self.server.route("/api/pixel-art/preview-animation", POST)
+        def preview_animation(request: Request):
+            """Display a single animation frame on the live LED matrix.
+
+            Accepts JSON: {"pixels": [256 ints], "frame": N}
+            This is called per-frame during client-side playback so the physical
+            matrix stays in sync with the web UI.
+            """
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                pixels = data.get("pixels")
+                if not pixels or len(pixels) != 256:
+                    return Response(request, '{"error": "pixels must be an array of 256 values"}',
+                                  content_type="application/json", status=400)
+
+                for v in pixels:
+                    if not isinstance(v, int) or v < 0 or v > 255:
+                        return Response(request, '{"error": "pixel values must be integers 0-255"}',
+                                      content_type="application/json", status=400)
+
+                if self.matrix_manager is None:
+                    return Response(request, '{"status": "no_matrix", "message": "Matrix manager not available"}',
+                                  content_type="application/json")
+
+                self.matrix_manager.clear()
+                for y in range(16):
+                    for x in range(16):
+                        val = pixels[y * 16 + x]
+                        if val != 0:
+                            color = Palette.LIBRARY.get(val)
+                            if color:
+                                self.matrix_manager.draw_pixel(x, y, color)
+
+                frame_num = data.get("frame", 0)
+                self.log(f"Animation frame {frame_num} previewed on matrix")
+                return Response(request, '{"status": "success"}',
+                              content_type="application/json")
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)

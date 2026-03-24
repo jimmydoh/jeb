@@ -1025,6 +1025,16 @@ let pixelArtInitialized = false;
 let pixelLibraryLoaded = false;
 let isDrawing = false;
 
+// --- Animation state ---
+let animFrames = [new Array(GRID_SIZE * GRID_SIZE).fill(0)];
+let animDurations = [150]; // Track ms duration per frame
+let currentFrameIndex = 0;
+let animPlaying = false;
+let animPlayTimeout = null;
+let playbackFrameIdx = 0;
+let onionSkinEnabled = false;
+let isMatrixPushing = false; // Lock to prevent network flooding
+
 function rgbToHex(r, g, b) {
     return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
 }
@@ -1045,6 +1055,9 @@ async function initPixelArtStudio() {
         fragment.appendChild(cell);
     }
     grid.appendChild(fragment);
+
+    // Size the onion skin canvas to match the pixel grid
+    _resizeOnionCanvas();
 
     // Fetch palette from server
     try {
@@ -1070,9 +1083,27 @@ async function initPixelArtStudio() {
         paletteGrid.appendChild(swatch);
     }
 
+    // Initialise with a single blank frame
+    animFrames = [new Array(GRID_SIZE * GRID_SIZE).fill(0)];
+    animDurations = [150];
+    currentFrameIndex = 0;
+    pixelData = animFrames[0];
+    renderTimeline();
+
     if (!pixelLibraryLoaded) {
         loadPixelLibrary();
     }
+}
+
+function _resizeOnionCanvas() {
+    const canvas = document.getElementById('onionSkinCanvas');
+    const grid = document.getElementById('pixelGrid');
+    if (!canvas || !grid) return;
+    const rect = grid.getBoundingClientRect();
+    canvas.width = GRID_SIZE;
+    canvas.height = GRID_SIZE;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
 }
 
 function selectColor(idx) {
@@ -1160,6 +1191,259 @@ function clearCanvas() {
     document.querySelectorAll('.pixel-cell').forEach(cell => {
         cell.style.background = '#000';
     });
+    renderThumbnail(currentFrameIndex);
+    if (onionSkinEnabled) renderOnionSkin();
+}
+
+// =====================================================================
+// Animation Frame Management
+// =====================================================================
+
+function _renderFrameToCanvas(frameData, canvas) {
+    const ctx = canvas.getContext('2d');
+    canvas.width = GRID_SIZE;
+    canvas.height = GRID_SIZE;
+    for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+        const v = frameData[i];
+        const color = paletteColors[String(v)];
+        if (v === 0 || !color) {
+            ctx.fillStyle = '#000';
+        } else {
+            ctx.fillStyle = rgbToHex(color.r, color.g, color.b);
+        }
+        const x = i % GRID_SIZE;
+        const y = Math.floor(i / GRID_SIZE);
+        ctx.fillRect(x, y, 1, 1);
+    }
+}
+
+function renderThumbnail(frameIdx) {
+    const thumb = document.querySelector(`.anim-frame-thumb[data-frame="${frameIdx}"]`);
+    if (!thumb) return;
+    const canvas = thumb.querySelector('canvas');
+    if (!canvas) return;
+    _renderFrameToCanvas(animFrames[frameIdx], canvas);
+}
+
+function renderTimeline() {
+    const timeline = document.getElementById('animTimeline');
+    if (!timeline) return;
+    timeline.innerHTML = '';
+    animFrames.forEach((frame, i) => {
+        const thumb = document.createElement('div');
+        thumb.className = 'anim-frame-thumb' + (i === currentFrameIndex ? ' active' : '');
+        thumb.dataset.frame = i;
+        thumb.title = `Frame ${i + 1}`;
+        thumb.onclick = () => selectFrame(i);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = GRID_SIZE;
+        canvas.height = GRID_SIZE;
+        canvas.style.imageRendering = 'pixelated';
+        thumb.appendChild(canvas);
+
+        const label = document.createElement('div');
+        label.className = 'anim-frame-label';
+        label.textContent = i + 1;
+        thumb.appendChild(label);
+
+        timeline.appendChild(thumb);
+        _renderFrameToCanvas(frame, canvas);
+    });
+}
+
+function selectFrame(idx) {
+    if (idx < 0 || idx >= animFrames.length) return;
+    // Save current canvas state back to current frame before switching
+    animFrames[currentFrameIndex] = pixelData.slice();
+    renderThumbnail(currentFrameIndex);
+
+    currentFrameIndex = idx;
+    pixelData = animFrames[currentFrameIndex];
+
+    // Update duration UI for this frame
+    const durInput = document.getElementById('animDuration');
+    if (durInput) durInput.value = animDurations[currentFrameIndex] || 150;
+
+    // Refresh canvas display
+    for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+        const cell = document.querySelector(`.pixel-cell[data-index="${i}"]`);
+        if (!cell) continue;
+        const v = pixelData[i];
+        const color = paletteColors[String(v)];
+        if (v === 0 || !color) {
+            cell.style.background = '#000';
+        } else {
+            cell.style.background = rgbToHex(color.r, color.g, color.b);
+        }
+    }
+
+    // Update active highlight in timeline
+    document.querySelectorAll('.anim-frame-thumb').forEach(t => {
+        t.classList.toggle('active', parseInt(t.dataset.frame) === currentFrameIndex);
+    });
+
+    if (onionSkinEnabled) renderOnionSkin();
+}
+
+function updateFrameDuration(val) {
+    animDurations[currentFrameIndex] = parseInt(val) || 150;
+}
+
+function animAddFrame() {
+    animFrames[currentFrameIndex] = pixelData.slice();
+    const newFrame = new Array(GRID_SIZE * GRID_SIZE).fill(0);
+    animFrames.splice(currentFrameIndex + 1, 0, newFrame);
+    animDurations.splice(currentFrameIndex + 1, 0, 150);
+    renderTimeline();
+    selectFrame(currentFrameIndex + 1);
+}
+
+function animDuplicateFrame() {
+    animFrames[currentFrameIndex] = pixelData.slice();
+    const copy = animFrames[currentFrameIndex].slice();
+    animFrames.splice(currentFrameIndex + 1, 0, copy);
+    animDurations.splice(currentFrameIndex + 1, 0, animDurations[currentFrameIndex]);
+    renderTimeline();
+    selectFrame(currentFrameIndex + 1);
+}
+
+function animDeleteFrame() {
+    if (animFrames.length <= 1) {
+        clearCanvas();
+        return;
+    }
+    animFrames.splice(currentFrameIndex, 1);
+    animDurations.splice(currentFrameIndex, 1);
+    const newIdx = Math.min(currentFrameIndex, animFrames.length - 1);
+    currentFrameIndex = newIdx;
+    pixelData = animFrames[currentFrameIndex];
+    renderTimeline();
+    selectFrame(currentFrameIndex);
+}
+
+function animMoveFrame(dir) {
+    const target = currentFrameIndex + dir;
+    if (target < 0 || target >= animFrames.length) return;
+    animFrames[currentFrameIndex] = pixelData.slice();
+
+    const tmp = animFrames[currentFrameIndex];
+    animFrames[currentFrameIndex] = animFrames[target];
+    animFrames[target] = tmp;
+
+    const tmpDur = animDurations[currentFrameIndex];
+    animDurations[currentFrameIndex] = animDurations[target];
+    animDurations[target] = tmpDur;
+
+    renderTimeline();
+    selectFrame(target);
+}
+
+// =====================================================================
+// Onion Skinning
+// =====================================================================
+
+function toggleOnionSkin(enabled) {
+    onionSkinEnabled = enabled;
+    const canvas = document.getElementById('onionSkinCanvas');
+    if (!canvas) return;
+    if (enabled) {
+        _resizeOnionCanvas();
+        canvas.style.display = 'block';
+        renderOnionSkin();
+    } else {
+        canvas.style.display = 'none';
+    }
+}
+
+function renderOnionSkin() {
+    const canvas = document.getElementById('onionSkinCanvas');
+    if (!canvas || !onionSkinEnabled) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (currentFrameIndex === 0) return;
+
+    const prevFrame = animFrames[currentFrameIndex - 1];
+    ctx.globalAlpha = 0.3;
+    for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+        const v = prevFrame[i];
+        if (v === 0) continue;
+        const color = paletteColors[String(v)];
+        if (!color) continue;
+        ctx.fillStyle = rgbToHex(color.r, color.g, color.b);
+        const x = i % GRID_SIZE;
+        const y = Math.floor(i / GRID_SIZE);
+        ctx.fillRect(x, y, 1, 1);
+    }
+    ctx.globalAlpha = 1.0;
+}
+
+// =====================================================================
+// Animation Playback
+// =====================================================================
+
+// =====================================================================
+// Animation Playback
+// =====================================================================
+
+function animPlay() {
+    if (animPlaying) return;
+    if (animFrames.length < 2) {
+        showStatus('pixelArtStatus', 'Add at least 2 frames to play an animation', 'error');
+        return;
+    }
+    animFrames[currentFrameIndex] = pixelData.slice();
+    animPlaying = true;
+    document.getElementById('animPlayBtn').textContent = '⏸ Playing…';
+
+    // Temporarily hide onion skin
+    const onionCanvas = document.getElementById('onionSkinCanvas');
+    if (onionCanvas) onionCanvas.style.opacity = '0';
+
+    playbackFrameIdx = 0;
+    _playNextFrame();
+}
+
+function _playNextFrame() {
+    if (!animPlaying) return;
+    selectFrame(playbackFrameIdx);
+    _pushAnimFrameToMatrix(animFrames[playbackFrameIdx], playbackFrameIdx);
+
+    // Get current frame duration and schedule next
+    const duration = animDurations[playbackFrameIdx] || 150;
+    playbackFrameIdx = (playbackFrameIdx + 1) % animFrames.length;
+
+    animPlayTimeout = setTimeout(_playNextFrame, duration);
+}
+
+function animStop() {
+    if (animPlayTimeout !== null) {
+        clearTimeout(animPlayTimeout);
+        animPlayTimeout = null;
+    }
+    animPlaying = false;
+    const btn = document.getElementById('animPlayBtn');
+    if (btn) btn.textContent = '▶ Play';
+
+    // Restore onion skin
+    const onionCanvas = document.getElementById('onionSkinCanvas');
+    if (onionCanvas) onionCanvas.style.opacity = '1';
+}
+
+async function _pushAnimFrameToMatrix(frame, frameNum) {
+    if (isMatrixPushing) return;
+    isMatrixPushing = true;
+    try {
+        await fetch('/api/pixel-art/preview-animation', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pixels: Array.from(frame), frame: frameNum})
+        });
+    } catch (_) {
+        // Ignore errors during playback
+    } finally {
+        isMatrixPushing = false;
+    }
 }
 
 async function previewPixelArt() {
@@ -1198,6 +1482,59 @@ async function savePixelArt() {
         if (resp.ok && data.status === 'success') {
             showStatus('pixelArtStatus', `Saved to ${data.path}`, 'success');
             // Refresh SD card list so the newly saved file appears immediately
+            loadPixelLibrary(true);
+        } else {
+            showStatus('pixelArtStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
+        }
+    } catch (e) {
+        showStatus('pixelArtStatus', 'Error: ' + e, 'error');
+    }
+}
+
+async function saveAnimation() {
+    const name = document.getElementById('iconName').value.trim();
+    if (!name) {
+        showStatus('pixelArtStatus', 'Please enter a name for the animation', 'error');
+        return;
+    }
+    if (animFrames.length < 1) {
+        showStatus('pixelArtStatus', 'No frames to save', 'error');
+        return;
+    }
+    // Flush current canvas edits back into the frame array
+    animFrames[currentFrameIndex] = pixelData.slice();
+
+    const frameCount = animFrames.length;
+
+    // V2 spec: JANM + frame_count + (16-bit duration + 256 pixel bytes) per frame
+    const bufSize = 5 + frameCount * 258;
+    const buf = new Uint8Array(bufSize);
+    buf[0] = 0x4A; // J
+    buf[1] = 0x41; // A
+    buf[2] = 0x4E; // N
+    buf[3] = 0x4D; // M
+    buf[4] = frameCount;
+
+    for (let f = 0; f < frameCount; f++) {
+        const offset = 5 + f * 258;
+        const durationMs = animDurations[f] || 150;
+        buf[offset] = durationMs & 0xFF;           // Little endian low byte
+        buf[offset + 1] = (durationMs >> 8) & 0xFF; // Little endian high byte
+
+        for (let i = 0; i < 256; i++) {
+            buf[offset + 2 + i] = animFrames[f][i] & 0xFF;
+        }
+    }
+
+    try {
+        const resp = await fetch('/api/pixel-art/save-animation?name=' + encodeURIComponent(name), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/octet-stream'},
+            body: buf
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+            showStatus('pixelArtStatus', `Animation saved to ${data.path} (${data.frames} frames)`, 'success');
             loadPixelLibrary(true);
         } else {
             showStatus('pixelArtStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
@@ -1262,12 +1599,37 @@ async function loadPixelLibrary(force = false) {
                 binSelect.appendChild(opt);
             }
         }
+
+        // Populate SD card .janim dropdown
+        const janimSelect = document.getElementById('iconJanimSelect');
+        if (janimSelect) {
+            janimSelect.innerHTML = '';
+            if (data.janims && data.janims.length > 0) {
+                const defOpt = document.createElement('option');
+                defOpt.value = '';
+                defOpt.textContent = 'Select file…';
+                janimSelect.appendChild(defOpt);
+                data.janims.forEach(filename => {
+                    const opt = document.createElement('option');
+                    opt.value = filename;
+                    opt.textContent = filename;
+                    janimSelect.appendChild(opt);
+                });
+            } else {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No .janim files on SD';
+                janimSelect.appendChild(opt);
+            }
+        }
     } catch (e) {
         pixelLibraryLoaded = false;
         const libSelect = document.getElementById('iconLibSelect');
         if (libSelect) libSelect.innerHTML = '<option value="">Error loading library</option>';
         const binSelect = document.getElementById('iconBinSelect');
         if (binSelect) binSelect.innerHTML = '<option value="">Error loading library</option>';
+        const janimSelect = document.getElementById('iconJanimSelect');
+        if (janimSelect) janimSelect.innerHTML = '<option value="">Error loading library</option>';
     }
 }
 
@@ -1294,6 +1656,25 @@ async function pixelLoadIcon(source) {
             showStatus('pixelArtStatus', `📂 Loaded ${name} from icons.py`, 'success');
         } catch (e) {
             showStatus('pixelArtStatus', 'Error loading icon: ' + e.message, 'error');
+        }
+    } else if (source === 'janim') {
+        const select = document.getElementById('iconJanimSelect');
+        const filename = select ? select.value : '';
+        if (!filename) {
+            showStatus('pixelArtStatus', 'Please select a .janim file from the SD card', 'error');
+            return;
+        }
+        try {
+            const resp = await fetch('/api/pixel/load?name=' + encodeURIComponent(filename));
+            if (!resp.ok) {
+                let errMsg = 'Unknown error';
+                try { const errData = await resp.json(); errMsg = errData.error || errMsg; } catch (_) {}
+                throw new Error(errMsg);
+            }
+            const buf = await resp.arrayBuffer();
+            _applyAnimBuffer(new Uint8Array(buf), filename);
+        } catch (e) {
+            showStatus('pixelArtStatus', 'Error loading animation: ' + e.message, 'error');
         }
     } else {
         const select = document.getElementById('iconBinSelect');
@@ -1326,9 +1707,13 @@ function _applyPixelBuffer(bytes) {
         showStatus('pixelArtStatus', `Error: file too small (${bytes.length} bytes, expected ${GRID_SIZE * GRID_SIZE})`, 'error');
         return;
     }
+    // Replace current frame with the loaded data and reset to single-frame mode
+    const frame = Array.from(bytes.subarray(0, GRID_SIZE * GRID_SIZE));
+    animFrames = [frame];
+    currentFrameIndex = 0;
+    pixelData = animFrames[0];
     for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
-        const v = bytes[i];
-        pixelData[i] = v;
+        const v = pixelData[i];
         const cell = document.querySelector(`.pixel-cell[data-index="${i}"]`);
         if (cell) {
             if (v === 0) {
@@ -1339,6 +1724,57 @@ function _applyPixelBuffer(bytes) {
             }
         }
     }
+    renderTimeline();
+}
+
+function _applyAnimBuffer(bytes, filename) {
+    // Parse V2 .janim binary
+    const minSize = 5 + 258;
+    if (bytes.length < minSize) {
+        showStatus('pixelArtStatus', `Error: file too small to be a valid .janim (${bytes.length} bytes)`, 'error');
+        return;
+    }
+    const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (magic !== 'JANM') {
+        showStatus('pixelArtStatus', 'Error: not a valid .janim file (bad magic bytes)', 'error');
+        return;
+    }
+    const frameCount = bytes[4];
+    const expectedSize = 5 + frameCount * 258;
+    if (bytes.length < expectedSize) {
+        showStatus('pixelArtStatus', `Error: truncated .janim file (${bytes.length} bytes, expected ${expectedSize})`, 'error');
+        return;
+    }
+
+    animFrames = [];
+    animDurations = [];
+    for (let f = 0; f < frameCount; f++) {
+        const offset = 5 + f * 258;
+        const durationMs = bytes[offset] | (bytes[offset + 1] << 8); // Reconstruct 16-bit duration
+        animDurations.push(durationMs);
+        animFrames.push(Array.from(bytes.subarray(offset + 2, offset + 258)));
+    }
+    currentFrameIndex = 0;
+    pixelData = animFrames[0];
+
+    const baseName = filename.replace(/\.janim$/i, '');
+    document.getElementById('iconName').value = baseName;
+
+    // Refresh canvas to show frame 0
+    for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+        const v = pixelData[i];
+        const cell = document.querySelector(`.pixel-cell[data-index="${i}"]`);
+        if (cell) {
+            if (v === 0) {
+                cell.style.background = '#000';
+            } else {
+                const color = paletteColors[String(v)];
+                cell.style.background = color ? rgbToHex(color.r, color.g, color.b) : '#000';
+            }
+        }
+    }
+    renderTimeline();
+    showStatus('pixelArtStatus', `📂 Loaded ${filename} (${frameCount} frames)`, 'success');
 }
 
 // =====================================================================
