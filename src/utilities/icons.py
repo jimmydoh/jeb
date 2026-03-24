@@ -939,9 +939,6 @@ class Icons:
          0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     ])
 
-    # CAT_IDLE – same as VIRTUAL_PET (used with PULSE animation for idle state)
-    CAT_IDLE = VIRTUAL_PET
-
     # CAT_EAT – wide eyes + open mouth + gold food dot at chin
     CAT_EAT = bytes([
         # Row  0
@@ -1338,10 +1335,8 @@ class Icons:
         "PERLIN_FLOW": PERLIN_FLOW,
         "DIGITAL_RAIN": DIGITAL_RAIN,
         "SORTING_VISUALIZER": SORTING_VISUALIZER,
-        "CAT_IDLE": CAT_IDLE,
         "CAT_EAT": CAT_EAT,
         "CAT_SLEEP": CAT_SLEEP,
-        "CAT_WALK": CAT_WALK,
         "0": DEFAULT,
         "1": DEFAULT,
         "2": DEFAULT,

@@ -1791,11 +1791,16 @@ def test_pixel_art_save_no_encoding_error():
 # Animation save / preview-animation tests
 # =====================================================================
 
-def _make_janim_body(frame_count=2, fps=8):
-    """Helper: build a minimal valid .janim binary blob."""
+def _make_janim_body(frame_count=2, duration_ms=150):
+    """Helper: build a minimal valid .janim V2 binary blob.
+
+    V2 format: JANM (4) + frame_count (1) + [duration_le (2) + pixels (256)] * frame_count
+    """
     body = bytearray(b'JANM')
-    body += bytes([frame_count, fps])
+    body += bytes([frame_count])
     for _ in range(frame_count):
+        # 2-byte duration (little-endian)
+        body += bytes([duration_ms & 0xFF, (duration_ms >> 8) & 0xFF])
         body += bytes(256)
     return bytes(body)
 
@@ -1830,13 +1835,12 @@ def test_save_animation_success():
 
     request = MockRequest()
     request.query_params = {"name": "test_anim"}
-    request.body = _make_janim_body(frame_count=3, fps=12)
+    request.body = _make_janim_body(frame_count=3, duration_ms=300)
     response = handler(request)
     assert response.status == 200
     data = json.loads(response.body)
     assert data["status"] == "success"
     assert data["frames"] == 3
-    assert data["fps"] == 12
     assert "test_anim" in data["path"]
 
     print("  ✓ Save animation success test passed")
@@ -1894,8 +1898,8 @@ def test_save_animation_bad_magic():
     handler = _find_route(manager, "/api/pixel-art/save-animation")
     request = MockRequest()
     request.query_params = {"name": "bad_magic"}
-    # Wrong magic (JSEQ instead of JANM)
-    request.body = b'JSEQ' + bytes([2, 8]) + bytes(512)
+    # Wrong magic (JSEQ instead of JANM) with otherwise valid V2 structure
+    request.body = b'JSEQ' + bytes([2]) + bytes(2 + 256) * 2
     response = handler(request)
     assert response.status == 400
     data = json.loads(response.body)
@@ -1916,8 +1920,8 @@ def test_save_animation_truncated_body():
     handler = _find_route(manager, "/api/pixel-art/save-animation")
     request = MockRequest()
     request.query_params = {"name": "truncated"}
-    # 3 frames declared but only 1 frame of data provided
-    request.body = b'JANM' + bytes([3, 8]) + bytes(256)
+    # 3 frames declared but only 1 frame of V2 data provided (should fail)
+    request.body = b'JANM' + bytes([3]) + bytes(2 + 256)
     response = handler(request)
     assert response.status == 400
 
