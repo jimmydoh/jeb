@@ -1416,6 +1416,48 @@ class WebServerManager:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                                 content_type="application/json", status=500)
 
+        # API: Return tone sequence data for a single named tone (for browser playback)
+        @self.server.route("/api/audio/tone", GET)
+        def get_tone_data(request: Request):
+            """Return serialised sequence data for a named tone from tones.py.
+
+            Query parameter:
+                name (str): Uppercase tone constant name, e.g. SYSTEM_BOOT
+
+            Returns JSON:
+                {"bpm": 120, "patch": "SELECT", "sequence": [["C4", 0.25], ...]}
+            """
+            try:
+                name = request.query_params.get("name", "").strip().upper()
+                if not name:
+                    return Response(request, '{"error": "name query parameter required"}',
+                                    content_type="application/json", status=400)
+
+                try:
+                    import utilities.tones as _tones
+                    tone_data = getattr(_tones, name, None)
+                    if tone_data is None or not isinstance(tone_data, dict):
+                        return Response(request, f'{{"error": "Tone {name} not found"}}',
+                                        content_type="application/json", status=404)
+
+                    patch = tone_data.get("patch", {})
+                    patch_name = patch.get("name", "BEEP") if isinstance(patch, dict) else "BEEP"
+                    sequence = tone_data.get("sequence", [])
+                    serialized = [[note, dur] for note, dur in sequence]
+
+                    result = json.dumps({
+                        "bpm": tone_data.get("bpm", 120),
+                        "patch": patch_name,
+                        "sequence": serialized,
+                    })
+                    return Response(request, result, content_type="application/json")
+                except ImportError:
+                    return Response(request, '{"error": "tones module not available"}',
+                                    content_type="application/json", status=503)
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                                content_type="application/json", status=500)
+
         # API: Load a .jseq sequence file from /sd/sequences/
         @self.server.route("/api/synth/load", GET)
         def load_synth_sequence(request: Request):

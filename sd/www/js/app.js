@@ -2684,6 +2684,9 @@ function _browserScheduleNote(audioCtx, freq, patchName, startTime, durationSec)
     _browserActiveNodes.push(gainNode);
 }
 
+/** Semitone offsets from C for each note name, shared by note-name helpers. */
+const _NOTE_SEMITONES = { 'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11 };
+
 /** Convert a JSEQ note index (0 = rest, 1 = MIDI 0) to a frequency in Hz. */
 function _jseqIndexToFreq(index) {
     if (!index || index === 0) return 0;
@@ -2726,7 +2729,7 @@ function audioPreviewBrowser() {
         const patchName = audioChannelPatches[c] || 'BEEP';
         let cursor = scheduleOffset;
 
-        for (let s = 0; s < AUDIO_NUM_STEPS; s++) {
+        for (let s = 0; s < audioNumSteps; s++) {
             const step = audioSteps[c][s];
             const durationBeats = step ? step.duration : activeDuration;
             const durationSec = durationBeats * beatDuration;
@@ -2750,8 +2753,19 @@ function audioPreviewBrowser() {
 }
 
 /**
- * Play a single preview tone in the browser for the selected tone/patch.
- * Plays A4 (440 Hz) for 1 second using the BEEP patch as a quick audibility check.
+ * Convert a note name (e.g. 'C4', 'A#3') to a frequency in Hz.
+ * Returns 0 for unrecognised names (treated as rests).
+ */
+function _noteNameToFreq(noteName) {
+    const m = noteName && noteName.match(/^([A-G]#?)(-?\d+)$/);
+    if (!m) return 0;
+    const midi = (parseInt(m[2]) + 1) * 12 + (_NOTE_SEMITONES[m[1]] !== undefined ? _NOTE_SEMITONES[m[1]] : 0);
+    return 440.0 * Math.pow(2, (midi - 69) / 12.0);
+}
+
+/**
+ * Fetch the tone sequence data from the device and play it in the browser.
+ * The /api/audio/tone endpoint returns bpm, patch name, and the note sequence.
  */
 async function playToneBrowser() {
     const select = document.getElementById('toneSelect');
@@ -2761,10 +2775,30 @@ async function playToneBrowser() {
         return;
     }
     browserStopAll();
-    const audioCtx = _getAudioContext();
-    const now = audioCtx.currentTime + 0.05;
-    _browserScheduleNote(audioCtx, 440.0, 'BEEP', now, 1.0);
-    showStatus('toneStatus', `🔊 Playing browser preview for "${name}"`, 'success');
+    try {
+        const resp = await fetch(`/api/audio/tone?name=${encodeURIComponent(name)}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        const audioCtx = _getAudioContext();
+        const bpm = data.bpm || 120;
+        const beatDuration = 60.0 / bpm;
+        let cursor = audioCtx.currentTime + 0.05;
+        const patchName = data.patch || 'BEEP';
+
+        for (const [noteName, durationBeats] of (data.sequence || [])) {
+            const freq = _noteNameToFreq(noteName);
+            const durationSec = durationBeats * beatDuration;
+            if (freq > 0) {
+                _browserScheduleNote(audioCtx, freq, patchName, cursor, durationSec);
+            }
+            cursor += durationSec;
+        }
+        showStatus('toneStatus', `🔊 Playing "${name}" in browser`, 'success');
+    } catch (e) {
+        showStatus('toneStatus', 'Browser playback error: ' + e, 'error');
+    }
 }
 
 /**
