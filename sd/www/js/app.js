@@ -837,10 +837,11 @@ let _topoPulses = [];
 let _topoRafId = null;
 let _topoInitialized = false;
 let _topoXOff = 0;              // Centering offset updated each render frame
-const _TOPO_NODE_R = 26;        // Node circle radius
-const _TOPO_H_STEP = 130;       // Horizontal spacing between nodes
-const _TOPO_ORIGIN_X = 55;      // X of the Core node
-const _TOPO_H = 150;            // Canvas internal height
+const _TOPO_NODE_R = 36;        // Node circle radius
+const _TOPO_H_STEP = 170;       // Horizontal spacing between nodes
+const _TOPO_ORIGIN_X = 75;      // X of the Core node
+const _TOPO_H = 200;            // Canvas internal height
+const _lastPulseSpawn = {};
 
 
 async function fetchTelemetry() {
@@ -2507,7 +2508,7 @@ function _topoDrawNode(ctx, x, y, topLabel, bottomLabel, isCore, isOnline) {
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = isCore ? '#0d2744' : (isOnline ? '#0d2a0d' : '#1e1010');
     ctx.strokeStyle = isCore ? '#2196F3' : (isOnline ? '#4CAF50' : '#555');
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.fill();
     ctx.stroke();
 
@@ -2515,15 +2516,15 @@ function _topoDrawNode(ctx, x, y, topLabel, bottomLabel, isCore, isOnline) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = isCore ? '#90CAF9' : (isOnline ? '#90EE90' : '#777');
-    ctx.font = 'bold 9px monospace';
+    ctx.font = 'bold 12px monospace';
     const hasBottom = bottomLabel != null && bottomLabel !== '';
-    ctx.fillText(topLabel, x, y - (hasBottom ? 5 : 0));
+    ctx.fillText(topLabel, x, y - (hasBottom ? 8 : 0));
 
     // Secondary label (bottom line inside circle)
     if (hasBottom) {
-        ctx.font = '8px monospace';
+        ctx.font = '10px monospace';
         ctx.fillStyle = isCore ? '#5b9bd5' : (isOnline ? '#5a9a5a' : '#555');
-        ctx.fillText(bottomLabel, x, y + 6);
+        ctx.fillText(bottomLabel, x, y + 8);
     }
 
     // Subtitle below node (type name) is rendered by the caller after invoking _topoDrawNode.
@@ -2560,45 +2561,12 @@ function _topoRender() {
         const online = sat && sat.active;
 
         ctx.strokeStyle = online ? '#1e4d1e' : '#2a2a2a';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 4;
         ctx.setLineDash([]);
         ctx.beginPath();
         ctx.moveTo(from.x + _TOPO_NODE_R, from.y);
         ctx.lineTo(to.x - _TOPO_NODE_R, to.y);
         ctx.stroke();
-    }
-
-    // --- Core node ---
-    const corePos = _topoNodePos(0, w, xOff);
-    _topoDrawNode(ctx, corePos.x, corePos.y, 'CORE', null, true, true);
-
-    // Subtitle below Core
-    ctx.font = '8px monospace';
-    ctx.fillStyle = '#2a6090';
-    ctx.textAlign = 'center';
-    ctx.fillText('CORE', corePos.x, corePos.y + _TOPO_NODE_R + 11);
-
-    // --- Satellite nodes ---
-    sids.forEach((sid, i) => {
-        const pos = _topoNodePos(i + 1, w, xOff);
-        const sat = _topoSatData[sid];
-        const online = sat && sat.active;
-        const typeLabel = (sat && sat.type) ? sat.type : '??';
-        _topoDrawNode(ctx, pos.x, pos.y, `SAT`, sid, false, online);
-
-        // Type subtitle below node
-        ctx.font = '8px monospace';
-        ctx.fillStyle = online ? '#3a6a3a' : '#444';
-        ctx.textAlign = 'center';
-        ctx.fillText(typeLabel, pos.x, pos.y + _TOPO_NODE_R + 11);
-    });
-
-    // Empty state message
-    if (sids.length === 0) {
-        ctx.font = '11px monospace';
-        ctx.fillStyle = '#555';
-        ctx.textAlign = 'center';
-        ctx.fillText('No satellites detected', w / 2, _TOPO_H / 2);
     }
 
     // --- Pulse animations (data flow: satellite → core) ---
@@ -2621,15 +2589,48 @@ function _topoRender() {
         const py = from.y + (to.y - from.y) * progress;
 
         const alpha = 1 - progress * 0.5;
-        const grad = ctx.createRadialGradient(px, py, 0, px, py, 9);
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, 12);
         grad.addColorStop(0, `rgba(76,175,80,${alpha})`);
         grad.addColorStop(0.5, `rgba(76,175,80,${alpha * 0.5})`);
         grad.addColorStop(1, 'rgba(76,175,80,0)');
         ctx.beginPath();
-        ctx.arc(px, py, 9, 0, Math.PI * 2);
+        ctx.arc(px, py, 12, 0, Math.PI * 2);
         ctx.fillStyle = grad;
         ctx.fill();
     });
+
+    // --- Core node ---
+    const corePos = _topoNodePos(0, w, xOff);
+    _topoDrawNode(ctx, corePos.x, corePos.y, 'CORE', null, true, true);
+
+    // Subtitle below Core
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#2a6090';
+    ctx.textAlign = 'center';
+    ctx.fillText('CORE', corePos.x, corePos.y + _TOPO_NODE_R + 15);
+
+    // --- Satellite nodes ---
+    sids.forEach((sid, i) => {
+        const pos = _topoNodePos(i + 1, w, xOff);
+        const sat = _topoSatData[sid];
+        const online = sat && sat.active;
+        const typeLabel = (sat && sat.type) ? sat.type : '??';
+        _topoDrawNode(ctx, pos.x, pos.y, `SAT`, sid, false, online);
+
+        // Type subtitle below node
+        ctx.font = '10px monospace';
+        ctx.fillStyle = online ? '#3a6a3a' : '#444';
+        ctx.textAlign = 'center';
+        ctx.fillText(typeLabel, pos.x, pos.y + _TOPO_NODE_R + 15);
+    });
+
+    // Empty state message
+    if (sids.length === 0) {
+        ctx.font = '11px monospace';
+        ctx.fillStyle = '#555';
+        ctx.textAlign = 'center';
+        ctx.fillText('No satellites detected', w / 2, _TOPO_H / 2);
+    }
 
     // Keep animation loop alive while pulses remain
     if (_topoPulses.length > 0) {
@@ -2722,10 +2723,10 @@ function drawTopologyMap(satellites) {
     const now = Date.now();
     Object.keys(_topoSatData).forEach(sid => {
         if (_topoSatData[sid].active) {
-            // Only spawn a new pulse if the previous one for this sid has progressed enough
-            const existing = _topoPulses.find(p => p.sid === sid);
-            if (!existing || (now - existing.ts) > PULSE_SPAWN_THROTTLE_MS) {
+            const lastSpawn = _lastPulseSpawn[sid] || 0;
+            if (now - lastSpawn > PULSE_SPAWN_THROTTLE_MS) {
                 _topoPulses.push({ sid, ts: now });
+                _lastPulseSpawn[sid] = now;
             }
         }
     });
