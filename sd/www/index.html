@@ -23,6 +23,7 @@
             <button class="tab" onclick="showTab('pixelart')">Pixel Art Studio</button>
             <button class="tab" onclick="showTab('audiostudio')">Audio Studio</button>
             <button class="tab" onclick="showTab('hid')">HID</button>
+            <button class="tab" onclick="showTab('gamepad')">🎮 Gamepad</button>
             <button id="adminTabBtn" class="tab admin-tab-hidden" onclick="showTab('admin')">⚙ Admin</button>
         </div>
 
@@ -402,6 +403,69 @@
             <p style="color: #b0b0b0; margin-bottom: 20px;">Inject virtual hardware inputs into the live HID state for each connected unit. Panels are generated dynamically from the active satellite topology. Connect to Telemetry to populate.</p>
             <div id="hidDynamicContainer" style="display: flex; gap: 20px; flex-wrap: wrap;"></div>
             <div id="hidRemoteStatus" class="status" style="display:none; margin-top:15px;"></div>
+        </div>
+
+        <div id="gamepad" class="tab-content">
+            <h2>🎮 Gamepad</h2>
+            <p style="color: #b0b0b0; margin-bottom: 16px;">Touch-optimised virtual gamepad. Use the D-Pad and action buttons to control the active game mode wirelessly. Connect to Telemetry first to enable input.</p>
+
+            <div class="gamepad-toolbar">
+                <div class="gamepad-toolbar-group">
+                    <label for="gamepadTargetSelect" style="color:#b0b0b0; font-size:0.85em; margin-right:8px;">Target unit:</label>
+                    <select id="gamepadTargetSelect" style="width:auto; padding:6px 10px; font-size:0.9em;"></select>
+                </div>
+                <div id="gamepadStatus" class="status" style="display:none; flex:1; margin-left:16px;"></div>
+            </div>
+
+            <div class="gamepad-layout">
+                <!-- D-Pad -->
+                <div class="gamepad-zone gamepad-zone-dpad">
+                    <div class="gamepad-dpad">
+                        <div class="gamepad-dpad-row">
+                            <button class="gamepad-dpad-btn gamepad-dpad-up" id="gpDpadUp">▲</button>
+                        </div>
+                        <div class="gamepad-dpad-row">
+                            <button class="gamepad-dpad-btn gamepad-dpad-left" id="gpDpadLeft">◀</button>
+                            <div class="gamepad-dpad-center"></div>
+                            <button class="gamepad-dpad-btn gamepad-dpad-right" id="gpDpadRight">▶</button>
+                        </div>
+                        <div class="gamepad-dpad-row">
+                            <button class="gamepad-dpad-btn gamepad-dpad-down" id="gpDpadDown">▼</button>
+                        </div>
+                    </div>
+                    <div class="gamepad-dpad-label">D-PAD</div>
+                </div>
+
+                <!-- Centre area: SELECT / START macros -->
+                <div class="gamepad-zone gamepad-zone-center">
+                    <button class="gamepad-select-btn" id="gpSelectBtn">SELECT</button>
+                    <button class="gamepad-start-btn" id="gpStartBtn">START</button>
+                </div>
+
+                <!-- Action buttons -->
+                <div class="gamepad-zone gamepad-zone-actions">
+                    <div class="gamepad-action-cluster">
+                        <button class="gamepad-action-btn gamepad-action-y" id="gpBtnY">Y</button>
+                        <div class="gamepad-action-row">
+                            <button class="gamepad-action-btn gamepad-action-x" id="gpBtnX">X</button>
+                            <button class="gamepad-action-btn gamepad-action-b" id="gpBtnB">B</button>
+                        </div>
+                        <button class="gamepad-action-btn gamepad-action-a" id="gpBtnA">A</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Macro buttons -->
+            <div style="margin-top: 24px;">
+                <h3 style="color: #b0b0b0; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px;">Gameplay Macros</h3>
+                <div class="gamepad-macro-grid" id="gamepadMacroGrid">
+                    <button class="gamepad-macro-btn" data-macro="estop">🛑 E-Stop</button>
+                    <button class="gamepad-macro-btn" data-macro="vanguard_override">⚡ Vanguard Override</button>
+                    <button class="gamepad-macro-btn" data-macro="emp">💥 EMP Bomb</button>
+                    <button class="gamepad-macro-btn" data-macro="stasis">❄️ Stasis Field</button>
+                    <button class="gamepad-macro-btn" data-macro="enc_reset">↺ Reset Encoder</button>
+                </div>
+            </div>
         </div>
 
         <div id="admin" class="tab-content">
