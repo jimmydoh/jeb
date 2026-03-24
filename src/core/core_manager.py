@@ -264,6 +264,7 @@ class CoreManager:
         # Sleep state
         self._sleeping = False
         self._sleep_timeout_ms = 5 * 60 * 1000  # 5 minutes in milliseconds
+        self._last_wake_time = ticks_ms()
 
     def _read_version(self):
         """Read version string from the VERSION file.
@@ -624,6 +625,7 @@ class CoreManager:
         if not self._sleeping:
             return
         self._sleeping = False
+        self._last_wake_time = ticks_ms()
         # Restore LEDs and render rate
         self.leds.off_led(-1)
         self.renderer.target_frame_rate = self.renderer.DEFAULT_FRAME_RATE
@@ -645,7 +647,8 @@ class CoreManager:
                     await self._wake_system()
                 await asyncio.sleep(0.1)  # Throttled polling while sleeping
             else:
-                if self.hid.get_idle_time_ms() >= self._sleep_timeout_ms:
+                if self.hid.get_idle_time_ms() >= self._sleep_timeout_ms and \
+                   ticks_diff(ticks_ms(), getattr(self, '_last_wake_time', 0)) >= self._sleep_timeout_ms:
                     await self._enter_sleep()
                 await asyncio.sleep(0.02)  # Poll at 50Hz when awake
 
