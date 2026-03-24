@@ -1158,11 +1158,10 @@ class WebServerManager:
         def save_animation(request: Request):
             """Save a multi-frame sprite animation as a .janim file to /sd/icons/.
 
-            The request body must be a valid .janim binary blob:
+            The request body must be a valid .janim V2 binary blob:
               - 4 bytes magic: b'JANM'
               - 1 byte: frame count (1-255)
-              - 1 byte: playback FPS (1-30)
-              - frame_count * 256 bytes: pixel data (palette indices)
+              - frame_count * 258 bytes: (2-byte duration + 256-byte pixel data)
             """
             try:
                 name = request.query_params.get("name", "").strip()
@@ -1176,7 +1175,7 @@ class WebServerManager:
                                   content_type="application/json", status=400)
 
                 body = request.body
-                min_size = 4 + 1 + 1 + 256  # magic + frame_count + fps + 1 frame
+                min_size = 4 + 1 + 258  # magic + frame_count + 1 frame
                 if not body or len(body) < min_size:
                     return Response(request, f'{{"error": "request body must be a valid .janim binary (minimum {min_size} bytes)"}}',
                                   content_type="application/json", status=400)
@@ -1186,18 +1185,13 @@ class WebServerManager:
                                   content_type="application/json", status=400)
 
                 frame_count = body[4]
-                fps = body[5]
-                expected_size = 6 + frame_count * 256
+                expected_size = 5 + frame_count * 258
                 if len(body) < expected_size:
                     return Response(request, '{"error": "truncated .janim file: not enough frame data"}',
                                   content_type="application/json", status=400)
 
                 if frame_count < 1 or frame_count > 255:
                     return Response(request, '{"error": "frame_count must be 1-255"}',
-                                  content_type="application/json", status=400)
-
-                if fps < 1 or fps > 30:
-                    return Response(request, '{"error": "fps must be 1-30"}',
                                   content_type="application/json", status=400)
 
                 filepath = f"/sd/icons/{name.lower()}.janim"
@@ -1211,8 +1205,8 @@ class WebServerManager:
                     with open(filepath, "wb") as f:
                         f.write(body)
 
-                self.log(f"Animation saved: {filepath} ({frame_count} frames @ {fps} fps)")
-                return Response(request, f'{{"status": "success", "path": "{filepath}", "frames": {frame_count}, "fps": {fps}}}',
+                self.log(f"Animation saved: {filepath} ({frame_count} frames)")
+                return Response(request, f'{{"status": "success", "path": "{filepath}", "frames": {frame_count}}}',
                               content_type="application/json")
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',

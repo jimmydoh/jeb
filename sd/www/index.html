@@ -228,8 +228,8 @@
                         <span style="color:#80ccff; font-size:0.85em; font-weight:bold;">▶ Playback</span>
                         <button onclick="animPlay()" id="animPlayBtn">▶ Play</button>
                         <button onclick="animStop()" class="secondary">■ Stop</button>
-                        <label style="color:#b0b0b0; font-size:0.85em; margin-left:6px;">FPS:</label>
-                        <input type="number" id="animFps" value="8" min="1" max="30" style="width:52px;">
+                        <label style="color:#b0b0b0; font-size:0.85em; margin-left:6px;" title="Duration of current frame">Frame ms:</label>
+                        <input type="number" id="animDuration" value="150" min="10" max="10000" step="10" style="width:65px;" onchange="updateFrameDuration(this.value)">
                         <label style="color:#b0b0b0; font-size:0.85em; margin-left:6px;">
                             <input type="checkbox" id="onionSkinToggle" onchange="toggleOnionSkin(this.checked)" style="margin-right:4px;">
                             Onion Skin

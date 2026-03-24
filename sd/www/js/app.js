@@ -1027,10 +1027,13 @@ let isDrawing = false;
 
 // --- Animation state ---
 let animFrames = [new Array(GRID_SIZE * GRID_SIZE).fill(0)];
+let animDurations = [150]; // Track ms duration per frame
 let currentFrameIndex = 0;
 let animPlaying = false;
-let animPlayInterval = null;
+let animPlayTimeout = null;
+let playbackFrameIdx = 0;
 let onionSkinEnabled = false;
+let isMatrixPushing = false; // Lock to prevent network flooding
 
 function rgbToHex(r, g, b) {
     return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
@@ -1082,6 +1085,7 @@ async function initPixelArtStudio() {
 
     // Initialise with a single blank frame
     animFrames = [new Array(GRID_SIZE * GRID_SIZE).fill(0)];
+    animDurations = [150];
     currentFrameIndex = 0;
     pixelData = animFrames[0];
     renderTimeline();
@@ -1257,6 +1261,10 @@ function selectFrame(idx) {
     currentFrameIndex = idx;
     pixelData = animFrames[currentFrameIndex];
 
+    // Update duration UI for this frame
+    const durInput = document.getElementById('animDuration');
+    if (durInput) durInput.value = animDurations[currentFrameIndex] || 150;
+
     // Refresh canvas display
     for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
         const cell = document.querySelector(`.pixel-cell[data-index="${i}"]`);
@@ -1278,11 +1286,15 @@ function selectFrame(idx) {
     if (onionSkinEnabled) renderOnionSkin();
 }
 
+function updateFrameDuration(val) {
+    animDurations[currentFrameIndex] = parseInt(val) || 150;
+}
+
 function animAddFrame() {
-    // Save current before adding
     animFrames[currentFrameIndex] = pixelData.slice();
     const newFrame = new Array(GRID_SIZE * GRID_SIZE).fill(0);
     animFrames.splice(currentFrameIndex + 1, 0, newFrame);
+    animDurations.splice(currentFrameIndex + 1, 0, 150);
     renderTimeline();
     selectFrame(currentFrameIndex + 1);
 }
@@ -1291,6 +1303,7 @@ function animDuplicateFrame() {
     animFrames[currentFrameIndex] = pixelData.slice();
     const copy = animFrames[currentFrameIndex].slice();
     animFrames.splice(currentFrameIndex + 1, 0, copy);
+    animDurations.splice(currentFrameIndex + 1, 0, animDurations[currentFrameIndex]);
     renderTimeline();
     selectFrame(currentFrameIndex + 1);
 }
@@ -1301,6 +1314,7 @@ function animDeleteFrame() {
         return;
     }
     animFrames.splice(currentFrameIndex, 1);
+    animDurations.splice(currentFrameIndex, 1);
     const newIdx = Math.min(currentFrameIndex, animFrames.length - 1);
     currentFrameIndex = newIdx;
     pixelData = animFrames[currentFrameIndex];
@@ -1312,9 +1326,15 @@ function animMoveFrame(dir) {
     const target = currentFrameIndex + dir;
     if (target < 0 || target >= animFrames.length) return;
     animFrames[currentFrameIndex] = pixelData.slice();
+
     const tmp = animFrames[currentFrameIndex];
     animFrames[currentFrameIndex] = animFrames[target];
     animFrames[target] = tmp;
+
+    const tmpDur = animDurations[currentFrameIndex];
+    animDurations[currentFrameIndex] = animDurations[target];
+    animDurations[target] = tmpDur;
+
     renderTimeline();
     selectFrame(target);
 }
@@ -1362,6 +1382,10 @@ function renderOnionSkin() {
 // Animation Playback
 // =====================================================================
 
+// =====================================================================
+// Animation Playback
+// =====================================================================
+
 function animPlay() {
     if (animPlaying) return;
     if (animFrames.length < 2) {
@@ -1371,27 +1395,44 @@ function animPlay() {
     animFrames[currentFrameIndex] = pixelData.slice();
     animPlaying = true;
     document.getElementById('animPlayBtn').textContent = '⏸ Playing…';
-    const fps = Math.max(1, Math.min(30, parseInt(document.getElementById('animFps').value) || 8));
-    let frameIdx = 0;
-    animPlayInterval = setInterval(() => {
-        selectFrame(frameIdx);
-        // Also push to physical matrix if available (fire-and-forget)
-        _pushAnimFrameToMatrix(animFrames[frameIdx], frameIdx);
-        frameIdx = (frameIdx + 1) % animFrames.length;
-    }, 1000 / fps);
+
+    // Temporarily hide onion skin
+    const onionCanvas = document.getElementById('onionSkinCanvas');
+    if (onionCanvas) onionCanvas.style.opacity = '0';
+
+    playbackFrameIdx = 0;
+    _playNextFrame();
+}
+
+function _playNextFrame() {
+    if (!animPlaying) return;
+    selectFrame(playbackFrameIdx);
+    _pushAnimFrameToMatrix(animFrames[playbackFrameIdx], playbackFrameIdx);
+
+    // Get current frame duration and schedule next
+    const duration = animDurations[playbackFrameIdx] || 150;
+    playbackFrameIdx = (playbackFrameIdx + 1) % animFrames.length;
+
+    animPlayTimeout = setTimeout(_playNextFrame, duration);
 }
 
 function animStop() {
-    if (animPlayInterval !== null) {
-        clearInterval(animPlayInterval);
-        animPlayInterval = null;
+    if (animPlayTimeout !== null) {
+        clearTimeout(animPlayTimeout);
+        animPlayTimeout = null;
     }
     animPlaying = false;
     const btn = document.getElementById('animPlayBtn');
     if (btn) btn.textContent = '▶ Play';
+
+    // Restore onion skin
+    const onionCanvas = document.getElementById('onionSkinCanvas');
+    if (onionCanvas) onionCanvas.style.opacity = '1';
 }
 
 async function _pushAnimFrameToMatrix(frame, frameNum) {
+    if (isMatrixPushing) return;
+    isMatrixPushing = true;
     try {
         await fetch('/api/pixel-art/preview-animation', {
             method: 'POST',
@@ -1399,7 +1440,9 @@ async function _pushAnimFrameToMatrix(frame, frameNum) {
             body: JSON.stringify({pixels: Array.from(frame), frame: frameNum})
         });
     } catch (_) {
-        // Ignore errors during playback (matrix may be disconnected)
+        // Ignore errors during playback
+    } finally {
+        isMatrixPushing = false;
     }
 }
 
@@ -1461,22 +1504,25 @@ async function saveAnimation() {
     // Flush current canvas edits back into the frame array
     animFrames[currentFrameIndex] = pixelData.slice();
 
-    const fps = Math.max(1, Math.min(30, parseInt(document.getElementById('animFps').value) || 8));
     const frameCount = animFrames.length;
 
-    // Build binary: JANM + frame_count + fps + frame data
-    const bufSize = 6 + frameCount * 256;
+    // V2 spec: JANM + frame_count + (16-bit duration + 256 pixel bytes) per frame
+    const bufSize = 5 + frameCount * 258;
     const buf = new Uint8Array(bufSize);
     buf[0] = 0x4A; // J
     buf[1] = 0x41; // A
     buf[2] = 0x4E; // N
     buf[3] = 0x4D; // M
     buf[4] = frameCount;
-    buf[5] = fps;
+
     for (let f = 0; f < frameCount; f++) {
-        const offset = 6 + f * 256;
+        const offset = 5 + f * 258;
+        const durationMs = animDurations[f] || 150;
+        buf[offset] = durationMs & 0xFF;           // Little endian low byte
+        buf[offset + 1] = (durationMs >> 8) & 0xFF; // Little endian high byte
+
         for (let i = 0; i < 256; i++) {
-            buf[offset + i] = animFrames[f][i] & 0xFF;
+            buf[offset + 2 + i] = animFrames[f][i] & 0xFF;
         }
     }
 
@@ -1488,7 +1534,7 @@ async function saveAnimation() {
         });
         const data = await resp.json();
         if (resp.ok && data.status === 'success') {
-            showStatus('pixelArtStatus', `Animation saved to ${data.path} (${data.frames} frames @ ${data.fps} fps)`, 'success');
+            showStatus('pixelArtStatus', `Animation saved to ${data.path} (${data.frames} frames)`, 'success');
             loadPixelLibrary(true);
         } else {
             showStatus('pixelArtStatus', 'Error: ' + (data.error || 'Unknown'), 'error');
@@ -1682,8 +1728,8 @@ function _applyPixelBuffer(bytes) {
 }
 
 function _applyAnimBuffer(bytes, filename) {
-    // Parse .janim binary: JANM + frame_count + fps + frame_count*256 bytes
-    const minSize = 6 + 256;
+    // Parse V2 .janim binary
+    const minSize = 5 + 258;
     if (bytes.length < minSize) {
         showStatus('pixelArtStatus', `Error: file too small to be a valid .janim (${bytes.length} bytes)`, 'error');
         return;
@@ -1694,26 +1740,23 @@ function _applyAnimBuffer(bytes, filename) {
         return;
     }
     const frameCount = bytes[4];
-    const fps = bytes[5];
-    const expectedSize = 6 + frameCount * 256;
+    const expectedSize = 5 + frameCount * 258;
     if (bytes.length < expectedSize) {
         showStatus('pixelArtStatus', `Error: truncated .janim file (${bytes.length} bytes, expected ${expectedSize})`, 'error');
         return;
     }
 
     animFrames = [];
+    animDurations = [];
     for (let f = 0; f < frameCount; f++) {
-        const offset = 6 + f * 256;
-        animFrames.push(Array.from(bytes.subarray(offset, offset + 256)));
+        const offset = 5 + f * 258;
+        const durationMs = bytes[offset] | (bytes[offset + 1] << 8); // Reconstruct 16-bit duration
+        animDurations.push(durationMs);
+        animFrames.push(Array.from(bytes.subarray(offset + 2, offset + 258)));
     }
     currentFrameIndex = 0;
     pixelData = animFrames[0];
 
-    // Update FPS slider
-    const fpsInput = document.getElementById('animFps');
-    if (fpsInput) fpsInput.value = fps;
-
-    // Auto-populate save name
     const baseName = filename.replace(/\.janim$/i, '');
     document.getElementById('iconName').value = baseName;
 
@@ -1731,7 +1774,7 @@ function _applyAnimBuffer(bytes, filename) {
         }
     }
     renderTimeline();
-    showStatus('pixelArtStatus', `📂 Loaded ${filename} (${frameCount} frames @ ${fps} fps)`, 'success');
+    showStatus('pixelArtStatus', `📂 Loaded ${filename} (${frameCount} frames)`, 'success');
 }
 
 // =====================================================================
