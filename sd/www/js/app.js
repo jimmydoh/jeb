@@ -72,6 +72,7 @@ function showTab(tabName) {
     if (tabName === 'audiostudio') initAudioStudio();
     if (tabName === 'layout') loadLayout();
     if (tabName === 'admin') loadAdmin();
+    if (tabName === 'gamepad') initGamepad();
 }
 
 // =====================================================
@@ -3231,6 +3232,324 @@ function rebuildHIDInterface(satellites) {
         btnIndex += profile.buttons.length;
         encIndex += profile.encoders.length;
     }
+
+    // Keep the gamepad unit selector in sync with the current topology.
+    _gpRefreshTargetOptions();
+}
+
+// =====================================================================
+// Virtual Gamepad
+// =====================================================================
+// Button → HID action mapping.
+// Each entry maps a gamepad control ID to a function (sid, state) that
+// performs the appropriate _hidRemoteSend call.
+//
+// D-Pad:
+//   UP/DOWN  → momentary toggle index 0 (U / D)
+//   LEFT/RIGHT → encoder index 0 delta (−1 / +1)
+// Action buttons:
+//   A → button index 0, B → button index 1
+//   X → button index 2, Y → button index 3
+// Centre:
+//   SELECT → encoder button index 0
+//   START  → button index 3 (B4 on CORE) or last available button
+
+let _gamepadInitialized = false;
+
+// Track which pointer IDs are currently held on each button element.
+// Enables proper multi-touch: each finger gets its own pointerId.
+const _gpPointers = {};   // { elementId: Set<pointerId> }
+
+function _gpAddPointer(elId, pid) {
+    if (!_gpPointers[elId]) _gpPointers[elId] = new Set();
+    _gpPointers[elId].add(pid);
+}
+
+function _gpRemovePointer(elId, pid) {
+    if (_gpPointers[elId]) _gpPointers[elId].delete(pid);
+}
+
+function _gpHeld(elId) {
+    return _gpPointers[elId] && _gpPointers[elId].size > 0;
+}
+
+/** Return the currently selected target SID from the toolbar dropdown. */
+function _gpTargetSid() {
+    const sel = document.getElementById('gamepadTargetSelect');
+    return sel ? sel.value : 'CORE';
+}
+
+/** Send an error/success notice to the gamepad status bar. */
+function _gpShowStatus(msg, type) {
+    showStatus('gamepadStatus', msg, type);
+}
+
+/** Convenience: send HID update for the selected target and catch errors. */
+async function _gpSend(payload) {
+    const sid = _gpTargetSid();
+    if (!_hidRemoteState[sid]) {
+        _gpShowStatus('No HID state for ' + sid + '. Connect to Telemetry first.', 'error');
+        return;
+    }
+    try {
+        await _hidRemoteSend(sid, payload);
+    } catch (e) {
+        _gpShowStatus('Send error: ' + e, 'error');
+    }
+}
+
+/** Attach pointerdown/up/cancel listeners to a button for multi-touch press/release. */
+function _gpBindButton(el, onPress, onRelease) {
+    const elId = el.id;
+
+    el.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        el.setPointerCapture(e.pointerId);
+        _gpAddPointer(elId, e.pointerId);
+        if (_gpPointers[elId].size === 1) {
+            el.classList.add('pressed');
+            onPress();
+        }
+    });
+
+    const up = e => {
+        _gpRemovePointer(elId, e.pointerId);
+        if (!_gpHeld(elId)) {
+            el.classList.remove('pressed');
+            onRelease();
+        }
+    };
+
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+}
+
+/** Populate the target-unit dropdown from the current _hidRemoteState. */
+function _gpRefreshTargetOptions() {
+    const sel = document.getElementById('gamepadTargetSelect');
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '';
+    const sids = Object.keys(_hidRemoteState);
+    if (sids.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = 'CORE';
+        opt.textContent = 'CORE (not connected)';
+        sel.appendChild(opt);
+        return;
+    }
+    sids.forEach(sid => {
+        const opt = document.createElement('option');
+        opt.value = sid;
+        opt.textContent = sid === 'CORE' ? 'CORE' : 'SAT ' + sid;
+        sel.appendChild(opt);
+    });
+    if (sids.includes(prev)) sel.value = prev;
+}
+
+/** One-time setup of gamepad controls. Safe to call multiple times. */
+function initGamepad() {
+    _gpRefreshTargetOptions();
+
+    if (_gamepadInitialized) return;
+    _gamepadInitialized = true;
+
+    // ---- D-Pad ----
+    const dpadUp    = document.getElementById('gpDpadUp');
+    const dpadDown  = document.getElementById('gpDpadDown');
+    const dpadLeft  = document.getElementById('gpDpadLeft');
+    const dpadRight = document.getElementById('gpDpadRight');
+
+    // UP/DOWN → momentary toggle index 0
+    _gpBindButton(dpadUp,
+        () => {
+            const sid = _gpTargetSid();
+            const st = _hidRemoteState[sid];
+            if (!st || !st.momentary.length) return;
+            st.momentary[0] = 'U';
+            _gpSend({ momentary_toggles: st.momentary.join('') });
+        },
+        () => {
+            const sid = _gpTargetSid();
+            const st = _hidRemoteState[sid];
+            if (!st || !st.momentary.length) return;
+            st.momentary[0] = 'C';
+            _gpSend({ momentary_toggles: st.momentary.join('') });
+        }
+    );
+
+    _gpBindButton(dpadDown,
+        () => {
+            const sid = _gpTargetSid();
+            const st = _hidRemoteState[sid];
+            if (!st || !st.momentary.length) return;
+            st.momentary[0] = 'D';
+            _gpSend({ momentary_toggles: st.momentary.join('') });
+        },
+        () => {
+            const sid = _gpTargetSid();
+            const st = _hidRemoteState[sid];
+            if (!st || !st.momentary.length) return;
+            st.momentary[0] = 'C';
+            _gpSend({ momentary_toggles: st.momentary.join('') });
+        }
+    );
+
+    // LEFT/RIGHT → encoder index 0 delta
+    _gpBindButton(dpadLeft,
+        () => {
+            const sid = _gpTargetSid();
+            const st = _hidRemoteState[sid];
+            if (!st || !st.encoders.length) return;
+            st.encoders[0]--;
+            _gpSend({ encoders: st.encoders.map(String).join(':') });
+        },
+        () => {}
+    );
+
+    _gpBindButton(dpadRight,
+        () => {
+            const sid = _gpTargetSid();
+            const st = _hidRemoteState[sid];
+            if (!st || !st.encoders.length) return;
+            st.encoders[0]++;
+            _gpSend({ encoders: st.encoders.map(String).join(':') });
+        },
+        () => {}
+    );
+
+    // ---- Action buttons ----
+    // A→btn0, B→btn1, X→btn2, Y→btn3
+    const actionMap = [
+        ['gpBtnA', 0],
+        ['gpBtnB', 1],
+        ['gpBtnX', 2],
+        ['gpBtnY', 3],
+    ];
+    actionMap.forEach(([elId, btnIdx]) => {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        _gpBindButton(el,
+            () => {
+                const sid = _gpTargetSid();
+                const st = _hidRemoteState[sid];
+                if (!st || btnIdx >= st.buttons.length) return;
+                st.buttons[btnIdx] = true;
+                _gpSend({ buttons: st.buttons.map(v => v ? '1' : '0').join('') });
+            },
+            () => {
+                const sid = _gpTargetSid();
+                const st = _hidRemoteState[sid];
+                if (!st || btnIdx >= st.buttons.length) return;
+                st.buttons[btnIdx] = false;
+                _gpSend({ buttons: st.buttons.map(v => v ? '1' : '0').join('') });
+            }
+        );
+    });
+
+    // ---- SELECT / START ----
+    const selectBtn = document.getElementById('gpSelectBtn');
+    const startBtn  = document.getElementById('gpStartBtn');
+
+    // SELECT → encoder button 0 press
+    if (selectBtn) {
+        _gpBindButton(selectBtn,
+            () => {
+                const sid = _gpTargetSid();
+                const st = _hidRemoteState[sid];
+                if (!st || !st.encBtns.length) return;
+                st.encBtns[0] = true;
+                _gpSend({ encoder_buttons: st.encBtns.map(v => v ? '1' : '0').join('') });
+            },
+            () => {
+                const sid = _gpTargetSid();
+                const st = _hidRemoteState[sid];
+                if (!st || !st.encBtns.length) return;
+                st.encBtns[0] = false;
+                _gpSend({ encoder_buttons: st.encBtns.map(v => v ? '1' : '0').join('') });
+            }
+        );
+    }
+
+    // START → button 3 (B4 on CORE) or first available button
+    if (startBtn) {
+        _gpBindButton(startBtn,
+            () => {
+                const sid = _gpTargetSid();
+                const st = _hidRemoteState[sid];
+                if (!st || !st.buttons.length) return;
+                const idx = Math.min(3, st.buttons.length - 1);
+                st.buttons[idx] = true;
+                _gpSend({ buttons: st.buttons.map(v => v ? '1' : '0').join('') });
+            },
+            () => {
+                const sid = _gpTargetSid();
+                const st = _hidRemoteState[sid];
+                if (!st || !st.buttons.length) return;
+                const idx = Math.min(3, st.buttons.length - 1);
+                st.buttons[idx] = false;
+                _gpSend({ buttons: st.buttons.map(v => v ? '1' : '0').join('') });
+            }
+        );
+    }
+
+/** Pulse momentary toggle at index idx in direction dir ('U' or 'D') for durationMs, then release. */
+function _gpPulseMomentary(sid, idx, dir, durationMs = 120) {
+    const st = _hidRemoteState[sid];
+    if (!st || idx >= st.momentary.length) return;
+    st.momentary[idx] = dir;
+    _gpSend({ momentary_toggles: st.momentary.join('') });
+    setTimeout(() => {
+        st.momentary[idx] = 'C';
+        _gpSend({ momentary_toggles: st.momentary.join('') });
+    }, durationMs);
+}
+
+// ---- Macro buttons ----
+    // Macros fire a specific HID payload and briefly highlight.
+    const MACROS = {
+        // E-Stop: pulse the guarded toggle (latching index 8) and the big button (button 0)
+        estop: sid => {
+            const st = _hidRemoteState[sid];
+            if (!st) return;
+            if (st.toggles.length > 8) {
+                st.toggles[8] = !st.toggles[8];
+                _gpSend({ latching_toggles: st.toggles.map(v => v ? '1' : '0').join('') });
+            } else if (st.buttons.length > 0) {
+                st.buttons[0] = true;
+                _gpSend({ buttons: st.buttons.map(v => v ? '1' : '0').join('') });
+                setTimeout(() => {
+                    st.buttons[0] = false;
+                    _gpSend({ buttons: st.buttons.map(v => v ? '1' : '0').join('') });
+                }, 120);
+            }
+        },
+        // Vanguard Override: pulse momentary toggle 0 UP (EMP bomb / override action)
+        vanguard_override: sid => { _gpPulseMomentary(sid, 0, 'U'); },
+        // EMP Bomb: same as Vanguard Override impulse (momentary 0 up)
+        emp: sid => { _gpPulseMomentary(sid, 0, 'U'); },
+        // Stasis Field: pulse momentary toggle 0 DOWN (secondary action)
+        stasis: sid => { _gpPulseMomentary(sid, 0, 'D'); },
+        // Encoder reset: set encoder 0 back to 0
+        enc_reset: sid => {
+            const st = _hidRemoteState[sid];
+            if (!st || !st.encoders.length) return;
+            st.encoders[0] = 0;
+            _gpSend({ encoders: st.encoders.map(String).join(':') });
+        },
+    };
+
+    document.querySelectorAll('.gamepad-macro-btn').forEach(btn => {
+        const macro = btn.dataset.macro;
+        if (!MACROS[macro]) return;
+        btn.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            const sid = _gpTargetSid();
+            MACROS[macro](sid);
+            btn.classList.add('fired');
+            setTimeout(() => btn.classList.remove('fired'), 300);
+        });
+    });
 }
 
 // =====================================================================
