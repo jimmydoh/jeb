@@ -1787,6 +1787,278 @@ def test_pixel_art_save_no_encoding_error():
     print("  ✓ Pixel art save (no encoding bug) test passed")
 
 
+# =====================================================================
+# Animation save / preview-animation tests
+# =====================================================================
+
+def _make_janim_body(frame_count=2, fps=8):
+    """Helper: build a minimal valid .janim binary blob."""
+    body = bytearray(b'JANM')
+    body += bytes([frame_count, fps])
+    for _ in range(frame_count):
+        body += bytes(256)
+    return bytes(body)
+
+
+def test_save_animation_route_registered():
+    """Test that /api/pixel-art/save-animation is registered."""
+    print("\nTesting save-animation route registration...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    registered = [p for p, _, _ in manager.server.routes]
+    assert "/api/pixel-art/save-animation" in registered
+    assert "/api/pixel-art/preview-animation" in registered
+
+    print("  ✓ Animation routes registered test passed")
+
+
+def test_save_animation_success():
+    """Test POST /api/pixel-art/save-animation in testing mode."""
+    print("\nTesting save-animation success...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save-animation")
+    assert handler is not None
+
+    request = MockRequest()
+    request.query_params = {"name": "test_anim"}
+    request.body = _make_janim_body(frame_count=3, fps=12)
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert data["frames"] == 3
+    assert data["fps"] == 12
+    assert "test_anim" in data["path"]
+
+    print("  ✓ Save animation success test passed")
+
+
+def test_save_animation_missing_name():
+    """Test POST /api/pixel-art/save-animation returns 400 when name is absent."""
+    print("\nTesting save-animation missing name...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save-animation")
+    request = MockRequest()
+    request.query_params = {}
+    request.body = _make_janim_body()
+    response = handler(request)
+    assert response.status == 400
+    data = json.loads(response.body)
+    assert "error" in data
+
+    print("  ✓ Save animation missing name test passed")
+
+
+def test_save_animation_invalid_name():
+    """Test POST /api/pixel-art/save-animation rejects names with special chars."""
+    print("\nTesting save-animation invalid name...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save-animation")
+    request = MockRequest()
+    request.query_params = {"name": "bad name!"}
+    request.body = _make_janim_body()
+    response = handler(request)
+    assert response.status == 400
+
+    print("  ✓ Save animation invalid name test passed")
+
+
+def test_save_animation_bad_magic():
+    """Test POST /api/pixel-art/save-animation rejects body with wrong magic bytes."""
+    print("\nTesting save-animation bad magic bytes...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save-animation")
+    request = MockRequest()
+    request.query_params = {"name": "bad_magic"}
+    # Wrong magic (JSEQ instead of JANM)
+    request.body = b'JSEQ' + bytes([2, 8]) + bytes(512)
+    response = handler(request)
+    assert response.status == 400
+    data = json.loads(response.body)
+    assert "magic" in data["error"]
+
+    print("  ✓ Save animation bad magic test passed")
+
+
+def test_save_animation_truncated_body():
+    """Test POST /api/pixel-art/save-animation rejects a truncated payload."""
+    print("\nTesting save-animation truncated body...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save-animation")
+    request = MockRequest()
+    request.query_params = {"name": "truncated"}
+    # 3 frames declared but only 1 frame of data provided
+    request.body = b'JANM' + bytes([3, 8]) + bytes(256)
+    response = handler(request)
+    assert response.status == 400
+
+    print("  ✓ Save animation truncated body test passed")
+
+
+def test_save_animation_empty_body():
+    """Test POST /api/pixel-art/save-animation returns 400 for empty body."""
+    print("\nTesting save-animation empty body...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save-animation")
+    request = MockRequest()
+    request.query_params = {"name": "empty"}
+    request.body = b''
+    response = handler(request)
+    assert response.status == 400
+
+    print("  ✓ Save animation empty body test passed")
+
+
+def test_preview_animation_no_matrix():
+    """Test POST /api/pixel-art/preview-animation without matrix returns no_matrix."""
+    print("\nTesting preview-animation without matrix...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/preview-animation")
+    assert handler is not None
+
+    request = MockRequest()
+    request.json = lambda: {"pixels": [0] * 256, "frame": 0}
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "no_matrix"
+
+    print("  ✓ Preview animation (no matrix) test passed")
+
+
+def test_preview_animation_with_matrix():
+    """Test POST /api/pixel-art/preview-animation draws frame on the matrix."""
+    print("\nTesting preview-animation with matrix...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    mock_matrix = MockMatrixManager()
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(matrix=mock_matrix), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/preview-animation")
+    assert handler is not None
+
+    pixels = [0] * 256
+    pixels[0] = 11  # Red at (0,0)
+    request = MockRequest()
+    request.json = lambda: {"pixels": pixels, "frame": 1}
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert mock_matrix.cleared
+
+    print("  ✓ Preview animation (with matrix) test passed")
+
+
+def test_preview_animation_invalid_pixels():
+    """Test POST /api/pixel-art/preview-animation validates pixel array."""
+    print("\nTesting preview-animation pixel validation...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/preview-animation")
+
+    # Wrong number of pixels
+    request = MockRequest()
+    request.json = lambda: {"pixels": [0] * 100, "frame": 0}
+    response = handler(request)
+    assert response.status == 400
+
+    # Out-of-range pixel value
+    bad_pixels = [0] * 256
+    bad_pixels[5] = 300
+    request2 = MockRequest()
+    request2.json = lambda: {"pixels": bad_pixels, "frame": 0}
+    response2 = handler(request2)
+    assert response2.status == 400
+
+    print("  ✓ Preview animation validation test passed")
+
+
+def test_pixel_library_includes_janims():
+    """Test GET /api/pixel/library response includes a 'janims' key."""
+    print("\nTesting pixel library includes janims key...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/library")
+    assert handler is not None
+
+    request = MockRequest()
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert "janims" in data, "Library response must include 'janims' key"
+    assert isinstance(data["janims"], list)
+
+    print("  ✓ Pixel library includes janims test passed")
+
+
+def test_pixel_load_janim_not_found():
+    """Test /api/pixel/load returns 404 for a missing .janim file."""
+    print("\nTesting pixel load missing .janim file...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/load")
+    request = MockRequest()
+    request.query_params = {"name": "no_such_animation.janim"}
+    response = handler(request)
+    assert response.status == 404
+
+    print("  ✓ Pixel load (missing .janim) test passed")
+
+
 def test_jeblogger_buffer():
     """Test JEBLogger ring buffer capture."""
     print("\nTesting JEBLogger ring buffer...")
@@ -3583,6 +3855,18 @@ def run_all_tests():
         test_pixel_load_library_icon_not_found,
         test_pixel_load_bin_file_not_found,
         test_pixel_art_save_no_encoding_error,
+        test_save_animation_route_registered,
+        test_save_animation_success,
+        test_save_animation_missing_name,
+        test_save_animation_invalid_name,
+        test_save_animation_bad_magic,
+        test_save_animation_truncated_body,
+        test_save_animation_empty_body,
+        test_preview_animation_no_matrix,
+        test_preview_animation_with_matrix,
+        test_preview_animation_invalid_pixels,
+        test_pixel_library_includes_janims,
+        test_pixel_load_janim_not_found,
         test_jeblogger_buffer,
         test_jeblogger_buffer_level_filter,
         test_jeblogger_buffer_search_filter,

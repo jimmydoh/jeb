@@ -199,7 +199,7 @@
 
         <div id="pixelart" class="tab-content">
             <h2>🎨 Pixel Art Studio</h2>
-            <p style="color: #b0b0b0; margin-bottom: 15px;">Draw 16×16 pixel art and preview it live on the LED matrix, then save as an icon.</p>
+            <p style="color: #b0b0b0; margin-bottom: 15px;">Draw 16×16 pixel art and preview it live on the LED matrix, then save as an icon or multi-frame animation.</p>
             <div class="pixel-studio-layout">
                 <div class="pixel-canvas-wrap">
                     <div class="pixel-grid" id="pixelGrid"
@@ -207,7 +207,34 @@
                          onmousemove="pixelMouseMove(event)"
                          onmouseup="pixelMouseUp()"
                          onmouseleave="pixelMouseLeave()"></div>
+                    <canvas id="onionSkinCanvas" class="onion-skin-canvas" style="display:none;"></canvas>
                     <div id="pixelTooltip" class="pixel-tooltip" style="display:none;"></div>
+
+                    <!-- Animation Timeline -->
+                    <div class="anim-timeline-wrap" style="margin-top:8px;">
+                        <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+                            <span style="color:#80ccff; font-size:0.85em; font-weight:bold;">🎞 Frames</span>
+                            <button onclick="animAddFrame()" title="Add blank frame">+ Add</button>
+                            <button onclick="animDuplicateFrame()" title="Duplicate current frame">⧉ Dup</button>
+                            <button onclick="animDeleteFrame()" class="secondary" title="Delete current frame">✕ Del</button>
+                            <button onclick="animMoveFrame(-1)" class="secondary" title="Move frame left">◀</button>
+                            <button onclick="animMoveFrame(1)" class="secondary" title="Move frame right">▶</button>
+                        </div>
+                        <div class="anim-timeline" id="animTimeline"></div>
+                    </div>
+
+                    <!-- Playback Controls -->
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; background:#1a1a1a; border:1px solid #333; border-radius:4px; padding:8px;">
+                        <span style="color:#80ccff; font-size:0.85em; font-weight:bold;">▶ Playback</span>
+                        <button onclick="animPlay()" id="animPlayBtn">▶ Play</button>
+                        <button onclick="animStop()" class="secondary">■ Stop</button>
+                        <label style="color:#b0b0b0; font-size:0.85em; margin-left:6px;">FPS:</label>
+                        <input type="number" id="animFps" value="8" min="1" max="30" style="width:52px;">
+                        <label style="color:#b0b0b0; font-size:0.85em; margin-left:6px;">
+                            <input type="checkbox" id="onionSkinToggle" onchange="toggleOnionSkin(this.checked)" style="margin-right:4px;">
+                            Onion Skin
+                        </label>
+                    </div>
                 </div>
                 <div class="pixel-studio-controls">
                     <div class="form-group">
@@ -229,12 +256,19 @@
                             </select>
                             <button onclick="pixelLoadIcon('lib')">📂 Load</button>
                         </div>
-                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                            <label style="color:#b0b0b0; font-size:0.85em; white-space:nowrap;">SD Card:</label>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+                            <label style="color:#b0b0b0; font-size:0.85em; white-space:nowrap;">SD Icon:</label>
                             <select id="iconBinSelect" style="flex:1; min-width:130px;">
                                 <option value="">Loading…</option>
                             </select>
                             <button onclick="pixelLoadIcon('bin')">📂 Load</button>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <label style="color:#b0b0b0; font-size:0.85em; white-space:nowrap;">SD Anim:</label>
+                            <select id="iconJanimSelect" style="flex:1; min-width:130px;">
+                                <option value="">Loading…</option>
+                            </select>
+                            <button onclick="pixelLoadIcon('janim')">📂 Load</button>
                         </div>
                     </div>
 
@@ -247,6 +281,7 @@
                         <div style="display:flex; gap:8px; flex-wrap:wrap;">
                             <button onclick="previewPixelArt()">▶ Preview on Matrix</button>
                             <button onclick="savePixelArt()">💾 Save Icon</button>
+                            <button onclick="saveAnimation()">🎞 Save Animation</button>
                             <button class="secondary" onclick="clearCanvas()">Clear</button>
                         </div>
                     </div>
