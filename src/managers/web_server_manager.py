@@ -262,6 +262,11 @@ class WebServerManager:
             """Serve the minified CSS stylesheet."""
             return self._stream_file(request, "/sd/www/css/style.min.css", "text/css")
 
+        @self.server.route("/css/retro-theme.css", GET)
+        def serve_retro_css(request: Request):
+            """Serve the retro theme CSS stylesheet."""
+            return self._stream_file(request, "/sd/www/css/retro-theme.css", "text/css")
+
         @self.server.route("/js/app.js", GET)
         def serve_js(request: Request):
             """Serve the frontend JavaScript engine."""
