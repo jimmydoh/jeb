@@ -431,18 +431,27 @@ class CoreManager:
         if self.buzzer:             # Stop buzzer
             self.buzzer.stop()
 
-    async def run_mode_with_safety(self, mode_instance, target_sat=None):
+    async def run_mode_with_safety(self, mode_instance, target_sats=None):
         """Execute a task while monitoring for interrupts.
 
         Parameters:
             mode_instance: The mode instance to run.
-            target_sat (Satellite, optional): Specific satellite to monitor.
+            target_sats (list, optional): List of satellites to monitor. If any
+                disconnects, the mode is aborted with "LINK_LOST".
         """
         # Create the mode task
         sub_task = asyncio.create_task(mode_instance.execute())
 
-        if target_sat:
-            target_sat_monitor_task = asyncio.create_task(self.monitor_satellite(target_sat))
+        # Clear the event before spawning monitors so a stale set from a
+        # previous run does not immediately re-trigger LINK_LOST.
+        self.target_sat_event.clear()
+
+        sat_monitor_tasks = []
+        if target_sats:
+            for sat in target_sats:
+                sat_monitor_tasks.append(
+                    asyncio.create_task(self.monitor_satellite(sat))
+                )
 
         exit_reason = "UNKNOWN_EXIT"
 
@@ -468,8 +477,9 @@ class CoreManager:
                     self.abort_event.clear()  # Reset for future use
                     break
 
-                if target_sat and self.target_sat_event.is_set():
-                    JEBLogger.warning("CORE", f"Target satellite '{target_sat.sat_type_name}' disconnected during mode execution!")
+                if target_sats and self.target_sat_event.is_set():
+                    lost = [s.sat_type_name for s in target_sats if not s.is_active]
+                    JEBLogger.warning("CORE", f"Required satellite(s) disconnected during mode execution: {lost}")
                     exit_reason = "LINK_LOST"
                     self.display.update_status("LINK LOST", "EXITING MODE...")
                     break
@@ -489,8 +499,9 @@ class CoreManager:
         if not sub_task.done():
             sub_task.cancel()
 
-        if target_sat and not target_sat_monitor_task.done():
-            target_sat_monitor_task.cancel()
+        for task in sat_monitor_tasks:
+            if not task.done():
+                task.cancel()
 
         # Return routing logic
         if exit_reason == "MODE_COMPLETE":
@@ -830,7 +841,7 @@ class CoreManager:
                 requirements = meta.get("requires", [])
 
                 # Check Dependencies
-                target_sat = None
+                target_sats = []
                 requirements_met = True
 
                 for req in requirements:
@@ -850,7 +861,7 @@ class CoreManager:
                     for sat in self.satellites.values():
                         if sat.sat_type_name == req and sat.is_active:
                             found = True
-                            target_sat = sat  # Set target satellite for monitoring
+                            target_sats.append(sat)  # Collect all required satellites
                             break
                     if not found:
                         requirements_met = False
@@ -915,11 +926,12 @@ class CoreManager:
 
                     run_robust = True
                     while run_robust:
-                        if target_sat:
-                            # Send command to the sat to go ACTIVE
-                            target_sat.send(CMD_MODE, "ACTIVE")
+                        if target_sats:
+                            # Send command to each required satellite to go ACTIVE
+                            for sat in target_sats:
+                                sat.send(CMD_MODE, "ACTIVE")
                             result = await self.run_mode_with_safety(
-                                mode_instance, target_sat=target_sat
+                                mode_instance, target_sats=target_sats
                             )
                         else:
                             result = await self.run_mode_with_safety(mode_instance)
@@ -934,7 +946,7 @@ class CoreManager:
                             await asyncio.sleep(1)
                             # 60 second countdown
                             disconnect_time = ticks_ms()
-                            while not target_sat.is_active and run_robust:
+                            while any(not s.is_active for s in target_sats) and run_robust:
                                 elapsed = ticks_diff(ticks_ms(), disconnect_time)
                                 if elapsed > 60000:
                                     run_robust = False
@@ -944,7 +956,7 @@ class CoreManager:
                                     "LINK LOST", f"ABORT IN: {secs_left}s"
                                 )
                                 await asyncio.sleep(0.1)
-                            if target_sat.is_active and run_robust:
+                            if all(s.is_active for s in target_sats) and run_robust:
                                 self.display.update_status(
                                     "LINK RESTORED", "RESUMING..."
                                 )
