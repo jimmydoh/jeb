@@ -1,0 +1,412 @@
+/* =====================================================
+   JEB FIELD SERVICE CONFIGURATOR — RETRO THEME
+   16-Bit / CRT Easter Egg Toggle
+   ===================================================== */
+
+/* Pixel font from Google Fonts CDN */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+/* ---- Typography ---- */
+body.retro {
+    font-family: 'Press Start 2P', 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.8;
+    background: #0a0a0a;
+    color: #33ff33;
+    image-rendering: pixelated;
+}
+
+body.retro h1 {
+    font-size: 1.4em;
+    color: #33ff33;
+    text-shadow: 0 0 8px #33ff33, 0 0 2px #33ff33;
+    letter-spacing: 0.05em;
+}
+
+body.retro h2 {
+    font-size: 1.1em;
+    color: #33ff33;
+    text-shadow: 0 0 4px #33ff33;
+}
+
+body.retro h3,
+body.retro h4 {
+    font-size: 0.75em;
+    color: #33ff33;
+    text-shadow: 0 0 4px #33ff33;
+    letter-spacing: 0.05em;
+}
+
+body.retro label {
+    color: #aaffaa;
+    font-size: 0.7em;
+}
+
+body.retro .compact-info span { color: #88cc88; }
+body.retro .compact-info strong { color: #33ff33; }
+
+/* ---- Borders & Boxes ---- */
+body.retro .tab-content,
+body.retro .panel,
+body.retro .info-card,
+body.retro .file-item,
+body.retro .hid-section,
+body.retro .hid-remote-panel,
+body.retro .channel-row,
+body.retro .log-viewer,
+body.retro canvas.sparkline {
+    border-radius: 0;
+    border: 3px solid #33ff33;
+    box-shadow: 4px 4px 0 #006600, inset 0 0 6px rgba(51,255,51,0.08);
+    background: #0d0d0d;
+}
+
+body.retro .pixel-grid {
+    border-radius: 0;
+    border: 3px solid #33ff33;
+    box-shadow: 4px 4px 0 #006600;
+}
+
+body.retro .tabs {
+    border-bottom: 3px solid #33ff33;
+    gap: 2px;
+}
+
+body.retro .tab {
+    border-radius: 0;
+    border: 2px solid #006600;
+    background: #0d0d0d;
+    color: #33ff33;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.65em;
+    padding: 8px 10px;
+}
+
+body.retro .tab.active {
+    background: #33ff33;
+    color: #000;
+    border-color: #33ff33;
+    box-shadow: 3px 3px 0 #006600;
+}
+
+body.retro .tab:hover:not(.active) {
+    background: #002200;
+    border-color: #33ff33;
+}
+
+body.retro input,
+body.retro textarea,
+body.retro select {
+    border-radius: 0;
+    border: 2px solid #33ff33;
+    background: #0a0a0a;
+    color: #33ff33;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.75em;
+}
+
+body.retro input:focus,
+body.retro textarea:focus,
+body.retro select:focus {
+    outline: none;
+    border-color: #aaffaa;
+    box-shadow: 0 0 6px #33ff33;
+}
+
+body.retro button {
+    border-radius: 0;
+    border: 2px solid #006600;
+    background: #002200;
+    color: #33ff33;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.65em;
+    box-shadow: 3px 3px 0 #004400;
+    cursor: pointer;
+    transition: none;
+}
+
+body.retro button:hover {
+    background: #33ff33;
+    color: #000;
+    border-color: #33ff33;
+    box-shadow: none;
+}
+
+body.retro button:active {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0 #004400;
+}
+
+body.retro button.secondary {
+    background: #001a00;
+    border-color: #225522;
+    color: #88cc88;
+}
+
+body.retro button.secondary:hover {
+    background: #88cc88;
+    color: #000;
+}
+
+/* ---- Status ---- */
+body.retro .status.success {
+    border-radius: 0;
+    border: 2px solid #33ff33;
+    background: #001a00;
+    color: #33ff33;
+}
+
+body.retro .status.error {
+    border-radius: 0;
+    border: 2px solid #ff3333;
+    background: #1a0000;
+    color: #ff6666;
+}
+
+/* ---- Sat / Telemetry badges ---- */
+body.retro .sat-badge.online {
+    border-radius: 0;
+    background: #001a00;
+    color: #33ff33;
+    border: 2px solid #33ff33;
+}
+
+body.retro .sat-badge.offline {
+    border-radius: 0;
+    background: #1a0000;
+    color: #ff6666;
+    border: 2px solid #ff3333;
+}
+
+body.retro .telemetry-status.connected {
+    border-radius: 0;
+    background: #001a00;
+    color: #33ff33;
+    border: 2px solid #33ff33;
+}
+
+body.retro .telemetry-status.disconnected {
+    border-radius: 0;
+    background: #1a0000;
+    color: #ff6666;
+    border: 2px solid #ff3333;
+}
+
+/* ---- HID Buttons ---- */
+body.retro .hid-toggle-btn,
+body.retro .hid-push-btn,
+body.retro .hid-enc-push-btn,
+body.retro .hid-enc-step-btn {
+    border-radius: 0;
+    border: 2px solid #33ff33;
+    background: #0d0d0d;
+    color: #33ff33;
+    box-shadow: 3px 3px 0 #006600;
+    font-family: 'Press Start 2P', monospace;
+    transition: none;
+}
+
+body.retro .hid-toggle-btn.active,
+body.retro .hid-push-btn.pressed,
+body.retro .hid-enc-push-btn.pressed {
+    background: #33ff33;
+    color: #000;
+    box-shadow: none;
+    transform: translate(2px, 2px);
+}
+
+/* ---- Step Sequencer ---- */
+body.retro .step-btn {
+    border-radius: 0;
+    border: 1px solid #006600;
+    background: #0d0d0d;
+    color: #33ff33;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.55em;
+}
+
+body.retro .step-btn.active {
+    background: #003300;
+    border-color: #33ff33;
+    color: #33ff33;
+    box-shadow: 0 0 4px #33ff33;
+}
+
+body.retro .note-pick-btn,
+body.retro .dur-btn {
+    border-radius: 0;
+    background: #0d0d0d;
+    color: #aaffaa;
+    border: 1px solid #006600;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.6em;
+}
+
+body.retro .note-pick-btn.selected,
+body.retro .dur-btn.selected {
+    background: #002200;
+    border-color: #33ff33;
+    color: #33ff33;
+}
+
+/* ---- Encoder display ---- */
+body.retro .hid-encoder-display {
+    border-radius: 0;
+    border: 2px solid #33ff33;
+    background: #000;
+    color: #33ff33;
+    text-shadow: 0 0 6px #33ff33;
+    font-family: 'Press Start 2P', monospace;
+}
+
+/* ---- Mode filter buttons ---- */
+body.retro .mode-filter-btn {
+    border-radius: 0;
+    background: #0d0d0d;
+    border: 2px solid #006600;
+    color: #88cc88;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.6em;
+}
+
+body.retro .mode-filter-btn.active {
+    background: #001a00;
+    border-color: #33ff33;
+    color: #33ff33;
+}
+
+/* ---- Admin tab ---- */
+body.retro .admin-tab-visible {
+    border-color: #ffcc00;
+    color: #ffcc00;
+    background: #1a1000;
+}
+
+body.retro .admin-tab-visible.active {
+    background: #ffcc00;
+    color: #000;
+}
+
+body.retro .admin-card {
+    border-top: 4px solid #ffcc00;
+    background: #0d0d00;
+}
+
+body.retro .admin-danger-btn {
+    border-radius: 0;
+    background: #1a0000;
+    border: 2px solid #ff3333;
+    color: #ff6666;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.65em;
+    box-shadow: 3px 3px 0 #550000;
+}
+
+body.retro .admin-danger-btn:hover {
+    background: #ff3333;
+    color: #000;
+    box-shadow: none;
+}
+
+/* ---- Retro Theme Toggle Button ---- */
+#retroToggleBtn {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 10000;
+    padding: 8px 14px;
+    font-size: 0.75em;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    background: #2a2a2a;
+    color: #b0b0b0;
+    border: 1px solid #555;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+    user-select: none;
+}
+
+#retroToggleBtn:hover { opacity: 1; }
+
+body.retro #retroToggleBtn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.55em;
+    background: #001a00;
+    color: #33ff33;
+    border-radius: 0;
+    border: 2px solid #33ff33;
+    box-shadow: 3px 3px 0 #006600;
+    opacity: 1;
+}
+
+body.retro #retroToggleBtn:hover {
+    background: #33ff33;
+    color: #000;
+    box-shadow: none;
+}
+
+/* ---- CRT Overlay ---- */
+#crtOverlay {
+    display: none;
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+}
+
+body.retro #crtOverlay {
+    display: block;
+}
+
+/* Scanlines */
+#crtOverlay::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.18) 0px,
+        rgba(0, 0, 0, 0.18) 1px,
+        transparent 1px,
+        transparent 3px
+    );
+}
+
+/* Vignette */
+#crtOverlay::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+        ellipse at center,
+        transparent 55%,
+        rgba(0, 0, 0, 0.72) 100%
+    );
+}
+
+/* Flicker animation */
+@keyframes crt-flicker {
+    0%   { opacity: 1; }
+    92%  { opacity: 1; }
+    93%  { opacity: 0.94; }
+    94%  { opacity: 1; }
+    96%  { opacity: 0.96; }
+    100% { opacity: 1; }
+}
+
+body.retro {
+    animation: crt-flicker 6s infinite;
+}
+
+/* Phosphor green glow on panel borders */
+body.retro .panel h3.panel-title {
+    color: #33ff33;
+    border-bottom-color: #006600;
+    text-shadow: 0 0 4px #33ff33;
+}
+
+body.retro .info-card h3 {
+    color: #33ff33;
+    text-shadow: 0 0 4px #33ff33;
+}

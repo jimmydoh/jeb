@@ -1,6 +1,30 @@
 let currentPath = '/sd';
 
 // =====================================================
+// RETRO THEME TOGGLE - 16-bit / CRT mode
+// =====================================================
+const RETRO_STORAGE_KEY = 'jeb_retro_mode';
+
+function toggleRetroTheme() {
+    const enabled = document.body.classList.toggle('retro');
+    try { localStorage.setItem(RETRO_STORAGE_KEY, enabled ? '1' : '0'); } catch (e) { console.warn('Retro theme: localStorage unavailable', e); }
+    const btn = document.getElementById('retroToggleBtn');
+    if (btn) btn.textContent = enabled ? '🖥 NORMAL' : '🕹 RETRO';
+}
+
+(function _initRetroTheme() {
+    try {
+        if (localStorage.getItem(RETRO_STORAGE_KEY) === '1') {
+            document.body.classList.add('retro');
+            document.addEventListener('DOMContentLoaded', function () {
+                const btn = document.getElementById('retroToggleBtn');
+                if (btn) btn.textContent = '🖥 NORMAL';
+            });
+        }
+    } catch (e) { console.warn('Retro theme: could not restore state', e); }
+})();
+
+// =====================================================
 // ADMIN EASTER EGG - Click title 5× to reveal Admin tab
 // =====================================================
 let _adminClickCount = 0;
