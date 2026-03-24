@@ -134,6 +134,21 @@ def test_virtual_pet_icon_exists():
     print(f"✓ VIRTUAL_PET icon exists ({len(icon)} pixels)")
 
 
+# ---------------------------------------------------------------------------
+# V2 .janim format constants (used by both cat_idle and cat_walk tests)
+# ---------------------------------------------------------------------------
+
+_JANIM_HEADER_SIZE   = 5    # b'JANM' (4) + frame_count (1)
+_JANIM_DURATION_SIZE = 2    # per-frame duration in ms (little-endian uint16)
+_JANIM_PIXEL_SIZE    = 256  # one 16×16 frame = 256 palette bytes
+_JANIM_FRAME_SIZE    = _JANIM_DURATION_SIZE + _JANIM_PIXEL_SIZE  # 258 bytes per frame
+
+
+def _janim_pixel_offset(frame_idx):
+    """Return the byte offset of pixel data for the given V2 frame index."""
+    return _JANIM_HEADER_SIZE + frame_idx * _JANIM_FRAME_SIZE + _JANIM_DURATION_SIZE
+
+
 def test_cat_idle_icon_exists():
     """cat_idle.janim must exist in sd/icons/ and be a valid V2 JANM file with ≥1 frame."""
     janim_path = os.path.join(os.path.dirname(__file__), '..', 'sd', 'icons', 'cat_idle.janim')
@@ -143,7 +158,7 @@ def test_cat_idle_icon_exists():
     assert data[:4] == b'JANM', "cat_idle.janim missing JANM magic bytes"
     frame_count = data[4]
     assert frame_count >= 1, "cat_idle.janim must have at least 1 frame"
-    expected_size = 5 + frame_count * (2 + 256)
+    expected_size = _JANIM_HEADER_SIZE + frame_count * _JANIM_FRAME_SIZE
     assert len(data) == expected_size, (
         f"cat_idle.janim size mismatch: expected {expected_size}, got {len(data)}"
     )
@@ -382,7 +397,7 @@ def test_cat_walk_icon_exists():
     assert data[:4] == b'JANM', "cat_walk.janim missing JANM magic bytes"
     frame_count = data[4]
     assert frame_count >= 1, "cat_walk.janim must have at least 1 frame"
-    expected_size = 5 + frame_count * (2 + 256)
+    expected_size = _JANIM_HEADER_SIZE + frame_count * _JANIM_FRAME_SIZE
     assert len(data) == expected_size, (
         f"cat_walk.janim size mismatch: expected {expected_size}, got {len(data)}"
     )
@@ -404,9 +419,10 @@ def test_cat_walk_frames_differ():
     janim_path = os.path.join(os.path.dirname(__file__), '..', 'sd', 'icons', 'cat_walk.janim')
     with open(janim_path, 'rb') as f:
         data = f.read()
-    # V2 layout: 5-byte header, then per-frame blocks of 2 (duration) + 256 (pixels)
-    frame0 = data[5 + 2 : 5 + 2 + 256]
-    frame1 = data[5 + 258 + 2 : 5 + 258 + 2 + 256]
+    p0 = _janim_pixel_offset(0)
+    p1 = _janim_pixel_offset(1)
+    frame0 = data[p0 : p0 + _JANIM_PIXEL_SIZE]
+    frame1 = data[p1 : p1 + _JANIM_PIXEL_SIZE]
     assert frame0 != frame1, "cat_walk.janim frame 0 and frame 1 must differ"
     print("✓ cat_walk.janim frames are distinct")
 

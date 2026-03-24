@@ -4,6 +4,7 @@
 import sys
 import os
 import json
+import struct
 
 try:
     import pytest
@@ -1799,8 +1800,7 @@ def _make_janim_body(frame_count=2, duration_ms=150):
     body = bytearray(b'JANM')
     body += bytes([frame_count])
     for _ in range(frame_count):
-        # 2-byte duration (little-endian)
-        body += bytes([duration_ms & 0xFF, (duration_ms >> 8) & 0xFF])
+        body += struct.pack('<H', duration_ms)
         body += bytes(256)
     return bytes(body)
 
