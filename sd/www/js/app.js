@@ -836,6 +836,7 @@ let _topoSatData = {};
 let _topoPulses = [];
 let _topoRafId = null;
 let _topoInitialized = false;
+let _topoXOff = 0;              // Centering offset updated each render frame
 const _TOPO_NODE_R = 26;        // Node circle radius
 const _TOPO_H_STEP = 130;       // Horizontal spacing between nodes
 const _TOPO_ORIGIN_X = 55;      // X of the Core node
@@ -2472,10 +2473,11 @@ function _buildHIDPanel(sid, typeName, profile, btnIndexStart, encIndexStart) {
 // the telemetry variables to avoid temporal dead zone errors.
 
 /** Return the canvas-space centre of a topology node.
- *  index 0 = Core, 1..N = satellites in sorted order. */
-function _topoNodePos(index, canvasWidth) {
+ *  index 0 = Core, 1..N = satellites in sorted order.
+ *  xOffset shifts the whole chain horizontally (used to centre within the canvas). */
+function _topoNodePos(index, canvasWidth, xOffset = 0) {
     return {
-        x: _TOPO_ORIGIN_X + index * _TOPO_H_STEP,
+        x: _TOPO_ORIGIN_X + index * _TOPO_H_STEP + xOffset,
         y: _TOPO_H / 2,
     };
 }
@@ -2533,8 +2535,17 @@ function _topoRender() {
     if (!canvas) return;
 
     const sids = Object.keys(_topoSatData).sort();
-    const w = _topoCanvasWidth(sids.length);
+
+    // Always match the internal buffer to the element's rendered CSS width so
+    // there is a 1:1 pixel mapping and circles stay circular (no bitmap stretch).
+    const cssW = Math.round(canvas.getBoundingClientRect().width) || 600;
+    const contentW = _topoCanvasWidth(sids.length);
+    const w = Math.max(contentW, cssW);
     if (canvas.width !== w) canvas.width = w;
+
+    // Horizontal offset to centre the chain in the available space.
+    const xOff = Math.max(0, Math.floor((w - contentW) / 2));
+    _topoXOff = xOff;
 
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, w, _TOPO_H);
@@ -2543,8 +2554,8 @@ function _topoRender() {
     // Each segment i connects node i (Core=0 or satellite) to node i+1.
     // The colour is determined by the satellite at the far end (sids[i]).
     for (let i = 0; i < sids.length; i++) {
-        const from = _topoNodePos(i, w);
-        const to = _topoNodePos(i + 1, w);
+        const from = _topoNodePos(i, w, xOff);
+        const to = _topoNodePos(i + 1, w, xOff);
         const sat = _topoSatData[sids[i]];
         const online = sat && sat.active;
 
@@ -2558,7 +2569,7 @@ function _topoRender() {
     }
 
     // --- Core node ---
-    const corePos = _topoNodePos(0, w);
+    const corePos = _topoNodePos(0, w, xOff);
     _topoDrawNode(ctx, corePos.x, corePos.y, 'CORE', null, true, true);
 
     // Subtitle below Core
@@ -2569,7 +2580,7 @@ function _topoRender() {
 
     // --- Satellite nodes ---
     sids.forEach((sid, i) => {
-        const pos = _topoNodePos(i + 1, w);
+        const pos = _topoNodePos(i + 1, w, xOff);
         const sat = _topoSatData[sid];
         const online = sat && sat.active;
         const typeLabel = (sat && sat.type) ? sat.type : '??';
@@ -2603,8 +2614,8 @@ function _topoRender() {
         // Pulse animates directly from the satellite node to the Core node.
         // A true hop-by-hop animation would require tracking intermediate positions;
         // direct travel is visually clear and cheaper to compute.
-        const from = _topoNodePos(sidIdx + 1, w);
-        const to = _topoNodePos(0, w);
+        const from = _topoNodePos(sidIdx + 1, w, xOff);
+        const to = _topoNodePos(0, w, xOff);
 
         const px = from.x + (to.x - from.x) * progress;
         const py = from.y + (to.y - from.y) * progress;
@@ -2632,10 +2643,10 @@ function _topoRender() {
  *  Returns 'CORE', a satellite SID string, or null. */
 function _topoHitTest(mx, my, canvasWidth) {
     const sids = Object.keys(_topoSatData).sort();
-    const corePos = _topoNodePos(0, canvasWidth);
+    const corePos = _topoNodePos(0, canvasWidth, _topoXOff);
     if (Math.hypot(mx - corePos.x, my - corePos.y) <= _TOPO_NODE_R) return 'CORE';
     for (let i = 0; i < sids.length; i++) {
-        const pos = _topoNodePos(i + 1, canvasWidth);
+        const pos = _topoNodePos(i + 1, canvasWidth, _topoXOff);
         if (Math.hypot(mx - pos.x, my - pos.y) <= _TOPO_NODE_R) return sids[i];
     }
     return null;
