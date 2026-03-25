@@ -2166,7 +2166,25 @@ function _renderChannel(ch) {
         let isActive = false;
         let label = '—';
 
-       if (cell && cell.note !== undefined) {
+        if (cell && cell.meta === 'bpm') {
+            // V2 BPM meta-event: render as a single-slot tempo marker.
+            span = 1;
+            label = `↻${cell.bpm}`;
+            btn.className = 'step-btn meta-bpm';
+            btn.title = `BPM Meta-Event: change tempo to ${cell.bpm} BPM. Click to remove.`;
+            const w = BASE_WIDTH;
+            btn.style.flex = `0 0 ${w}px`;
+            btn.style.height = '36px';
+            btn.style.boxSizing = 'border-box';
+            btn.style.overflow = 'hidden';
+            btn.style.cursor = 'pointer';
+            btn.textContent = label;
+            const metaIdx = s;
+            btn.onclick = () => { audioSteps[ch][metaIdx] = null; _renderChannel(ch); };
+            gridEl.appendChild(btn);
+            s += 1;
+            continue;
+        } else if (cell && cell.note !== undefined) {
             span = cell.span;
             isActive = true;
 
@@ -2210,9 +2228,10 @@ function _renderChannel(ch) {
             if (nextBoundary > audioNumSteps) nextBoundary = audioNumSteps;
             span = nextBoundary - s;
 
-            // Stop grouping if we hit a note
+            // Stop grouping if we hit a note or a BPM meta-event
             for (let k = 1; k < span; k++) {
-                if (audioSteps[ch][s + k] && audioSteps[ch][s + k].note !== undefined) {
+                const ahead = audioSteps[ch][s + k];
+                if (ahead && (ahead.note !== undefined || ahead.meta === 'bpm')) {
                     span = k;
                     break;
                 }
@@ -2351,6 +2370,16 @@ function _buildSequenceForChannel(ch) {
             accumulatedRest += BASE_RES;
         } else if (cell.covered) {
             continue;
+        } else if (cell.meta === 'bpm') {
+            // V2 BPM meta-event: flush any pending rest, then emit the meta-event.
+            // Encoded as [null, new_bpm] so _encodeJseq writes (0xFF, new_bpm)
+            // and play_sequence handles (None, new_bpm) on the device.
+            while (accumulatedRest > 0) {
+                const chunk = Math.min(4.0, accumulatedRest);
+                sequence.push(['-', chunk]);
+                accumulatedRest -= chunk;
+            }
+            sequence.push([null, cell.bpm]);
         } else if (cell.note !== undefined) {
             while (accumulatedRest > 0) {
                 const chunk = Math.min(4.0, accumulatedRest);
@@ -2518,9 +2547,15 @@ function _encodeJseq() {
                 view.setUint8(pos++, step[0]);
                 view.setUint8(pos++, step[1]);
             } else {
-                // Audio step: [pitch_idx, dur_units]
-                view.setUint8(pos++, step[0] === '-' ? 0 : _noteToJseqIndex(step[0]));
-                view.setUint8(pos++, _durationToJseqUnits(step[1]));
+                if (step[0] === null) {
+                    // V2 BPM meta-event: pitch 0xFF + new BPM in the payload byte.
+                    view.setUint8(pos++, 0xFF);
+                    view.setUint8(pos++, Math.max(1, Math.min(255, step[1])));
+                } else {
+                    // Audio step: [pitch_idx, dur_units]
+                    view.setUint8(pos++, step[0] === '-' ? 0 : _noteToJseqIndex(step[0]));
+                    view.setUint8(pos++, _durationToJseqUnits(step[1]));
+                }
             }
         }
     }
@@ -2682,12 +2717,16 @@ async function audioLoad() {
                 // Audio channel: populate note steps
                 let currentStep = 0;
                 for (const item of lc.seq) {
-                    // V2 BPM meta-events are preserved in the intermediate `lc.seq`
-                    // representation so that round-trip saves encode them faithfully.
-                    // They are skipped here because the Audio Studio grid does not yet
-                    // have a dedicated "BPM lane" for timeline tempo automation; the
-                    // sequence plays back with meta-events intact via synth_manager.py.
-                    if (item.meta) continue; // skip meta-events in the grid UI
+                    if (item.meta === 'bpm') {
+                        // V2 BPM meta-event: store in the step grid so that
+                        // audioPreviewBrowser() can honour live tempo changes.
+                        // One step slot (1/32 beat) is consumed by the meta-event.
+                        if (currentStep < audioNumSteps) {
+                            audioSteps[c][currentStep] = { meta: 'bpm', bpm: item.bpm };
+                            currentStep += 1;
+                        }
+                        continue;
+                    }
 
                     const span = Math.round(item.dur / BASE_RES);
                     if (currentStep + span > audioNumSteps) break;
@@ -3101,9 +3140,7 @@ function audioPreviewBrowser() {
     browserStopAll();
 
     const audioCtx = _getAudioContext();
-    const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
-    const beatDuration = 60.0 / bpm;
-    const slotSec = BASE_RES * beatDuration;
+    const initialBpm = parseInt(document.getElementById('audioBpm').value) || 120;
     const scheduleOffset = audioCtx.currentTime + 0.05;
 
     let hasNotes = false;
@@ -3129,13 +3166,24 @@ function audioPreviewBrowser() {
             });
         }
 
+        // V2: per-channel BPM tracking so meta-events update tempo mid-sequence.
+        let currentBpm = initialBpm;
+        let beatDuration = 60.0 / currentBpm;
         let cursor = scheduleOffset;
 
         for (let s = 0; s < audioNumSteps; s++) {
             const step = audioSteps[c][s];
-            // Each array index occupies exactly BASE_RES beats regardless of note length.
-            // Using step.duration (or activeDuration) here was wrong: covered-cell steps
-            // have no .duration, causing cursor += NaN and silencing all subsequent notes.
+
+            // V2: BPM meta-event — update tempo for all subsequent notes on this channel.
+            if (step && step.meta === 'bpm') {
+                currentBpm = step.bpm;
+                beatDuration = 60.0 / currentBpm;
+                // The meta-event occupies one 1/32-beat slot at the new tempo.
+                cursor += BASE_RES * beatDuration;
+                continue;
+            }
+
+            const slotSec = BASE_RES * beatDuration;
 
             if (step && step.note && step.note !== '-') {
                 const noteSec = step.duration * beatDuration;
@@ -3151,7 +3199,8 @@ function audioPreviewBrowser() {
 
     if (hasNotes) {
         showStatus('audioStatus', '🔊 Playing in browser…', 'success');
-        _browserStartPlayhead(audioCtx, scheduleOffset, slotSec, audioNumSteps);
+        const initialSlotSec = BASE_RES * (60.0 / initialBpm);
+        _browserStartPlayhead(audioCtx, scheduleOffset, initialSlotSec, audioNumSteps);
     } else {
         showStatus('audioStatus', 'No notes to play — add some steps first', 'error');
     }

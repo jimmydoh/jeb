@@ -438,6 +438,13 @@ canvas.topo-canvas {
     color: #4CAF50;
     border-color: #4CAF50;
 }
+.step-btn.meta-bpm {
+    background: #1e1030;
+    border-color: #7744cc;
+    color: #bb88ff;
+    font-size: 0.68em;
+    font-weight: bold;
+}
 .step-btn:hover {
     border-color: #888;
 }

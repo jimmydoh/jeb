@@ -53,6 +53,11 @@ class SynthManager:
         # RAM cache for explicitly preloaded .jseq files
         self._jseq_cache = {}
 
+        # V2 automation state: current LPF cutoff and amplitude scale.
+        # These are updated by _apply_automation() and consumed when new notes
+        # are pressed via play_sequence().
+        self._automation_amplitude = 1.0
+
     @property
     def source(self):
         """Returns the synth object to be fed into AudioMixer."""
@@ -175,11 +180,26 @@ class SynthManager:
             duration_sec = duration_beats * beat_duration
 
             if freq > 0:
+                # V2: scale the envelope's attack level by the current automation
+                # amplitude.  If no automation is running, _automation_amplitude
+                # is 1.0 and the envelope is unchanged.
+                # Use a threshold rather than exact float equality to avoid
+                # floating-point precision issues (e.g. 255/255.0 → 1.0 exactly,
+                # but lower values like 254/255.0 are irrational).
+                active_envelope = envelope
+                if abs(self._automation_amplitude - 1.0) > 0.001 and hasattr(envelope, 'attack_time'):
+                    active_envelope = synthio.Envelope(
+                        attack_time=envelope.attack_time,
+                        decay_time=envelope.decay_time,
+                        sustain_level=envelope.sustain_level * self._automation_amplitude,
+                        release_time=envelope.release_time,
+                        attack_level=envelope.attack_level * self._automation_amplitude,
+                    )
                 # Play note
                 n = synthio.Note(
                     frequency=freq,
                     waveform=wave,
-                    envelope=envelope
+                    envelope=active_envelope
                 )
                 self.synth.press(n)
                 await asyncio.sleep(duration_sec)
@@ -472,6 +492,14 @@ class SynthManager:
         mapping intentionally mirrors the constants defined at module level
         (``JSEQ_PARAM_LPF_CUTOFF``, ``JSEQ_PARAM_AMPLITUDE``).
 
+        For ``JSEQ_PARAM_LPF_CUTOFF`` a ``synthio.Biquad`` low-pass filter is
+        constructed and assigned to ``self.synth.filter``, which applies it
+        globally to all synthesizer output.
+
+        For ``JSEQ_PARAM_AMPLITUDE`` the mapped level is stored in
+        ``self._automation_amplitude`` so that subsequent notes pressed by
+        ``play_sequence`` pick up the scaled amplitude.
+
         Args:
             param_id (int): Target parameter identifier (0x00 or 0x01).
             value (int):    Raw modulation value (0–255).
@@ -480,10 +508,22 @@ class SynthManager:
             # Map 0-255 to a 0–20 000 Hz LPF cutoff range.
             cutoff_hz = (value / 255.0) * 20000.0
             JEBLogger.debug("SYNTH", f"Automation LPF cutoff: {cutoff_hz:.1f} Hz")
+            # Apply a Butterworth-approximation Biquad LPF (Q=0.7071) to the
+            # synthesizer output.  synthio.Biquad is available on CircuitPython
+            # 9.x (RP2350 target).
+            try:
+                lpf = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff_hz, 0.7071)
+                self.synth.filter = lpf
+            except AttributeError:
+                # Graceful degradation if Biquad/FilterMode are not available
+                # in the current CircuitPython version.
+                JEBLogger.debug("SYNTH", "Biquad filter not available; skipping LPF automation")
         elif param_id == JSEQ_PARAM_AMPLITUDE:
-            # Map 0-255 to a 0.0–1.0 amplitude range.
-            level = value / 255.0
-            JEBLogger.debug("SYNTH", f"Automation amplitude: {level:.3f}")
+            # Map 0-255 to a 0.0–1.0 amplitude scale factor stored on the
+            # instance.  New notes pressed after this point will have their
+            # envelope attack_level scaled accordingly.
+            self._automation_amplitude = value / 255.0
+            JEBLogger.debug("SYNTH", f"Automation amplitude: {self._automation_amplitude:.3f}")
         else:
             JEBLogger.debug("SYNTH", f"Automation: unknown param_id={param_id:#04x}, value={value}")
 

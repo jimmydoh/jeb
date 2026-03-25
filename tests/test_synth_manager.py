@@ -57,6 +57,21 @@ class MockNote:
         self.released = False
 
 
+class MockBiquad:
+    """Mock for synthio.Biquad."""
+    def __init__(self, mode, frequency, Q=0.7071):
+        self.mode = mode
+        self.frequency = frequency
+        self.Q = Q
+
+
+class MockFilterMode:
+    """Mock for synthio.FilterMode enum."""
+    LOW_PASS = 0
+    HIGH_PASS = 1
+    BAND_PASS = 2
+
+
 class MockSynthesizer:
     """Mock for synthio.Synthesizer."""
     def __init__(self, sample_rate=22050, channel_count=1):
@@ -64,6 +79,7 @@ class MockSynthesizer:
         self.channel_count = channel_count
         self.pressed_notes = []
         self.released_notes = []
+        self.filter = None  # Global biquad filter (set by _apply_automation)
 
     def press(self, note):
         self.pressed_notes.append(note)
@@ -81,6 +97,8 @@ class MockSynthio:
     Note = MockNote
     Synthesizer = MockSynthesizer
     Envelope = MockEnvelope
+    Biquad = MockBiquad
+    FilterMode = MockFilterMode
 
 
 sys.modules['synthio'] = MockSynthio()
@@ -1029,6 +1047,55 @@ async def test_play_sequence_uses_envelope_override():
     print("✓ play_sequence envelope_override test passed")
 
 
+def test_apply_automation_lpf_sets_synth_filter():
+    """_apply_automation with LPF param actually sets self.synth.filter to a Biquad."""
+    print("\nTesting _apply_automation LPF sets synth.filter...")
+
+    synth = SynthManager()
+    assert synth.synth.filter is None, "filter should start as None"
+
+    synth._apply_automation(synth_manager_module.JSEQ_PARAM_LPF_CUTOFF, 128)
+
+    assert synth.synth.filter is not None, "synth.filter should be set after LPF automation"
+    f = synth.synth.filter
+    # MockBiquad stores mode, frequency, Q
+    import synthio as mock_synthio
+    assert isinstance(f, mock_synthio.Biquad), f"filter should be a Biquad, got {type(f)}"
+    assert f.mode == mock_synthio.FilterMode.LOW_PASS, "Biquad should be LOW_PASS mode"
+    # 128/255 * 20000 ≈ 10039 Hz
+    expected_cutoff = (128 / 255.0) * 20000.0
+    assert abs(f.frequency - expected_cutoff) < 1.0, f"Cutoff frequency mismatch: {f.frequency}"
+    print("✓ _apply_automation LPF sets synth.filter test passed")
+
+
+def test_apply_automation_amplitude_updates_instance():
+    """_apply_automation with amplitude param updates self._automation_amplitude."""
+    print("\nTesting _apply_automation amplitude updates _automation_amplitude...")
+
+    synth = SynthManager()
+    assert synth._automation_amplitude == 1.0, "_automation_amplitude should start at 1.0"
+
+    synth._apply_automation(synth_manager_module.JSEQ_PARAM_AMPLITUDE, 128)
+
+    expected = 128 / 255.0
+    assert abs(synth._automation_amplitude - expected) < 0.001, \
+        f"_automation_amplitude mismatch: {synth._automation_amplitude}"
+    print("✓ _apply_automation amplitude updates instance test passed")
+
+
+def test_apply_automation_lpf_zero_resets_filter():
+    """_apply_automation with LPF=0 creates a near-zero-cutoff Biquad (mutes output)."""
+    print("\nTesting _apply_automation LPF=0 creates near-zero cutoff...")
+
+    synth = SynthManager()
+    synth._apply_automation(synth_manager_module.JSEQ_PARAM_LPF_CUTOFF, 0)
+
+    f = synth.synth.filter
+    assert f is not None
+    assert abs(f.frequency) < 1.0, f"LPF=0 should produce ~0 Hz cutoff, got {f.frequency}"
+    print("✓ _apply_automation LPF=0 test passed")
+
+
 def run_all_tests():
     """Run all SynthManager tests."""
     print("=" * 60)
@@ -1059,6 +1126,10 @@ def run_all_tests():
         test_load_jseq_unknown_version_raises,
         test_apply_adsr_multipliers,
         test_apply_adsr_multipliers_sustain_clamped,
+        # _apply_automation implementation tests
+        test_apply_automation_lpf_sets_synth_filter,
+        test_apply_automation_amplitude_updates_instance,
+        test_apply_automation_lpf_zero_resets_filter,
     ]
 
     async_tests = [

@@ -102,7 +102,7 @@ for b0, b1 in ch2_seq:
 #    Track type 1 = Automation; steps are [param_id, value] pairs.
 #    param_id 0x00 = LPF cutoff (0-255 → 0-20 000 Hz)
 #
-#    We fill audioNumSteps steps at 1/32-beat resolution.
+#    We fill NUM_STEPS steps at 1/32-beat resolution.
 #    At 140 BPM, 1/32 beat = (60/140)/32 ≈ 13.4 ms per automation step.
 #    8 bars × 4 beats/bar × 32 steps/beat = 1024 automation steps.
 #
