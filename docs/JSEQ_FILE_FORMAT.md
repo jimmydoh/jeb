@@ -14,24 +14,29 @@ Every `.jseq` file begins with an 8-byte global header that defines the sequence
 | Byte Offset | Type    | Size    | Description |
 | :--- | :--- | :--- | :--- |
 | `0x00` - `0x03` | `char[]` | 4 bytes | **Magic Bytes:** `JSEQ` (`0x4A`, `0x53`, `0x45`, `0x51`) |
-| `0x04`      | `uint8` | 1 byte  | **Format Version:** Currently `0x01` |
+| `0x04`      | `uint8` | 1 byte  | **Format Version:** `0x01` (v1) or `0x02` (v2) |
 | `0x05` - `0x06` | `uint16`| 2 bytes | **BPM:** Playback speed in Beats Per Minute |
 | `0x07`      | `uint8` | 1 byte  | **Channel Count:** Number of audio channels (typically `3`) |
 
+The `SynthManager` reads byte `0x04` at load time and routes the file to the
+appropriate parser — v1 files continue to work unchanged.
+
 ---
 
-## 2. Channel Data Blocks
+## 2. V1 Channel Data Blocks
+
+*(Used when Format Version = `0x01`.)*
 
 Immediately following the global header are the channel data blocks. There will be exactly `Channel Count` blocks appended consecutively.
 
-### 2.1 Channel Header (3 Bytes)
+### 2.1 V1 Channel Header (3 Bytes)
 
 | Byte Offset | Type    | Size    | Description |
 | :--- | :--- | :--- | :--- |
 | `+0x00`     | `uint8` | 1 byte  | **Patch Index:** The synthesizer instrument map (See Patch Table) |
 | `+0x01` - `0x02`| `uint16`| 2 bytes | **Step Count (`N`):** The number of note/rest events in this channel |
 
-### 2.2 Sequence Steps (`N` × 2 Bytes)
+### 2.2 V1 Sequence Steps (`N` × 2 Bytes)
 
 Following each Channel Header is an array of steps. Every step consists of a 2-byte pair defining the pitch and the exact duration of the event.
 
@@ -44,9 +49,69 @@ Following each Channel Header is an array of steps. Every step consists of a 2-b
 
 ---
 
-## 3. Data Value Mappings
+## 3. V2 Channel Data Blocks
 
-### 3.1 Patch Index Table
+*(Used when Format Version = `0x02`.)*
+
+V2 extends the channel header to support **Track Types** and **Inline ADSR Overrides**, while keeping the 2-byte step pair format.
+
+### 3.1 V2 Channel Header (5–9 Bytes)
+
+| Byte Offset | Type    | Size    | Description |
+| :--- | :--- | :--- | :--- |
+| `+0x00`     | `uint8` | 1 byte  | **Patch Index:** Synthesizer instrument (same table as v1) |
+| `+0x01`     | `uint8` | 1 byte  | **Track Type:** `0x00` = Audio, `0x01` = Automation |
+| `+0x02`     | `uint8` | 1 byte  | **Override Flag:** `0x00` = no override, `0x01` = ADSR multipliers follow |
+| `+0x03`–`+0x06` | `uint8[4]` | 4 bytes | *(only if Override Flag = `0x01`)* **ADSR Multipliers:** `[Attack, Decay, Sustain, Release]` — each value ÷ 100 = float multiplier (e.g. `100` = 1.0×, `200` = 2.0×, `50` = 0.5×) |
+| `+N, +N+1`  | `uint16` | 2 bytes | **Step Count:** Number of step pairs (little-endian) |
+
+### 3.2 V2 Audio Track Steps (`N` × 2 Bytes)
+
+Audio tracks use the same 2-byte step pair as v1, extended with a **Meta-Event** marker:
+
+| Byte Offset | Type    | Size    | Description |
+| :--- | :--- | :--- | :--- |
+| `+0x00`     | `uint8` | 1 byte  | **Pitch Index:** `0` = Rest, `1`–`254` = MIDI Note Offset, `255` = **Meta-Event** |
+| `+0x01`     | `uint8` | 1 byte  | **Duration / Command Payload:** duration units for normal notes; new BPM value when Pitch Index = `255` |
+
+#### Meta-Events (Pitch Index = `0xFF`)
+
+When byte `+0x00` of a step is `0xFF`, the step is a **Meta-Event** rather than a
+note.  The second byte (`+0x01`) is interpreted as a **Command Payload**:
+
+| Payload value | Meaning |
+| :--- | :--- |
+| `1`–`255` | **BPM Change** — sets playback speed to this new BPM for all subsequent notes |
+
+The parser converts meta-events to `(None, new_bpm)` tuples in the sequence
+list so that `play_sequence()` can update `beat_duration` on the fly without
+any structural changes to the playback loop.
+
+### 3.3 V2 Automation Track Steps (`N` × 2 Bytes)
+
+For **Automation** channels (`Track Type = 0x01`), the step payload is
+re-purposed as a parameter modulation value:
+
+| Byte Offset | Type    | Size    | Description |
+| :--- | :--- | :--- | :--- |
+| `+0x00`     | `uint8` | 1 byte  | **Target Parameter ID** |
+| `+0x01`     | `uint8` | 1 byte  | **Modulation Value** (0–255) |
+
+Each automation step fires at a **1/32-beat interval** (matching the finest
+audio note resolution), so 32 automation steps cover exactly 1 beat.
+
+#### Automation Parameter IDs
+
+| ID     | Symbol                  | Mapping |
+| :----- | :---------------------- | :------ |
+| `0x00` | `JSEQ_PARAM_LPF_CUTOFF` | Low-Pass Filter cutoff: `value / 255 × 20 000 Hz` |
+| `0x01` | `JSEQ_PARAM_AMPLITUDE`  | Note amplitude: `value / 255` (0.0–1.0) |
+
+---
+
+## 4. Data Value Mappings
+
+### 4.1 Patch Index Table
 The `uint8` Patch Index maps to the following string constants in the synth engine:
 * `0` = `RETRO_LEAD`
 * `1` = `RETRO_BASS`
@@ -67,13 +132,14 @@ The `uint8` Patch Index maps to the following string constants in the synth engi
 * `16` = `SUCCESS`
 * `17` = `ERROR`
 
-### 3.2 Pitch Math (MIDI Offset)
+### 4.2 Pitch Math (MIDI Offset)
 To save space and align with standard MIDI numbering, pitch is calculated using standard octaves (`C-1` to `G9`).
 * **Rest:** A pitch value of `0` is always a Rest (silence).
 * **Note Formula:** `Pitch Index = ((Octave + 1) * 12) + Semitone + 1`
 * *Example (C4):* Octave `4`, Semitone `0` (C). `((4 + 1) * 12) + 0 + 1 = 61`.
+* **V2 Meta-Event:** Pitch value `255` (`0xFF`) is reserved as a meta-event marker.
 
-### 3.3 Duration Math
+### 4.3 Duration Math
 To support sub-beat timing (like 1/16th and 1/32nd notes) as an integer, the duration byte represents units of `1/32nd` of a beat.
 * **Max Value:** `255` (approx 7.96 beats). Gaps larger than this are split into consecutive rest blocks.
 * **Beat Formula:** `Total Beats = Duration Byte / 32.0`
@@ -81,3 +147,27 @@ To support sub-beat timing (like 1/16th and 1/32nd notes) as an integer, the dur
   * `0.5` beats (Eighth note) = `16`
   * `0.25` beats (Sixteenth note) = `8`
   * `4.0` beats (Whole note / Chunked rest) = `128`
+
+### 4.4 V2 ADSR Multiplier Math
+The four override bytes each represent a **floating-point multiplier** encoded as an integer.
+* **Formula:** `float_multiplier = byte_value / 100.0`
+* `100` = no change (1.0×)
+* `200` = double (2.0×)
+* `50`  = halve (0.5×)
+* `0`   = zero out (0.0×) — e.g. removes attack ramp entirely
+
+Sustain level is additionally clamped to `[0.0, 1.0]` after multiplication.
+
+---
+
+## 5. Backwards Compatibility
+
+Because the Format Version is explicitly declared at byte `0x04`, migration is
+completely non-destructive:
+
+1. `SynthManager.load_jseq()` reads the 8-byte global header.
+2. If `version == 1`, it executes the legacy byte-parsing logic (`_load_jseq_v1`).
+3. If `version == 2`, it utilises the expanded feature set (`_load_jseq_v2`).
+4. Any other version raises `ValueError`.
+
+All existing `.jseq` v1 files continue to play correctly without modification.

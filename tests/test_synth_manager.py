@@ -40,6 +40,12 @@ class MockEnvelope:
     """Mock for synthio.Envelope."""
     def __init__(self, **kwargs):
         self.kwargs = kwargs
+        # Expose named attributes to match the real synthio.Envelope interface.
+        self.attack_time   = kwargs.get('attack_time', 0.001)
+        self.decay_time    = kwargs.get('decay_time', 0.0)
+        self.release_time  = kwargs.get('release_time', 0.1)
+        self.attack_level  = kwargs.get('attack_level', 1.0)
+        self.sustain_level = kwargs.get('sustain_level', 1.0)
 
 
 class MockNote:
@@ -648,6 +654,374 @@ async def test_preview_channels_resolves_string_patch():
 
     print("✓ preview_channels resolves string patch test passed")
 
+
+# ---------------------------------------------------------------------------
+# JSEQ v2 tests
+# ---------------------------------------------------------------------------
+
+def _build_jseq_v2(bpm, channels):
+    """Helper: build a minimal JSEQ v2 binary buffer.
+
+    Args:
+        bpm (int): Global BPM.
+        channels (list): List of channel spec dicts, each with keys:
+            * ``track_type`` (int, 0=audio / 1=automation)
+            * ``patch_idx``  (int)
+            * ``override``   (tuple of 4 ints, or None)
+            * ``steps``      (list of (byte0, byte1) tuples)
+
+    Returns:
+        bytes: The encoded .jseq v2 binary.
+    """
+    import struct
+    out = bytearray(b'JSEQ')
+    out.append(2)
+    out.extend(struct.pack('<H', bpm))
+    out.append(len(channels))
+
+    for ch in channels:
+        out.append(ch['patch_idx'])
+        out.append(ch['track_type'])
+        if ch.get('override'):
+            out.append(1)  # override_flag
+            out.extend(ch['override'])
+        else:
+            out.append(0)  # override_flag
+        steps = ch['steps']
+        out.extend(struct.pack('<H', len(steps)))
+        for b0, b1 in steps:
+            out.append(b0)
+            out.append(b1)
+    return bytes(out)
+
+
+def test_load_jseq_v1_backwards_compatible():
+    """JSEQ v1 files must still parse correctly after the v2 upgrade."""
+    print("\nTesting v1 backwards compatibility...")
+
+    import io
+    import struct
+    import builtins
+
+    synth = SynthManager()
+
+    bpm = 90
+    header = b'JSEQ' + bytes([1]) + struct.pack('<H', bpm) + bytes([1])
+    channel = bytes([0]) + struct.pack('<H', 1) + bytes([61, 32])  # patch=0, 1 note
+    data = header + channel
+
+    original_open = builtins.open
+    builtins.open = lambda path, mode='r', *a, **kw: io.BytesIO(data)
+    try:
+        channels = synth.load_jseq('/sd/test.jseq')
+    finally:
+        builtins.open = original_open
+
+    assert len(channels) == 1
+    assert channels[0]['bpm'] == bpm
+    assert channels[0].get('type') == 'audio'
+    print("✓ v1 backwards compatibility test passed")
+
+
+def test_load_jseq_v2_audio_channel():
+    """JSEQ v2 basic audio channel parses correctly."""
+    print("\nTesting v2 audio channel parsing...")
+
+    import io
+    import builtins
+
+    synth = SynthManager()
+
+    # note_idx=61 → MIDI 60 → C4, dur=32 → 1.0 beat
+    data = _build_jseq_v2(120, [{'patch_idx': 0, 'track_type': 0, 'override': None,
+                                   'steps': [(61, 32), (0, 8)]}])
+
+    original_open = builtins.open
+    builtins.open = lambda path, mode='r', *a, **kw: io.BytesIO(data)
+    try:
+        channels = synth.load_jseq('/sd/test.jseq')
+    finally:
+        builtins.open = original_open
+
+    assert len(channels) == 1
+    ch = channels[0]
+    assert ch.get('type') == 'audio'
+    assert ch['bpm'] == 120
+    assert len(ch['sequence']) == 2
+
+    # First step: MIDI 60 (note_idx=61 → midi=60 → C4)
+    expected_freq = 440.0 * (2.0 ** ((60 - 69) / 12.0))
+    assert abs(ch['sequence'][0][0] - expected_freq) < 0.01, "Frequency mismatch"
+    assert abs(ch['sequence'][0][1] - 1.0) < 0.01, "Duration mismatch"
+
+    # Second step: rest
+    assert ch['sequence'][1][0] == 0, "Rest should have freq 0"
+    print("✓ v2 audio channel test passed")
+
+
+def test_load_jseq_v2_adsr_override():
+    """JSEQ v2 inline ADSR override creates a modified envelope."""
+    print("\nTesting v2 ADSR override...")
+
+    import io
+    import builtins
+
+    synth = SynthManager()
+
+    # Attack ×2.0 (200), Decay ×1.0 (100), Sustain ×0.5 (50), Release ×1.0 (100)
+    data = _build_jseq_v2(120, [{'patch_idx': 5, 'track_type': 0,
+                                   'override': (200, 100, 50, 100),
+                                   'steps': [(61, 32)]}])
+
+    original_open = builtins.open
+    builtins.open = lambda path, mode='r', *a, **kw: io.BytesIO(data)
+    try:
+        channels = synth.load_jseq('/sd/test.jseq')
+    finally:
+        builtins.open = original_open
+
+    assert len(channels) == 1
+    ch = channels[0]
+    assert ch.get('type') == 'audio'
+    assert 'envelope_override' in ch, "envelope_override should be present"
+
+    env = ch['envelope_override']
+    assert env is not None, "envelope_override should not be None"
+
+    # PAD patch: attack_time=0.5 → ×2.0 = 1.0
+    assert abs(env.attack_time - 1.0) < 0.001, f"attack_time mismatch: {env.attack_time}"
+    # PAD sustain_level=0.8 → ×0.5 = 0.4
+    assert abs(env.sustain_level - 0.4) < 0.001, f"sustain_level mismatch: {env.sustain_level}"
+    print("✓ v2 ADSR override test passed")
+
+
+def test_load_jseq_v2_automation_channel():
+    """JSEQ v2 automation channel parses steps as (param_id, value) pairs."""
+    print("\nTesting v2 automation channel parsing...")
+
+    import io
+    import builtins
+
+    synth = SynthManager()
+
+    # 3 automation steps: LPF at 64, LPF at 128, amplitude at 200
+    steps = [(0x00, 64), (0x00, 128), (0x01, 200)]
+    data = _build_jseq_v2(120, [{'patch_idx': 0, 'track_type': 1, 'override': None,
+                                   'steps': steps}])
+
+    original_open = builtins.open
+    builtins.open = lambda path, mode='r', *a, **kw: io.BytesIO(data)
+    try:
+        channels = synth.load_jseq('/sd/test.jseq')
+    finally:
+        builtins.open = original_open
+
+    assert len(channels) == 1
+    ch = channels[0]
+    assert ch.get('type') == 'automation', f"Expected 'automation', got '{ch.get('type')}'"
+    assert len(ch['steps']) == 3
+    assert ch['steps'][0] == (0x00, 64)
+    assert ch['steps'][1] == (0x00, 128)
+    assert ch['steps'][2] == (0x01, 200)
+    print("✓ v2 automation channel test passed")
+
+
+def test_load_jseq_v2_meta_event():
+    """JSEQ v2 pitch_idx 255 produces a (None, new_bpm) meta-event tuple."""
+    print("\nTesting v2 BPM meta-event...")
+
+    import io
+    import builtins
+
+    synth = SynthManager()
+
+    # One normal note, then a BPM meta-event (new BPM = 140), then another note
+    steps = [(61, 32), (255, 140), (64, 16)]
+    data = _build_jseq_v2(120, [{'patch_idx': 0, 'track_type': 0, 'override': None,
+                                   'steps': steps}])
+
+    original_open = builtins.open
+    builtins.open = lambda path, mode='r', *a, **kw: io.BytesIO(data)
+    try:
+        channels = synth.load_jseq('/sd/test.jseq')
+    finally:
+        builtins.open = original_open
+
+    assert len(channels) == 1
+    seq = channels[0]['sequence']
+    assert len(seq) == 3
+
+    # Second item is the meta-event
+    assert seq[1][0] is None, "Meta-event should have None as first element"
+    assert seq[1][1] == 140, f"Meta-event BPM should be 140, got {seq[1][1]}"
+    print("✓ v2 BPM meta-event test passed")
+
+
+def test_load_jseq_v2_mixed_channels():
+    """JSEQ v2 file with one audio channel and one automation channel."""
+    print("\nTesting v2 mixed audio + automation channels...")
+
+    import io
+    import builtins
+
+    synth = SynthManager()
+
+    data = _build_jseq_v2(100, [
+        {'patch_idx': 0, 'track_type': 0, 'override': None, 'steps': [(61, 32)]},
+        {'patch_idx': 0, 'track_type': 1, 'override': None, 'steps': [(0x00, 200), (0x00, 50)]},
+    ])
+
+    original_open = builtins.open
+    builtins.open = lambda path, mode='r', *a, **kw: io.BytesIO(data)
+    try:
+        channels = synth.load_jseq('/sd/test.jseq')
+    finally:
+        builtins.open = original_open
+
+    assert len(channels) == 2
+    assert channels[0].get('type') == 'audio'
+    assert channels[1].get('type') == 'automation'
+    assert len(channels[1]['steps']) == 2
+    print("✓ v2 mixed channels test passed")
+
+
+def test_load_jseq_unknown_version_raises():
+    """An unsupported version byte must raise ValueError."""
+    print("\nTesting unknown version raises ValueError...")
+
+    import io
+    import struct
+    import builtins
+
+    synth = SynthManager()
+
+    bad_data = b'JSEQ' + bytes([99]) + struct.pack('<H', 120) + bytes([1]) + bytes(10)
+
+    original_open = builtins.open
+    builtins.open = lambda path, mode='r', *a, **kw: io.BytesIO(bad_data)
+    try:
+        raised = False
+        try:
+            synth.load_jseq('/sd/test.jseq')
+        except ValueError:
+            raised = True
+        assert raised, "load_jseq should raise ValueError for unknown version"
+    finally:
+        builtins.open = original_open
+
+    print("✓ unknown version raises ValueError test passed")
+
+
+def test_apply_adsr_multipliers():
+    """_apply_adsr_multipliers creates a correctly scaled envelope."""
+    print("\nTesting _apply_adsr_multipliers...")
+
+    synth = SynthManager()
+
+    from utilities.synth_registry import Envelopes
+    base = Envelopes.PAD  # attack=0.5, decay=0.2, sustain=0.8, release=0.5
+
+    # Double attack (200), halve sustain (50), no change elsewhere (100)
+    result = synth._apply_adsr_multipliers(base, (200, 100, 50, 100))
+
+    assert abs(result.attack_time - 1.0) < 0.001,   f"attack_time: {result.attack_time}"
+    assert abs(result.decay_time - 0.2) < 0.001,    f"decay_time: {result.decay_time}"
+    assert abs(result.sustain_level - 0.4) < 0.001, f"sustain_level: {result.sustain_level}"
+    assert abs(result.release_time - 0.5) < 0.001,  f"release_time: {result.release_time}"
+    print("✓ _apply_adsr_multipliers test passed")
+
+
+def test_apply_adsr_multipliers_sustain_clamped():
+    """Sustain level must not exceed 1.0 even with a large multiplier."""
+    print("\nTesting ADSR multiplier sustain clamping...")
+
+    synth = SynthManager()
+
+    from utilities.synth_registry import Envelopes
+    base = Envelopes.PAD  # sustain=0.8
+
+    # 200 × 0.8 = 1.6 → should clamp to 1.0
+    result = synth._apply_adsr_multipliers(base, (100, 100, 200, 100))
+    assert result.sustain_level <= 1.0, "sustain_level must not exceed 1.0"
+    assert abs(result.sustain_level - 1.0) < 0.001
+    print("✓ ADSR multiplier sustain clamping test passed")
+
+
+@pytest.mark.asyncio
+async def test_play_sequence_bpm_meta_event():
+    """play_sequence honours dynamic BPM meta-events embedded in the sequence."""
+    print("\nTesting play_sequence BPM meta-event handling...")
+
+    synth = SynthManager()
+    sleep_calls = []
+
+    original_sleep = asyncio.sleep
+
+    async def spy_sleep(t):
+        sleep_calls.append(t)
+
+    asyncio.sleep = spy_sleep
+    try:
+        # One rest at 120 BPM, then BPM meta-event → 240 BPM, then another rest
+        # At 120 BPM: beat_duration=0.5s, rest=1.0 beat → 0.5s sleep
+        # At 240 BPM: beat_duration=0.25s, rest=1.0 beat → 0.25s sleep
+        sequence_data = {
+            'bpm': 120,
+            'patch': 'SELECT',
+            'sequence': [
+                (0, 1.0),      # rest at 120 BPM → 0.5s
+                (None, 240),   # meta-event: new BPM = 240
+                (0, 1.0),      # rest at 240 BPM → 0.25s
+            ]
+        }
+        await synth.play_sequence(sequence_data)
+    finally:
+        asyncio.sleep = original_sleep
+
+    # The first rest is 0.5s (120 BPM, 1 beat), the third is 0.25s (240 BPM, 1 beat)
+    assert any(abs(t - 0.5) < 0.001 for t in sleep_calls), f"Expected 0.5s sleep, got: {sleep_calls}"
+    assert any(abs(t - 0.25) < 0.001 for t in sleep_calls), f"Expected 0.25s sleep, got: {sleep_calls}"
+    print("✓ play_sequence BPM meta-event test passed")
+
+
+@pytest.mark.asyncio
+async def test_play_sequence_uses_envelope_override():
+    """play_sequence uses envelope_override from channel dict when present."""
+    print("\nTesting play_sequence envelope_override...")
+
+    synth = SynthManager()
+    used_envelopes = []
+
+    original_note_cls = synth.synth.__class__
+
+    class CapturingNote:
+        def __init__(self, frequency, waveform=None, envelope=None):
+            self.frequency = frequency
+            self.waveform = waveform
+            self.envelope = envelope
+            used_envelopes.append(envelope)
+
+    import synthio as mock_synthio
+    original_note = mock_synthio.Note
+    mock_synthio.Note = CapturingNote
+
+    try:
+        override_env = mock_synthio.Envelope(attack_time=9.9)
+        sequence_data = {
+            'bpm': 120,
+            'patch': 'BEEP',
+            'envelope_override': override_env,
+            'sequence': [(440.0, 0.01)]
+        }
+        await synth.play_sequence(sequence_data)
+    finally:
+        mock_synthio.Note = original_note
+
+    assert len(used_envelopes) == 1
+    assert used_envelopes[0] is override_env, "envelope_override should be used"
+    print("✓ play_sequence envelope_override test passed")
+
+
 def run_all_tests():
     """Run all SynthManager tests."""
     print("=" * 60)
@@ -668,6 +1042,16 @@ def run_all_tests():
         test_jseq_midi_to_freq,
         test_load_jseq_invalid_magic,
         test_load_jseq_valid_file,
+        # v2 tests
+        test_load_jseq_v1_backwards_compatible,
+        test_load_jseq_v2_audio_channel,
+        test_load_jseq_v2_adsr_override,
+        test_load_jseq_v2_automation_channel,
+        test_load_jseq_v2_meta_event,
+        test_load_jseq_v2_mixed_channels,
+        test_load_jseq_unknown_version_raises,
+        test_apply_adsr_multipliers,
+        test_apply_adsr_multipliers_sustain_clamped,
     ]
 
     async_tests = [
@@ -681,6 +1065,9 @@ def run_all_tests():
         test_start_generative_drone_calls_play_note_with_dict_patch,
         test_preview_channels_creates_task,
         test_preview_channels_resolves_string_patch,
+        # v2 async tests
+        test_play_sequence_bpm_meta_event,
+        test_play_sequence_uses_envelope_override,
     ]
 
     passed = 0

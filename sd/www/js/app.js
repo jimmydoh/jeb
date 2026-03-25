@@ -1811,6 +1811,9 @@ let audioNumSteps = 64;    // Calculated strictly on BASE_RES
 
 let audioSteps = [];
 let audioChannelPatches = [];
+// V2: per-channel track type (0=audio, 1=automation) and ADSR override config
+let audioChannelTrackTypes = [];
+let audioChannelAdsrOverrides = [];
 let activeNote = null;
 let activeDuration = 1.0;
 let audioStudioInitialized = false;
@@ -1823,6 +1826,8 @@ function initAudioStudio() {
         for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
             audioSteps.push(new Array(audioNumSteps).fill(null));
             audioChannelPatches.push(JSEQ_PATCH_NAMES[c] || 'SELECT');
+            audioChannelTrackTypes.push(0);   // default: Audio
+            audioChannelAdsrOverrides.push({ enabled: false, a: 100, d: 100, s: 100, r: 100 });
         }
 
         _buildNotePicker();
@@ -1863,6 +1868,10 @@ function _resizeGrid() {
                 break;
             }
         }
+
+        // Ensure v2 state arrays are sized correctly
+        if (audioChannelTrackTypes[c] === undefined) audioChannelTrackTypes[c] = 0;
+        if (!audioChannelAdsrOverrides[c]) audioChannelAdsrOverrides[c] = { enabled: false, a: 100, d: 100, s: 100, r: 100 };
     }
 
     _buildGridHeader();
@@ -1870,9 +1879,15 @@ function _resizeGrid() {
     container.innerHTML = '';
 
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        const isAuto = audioChannelTrackTypes[c] === 1;
+
+        // --- Outer wrapper (channel label + controls + grid) ---
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'margin-bottom: 8px;';
+
         const row = document.createElement('div');
         row.className = 'channel-row';
-        row.style.cssText = 'display: flex; flex-wrap: nowrap; align-items: center; margin-bottom: 6px;';
+        row.style.cssText = 'display: flex; flex-wrap: nowrap; align-items: center;';
 
         const controls = document.createElement('div');
         controls.style.cssText = 'display: flex; gap: 5px; flex: 0 0 140px;';
@@ -1897,13 +1912,142 @@ function _resizeGrid() {
 
         row.appendChild(controls);
 
+        // Step grid / automation editor
         const grid = document.createElement('div');
         grid.id = `stepGrid_${c}`;
         grid.style.cssText = 'display: flex; flex-wrap: nowrap; gap: 2px;';
         row.appendChild(grid);
-        container.appendChild(row);
+        wrapper.appendChild(row);
 
-        _renderChannel(c);
+        // --- V2 controls row (track type + ADSR override) ---
+        const v2row = document.createElement('div');
+        v2row.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-top: 3px; padding-left: 4px; font-size: 0.8em; color: #888;';
+
+        // Track type selector
+        const ttLbl = document.createElement('label');
+        ttLbl.style.cssText = 'color:#666; white-space:nowrap;';
+        ttLbl.textContent = 'Type:';
+        v2row.appendChild(ttLbl);
+
+        const ttSel = document.createElement('select');
+        ttSel.style.cssText = 'font-size:0.85em; padding:1px 3px; background:#1a1a1a; color:#ccc; border:1px solid #444;';
+        ['Audio', 'Automation'].forEach((label, idx) => {
+            const o = document.createElement('option');
+            o.value = idx;
+            o.textContent = label;
+            if (idx === audioChannelTrackTypes[c]) o.selected = true;
+            ttSel.appendChild(o);
+        });
+        ttSel.onchange = () => {
+            audioChannelTrackTypes[c] = parseInt(ttSel.value);
+            _resizeGrid();
+        };
+        v2row.appendChild(ttSel);
+
+        // ADSR override toggle
+        const adsrChk = document.createElement('input');
+        adsrChk.type = 'checkbox';
+        adsrChk.id = `adsrChk_${c}`;
+        adsrChk.checked = audioChannelAdsrOverrides[c].enabled;
+        adsrChk.title = 'Enable inline ADSR multiplier override (JSEQ v2)';
+        v2row.appendChild(adsrChk);
+
+        const adsrLbl = document.createElement('label');
+        adsrLbl.htmlFor = `adsrChk_${c}`;
+        adsrLbl.style.cssText = 'color:#999; white-space:nowrap; cursor:pointer;';
+        adsrLbl.textContent = 'ADSR ×';
+        v2row.appendChild(adsrLbl);
+
+        // ADSR multiplier inputs (hidden when override disabled)
+        const adsrFields = document.createElement('span');
+        adsrFields.style.display = audioChannelAdsrOverrides[c].enabled ? 'inline-flex' : 'none';
+        adsrFields.style.cssText += ' gap:4px; align-items:center;';
+
+        ['a', 'd', 's', 'r'].forEach((key, ki) => {
+            const tip = ['Atk', 'Dcy', 'Sus', 'Rel'][ki];
+            const inp = document.createElement('input');
+            inp.type = 'number';
+            inp.min = 0; inp.max = 255;
+            inp.value = audioChannelAdsrOverrides[c][key];
+            inp.title = `${tip} multiplier (÷100 = float scale, 100=1×)`;
+            inp.style.cssText = 'width:42px; font-size:0.85em; background:#111; color:#ccc; border:1px solid #444; padding:1px 2px;';
+            inp.onchange = () => {
+                audioChannelAdsrOverrides[c][key] = Math.max(0, Math.min(255, parseInt(inp.value) || 0));
+            };
+            const lk = document.createElement('label');
+            lk.textContent = tip + ':';
+            lk.style.color = '#666';
+            adsrFields.appendChild(lk);
+            adsrFields.appendChild(inp);
+        });
+
+        adsrChk.onchange = () => {
+            audioChannelAdsrOverrides[c].enabled = adsrChk.checked;
+            adsrFields.style.display = adsrChk.checked ? 'inline-flex' : 'none';
+        };
+
+        v2row.appendChild(adsrFields);
+        wrapper.appendChild(v2row);
+
+        // Automation channel editor (replaces note grid)
+        if (isAuto) {
+            grid.style.display = 'none';
+            const autoEditor = document.createElement('div');
+            autoEditor.id = `autoEditor_${c}`;
+            autoEditor.style.cssText = 'margin-top:4px; padding:6px; background:#111; border:1px solid #333; border-radius:3px; font-size:0.82em;';
+
+            const autoHdr = document.createElement('div');
+            autoHdr.style.cssText = 'color:#80ccff; margin-bottom:4px; font-weight:bold;';
+            autoHdr.textContent = `⚙ Automation — Ch${c + 1}`;
+            autoEditor.appendChild(autoHdr);
+
+            // Param selector for the whole channel
+            const paramRow = document.createElement('div');
+            paramRow.style.cssText = 'display:flex; gap:8px; align-items:center; margin-bottom:6px;';
+            const paramLbl = document.createElement('label');
+            paramLbl.textContent = 'Parameter:';
+            paramLbl.style.color = '#888';
+            paramRow.appendChild(paramLbl);
+            const paramSel = document.createElement('select');
+            paramSel.id = `autoParam_${c}`;
+            paramSel.style.cssText = 'font-size:0.9em; background:#1a1a1a; color:#ccc; border:1px solid #444;';
+            [['LPF Cutoff (0x00)', 0], ['Amplitude (0x01)', 1]].forEach(([lbl, val]) => {
+                const o = document.createElement('option');
+                o.value = val;
+                o.textContent = lbl;
+                if ((audioSteps[c][0] && audioSteps[c][0].paramId === val) || val === 0) o.selected = true;
+                paramSel.appendChild(o);
+            });
+            paramRow.appendChild(paramSel);
+            autoEditor.appendChild(paramRow);
+
+            // Value grid: audioNumSteps cells for automation values
+            const autoGrid = document.createElement('div');
+            autoGrid.style.cssText = 'display:flex; flex-wrap:wrap; gap:2px;';
+            for (let s = 0; s < audioNumSteps; s++) {
+                const cell = audioSteps[c][s];
+                const val = (cell && cell.paramId !== undefined) ? cell.value : 128;
+                const inp = document.createElement('input');
+                inp.type = 'number';
+                inp.min = 0; inp.max = 255;
+                inp.value = val;
+                inp.style.cssText = 'width:36px; font-size:0.78em; background:#1a1a1a; color:#99ccff; border:1px solid #333; padding:1px; text-align:center;';
+                inp.title = `Step ${s + 1} value (0–255)`;
+                inp.onchange = () => {
+                    const paramId = parseInt(document.getElementById(`autoParam_${c}`).value);
+                    audioSteps[c][s] = { paramId, value: Math.max(0, Math.min(255, parseInt(inp.value) || 0)) };
+                };
+                autoGrid.appendChild(inp);
+            }
+            autoEditor.appendChild(autoGrid);
+            wrapper.appendChild(autoEditor);
+        }
+
+        container.appendChild(wrapper);
+
+        if (!isAuto) {
+            _renderChannel(c);
+        }
     }
 }
 
@@ -2190,7 +2334,10 @@ function _selectDuration(beats, label, clickedBtn) {
 function audioClearAll() {
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
         audioSteps[c] = new Array(audioNumSteps).fill(null);
-        _renderChannel(c);
+        // Only re-render audio channels; automation channels use a different editor
+        if (audioChannelTrackTypes[c] !== 1) {
+            _renderChannel(c);
+        }
     }
 }
 
@@ -2222,14 +2369,47 @@ function _buildSequenceForChannel(ch) {
     return sequence;
 }
 
+/** Build automation step pairs [param_id, value] for a v2 Automation channel. */
+function _buildAutomationForChannel(ch) {
+    const steps = [];
+    const defaultParamSel = document.getElementById(`autoParam_${ch}`);
+    const defaultParamId = defaultParamSel ? parseInt(defaultParamSel.value) : 0;
+    for (let s = 0; s < audioNumSteps; s++) {
+        const cell = audioSteps[ch][s];
+        if (cell && cell.paramId !== undefined) {
+            steps.push([cell.paramId, Math.max(0, Math.min(255, cell.value))]);
+        } else {
+            // Default: LPF fully open (255) or use channel default param
+            steps.push([defaultParamId, 255]);
+        }
+    }
+    return steps;
+}
+
 function _buildPreviewPayload() {
     const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
     const channels = [];
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        channels.push({
-            patch: audioChannelPatches[c],
-            sequence: _buildSequenceForChannel(c)
-        });
+        const trackType = audioChannelTrackTypes[c] || 0;
+        if (trackType === 1) {
+            // Automation channel
+            channels.push({
+                track_type: 'automation',
+                steps: _buildAutomationForChannel(c),
+            });
+        } else {
+            // Audio channel — include optional ADSR override
+            const ch = {
+                patch: audioChannelPatches[c],
+                track_type: 'audio',
+                sequence: _buildSequenceForChannel(c),
+            };
+            const ovr = audioChannelAdsrOverrides[c];
+            if (ovr && ovr.enabled) {
+                ch.adsr_override = [ovr.a, ovr.d, ovr.s, ovr.r];
+            }
+            channels.push(ch);
+        }
     }
     return { bpm, channels };
 }
@@ -2288,35 +2468,60 @@ function _jseqUnitsToDuration(units) {
 function _encodeJseq() {
     const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
     const compiledChannels = [];
-    let size = 8;
+    let size = 8; // global header
 
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        const seq = _buildSequenceForChannel(c);
-        compiledChannels.push(seq);
-        size += 3 + seq.length * 2;
+        const trackType = audioChannelTrackTypes[c] || 0;
+        const ovr = audioChannelAdsrOverrides[c];
+        const hasOverride = trackType === 0 && ovr && ovr.enabled ? 1 : 0;
+
+        const seq = trackType === 1 ? _buildAutomationForChannel(c) : _buildSequenceForChannel(c);
+        compiledChannels.push({ trackType, seq, hasOverride });
+
+        // 1 (patch) + 1 (track_type) + 1 (override_flag) + [4 if override] + 2 (step_count) + N*2
+        size += 3 + (hasOverride ? 4 : 0) + 2 + seq.length * 2;
     }
 
     const buf = new ArrayBuffer(size);
     const view = new DataView(buf);
     let pos = 0;
 
+    // Global header — version 2
     view.setUint8(pos++, 0x4A); view.setUint8(pos++, 0x53);
     view.setUint8(pos++, 0x45); view.setUint8(pos++, 0x51);
-    view.setUint8(pos++, 1);
+    view.setUint8(pos++, 2);   // JSEQ v2
     view.setUint16(pos, bpm, true); pos += 2;
     view.setUint8(pos++, AUDIO_NUM_CHANNELS);
 
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        const { trackType, seq, hasOverride } = compiledChannels[c];
         const patchIdx = JSEQ_PATCH_NAMES.indexOf(audioChannelPatches[c]);
-        view.setUint8(pos++, patchIdx >= 0 ? patchIdx : 0);
 
-        const seq = compiledChannels[c];
+        view.setUint8(pos++, patchIdx >= 0 ? patchIdx : 0); // patch_idx
+        view.setUint8(pos++, trackType);                     // track_type
+        view.setUint8(pos++, hasOverride);                   // override_flag
+
+        if (hasOverride) {
+            const ovr = audioChannelAdsrOverrides[c];
+            view.setUint8(pos++, ovr.a);
+            view.setUint8(pos++, ovr.d);
+            view.setUint8(pos++, ovr.s);
+            view.setUint8(pos++, ovr.r);
+        }
+
         view.setUint16(pos, seq.length, true); pos += 2;
 
         for (let i = 0; i < seq.length; i++) {
             const step = seq[i];
-            view.setUint8(pos++, step[0] === '-' ? 0 : _noteToJseqIndex(step[0]));
-            view.setUint8(pos++, _durationToJseqUnits(step[1]));
+            if (trackType === 1) {
+                // Automation step: [param_id, value]
+                view.setUint8(pos++, step[0]);
+                view.setUint8(pos++, step[1]);
+            } else {
+                // Audio step: [pitch_idx, dur_units]
+                view.setUint8(pos++, step[0] === '-' ? 0 : _noteToJseqIndex(step[0]));
+                view.setUint8(pos++, _durationToJseqUnits(step[1]));
+            }
         }
     }
     return buf;
@@ -2380,32 +2585,69 @@ async function audioLoad() {
         const loadedChannels = [];
 
         for (let c = 0; c < numChannels; c++) {
-            if (pos + 3 > buf.byteLength) {
+            // V1: 3-byte header (patch + step_count)
+            // V2: 3–7 byte header (patch + track_type + override_flag [+ 4 ADSR] + step_count)
+            const minHdr = version >= 2 ? 5 : 3;
+            if (pos + minHdr > buf.byteLength) {
                 console.warn("JSEQ file truncated at channel header");
                 break;
             }
 
-            const patchName = JSEQ_PATCH_NAMES[view.getUint8(pos++)] || 'SELECT';
+            const patchIdx = view.getUint8(pos++);
+            const patchName = JSEQ_PATCH_NAMES[patchIdx] || 'SELECT';
+
+            let trackType = 0;
+            let adsrOverride = null;
+
+            if (version >= 2) {
+                trackType = view.getUint8(pos++);
+                const ovrFlag = view.getUint8(pos++);
+                if (ovrFlag === 1) {
+                    if (pos + 4 > buf.byteLength) { console.warn('Truncated at ADSR override'); break; }
+                    adsrOverride = [view.getUint8(pos++), view.getUint8(pos++),
+                                    view.getUint8(pos++), view.getUint8(pos++)];
+                }
+            }
+
+            if (pos + 2 > buf.byteLength) { console.warn('Truncated at step count'); break; }
             const numSteps = view.getUint16(pos, true); pos += 2;
 
-            let chanBeats = 0;
-            const seq = [];
-
-            for (let s = 0; s < numSteps; s++) {
-                if (pos + 2 > buf.byteLength) {
-                    console.warn(`File truncated at Ch ${c+1} Step ${s+1}.`);
-                    break;
+            if (trackType === 1) {
+                // V2 Automation channel
+                const autoSteps = [];
+                for (let s = 0; s < numSteps; s++) {
+                    if (pos + 2 > buf.byteLength) { console.warn(`Truncated at automation step ${s}`); break; }
+                    autoSteps.push({ paramId: view.getUint8(pos++), value: view.getUint8(pos++) });
                 }
+                loadedChannels.push({ trackType: 1, patch: patchName, autoSteps, adsrOverride });
+            } else {
+                // Audio channel (v1 or v2)
+                let chanBeats = 0;
+                const seq = [];
 
-                const noteIdx = view.getUint8(pos++);
-                const dur = _jseqUnitsToDuration(view.getUint8(pos++));
+                for (let s = 0; s < numSteps; s++) {
+                    if (pos + 2 > buf.byteLength) {
+                        console.warn(`File truncated at Ch ${c+1} Step ${s+1}.`);
+                        break;
+                    }
 
-                if (dur > 0 && dur < minDur) minDur = dur;
-                chanBeats += dur;
-                seq.push({ note: _jseqIndexToNote(noteIdx), dur });
+                    const noteIdx = view.getUint8(pos++);
+                    const durByte = view.getUint8(pos++);
+
+                    if (version >= 2 && noteIdx === 0xFF) {
+                        // V2 BPM meta-event: durByte = new BPM — skip for display purposes
+                        seq.push({ meta: 'bpm', bpm: durByte });
+                        continue;
+                    }
+
+                    const dur = _jseqUnitsToDuration(durByte);
+                    if (dur > 0 && dur < minDur) minDur = dur;
+                    chanBeats += dur;
+                    seq.push({ note: _jseqIndexToNote(noteIdx), dur });
+                }
+                if (chanBeats > maxBeats) maxBeats = chanBeats;
+                loadedChannels.push({ trackType: 0, patch: patchName, seq, adsrOverride });
             }
-            if (chanBeats > maxBeats) maxBeats = chanBeats;
-            loadedChannels.push({ patch: patchName, seq });
         }
 
         document.getElementById('audioBarsInput').value = Math.max(1, Math.ceil(maxBeats / 4));
@@ -2418,25 +2660,51 @@ async function audioLoad() {
 
         for (let c = 0; c < loadedChannels.length; c++) {
             if (c >= AUDIO_NUM_CHANNELS) break;
+            const lc = loadedChannels[c];
 
-            audioChannelPatches[c] = loadedChannels[c].patch;
-            const patchSelect = document.querySelector(`#stepGrid_${c}`).parentElement.querySelector('select');
-            if (patchSelect) patchSelect.value = loadedChannels[c].patch;
+            audioChannelTrackTypes[c] = lc.trackType;
+            audioChannelPatches[c] = lc.patch;
 
-            let currentStep = 0;
-            for (const item of loadedChannels[c].seq) {
-                const span = Math.round(item.dur / BASE_RES);
-                if (currentStep + span > audioNumSteps) break;
-
-                if (item.note) {
-                    audioSteps[c][currentStep] = { note: item.note, duration: item.dur, span: span };
-                    for (let i = 1; i < span; i++) {
-                        audioSteps[c][currentStep + i] = { covered: true };
-                    }
-                }
-                currentStep += span;
+            if (lc.adsrOverride) {
+                audioChannelAdsrOverrides[c] = {
+                    enabled: true,
+                    a: lc.adsrOverride[0], d: lc.adsrOverride[1],
+                    s: lc.adsrOverride[2], r: lc.adsrOverride[3],
+                };
             }
-            _renderChannel(c);
+
+            if (lc.trackType === 1) {
+                // Automation channel: populate audioSteps with paramId/value pairs
+                lc.autoSteps.forEach((step, s) => {
+                    if (s < audioNumSteps) audioSteps[c][s] = step;
+                });
+            } else {
+                // Audio channel: populate note steps
+                let currentStep = 0;
+                for (const item of lc.seq) {
+                    if (item.meta) continue; // skip meta-events in the UI
+
+                    const span = Math.round(item.dur / BASE_RES);
+                    if (currentStep + span > audioNumSteps) break;
+
+                    if (item.note) {
+                        audioSteps[c][currentStep] = { note: item.note, duration: item.dur, span: span };
+                        for (let i = 1; i < span; i++) {
+                            audioSteps[c][currentStep + i] = { covered: true };
+                        }
+                    }
+                    currentStep += span;
+                }
+            }
+        }
+
+        // Rebuild grid to reflect loaded track types and ADSR overrides
+        _resizeGrid();
+
+        // Restore patch selectors now that DOM has been rebuilt
+        for (let c = 0; c < Math.min(loadedChannels.length, AUDIO_NUM_CHANNELS); c++) {
+            const patchSelect = document.querySelector(`#stepGrid_${c}`)?.closest('.channel-row')?.querySelector('select.channel-patch');
+            if (patchSelect) patchSelect.value = loadedChannels[c].patch;
         }
 
         document.getElementById('audioSeqName').value = filename.replace('.jseq', '');
@@ -2830,7 +3098,28 @@ function audioPreviewBrowser() {
     let hasNotes = false;
 
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        // V2: skip Automation channels during browser preview (no audio output)
+        if (audioChannelTrackTypes[c] === 1) continue;
+
         const patchName = audioChannelPatches[c] || 'BEEP';
+
+        // V2: build a patched BROWSER_PATCHES entry if ADSR override is active
+        let effectivePatchName = patchName;
+        const ovr = audioChannelAdsrOverrides[c];
+        if (ovr && ovr.enabled) {
+            const base = BROWSER_PATCHES[patchName] || BROWSER_PATCHES['BEEP'];
+            const overridePatch = Object.assign({}, base, {
+                attack:  base.attack  * (ovr.a / 100.0),
+                decay:   base.decay   * (ovr.d / 100.0),
+                sustain: Math.min(1.0, base.sustain * (ovr.s / 100.0)),
+                release: base.release * (ovr.r / 100.0),
+            });
+            // Register the override patch under a unique key for this render
+            const overrideKey = `__override_ch${c}`;
+            BROWSER_PATCHES[overrideKey] = overridePatch;
+            effectivePatchName = overrideKey;
+        }
+
         let cursor = scheduleOffset;
 
         for (let s = 0; s < audioNumSteps; s++) {
@@ -2843,7 +3132,7 @@ function audioPreviewBrowser() {
                 const noteSec = step.duration * beatDuration;
                 const freq = _jseqIndexToFreq(_noteToJseqIndex(step.note));
                 if (freq > 0) {
-                    _browserScheduleNote(audioCtx, freq, patchName, cursor, noteSec);
+                    _browserScheduleNote(audioCtx, freq, effectivePatchName, cursor, noteSec);
                     hasNotes = true;
                 }
             }
