@@ -29,8 +29,14 @@ def _jseq_midi_to_freq(midi_note):
 JSEQ_PARAM_LPF_CUTOFF = 0x00   # Low-pass filter cutoff (0-255 → 0–20 000 Hz)
 JSEQ_PARAM_AMPLITUDE  = 0x01   # Note amplitude        (0-255 → 0.0–1.0)
 
-# JSEQ v2 meta-event pitch marker.
-JSEQ_META_EVENT = 0xFF  # pitch_idx value that marks a meta-event step
+# JSEQ v2.2 Track type identifiers.
+JSEQ_TRACK_AUDIO        = 0x00  # Event-based audio notes [pitch_idx, dur_units]
+JSEQ_TRACK_AUTOMATION   = 0x01  # Sample-based parameter modulation [param_id, value]
+JSEQ_TRACK_GLOBAL_EVENT = 0x02  # Event-based global commands [command_id, value]
+
+# JSEQ v2.2 Global Event command IDs (used in Type 0x02 Master Event Track steps).
+JSEQ_CMD_REST       = 0x00  # Wait: value = duration in 1/32-beat units
+JSEQ_CMD_BPM_CHANGE = 0x01  # Change playback BPM: value = new BPM (1–255)
 
 class SynthManager:
     """
@@ -59,6 +65,12 @@ class SynthManager:
         self._automation_amplitude = 1.0           # global amplitude scale (0xFF scope)
         self._channel_filters = {}                 # audio_ch_idx → synthio.Biquad or None
         self._channel_amplitudes = {}              # audio_ch_idx → float 0.0–1.0
+
+        # V2.2 shared BPM: set before launching tasks and updated by the Type 0x02
+        # Master Event Track.  Audio channel tasks read this value for each note so
+        # that a concurrent master event track can change tempo in real time without
+        # the "self-referential clock" problem of mid-sequence meta-events.
+        self._shared_bpm = 120
 
     @property
     def source(self):
@@ -138,20 +150,22 @@ class SynthManager:
         Supports JSEQ v2 features:
         - ``envelope_override``: a pre-built synthio.Envelope in the channel dict
           that replaces the patch's default ADSR envelope.
-        - Meta-events: a step of ``(None, new_bpm)`` signals a real-time BPM change
-          mid-sequence (Pitch Index 255 in the binary format).
         - Per-channel automation routing: if the channel dict carries a
           ``'channel_idx'`` key, per-channel filters (``_channel_filters``) and
           per-channel amplitude overrides (``_channel_amplitudes``) are applied
           in addition to — or instead of — the global automation state.
 
+        In JSEQ v2.2, BPM changes are handled by a concurrent Type 0x02
+        Master Event Track task that updates ``self._shared_bpm``.  Audio
+        channel tasks read ``self._shared_bpm`` at the start of each note so
+        that tempo changes are reflected immediately without the self-referential
+        clock problem.  Legacy ``(None, new_bpm)`` meta-event tuples produced by
+        older v2 parsers are still handled gracefully for backward compat.
+
         Args:
             sequence_data (dict): Dict with 'bpm' and 'sequence' list.
             patch (dict): The synth patch to use.
         """
-        bpm = sequence_data.get('bpm', 120)
-        beat_duration = 60.0 / bpm
-
         # channel_idx is set by _load_jseq_v2 for per-channel automation routing.
         channel_idx = sequence_data.get('channel_idx', None)
 
@@ -164,7 +178,7 @@ class SynthManager:
         if isinstance(active_patch, str):
             active_patch = getattr(Patches, active_patch, Patches.SELECT)
 
-        JEBLogger.debug("SYNTH", f"Playing sequence - BPM: {bpm}, Patch: {active_patch['name']}, Override Waveform: {self.override}")
+        JEBLogger.debug("SYNTH", f"Playing sequence - BPM: {self._shared_bpm}, Patch: {active_patch['name']}, Override Waveform: {self.override}")
 
         wave = self.override if self.override else active_patch["wave"]
 
@@ -175,17 +189,22 @@ class SynthManager:
             # Handle both (freq, dur) and ('NoteName', dur) formats
             tone_val, duration_beats = item
 
-            # V2 meta-event: (None, new_bpm) signals a dynamic BPM change.
+            # Backward-compat: v2 (pre-v2.2) files may emit (None, new_bpm)
+            # meta-event tuples from the audio track parser.  Honour them by
+            # updating _shared_bpm so all concurrent tasks stay in sync.
             if tone_val is None:
-                bpm = duration_beats
-                beat_duration = 60.0 / bpm
-                JEBLogger.debug("SYNTH", f"Meta-event: BPM changed to {bpm}")
+                self._shared_bpm = int(duration_beats)
+                JEBLogger.debug("SYNTH", f"Compat meta-event: BPM → {self._shared_bpm}")
                 continue
 
             if isinstance(tone_val, (int, float)):
                 freq = tone_val
             else:
                 freq = note(tone_val)
+
+            # Read current BPM from shared state so the Master Event Track can
+            # update tempo in real time without any action from this task.
+            beat_duration = 60.0 / self._shared_bpm
             duration_sec = duration_beats * beat_duration
 
             if freq > 0:
@@ -383,36 +402,40 @@ class SynthManager:
         return channels
 
     def _load_jseq_v2(self, data):
-        """Parse a JSEQ v2 binary payload and return a list of channel dicts.
+        """Parse a JSEQ v2 / v2.2 binary payload and return a list of channel dicts.
 
-        V2 channel header layout (variable size):
+        V2.2 Channel Header layout (variable size):
 
         +---------+-----------------+-------------------------------------------+
         | Byte(s) | Field           | Description                               |
         +=========+=================+===========================================+
-        | 0       | scope_or_patch  | Audio: patch index.                       |
-        |         |                 | Automation: target scope                  |
-        |         |                 |   0x00–0x0F = specific audio channel idx  |
+        | 0       | scope_or_patch  | Audio (0x00): patch index                 |
+        |         |                 | Automation (0x01): target scope           |
+        |         |                 |   0x00-0x0F = specific audio channel idx  |
         |         |                 |   0xFF      = Global Master Bus           |
-        | 1       | track_type      | 0x00 = Audio, 0x01 = Automation           |
-        | 2       | ovr_flag        | 0x01 = ADSR multiplier bytes follow (Audio|
-        |         |                 | only), else 0                             |
-        | 3–6     | adsr_mult       | (only if ovr_flag=1) Attack/Decay/Sustain |
-        |         |                 | /Release multipliers, each ÷100 = scale   |
+        |         |                 | Global Event (0x02): reserved (use 0xFF)  |
+        | 1       | track_type      | 0x00=Audio, 0x01=Automation, 0x02=Global  |
+        | 2       | ovr_flag        | 0x01 = ADSR bytes follow (Audio only)     |
+        | 3-6     | adsr_mult       | (if ovr_flag=1) [A, D, S, R] /100=scale  |
         | N, N+1  | step_count      | Number of step pairs (little-endian u16)  |
         +---------+-----------------+-------------------------------------------+
 
         Audio step (2 bytes):  ``[pitch_idx, dur_units]``
-          * ``pitch_idx == 0``   → rest
-          * ``pitch_idx == 255`` → meta-event; ``dur_units`` = new BPM value
-          * otherwise            → MIDI note = ``pitch_idx - 1``
+          * ``pitch_idx == 0`` = rest
+          * otherwise          = MIDI note = ``pitch_idx - 1``
+          (Pitch 0xFF meta-events are no longer emitted by v2.2; backward-compat
+          parsing of pre-v2.2 pitch-0xFF meta-events is preserved here.)
 
         Automation step (2 bytes):  ``[param_id, value]``
-          * param_id ``0x00`` = LPF cutoff  (0–255 → 0–20 000 Hz)
-          * param_id ``0x01`` = amplitude   (0–255 → 0.0–1.0)
+          * param_id ``0x00`` = LPF cutoff  (0-255 -> 0-20 000 Hz)
+          * param_id ``0x01`` = amplitude   (0-255 -> 0.0-1.0)
+
+        Global Event step (2 bytes):  ``[command_id, value]``
+          * command_id ``0x00`` (JSEQ_CMD_REST)       = rest; value = 1/32-beat units
+          * command_id ``0x01`` (JSEQ_CMD_BPM_CHANGE) = BPM change; value = new BPM
 
         The total channel count in the global header includes all tracks
-        (Audio + Automation combined).  Audio channels receive a
+        (Audio + Automation + Global Event combined).  Audio channels receive a
         ``'channel_idx'`` key (0-based count among Audio tracks only) so
         that concurrent Automation tasks can target them by index.
         """
@@ -428,7 +451,7 @@ class SynthManager:
                 break
 
             scope_or_patch = data[pos]            # reinterpreted per track_type below
-            track_type     = data[pos + 1]        # 0=audio, 1=automation
+            track_type     = data[pos + 1]        # 0=audio, 1=automation, 2=global event
             ovr_flag       = data[pos + 2]        # 0=no override, 1=ADSR multipliers follow
             pos += 3
 
@@ -449,10 +472,10 @@ class SynthManager:
             step_count = data[pos] | (data[pos + 1] << 8)
             pos += 2
 
-            if track_type == 0x01:
+            if track_type == JSEQ_TRACK_AUTOMATION:
                 # Automation channel: scope_or_patch byte is the target_scope.
-                #   0x00–0x0F → target a specific audio channel by index
-                #   0xFF      → target the global master bus
+                #   0x00-0x0F -> target a specific audio channel by index
+                #   0xFF      -> target the global master bus
                 target_scope = scope_or_patch
                 steps = []
                 for _ in range(step_count):
@@ -468,8 +491,26 @@ class SynthManager:
                     'target_scope': target_scope,
                     'steps': steps,
                 })
+
+            elif track_type == JSEQ_TRACK_GLOBAL_EVENT:
+                # Master Event Track (Type 0x02): event-based global commands.
+                # Steps are [command_id, value] pairs.
+                steps = []
+                for _ in range(step_count):
+                    if pos + 2 > len(data):
+                        break
+                    command_id = data[pos]
+                    value      = data[pos + 1]
+                    pos += 2
+                    steps.append((command_id, value))
+                channels.append({
+                    'bpm': bpm,
+                    'type': 'master_event',
+                    'steps': steps,
+                })
+
             else:
-                # Audio channel (default): scope_or_patch byte is the patch index.
+                # Audio channel (track_type == JSEQ_TRACK_AUDIO or unknown default)
                 patch_name = JSEQ_PATCH_NAMES[scope_or_patch] if 0 <= scope_or_patch < len(JSEQ_PATCH_NAMES) else 'SELECT'
                 patch = getattr(Patches, patch_name, Patches.SELECT)
                 sequence = []
@@ -480,8 +521,10 @@ class SynthManager:
                     dur_units = data[pos + 1]
                     pos += 2
 
-                    if note_idx == JSEQ_META_EVENT:
-                        # Meta-event: second byte = new BPM value
+                    if note_idx == 0xFF:
+                        # Backward-compat: pre-v2.2 files encode BPM changes as
+                        # pitch 0xFF in audio tracks.  Convert to legacy meta-event
+                        # tuple so play_sequence() can update _shared_bpm.
                         sequence.append((None, dur_units))
                     else:
                         freq = 0 if note_idx == 0 else _jseq_midi_to_freq(note_idx - 1)
@@ -599,12 +642,51 @@ class SynthManager:
             self._apply_automation(param_id, value, target_scope)
             await asyncio.sleep(step_duration)
 
+    async def _play_master_events(self, channel_data):
+        """Play a v2.2 Master Event Track (Type 0x02).
+
+        Event-based: steps are ``(command_id, value)`` pairs.  Unlike
+        Automation tracks (which fire every 1/32 beat regardless), Master
+        Event steps are executed sequentially with wait commands consuming
+        time between events.
+
+        Commands:
+
+        * ``JSEQ_CMD_REST (0x00)`` — wait ``value / 32.0`` beats at the
+          **current** BPM (``self._shared_bpm``).
+        * ``JSEQ_CMD_BPM_CHANGE (0x01)`` — update ``self._shared_bpm`` to
+          ``value`` (1–255 BPM).  All concurrent audio channel tasks will
+          pick up the new tempo on their next note.
+
+        The master event track is the authoritative source of truth for BPM
+        changes.  Running it as a concurrent asyncio task means tempo changes
+        are applied in real time without the "self-referential clock" problem
+        that occurs when a BPM change is embedded inside an audio track's own
+        step sequence.
+
+        Args:
+            channel_data (dict): Dict with ``'bpm'`` and ``'steps'`` keys, as
+                returned by ``_load_jseq_v2``.
+        """
+        for command_id, value in channel_data.get('steps', []):
+            if command_id == JSEQ_CMD_REST:
+                wait_beats = value / 32.0
+                beat_duration = 60.0 / self._shared_bpm
+                await asyncio.sleep(wait_beats * beat_duration)
+            elif command_id == JSEQ_CMD_BPM_CHANGE:
+                self._shared_bpm = max(1, min(255, value))
+                JEBLogger.debug("SYNTH", f"Master Event: BPM changed to {self._shared_bpm}")
+
     async def play_jseq(self, filepath):
         """Load and play a .jseq file, running all channels concurrently.
 
-        Supports both JSEQ v1 and v2 files.  For v2 files, Automation channels
-        are played via :meth:`_play_automation` while Audio channels use the
-        standard :meth:`play_sequence` path.
+        Supports both JSEQ v1 and v2/v2.2 files.  Track routing:
+        - ``type='audio'``       → :meth:`play_sequence`
+        - ``type='automation'``  → :meth:`_play_automation`
+        - ``type='master_event'``→ :meth:`_play_master_events`
+
+        ``self._shared_bpm`` is initialised from the file header before any
+        task is launched so all tasks start from the correct tempo.
 
         Args:
             filepath (str): Path to the .jseq file on the filesystem.
@@ -612,10 +694,18 @@ class SynthManager:
         channels_data = self.load_jseq(filepath)
         if not channels_data:
             return
+
+        # Initialise shared BPM from the file header (present in every channel dict).
+        if channels_data:
+            self._shared_bpm = channels_data[0].get('bpm', 120)
+
         tasks = []
         for ch in channels_data:
-            if ch.get('type') == 'automation':
+            track_type = ch.get('type')
+            if track_type == 'automation':
                 tasks.append(asyncio.create_task(self._play_automation(ch)))
+            elif track_type == 'master_event':
+                tasks.append(asyncio.create_task(self._play_master_events(ch)))
             else:
                 tasks.append(asyncio.create_task(self.play_sequence(ch)))
         try:
@@ -636,26 +726,39 @@ class SynthManager:
         Non-blocking: creates an asyncio task and returns immediately.
         Any currently running chiptune or preview is stopped first.
 
-        Supports JSEQ v2 channel dicts: channels with ``type='automation'``
-        are routed to :meth:`_play_automation`; all others use
-        :meth:`play_sequence` as before.
+        Supports JSEQ v2/v2.2 channel dicts:
+        - ``type='automation'``   → :meth:`_play_automation`
+        - ``type='master_event'`` → :meth:`_play_master_events`
+        - all others              → :meth:`play_sequence`
+
+        ``self._shared_bpm`` is initialised from the first channel's BPM
+        value before any tasks are launched.
 
         Args:
             channels_data (list): List of channel dicts.  Audio channel dicts
                 must have ``'bpm'``, ``'patch'`` (name or Patches dict), and
                 ``'sequence'`` keys.  Automation channel dicts must have
                 ``'type': 'automation'``, ``'bpm'``, and ``'steps'`` keys.
+                Master event channel dicts must have ``'type': 'master_event'``
+                and ``'steps'`` keys.
 
         Returns:
             asyncio.Task: The running playback task.
         """
         self.stop_chiptune()
 
+        # Initialise shared BPM before launching tasks.
+        if channels_data:
+            self._shared_bpm = channels_data[0].get('bpm', 120)
+
         async def _run_once():
             tasks = []
             for ch in channels_data:
-                if ch.get('type') == 'automation':
+                track_type = ch.get('type')
+                if track_type == 'automation':
                     tasks.append(asyncio.create_task(self._play_automation(ch)))
+                elif track_type == 'master_event':
+                    tasks.append(asyncio.create_task(self._play_master_events(ch)))
                 else:
                     p = ch.get('patch', Patches.SELECT)
                     if isinstance(p, str):

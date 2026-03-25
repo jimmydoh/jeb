@@ -49,51 +49,38 @@ Following each Channel Header is an array of steps. Every step consists of a 2-b
 
 ---
 
-## 3. V2 Channel Data Blocks
+## 3. V2 / V2.2 Channel Data Blocks
 
 *(Used when Format Version = `0x02`.)*
 
-V2 extends the channel header to support **Track Types** and **Inline ADSR Overrides**, while keeping the 2-byte step pair format.
+V2 extends the channel header to support **Track Types** and **Inline ADSR Overrides**, while keeping the 2-byte step pair format.  **V2.2** introduces a third track type — the **Master Event Track** — to handle global timing changes (BPM automation) through a dedicated concurrent task, eliminating the "self-referential clock" problem.
 
-### 3.1 V2 Channel Header (5–9 Bytes)
+### 3.1 V2.2 Channel Header (5–9 Bytes)
 
 The first byte (`+0x00`) has a **dual purpose** depending on Track Type:
 
 | Byte Offset | Type    | Size    | Description |
 | :--- | :--- | :--- | :--- |
-| `+0x00`     | `uint8` | 1 byte  | **Audio:** Patch Index (see §4.1). **Automation:** Target Scope — `0x00`–`0x0F` targets a specific Audio channel by index (0-based); `0xFF` targets the Global Master Bus |
-| `+0x01`     | `uint8` | 1 byte  | **Track Type:** `0x00` = Audio, `0x01` = Automation |
-| `+0x02`     | `uint8` | 1 byte  | **Override Flag:** `0x00` = no override, `0x01` = ADSR multipliers follow *(Audio only; always `0x00` for Automation)* |
+| `+0x00`     | `uint8` | 1 byte  | **Audio (`0x00`):** Patch Index (see §4.1). **Automation (`0x01`):** Target Scope — `0x00`–`0x0F` targets a specific Audio channel by index (0-based); `0xFF` = Global Master Bus. **Global Event (`0x02`):** Reserved — set to `0xFF`. |
+| `+0x01`     | `uint8` | 1 byte  | **Track Type:** `0x00` = Audio, `0x01` = Automation, `0x02` = Global Event (Master Event Track) |
+| `+0x02`     | `uint8` | 1 byte  | **Override Flag:** `0x00` = no override, `0x01` = ADSR multipliers follow *(Audio only; always `0x00` for Automation and Global Event)* |
 | `+0x03`–`+0x06` | `uint8[4]` | 4 bytes | *(only if Override Flag = `0x01`)* **ADSR Multipliers:** `[Attack, Decay, Sustain, Release]` — each value ÷ 100 = float multiplier (e.g. `100` = 1.0×, `200` = 2.0×, `50` = 0.5×) |
 | `+N, +N+1`  | `uint16` | 2 bytes | **Step Count:** Number of step pairs (little-endian) |
 
-> **Global Channel Count:** The `num_channels` byte in the Global Header is the
-> total of all tracks — Audio **and** Automation combined.  The `SynthManager`
-> assigns a `channel_idx` (0-based, Audio tracks only) to each Audio channel as
-> they are parsed, so that Automation channels with a matching `Target Scope` can
-> apply per-channel filters or amplitude changes without touching other outputs.
+> **Mandatory 3 Audio Tracks:** The first three channel indices (0, 1, 2) are reserved for Audio tracks.  Empty audio slots must still be written with `step_count = 0`.  Automation tracks occupy indices 3 and above.  The Master Event Track is typically the last channel.
+>
+> **Global Channel Count:** The `num_channels` byte in the Global Header is the total of all tracks — Audio + Automation + Global Event combined.  The `SynthManager` assigns a `channel_idx` (0-based, Audio tracks only) to each Audio channel as they are parsed, so that Automation channels with a matching `Target Scope` can apply per-channel filters or amplitude changes without touching other outputs.
 
 ### 3.2 V2 Audio Track Steps (`N` × 2 Bytes)
 
-Audio tracks use the same 2-byte step pair as v1, extended with a **Meta-Event** marker:
+Audio tracks use the same 2-byte step pair as v1:
 
 | Byte Offset | Type    | Size    | Description |
 | :--- | :--- | :--- | :--- |
-| `+0x00`     | `uint8` | 1 byte  | **Pitch Index:** `0` = Rest, `1`–`254` = MIDI Note Offset, `255` = **Meta-Event** |
-| `+0x01`     | `uint8` | 1 byte  | **Duration / Command Payload:** duration units for normal notes; new BPM value when Pitch Index = `255` |
+| `+0x00`     | `uint8` | 1 byte  | **Pitch Index:** `0` = Rest, `1`–`254` = MIDI Note Offset |
+| `+0x01`     | `uint8` | 1 byte  | **Duration:** time in 1/32nd beat units |
 
-#### Meta-Events (Pitch Index = `0xFF`)
-
-When byte `+0x00` of a step is `0xFF`, the step is a **Meta-Event** rather than a
-note.  The second byte (`+0x01`) is interpreted as a **Command Payload**:
-
-| Payload value | Meaning |
-| :--- | :--- |
-| `1`–`255` | **BPM Change** — sets playback speed to this new BPM for all subsequent notes |
-
-The parser converts meta-events to `(None, new_bpm)` tuples in the sequence
-list so that `play_sequence()` can update `beat_duration` on the fly without
-any structural changes to the playback loop.
+> **Removed in v2.2:** Pitch Index `0xFF` (255) was previously used as an in-band BPM meta-event marker.  New files no longer encode BPM changes inside audio tracks.  For backward compatibility, the parser still recognises pitch `0xFF` in audio tracks from pre-v2.2 files and converts them to legacy `(None, bpm)` tuples.
 
 ### 3.3 V2 Automation Track Steps (`N` × 2 Bytes)
 
@@ -121,6 +108,30 @@ audio note resolution), so 32 automation steps cover exactly 1 beat.
 | :----- | :---------------------- | :------ |
 | `0x00` | `JSEQ_PARAM_LPF_CUTOFF` | Low-Pass Filter cutoff: `value / 255 × 20 000 Hz` |
 | `0x01` | `JSEQ_PARAM_AMPLITUDE`  | Note amplitude: `value / 255` (0.0–1.0) |
+
+### 3.4 V2.2 Global Event (Master Event) Track Steps (`N` × 2 Bytes)
+
+For **Master Event** channels (`Track Type = 0x02`), the step payload carries global timeline commands.  Unlike Automation tracks (which fire every 1/32 beat regardless), Master Event steps are **event-based**: rest commands accumulate time and command events fire when reached.
+
+| Byte Offset | Type    | Size    | Description |
+| :--- | :--- | :--- | :--- |
+| `+0x00`     | `uint8` | 1 byte  | **Command ID** |
+| `+0x01`     | `uint8` | 1 byte  | **Command Value** (0–255) |
+
+#### Master Event Command IDs
+
+| ID     | Symbol                | Description |
+| :----- | :-------------------- | :---------- |
+| `0x00` | `JSEQ_CMD_REST`       | Advance the master event timeline by `value / 32.0` beats at the current BPM.  A single rest step can hold up to 255 1/32-beat units; chain multiple rests for longer waits. |
+| `0x01` | `JSEQ_CMD_BPM_CHANGE` | Set the global playback speed to `value` BPM (1–255).  Updates `SynthManager._shared_bpm`; all concurrent audio channel tasks pick up the new tempo on their next note. |
+
+> **Why a dedicated Master Event Track?**
+> Embedding BPM changes as pitch `0xFF` inside an audio track (the previous approach)
+> creates a "self-referential clock" problem: the track that owns the step sequence
+> is the same track responsible for timing it.  Moving BPM changes to a separate
+> `_play_master_events` coroutine decouples timing authority from audio playback,
+> improving precision and enabling future global commands (e.g. LED triggers,
+> section markers) without touching audio step data.
 
 ---
 

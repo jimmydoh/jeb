@@ -2452,15 +2452,12 @@ function _buildSequenceForChannel(ch) {
         } else if (cell.covered) {
             continue;
         } else if (cell.meta === 'bpm') {
-            // V2 BPM meta-event: flush any pending rest, then emit the meta-event.
-            // Encoded as [null, new_bpm] so _encodeJseq writes (0xFF, new_bpm)
-            // and play_sequence handles (None, new_bpm) on the device.
-            while (accumulatedRest > 0) {
-                const chunk = Math.min(4.0, accumulatedRest);
-                sequence.push(['-', chunk]);
-                accumulatedRest -= chunk;
-            }
-            sequence.push([null, cell.bpm]);
+            // V2.2: BPM meta-event cells are treated as a single-slot rest in
+            // the audio track.  The actual BPM change is written by _encodeJseq
+            // into the dedicated Type 0x02 Master Event Track so that the
+            // Master Event task drives tempo changes rather than the audio task
+            // itself ("self-referential clock" problem).
+            accumulatedRest += BASE_RES;
         } else if (cell.note !== undefined) {
             while (accumulatedRest > 0) {
                 const chunk = Math.min(4.0, accumulatedRest);
@@ -2563,7 +2560,42 @@ function _jseqUnitsToDuration(units) {
 
 function _encodeJseq() {
     const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
-    const totalChannels = AUDIO_NUM_CHANNELS + automationTracks.length;
+
+    // ------------------------------------------------------------------ //
+    // Collect BPM meta-event cells from all audio channels.               //
+    // Each cell is { step: s, bpm: X }.  Merge by step (last writer wins) //
+    // and sort ascending so we can emit REST steps between events.        //
+    // These cells become a Type 0x02 Master Event Track rather than being //
+    // embedded as pitch 0xFF markers inside the audio tracks.             //
+    // ------------------------------------------------------------------ //
+    const bpmEventMap = new Map();   // step_index → new_bpm
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        for (let s = 0; s < audioNumSteps; s++) {
+            const cell = audioSteps[c][s];
+            if (cell && cell.meta === 'bpm') {
+                bpmEventMap.set(s, cell.bpm);
+            }
+        }
+    }
+    const bpmEvents = [...bpmEventMap.entries()].sort((a, b) => a[0] - b[0]);
+
+    // Build the Master Event Track step list: alternating REST and BPM_CHANGE commands.
+    // REST value = duration in 1/32-beat units (capped at 255 per step; chain if needed).
+    const masterSteps = [];
+    let masterPos = 0;
+    for (const [stepIdx, newBpm] of bpmEvents) {
+        let restUnits = stepIdx - masterPos;
+        while (restUnits > 0) {
+            const chunk = Math.min(255, restUnits);
+            masterSteps.push([0x00, chunk]);   // JSEQ_CMD_REST
+            restUnits -= chunk;
+        }
+        masterSteps.push([0x01, Math.max(1, Math.min(255, newBpm))]);  // JSEQ_CMD_BPM_CHANGE
+        masterPos = stepIdx + 1;  // BPM_CHANGE occupies 0 time units
+    }
+    const hasMasterTrack = masterSteps.length > 0;
+
+    const totalChannels = AUDIO_NUM_CHANNELS + automationTracks.length + (hasMasterTrack ? 1 : 0);
     let size = 8; // global header
 
     // Compile audio channels
@@ -2586,6 +2618,9 @@ function _encodeJseq() {
         // 1 (scope) + 1 (track_type=1) + 1 (override=0) + 2 (step_count) + N*2
         size += 3 + 2 + steps.length * 2;
     }
+
+    // Master Event Track (Type 0x02): 1 (scope=0xFF) + 1 (type=0x02) + 1 (override=0) + 2 (step_count) + N*2
+    if (hasMasterTrack) size += 3 + 2 + masterSteps.length * 2;
 
     const buf = new ArrayBuffer(size);
     const view = new DataView(buf);
@@ -2618,15 +2653,11 @@ function _encodeJseq() {
         view.setUint16(pos, seq.length, true); pos += 2;
 
         for (const step of seq) {
-            if (step[0] === null) {
-                // V2 BPM meta-event: pitch 0xFF + new BPM byte
-                view.setUint8(pos++, 0xFF);
-                view.setUint8(pos++, Math.max(1, Math.min(255, step[1])));
-            } else {
-                // Audio step: [pitch_idx, dur_units]
-                view.setUint8(pos++, step[0] === '-' ? 0 : _noteToJseqIndex(step[0]));
-                view.setUint8(pos++, _durationToJseqUnits(step[1]));
-            }
+            // V2.2: no pitch 0xFF meta-events in audio tracks — BPM changes are
+            // written to the dedicated Type 0x02 Master Event Track below.
+            // Audio step: [pitch_idx, dur_units]
+            view.setUint8(pos++, step[0] === '-' ? 0 : _noteToJseqIndex(step[0]));
+            view.setUint8(pos++, _durationToJseqUnits(step[1]));
         }
     }
 
@@ -2643,6 +2674,20 @@ function _encodeJseq() {
         for (const [paramId, value] of steps) {
             view.setUint8(pos++, paramId);
             view.setUint8(pos++, Math.max(0, Math.min(255, value)));
+        }
+    }
+
+    // Write Master Event Track (Type 0x02) — only when there are BPM events.
+    if (hasMasterTrack) {
+        view.setUint8(pos++, 0xFF);   // scope_or_patch = 0xFF (Global Master Bus)
+        view.setUint8(pos++, 0x02);   // track_type = Global Event (Type 0x02)
+        view.setUint8(pos++, 0x00);   // override_flag = 0 (master event tracks have no ADSR)
+
+        view.setUint16(pos, masterSteps.length, true); pos += 2;
+
+        for (const [cmdId, val] of masterSteps) {
+            view.setUint8(pos++, cmdId);
+            view.setUint8(pos++, val);
         }
     }
 
@@ -2734,7 +2779,19 @@ async function audioLoad() {
             if (pos + 2 > buf.byteLength) { console.warn('Truncated at step count'); break; }
             const numSteps = view.getUint16(pos, true); pos += 2;
 
-            if (trackType === 1) {
+            if (trackType === 2) {
+                // V2.2 Master Event Track (Type 0x02): reconstruct BPM markers.
+                // Steps are [command_id, value] pairs.
+                // We accumulate position (in 1/32-beat steps) and store BPM_CHANGE
+                // events as { meta: 'bpm', bpm } cells in audioSteps[0] so that
+                // audioPreviewBrowser() and _renderChannel() can see them.
+                const masterEventSteps = [];
+                for (let s = 0; s < numSteps; s++) {
+                    if (pos + 2 > buf.byteLength) { console.warn(`Truncated at master event step ${s}`); break; }
+                    masterEventSteps.push([view.getUint8(pos++), view.getUint8(pos++)]);
+                }
+                loadedChannels.push({ trackType: 2, masterEventSteps });
+            } else if (trackType === 1) {
                 // V2 Automation channel: patchIdx byte is target_scope (0-15 or 0xFF=Global)
                 const autoSteps = [];
                 for (let s = 0; s < numSteps; s++) {
@@ -2743,7 +2800,7 @@ async function audioLoad() {
                 }
                 loadedChannels.push({ trackType: 1, patch: patchName, targetScope: patchIdx, autoSteps, adsrOverride });
             } else {
-                // Audio channel (v1 or v2)
+                // Audio channel (v1 or v2/v2.2)
                 let chanBeats = 0;
                 const seq = [];
 
@@ -2757,7 +2814,8 @@ async function audioLoad() {
                     const durByte = view.getUint8(pos++);
 
                     if (version >= 2 && noteIdx === 0xFF) {
-                        // V2 BPM meta-event: durByte = new BPM — skip for display purposes
+                        // Backward-compat: pre-v2.2 files may embed pitch 0xFF BPM
+                        // meta-events directly in audio tracks.  Treat as a BPM marker.
                         seq.push({ meta: 'bpm', bpm: durByte });
                         continue;
                     }
@@ -2785,7 +2843,26 @@ async function audioLoad() {
 
         let audioChCount = 0;
         for (const lc of loadedChannels) {
-            if (lc.trackType === 1) {
+            if (lc.trackType === 2) {
+                // V2.2 Master Event Track: reconstruct BPM markers into audioSteps[0].
+                // Walk the step list: REST commands advance `masterPos`; BPM_CHANGE
+                // commands store a { meta: 'bpm', bpm } cell at the current step
+                // slot in audioSteps[0] so the grid displays ↻BPM markers and
+                // audioPreviewBrowser() can recalculate tempo mid-playback.
+                let masterPos = 0;
+                for (const [cmdId, val] of lc.masterEventSteps) {
+                    if (cmdId === 0x00) {
+                        // REST: advance timeline by `val` 1/32-beat slots
+                        masterPos += val;
+                    } else if (cmdId === 0x01) {
+                        // BPM_CHANGE: scatter marker to audioSteps[0] at masterPos
+                        if (masterPos < audioNumSteps) {
+                            audioSteps[0][masterPos] = { meta: 'bpm', bpm: val };
+                        }
+                        // BPM_CHANGE itself does not advance time
+                    }
+                }
+            } else if (lc.trackType === 1) {
                 // Automation channel: push into automationTracks.
                 // Use the stored targetScope if available, otherwise default to Global (0xFF).
                 const targetScope = lc.targetScope !== undefined ? lc.targetScope : 0xFF;
@@ -2816,6 +2893,8 @@ async function audioLoad() {
                 let currentStep = 0;
                 for (const item of lc.seq) {
                     if (item.meta === 'bpm') {
+                        // Backward-compat: pre-v2.2 files with pitch 0xFF in audio tracks
+                        // store BPM markers directly in the audio sequence.
                         if (currentStep < audioNumSteps) {
                             audioSteps[c][currentStep] = { meta: 'bpm', bpm: item.bpm };
                             currentStep += 1;

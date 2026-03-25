@@ -852,8 +852,8 @@ def test_load_jseq_v2_automation_channel():
 
 
 def test_load_jseq_v2_meta_event():
-    """JSEQ v2 pitch_idx 255 produces a (None, new_bpm) meta-event tuple."""
-    print("\nTesting v2 BPM meta-event...")
+    """Backward-compat: pre-v2.2 pitch_idx 255 in audio track still produces (None, bpm) tuple."""
+    print("\nTesting v2 backward-compat BPM meta-event (pitch 0xFF in audio track)...")
 
     import io
     import builtins
@@ -876,10 +876,10 @@ def test_load_jseq_v2_meta_event():
     seq = channels[0]['sequence']
     assert len(seq) == 3
 
-    # Second item is the meta-event
-    assert seq[1][0] is None, "Meta-event should have None as first element"
+    # Second item is the backward-compat meta-event tuple
+    assert seq[1][0] is None, "Backward-compat meta-event should have None as first element"
     assert seq[1][1] == 140, f"Meta-event BPM should be 140, got {seq[1][1]}"
-    print("✓ v2 BPM meta-event test passed")
+    print("✓ v2 backward-compat BPM meta-event test passed")
 
 
 def test_load_jseq_v2_mixed_channels():
@@ -974,8 +974,8 @@ def test_apply_adsr_multipliers_sustain_clamped():
 
 @pytest.mark.asyncio
 async def test_play_sequence_bpm_meta_event():
-    """play_sequence honours dynamic BPM meta-events embedded in the sequence."""
-    print("\nTesting play_sequence BPM meta-event handling...")
+    """play_sequence honours legacy (None, bpm) meta-events via _shared_bpm."""
+    print("\nTesting play_sequence backward-compat BPM meta-event handling...")
 
     synth = SynthManager()
     sleep_calls = []
@@ -987,16 +987,16 @@ async def test_play_sequence_bpm_meta_event():
 
     asyncio.sleep = spy_sleep
     try:
-        # One rest at 120 BPM, then BPM meta-event → 240 BPM, then another rest
-        # At 120 BPM: beat_duration=0.5s, rest=1.0 beat → 0.5s sleep
-        # At 240 BPM: beat_duration=0.25s, rest=1.0 beat → 0.25s sleep
+        # SynthManager._shared_bpm starts at 120.
+        # (None, 240) triggers the backward-compat path: _shared_bpm becomes 240.
+        # Subsequent rest is computed at 240 BPM.
         sequence_data = {
             'bpm': 120,
             'patch': 'SELECT',
             'sequence': [
-                (0, 1.0),      # rest at 120 BPM → 0.5s
-                (None, 240),   # meta-event: new BPM = 240
-                (0, 1.0),      # rest at 240 BPM → 0.25s
+                (0, 1.0),      # rest at 120 BPM (shared_bpm=120) -> 0.5s
+                (None, 240),   # compat meta-event: _shared_bpm -> 240
+                (0, 1.0),      # rest at 240 BPM (shared_bpm=240) -> 0.25s
             ]
         }
         await synth.play_sequence(sequence_data)
@@ -1006,7 +1006,7 @@ async def test_play_sequence_bpm_meta_event():
     # The first rest is 0.5s (120 BPM, 1 beat), the third is 0.25s (240 BPM, 1 beat)
     assert any(abs(t - 0.5) < 0.001 for t in sleep_calls), f"Expected 0.5s sleep, got: {sleep_calls}"
     assert any(abs(t - 0.25) < 0.001 for t in sleep_calls), f"Expected 0.25s sleep, got: {sleep_calls}"
-    print("✓ play_sequence BPM meta-event test passed")
+    print("✓ play_sequence backward-compat BPM meta-event test passed")
 
 
 @pytest.mark.asyncio
@@ -1210,6 +1210,97 @@ def test_load_jseq_v2_automation_global_scope():
     print("✓ _load_jseq_v2 automation global scope test passed")
 
 
+def test_load_jseq_v2_master_event_track():
+    """_load_jseq_v2: Type 0x02 track is parsed as a 'master_event' channel dict."""
+    print("\nTesting _load_jseq_v2 Type 0x02 master event track parsing...")
+
+    synth = SynthManager()
+
+    # Build: 1 audio channel + 1 master event track
+    # Master event steps: REST 64 (2 beats at 1/32), BPM_CHANGE to 110
+    data = _build_jseq_v2(140, [
+        {'patch_idx': 0, 'track_type': 0, 'override': None, 'steps': [(61, 32)]},
+        {'patch_idx': 0xFF, 'track_type': 2, 'override': None,
+         'steps': [(0x00, 64), (0x01, 110)]},  # REST 64, BPM_CHANGE 110
+    ])
+
+    import io, builtins
+    original_open = builtins.open
+    builtins.open = lambda path, mode='r', *a, **kw: io.BytesIO(data)
+    try:
+        channels = synth.load_jseq('/sd/test.jseq')
+    finally:
+        builtins.open = original_open
+
+    assert len(channels) == 2
+    assert channels[0]['type'] == 'audio'
+    assert channels[1]['type'] == 'master_event', f"Expected 'master_event', got {channels[1]['type']!r}"
+    steps = channels[1]['steps']
+    assert len(steps) == 2
+    assert steps[0] == (0x00, 64), f"First step should be REST 64, got {steps[0]}"
+    assert steps[1] == (0x01, 110), f"Second step should be BPM_CHANGE 110, got {steps[1]}"
+    print("✓ _load_jseq_v2 master event track test passed")
+
+
+@pytest.mark.asyncio
+async def test_play_master_events_updates_shared_bpm():
+    """_play_master_events: JSEQ_CMD_BPM_CHANGE updates self._shared_bpm."""
+    print("\nTesting _play_master_events BPM_CHANGE command...")
+
+    synth = SynthManager()
+    assert synth._shared_bpm == 120, "_shared_bpm should start at 120"
+
+    sleep_calls = []
+    original_sleep = asyncio.sleep
+    async def spy_sleep(t):
+        sleep_calls.append(t)
+    asyncio.sleep = spy_sleep
+    try:
+        # REST 32 (1 beat at 120 BPM = 0.5s), then BPM_CHANGE to 200
+        channel_data = {
+            'bpm': 120,
+            'type': 'master_event',
+            'steps': [(0x00, 32), (0x01, 200)],
+        }
+        await synth._play_master_events(channel_data)
+    finally:
+        asyncio.sleep = original_sleep
+
+    assert synth._shared_bpm == 200, f"_shared_bpm should be 200 after BPM_CHANGE, got {synth._shared_bpm}"
+    # REST of 32 1/32-beats = 1.0 beat at 120 BPM = 0.5s
+    assert any(abs(t - 0.5) < 0.001 for t in sleep_calls), f"Expected 0.5s REST sleep, got {sleep_calls}"
+    print("✓ _play_master_events BPM_CHANGE test passed")
+
+
+@pytest.mark.asyncio
+async def test_play_sequence_uses_shared_bpm():
+    """play_sequence reads _shared_bpm on each note for real-time tempo sync."""
+    print("\nTesting play_sequence uses _shared_bpm for timing...")
+
+    synth = SynthManager()
+    synth._shared_bpm = 240   # set externally (as a master event track would do)
+
+    sleep_calls = []
+    original_sleep = asyncio.sleep
+    async def spy_sleep(t):
+        sleep_calls.append(t)
+    asyncio.sleep = spy_sleep
+    try:
+        sequence_data = {
+            'bpm': 120,          # channel-local BPM (should be IGNORED)
+            'patch': 'SELECT',
+            'sequence': [(0, 1.0)],   # 1 beat rest
+        }
+        await synth.play_sequence(sequence_data)
+    finally:
+        asyncio.sleep = original_sleep
+
+    # At 240 BPM: 1.0 beat = 60/240 = 0.25s — NOT the 0.5s from 120 BPM
+    assert any(abs(t - 0.25) < 0.001 for t in sleep_calls), \
+        f"Expected 0.25s from _shared_bpm=240, got: {sleep_calls}"
+    print("✓ play_sequence uses _shared_bpm test passed")
+
+
 def run_all_tests():
     """Run all SynthManager tests."""
     print("=" * 60)
@@ -1248,6 +1339,7 @@ def run_all_tests():
         test_apply_automation_lpf_zero_resets_filter,
         test_load_jseq_v2_automation_target_scope,
         test_load_jseq_v2_automation_global_scope,
+        test_load_jseq_v2_master_event_track,
     ]
 
     async_tests = [
@@ -1264,6 +1356,9 @@ def run_all_tests():
         # v2 async tests
         test_play_sequence_bpm_meta_event,
         test_play_sequence_uses_envelope_override,
+        # v2.2 async tests
+        test_play_master_events_updates_shared_bpm,
+        test_play_sequence_uses_shared_bpm,
     ]
 
     passed = 0
