@@ -16,6 +16,8 @@ JSEQ_PATCH_NAMES = [
     'RETRO_LEAD', 'RETRO_BASS', 'RETRO_NOISE',
     'BEEP', 'BEEP_SQUARE', 'PAD', 'PUNCH',
     'ALARM', 'SCANNER', 'CLICK', 'NOISE', 'SELECT',
+    'DATA_STREAM', 'ETHEREAL', 'ENGINE_HUM',
+    'TEXT_SCROLL', 'SUCCESS', 'ERROR',
 ]
 
 
@@ -29,9 +31,10 @@ class SynthManager:
     Can be instantiated for Hi-Fi (I2S) or Lo-Fi (PWM/Piezo).
     """
 
-    def __init__(self, sample_rate=22050, channel_count=1, waveform_override=None):
+    def __init__(self, sample_rate=22050, channel_count=1, waveform_override=None, root_data_dir="/"):
         JEBLogger.info("SYNTH", f"[INIT] SynthManager - sample_rate: {sample_rate}, channel_count: {channel_count}, waveform_override: {waveform_override}")
         self.override = waveform_override
+        self.root_data_dir = root_data_dir
 
         # Create the synthesizer object
         # mode=synthio.Mode.POLYPHONIC allows multiple notes at once
@@ -40,13 +43,30 @@ class SynthManager:
         # Background chiptune sequencer task handle
         self._chiptune_task = None
 
-        # Note: Active notes are managed directly by the synthesizer
-        # using press() and release() methods
+        # RAM cache for explicitly preloaded .jseq files
+        self._jseq_cache = {}
 
     @property
     def source(self):
         """Returns the synth object to be fed into AudioMixer."""
         return self.synth
+
+    def preload(self, files):
+        """
+        Reads a .jseq file from the SD card and stores the parsed sequence in RAM.
+        Call this during system boot for UI sounds to prevent SD card read latency.
+        """
+        for filename in files:
+            filepath = f"{self.root_data_dir}{filename}"
+            try:
+                if filepath not in self._jseq_cache:
+                    # load_jseq will handle the file I/O and parsing
+                    channels_data = self.load_jseq(filepath)
+                    if channels_data:
+                        self._jseq_cache[filepath] = channels_data
+                        JEBLogger.info("SYNTH", f"Preloaded JSEQ to RAM: {filepath}")
+            except Exception as e:
+                JEBLogger.error("SYNTH", f"Failed to preload JSEQ '{filepath}': {e}")
 
     def play_note(self, frequency, patch=None, duration=None):
         """
@@ -232,6 +252,11 @@ class SynthManager:
         Raises:
             ValueError: If the file has an invalid format.
         """
+        # Return instantly if the sequence is cached in RAM
+        if filepath in self._jseq_cache:
+            return self._jseq_cache[filepath]
+
+        # Otherwise, perform the standard SD card read
         with open(filepath, 'rb') as f:
             data = f.read()
 

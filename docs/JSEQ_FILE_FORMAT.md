@@ -60,6 +60,12 @@ The `uint8` Patch Index maps to the following string constants in the synth engi
 * `9` = `CLICK`
 * `10` = `NOISE`
 * `11` = `SELECT`
+* `12` = `DATA_STREAM`
+* `13` = `ETHEREAL`
+* `14` = `ENGINE_HUM`
+* `15` = `TEXT_SCROLL`
+* `16` = `SUCCESS`
+* `17` = `ERROR`
 
 ### 3.2 Pitch Math (MIDI Offset)
 To save space and align with standard MIDI numbering, pitch is calculated using standard octaves (`C-1` to `G9`).
