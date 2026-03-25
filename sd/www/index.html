@@ -323,8 +323,8 @@
                     <button class="secondary" onclick="audioClearAll()" style="margin-left:auto;">Clear All</button>
                 </div>
 
-                <div style="overflow-x: auto; background: #111; border: 1px solid #333; border-radius: 4px; padding-bottom: 10px; margin-top: 15px;">
-                    <div style="min-width: max-content; padding: 10px;">
+                <div id="audioGridScroller" style="overflow-x: auto; background: #111; border: 1px solid #333; border-radius: 4px; padding-bottom: 10px; margin-top: 15px;">
+                    <div id="audioGridInner" style="min-width: max-content; padding: 10px; position: relative;">
                         <div id="audioGridHeader" style="display: flex; margin-bottom: 5px;"></div>
                         <div id="channelRows"></div>
                     </div>

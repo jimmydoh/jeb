@@ -2590,6 +2590,7 @@ async function playWav() {
 let _webAudioCtx = null;
 let _browserActiveNodes = [];
 let _browserNoiseBuffer = null; // Shared noise buffer, generated once per AudioContext
+let _browserPlayheadRaf = null; // requestAnimationFrame handle for the playback cursor
 
 function _getAudioContext() {
     if (!_webAudioCtx || _webAudioCtx.state === 'closed') {
@@ -2696,6 +2697,7 @@ function _jseqIndexToFreq(index) {
 
 /** Stop all scheduled browser audio nodes and close the AudioContext. */
 function browserStopAll() {
+    _browserStopPlayhead();
     _browserActiveNodes.forEach(node => {
         // Errors here are expected: nodes may have already finished naturally.
         try { node.stop ? node.stop() : node.disconnect(); } catch (_) {}
@@ -2712,6 +2714,99 @@ function browserStopAll() {
 }
 
 /**
+ * Start an animationFrame loop that moves a vertical playhead across the sequencer
+ * grid and auto-scrolls the container to keep the playhead in view.
+ *
+ * @param {AudioContext} audioCtx       - The active Web Audio context
+ * @param {number}       scheduleOffset - audioCtx.currentTime at which slot 0 was scheduled
+ * @param {number}       slotSec        - Duration of one slot (BASE_RES beats × beat length)
+ * @param {number}       totalSteps     - Total number of 1/32nd slots in the sequence
+ */
+function _browserStartPlayhead(audioCtx, scheduleOffset, slotSec, totalSteps) {
+    const inner = document.getElementById('audioGridInner');
+    const scroller = document.getElementById('audioGridScroller');
+    const grid0 = document.getElementById('stepGrid_0');
+    if (!inner || !grid0) return;
+
+    // Ensure the playhead element exists inside the relative-positioned inner div.
+    let ph = document.getElementById('audioPlayhead');
+    if (!ph) {
+        ph = document.createElement('div');
+        ph.id = 'audioPlayhead';
+        ph.style.cssText = [
+            'position:absolute',
+            'top:0',
+            'bottom:0',
+            'width:2px',
+            'background:rgba(255,200,0,0.85)',
+            'pointer-events:none',
+            'z-index:10',
+            'border-radius:1px',
+            'box-shadow:0 0 6px rgba(255,200,0,0.5)',
+        ].join(';');
+        inner.appendChild(ph);
+    }
+    ph.style.display = 'block';
+
+    // Measure the pixel offset of the first step slot from the left edge of #audioGridInner.
+    // grid0.offsetLeft is relative to its offset parent, which is the channel-row div; but
+    // the channel-rows sit inside #audioGridInner with padding:10px and no additional offset,
+    // so we walk up via offsetParent to accumulate the real left relative to #audioGridInner.
+    let gridOffsetLeft = 0;
+    let el = grid0;
+    while (el && el !== inner) {
+        gridOffsetLeft += el.offsetLeft;
+        el = el.offsetParent;
+    }
+    const stepPx = BASE_WIDTH + GAP; // 16 px per 1/32nd slot
+
+    function tick() {
+        // Stop animating if the audio context has been closed (e.g. user pressed Stop).
+        if (!_webAudioCtx || _webAudioCtx.state === 'closed') {
+            _browserStopPlayhead();
+            return;
+        }
+
+        const elapsed = _webAudioCtx.currentTime - scheduleOffset;
+        const currentSlot = Math.floor(elapsed / slotSec);
+
+        if (currentSlot >= totalSteps) {
+            // Sequence has finished — hide the playhead and stop the loop.
+            _browserStopPlayhead();
+            return;
+        }
+
+        const left = gridOffsetLeft + currentSlot * stepPx;
+        ph.style.left = left + 'px';
+
+        // Auto-scroll to keep the playhead comfortably in view.
+        if (scroller) {
+            const margin = 120; // px from edge before scrolling kicks in
+            const relLeft = left - scroller.scrollLeft;
+            if (relLeft < margin) {
+                scroller.scrollLeft = Math.max(0, left - margin);
+            } else if (relLeft > scroller.clientWidth - margin) {
+                scroller.scrollLeft = left - scroller.clientWidth + margin;
+            }
+        }
+
+        _browserPlayheadRaf = requestAnimationFrame(tick);
+    }
+
+    _browserPlayheadRaf = requestAnimationFrame(tick);
+}
+
+/** Cancel the playhead animation and hide the playhead element. */
+function _browserStopPlayhead() {
+    if (_browserPlayheadRaf !== null) {
+        cancelAnimationFrame(_browserPlayheadRaf);
+        _browserPlayheadRaf = null;
+    }
+    const ph = document.getElementById('audioPlayhead');
+    if (ph) ph.style.display = 'none';
+}
+
+/**
  * Play the current sequencer grid in the browser using Web Audio API.
  * Notes are pre-calculated and precisely scheduled against AudioContext.currentTime.
  */
@@ -2721,6 +2816,7 @@ function audioPreviewBrowser() {
     const audioCtx = _getAudioContext();
     const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
     const beatDuration = 60.0 / bpm;
+    const slotSec = BASE_RES * beatDuration;
     const scheduleOffset = audioCtx.currentTime + 0.05;
 
     let hasNotes = false;
@@ -2734,7 +2830,6 @@ function audioPreviewBrowser() {
             // Each array index occupies exactly BASE_RES beats regardless of note length.
             // Using step.duration (or activeDuration) here was wrong: covered-cell steps
             // have no .duration, causing cursor += NaN and silencing all subsequent notes.
-            const slotSec = BASE_RES * beatDuration;
 
             if (step && step.note && step.note !== '-') {
                 const noteSec = step.duration * beatDuration;
@@ -2750,6 +2845,7 @@ function audioPreviewBrowser() {
 
     if (hasNotes) {
         showStatus('audioStatus', '🔊 Playing in browser…', 'success');
+        _browserStartPlayhead(audioCtx, scheduleOffset, slotSec, audioNumSteps);
     } else {
         showStatus('audioStatus', 'No notes to play — add some steps first', 'error');
     }
