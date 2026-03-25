@@ -1048,29 +1048,51 @@ async def test_play_sequence_uses_envelope_override():
 
 
 def test_apply_automation_lpf_sets_synth_filter():
-    """_apply_automation with LPF param actually sets self.synth.filter to a Biquad."""
-    print("\nTesting _apply_automation LPF sets synth.filter...")
+    """_apply_automation with LPF param (global scope) sets self.synth.filter."""
+    print("\nTesting _apply_automation LPF (global) sets synth.filter...")
 
     synth = SynthManager()
     assert synth.synth.filter is None, "filter should start as None"
 
+    # Default target_channel=0xFF → global
     synth._apply_automation(synth_manager_module.JSEQ_PARAM_LPF_CUTOFF, 128)
 
-    assert synth.synth.filter is not None, "synth.filter should be set after LPF automation"
+    assert synth.synth.filter is not None, "synth.filter should be set after global LPF automation"
     f = synth.synth.filter
-    # MockBiquad stores mode, frequency, Q
     import synthio as mock_synthio
     assert isinstance(f, mock_synthio.Biquad), f"filter should be a Biquad, got {type(f)}"
     assert f.mode == mock_synthio.FilterMode.LOW_PASS, "Biquad should be LOW_PASS mode"
-    # 128/255 * 20000 ≈ 10039 Hz
     expected_cutoff = (128 / 255.0) * 20000.0
     assert abs(f.frequency - expected_cutoff) < 1.0, f"Cutoff frequency mismatch: {f.frequency}"
-    print("✓ _apply_automation LPF sets synth.filter test passed")
+    # Per-channel dict should be unmodified
+    assert synth._channel_filters == {}, "Global LPF should not touch _channel_filters"
+    print("✓ _apply_automation LPF (global) sets synth.filter test passed")
+
+
+def test_apply_automation_lpf_per_channel():
+    """_apply_automation with LPF param and a channel index stores in _channel_filters."""
+    print("\nTesting _apply_automation LPF (per-channel) stores in _channel_filters...")
+
+    import synthio as mock_synthio
+    synth = SynthManager()
+    assert synth._channel_filters == {}, "_channel_filters should start empty"
+    assert synth.synth.filter is None, "synth.filter should remain None for per-channel LPF"
+
+    synth._apply_automation(synth_manager_module.JSEQ_PARAM_LPF_CUTOFF, 200, target_channel=0)
+
+    assert 0 in synth._channel_filters, "_channel_filters[0] should be set"
+    f = synth._channel_filters[0]
+    assert isinstance(f, mock_synthio.Biquad)
+    expected_cutoff = (200 / 255.0) * 20000.0
+    assert abs(f.frequency - expected_cutoff) < 1.0
+    # Global synth.filter unchanged
+    assert synth.synth.filter is None, "synth.filter (global) should remain None"
+    print("✓ _apply_automation LPF (per-channel) test passed")
 
 
 def test_apply_automation_amplitude_updates_instance():
-    """_apply_automation with amplitude param updates self._automation_amplitude."""
-    print("\nTesting _apply_automation amplitude updates _automation_amplitude...")
+    """_apply_automation with amplitude param (global) updates self._automation_amplitude."""
+    print("\nTesting _apply_automation amplitude (global) updates _automation_amplitude...")
 
     synth = SynthManager()
     assert synth._automation_amplitude == 1.0, "_automation_amplitude should start at 1.0"
@@ -1080,7 +1102,25 @@ def test_apply_automation_amplitude_updates_instance():
     expected = 128 / 255.0
     assert abs(synth._automation_amplitude - expected) < 0.001, \
         f"_automation_amplitude mismatch: {synth._automation_amplitude}"
-    print("✓ _apply_automation amplitude updates instance test passed")
+    assert synth._channel_amplitudes == {}, "Global amplitude should not touch _channel_amplitudes"
+    print("✓ _apply_automation amplitude (global) updates instance test passed")
+
+
+def test_apply_automation_amplitude_per_channel():
+    """_apply_automation with amplitude param and a channel index stores in _channel_amplitudes."""
+    print("\nTesting _apply_automation amplitude (per-channel) stores in _channel_amplitudes...")
+
+    synth = SynthManager()
+    assert synth._channel_amplitudes == {}, "_channel_amplitudes should start empty"
+
+    synth._apply_automation(synth_manager_module.JSEQ_PARAM_AMPLITUDE, 64, target_channel=2)
+
+    assert 2 in synth._channel_amplitudes, "_channel_amplitudes[2] should be set"
+    expected = 64 / 255.0
+    assert abs(synth._channel_amplitudes[2] - expected) < 0.001
+    # Global amplitude unchanged
+    assert synth._automation_amplitude == 1.0, "Global amplitude should remain 1.0"
+    print("✓ _apply_automation amplitude (per-channel) test passed")
 
 
 def test_apply_automation_lpf_zero_resets_filter():
@@ -1094,6 +1134,80 @@ def test_apply_automation_lpf_zero_resets_filter():
     assert f is not None
     assert abs(f.frequency) < 1.0, f"LPF=0 should produce ~0 Hz cutoff, got {f.frequency}"
     print("✓ _apply_automation LPF=0 test passed")
+
+
+def test_load_jseq_v2_automation_target_scope():
+    """_load_jseq_v2: automation channel stores target_scope from the byte +0x00 (scope_or_patch)."""
+    print("\nTesting _load_jseq_v2 automation target_scope...")
+
+    synth = SynthManager()
+
+    # Build a minimal v2 file: 1 audio channel (ch_idx=0) + 1 automation targeting ch 0
+    import struct
+    out = bytearray()
+    # Global header
+    out += b'JSEQ'
+    out.append(2)          # version = 2
+    out += struct.pack('<H', 140)   # BPM = 140
+    out.append(2)          # num_channels = 2 (1 audio + 1 automation)
+
+    # Audio channel header: patch=0, track_type=0, ovr_flag=0, step_count=2
+    out.append(0)   # patch_idx = 0 (RETRO_LEAD)
+    out.append(0)   # track_type = Audio
+    out.append(0)   # ovr_flag = 0
+    out += struct.pack('<H', 2)  # step_count = 2
+    out.append(1); out.append(16)   # C4 (MIDI 60) for 0.5 beats
+    out.append(0); out.append(32)   # rest for 1 beat
+
+    # Automation channel header: scope=0x00 (targets audio ch 0), track_type=1, ovr=0, steps=2
+    out.append(0x00)  # target_scope = 0 (audio ch 0)
+    out.append(1)     # track_type = Automation
+    out.append(0)     # ovr_flag = 0
+    out += struct.pack('<H', 2)  # step_count = 2
+    out.append(0x00); out.append(200)  # LPF cutoff = 200
+    out.append(0x00); out.append(100)  # LPF cutoff = 100
+
+    channels = synth._load_jseq_v2(bytes(out))
+    assert len(channels) == 2, f"Expected 2 channels, got {len(channels)}"
+
+    audio_ch = channels[0]
+    assert audio_ch['type'] == 'audio'
+    assert audio_ch.get('channel_idx') == 0, f"Audio channel_idx should be 0, got {audio_ch.get('channel_idx')}"
+
+    auto_ch = channels[1]
+    assert auto_ch['type'] == 'automation'
+    assert auto_ch.get('target_scope') == 0x00, f"target_scope should be 0x00, got {auto_ch.get('target_scope'):#04x}"
+    assert len(auto_ch['steps']) == 2
+
+    print("✓ _load_jseq_v2 automation target_scope test passed")
+
+
+def test_load_jseq_v2_automation_global_scope():
+    """_load_jseq_v2: automation channel with scope=0xFF targets the Global Master Bus."""
+    print("\nTesting _load_jseq_v2 automation global scope (0xFF)...")
+
+    import struct
+    synth = SynthManager()
+
+    out = bytearray()
+    out += b'JSEQ'
+    out.append(2)
+    out += struct.pack('<H', 120)
+    out.append(1)  # num_channels = 1 automation channel
+
+    # Automation channel: scope=0xFF (Global), track_type=1
+    out.append(0xFF)  # target_scope = Global
+    out.append(1)     # track_type = Automation
+    out.append(0)     # ovr_flag = 0
+    out += struct.pack('<H', 1)
+    out.append(0x01); out.append(128)  # Amplitude = 128
+
+    channels = synth._load_jseq_v2(bytes(out))
+    assert len(channels) == 1
+    assert channels[0]['type'] == 'automation'
+    assert channels[0].get('target_scope') == 0xFF, \
+        f"target_scope should be 0xFF, got {channels[0].get('target_scope'):#04x}"
+    print("✓ _load_jseq_v2 automation global scope test passed")
 
 
 def run_all_tests():
@@ -1128,8 +1242,12 @@ def run_all_tests():
         test_apply_adsr_multipliers_sustain_clamped,
         # _apply_automation implementation tests
         test_apply_automation_lpf_sets_synth_filter,
+        test_apply_automation_lpf_per_channel,
         test_apply_automation_amplitude_updates_instance,
+        test_apply_automation_amplitude_per_channel,
         test_apply_automation_lpf_zero_resets_filter,
+        test_load_jseq_v2_automation_target_scope,
+        test_load_jseq_v2_automation_global_scope,
     ]
 
     async_tests = [

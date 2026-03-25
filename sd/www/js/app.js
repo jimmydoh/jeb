@@ -1811,9 +1811,13 @@ let audioNumSteps = 64;    // Calculated strictly on BASE_RES
 
 let audioSteps = [];
 let audioChannelPatches = [];
-// V2: per-channel track type (0=audio, 1=automation) and ADSR override config
-let audioChannelTrackTypes = [];
+// V2: per-channel ADSR override config (audio channels only — always type 0)
 let audioChannelAdsrOverrides = [];
+// V2: automation tracks (separate from the 3 fixed audio channels)
+// Each entry: { targetScope: 0xFF, paramId: 0, steps: number[] }
+//   targetScope: 0–2 = targets audio channel 0/1/2, 0xFF = Global Master Bus
+//   paramId:     0x00 = LPF Cutoff, 0x01 = Amplitude
+let automationTracks = [];
 let activeNote = null;
 let activeDuration = 1.0;
 let audioStudioInitialized = false;
@@ -1826,7 +1830,6 @@ function initAudioStudio() {
         for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
             audioSteps.push(new Array(audioNumSteps).fill(null));
             audioChannelPatches.push(JSEQ_PATCH_NAMES[c] || 'SELECT');
-            audioChannelTrackTypes.push(0);   // default: Audio
             audioChannelAdsrOverrides.push({ enabled: false, a: 100, d: 100, s: 100, r: 100 });
         }
 
@@ -1849,11 +1852,12 @@ function updateGridConfig() {
 function _resizeGrid() {
     audioNumSteps = Math.round((audioBars * 4) / BASE_RES);
 
+    // --- Resize audio channel state arrays ---
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
         if (!audioSteps[c]) audioSteps[c] = [];
         audioSteps[c].length = audioNumSteps;
 
-        for(let s = 0; s < audioNumSteps; s++) {
+        for (let s = 0; s < audioNumSteps; s++) {
             if (audioSteps[c][s] === undefined) audioSteps[c][s] = null;
         }
 
@@ -1869,28 +1873,39 @@ function _resizeGrid() {
             }
         }
 
-        // Ensure v2 state arrays are sized correctly
-        if (audioChannelTrackTypes[c] === undefined) audioChannelTrackTypes[c] = 0;
-        if (!audioChannelAdsrOverrides[c]) audioChannelAdsrOverrides[c] = { enabled: false, a: 100, d: 100, s: 100, r: 100 };
+        if (!audioChannelAdsrOverrides[c]) {
+            audioChannelAdsrOverrides[c] = { enabled: false, a: 100, d: 100, s: 100, r: 100 };
+        }
+    }
+
+    // --- Resize automation track state arrays ---
+    for (let i = 0; i < automationTracks.length; i++) {
+        const trk = automationTracks[i];
+        trk.steps.length = audioNumSteps;
+        for (let s = 0; s < audioNumSteps; s++) {
+            if (trk.steps[s] === undefined) trk.steps[s] = 128;
+        }
     }
 
     _buildGridHeader();
     const container = document.getElementById('channelRows');
     container.innerHTML = '';
 
+    // ================================================================
+    // AUDIO CHANNELS (fixed at AUDIO_NUM_CHANNELS — always type Audio)
+    // ================================================================
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        const isAuto = audioChannelTrackTypes[c] === 1;
-
-        // --- Outer wrapper (channel label + controls + grid) ---
+        // --- Outer wrapper ---
         const wrapper = document.createElement('div');
         wrapper.style.cssText = 'margin-bottom: 8px;';
 
+        // --- Channel row: label + patch selector + step grid ---
         const row = document.createElement('div');
         row.className = 'channel-row';
         row.style.cssText = 'display: flex; flex-wrap: nowrap; align-items: center;';
 
         const controls = document.createElement('div');
-        controls.style.cssText = 'display: flex; gap: 5px; flex: 0 0 140px;';
+        controls.style.cssText = 'display: flex; gap: 5px; flex: 0 0 140px; flex-shrink: 0;';
 
         const lbl = document.createElement('div');
         lbl.className = 'channel-label';
@@ -1899,7 +1914,7 @@ function _resizeGrid() {
 
         const sel = document.createElement('select');
         sel.className = 'channel-patch';
-        sel.style.width = '90px';
+        sel.style.width = '104px';
         JSEQ_PATCH_NAMES.forEach(name => {
             const opt = document.createElement('option');
             opt.value = name;
@@ -1912,72 +1927,51 @@ function _resizeGrid() {
 
         row.appendChild(controls);
 
-        // Step grid / automation editor
         const grid = document.createElement('div');
         grid.id = `stepGrid_${c}`;
         grid.style.cssText = 'display: flex; flex-wrap: nowrap; gap: 2px;';
         row.appendChild(grid);
         wrapper.appendChild(row);
 
-        // --- V2 controls row (track type + ADSR override) ---
-        const v2row = document.createElement('div');
-        v2row.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-top: 3px; padding-left: 4px; font-size: 0.8em; color: #888;';
+        // --- ADSR override row (aligned to grid start) ---
+        // Controls section is 140px + 8px padding inside channel-row = 148px offset.
+        const adsrRow = document.createElement('div');
+        adsrRow.style.cssText = 'display: flex; align-items: center; gap: 6px; margin-top: 3px; padding-left: 148px; font-size: 0.8em;';
 
-        // Track type selector
-        const ttLbl = document.createElement('label');
-        ttLbl.style.cssText = 'color:#666; white-space:nowrap;';
-        ttLbl.textContent = 'Type:';
-        v2row.appendChild(ttLbl);
-
-        const ttSel = document.createElement('select');
-        ttSel.style.cssText = 'font-size:0.85em; padding:1px 3px; background:#1a1a1a; color:#ccc; border:1px solid #444;';
-        ['Audio', 'Automation'].forEach((label, idx) => {
-            const o = document.createElement('option');
-            o.value = idx;
-            o.textContent = label;
-            if (idx === audioChannelTrackTypes[c]) o.selected = true;
-            ttSel.appendChild(o);
-        });
-        ttSel.onchange = () => {
-            audioChannelTrackTypes[c] = parseInt(ttSel.value);
-            _resizeGrid();
-        };
-        v2row.appendChild(ttSel);
-
-        // ADSR override toggle
         const adsrChk = document.createElement('input');
         adsrChk.type = 'checkbox';
         adsrChk.id = `adsrChk_${c}`;
         adsrChk.checked = audioChannelAdsrOverrides[c].enabled;
         adsrChk.title = 'Enable inline ADSR multiplier override (JSEQ v2)';
-        v2row.appendChild(adsrChk);
+        adsrRow.appendChild(adsrChk);
 
         const adsrLbl = document.createElement('label');
         adsrLbl.htmlFor = `adsrChk_${c}`;
-        adsrLbl.style.cssText = 'color:#999; white-space:nowrap; cursor:pointer;';
+        adsrLbl.style.cssText = 'color:#888; white-space:nowrap; cursor:pointer; margin-right:4px;';
         adsrLbl.textContent = 'ADSR ×';
-        v2row.appendChild(adsrLbl);
+        adsrRow.appendChild(adsrLbl);
 
-        // ADSR multiplier inputs (hidden when override disabled)
         const adsrFields = document.createElement('span');
         adsrFields.style.display = audioChannelAdsrOverrides[c].enabled ? 'inline-flex' : 'none';
-        adsrFields.style.cssText += ' gap:4px; align-items:center;';
+        adsrFields.style.gap = '4px';
+        adsrFields.style.alignItems = 'center';
 
         ['a', 'd', 's', 'r'].forEach((key, ki) => {
             const tip = ['Atk', 'Dcy', 'Sus', 'Rel'][ki];
+            const lk = document.createElement('label');
+            lk.textContent = tip + ':';
+            lk.style.cssText = 'color:#666; white-space:nowrap;';
+            adsrFields.appendChild(lk);
+
             const inp = document.createElement('input');
             inp.type = 'number';
             inp.min = 0; inp.max = 255;
             inp.value = audioChannelAdsrOverrides[c][key];
             inp.title = `${tip} multiplier (÷100 = float scale, 100=1×)`;
-            inp.style.cssText = 'width:42px; font-size:0.85em; background:#111; color:#ccc; border:1px solid #444; padding:1px 2px;';
+            inp.style.cssText = 'width:40px; font-size:0.85em; background:#111; color:#ccc; border:1px solid #444; padding:1px 2px;';
             inp.onchange = () => {
                 audioChannelAdsrOverrides[c][key] = Math.max(0, Math.min(255, parseInt(inp.value) || 0));
             };
-            const lk = document.createElement('label');
-            lk.textContent = tip + ':';
-            lk.style.color = '#666';
-            adsrFields.appendChild(lk);
             adsrFields.appendChild(inp);
         });
 
@@ -1986,69 +1980,159 @@ function _resizeGrid() {
             adsrFields.style.display = adsrChk.checked ? 'inline-flex' : 'none';
         };
 
-        v2row.appendChild(adsrFields);
-        wrapper.appendChild(v2row);
-
-        // Automation channel editor (replaces note grid)
-        if (isAuto) {
-            grid.style.display = 'none';
-            const autoEditor = document.createElement('div');
-            autoEditor.id = `autoEditor_${c}`;
-            autoEditor.style.cssText = 'margin-top:4px; padding:6px; background:#111; border:1px solid #333; border-radius:3px; font-size:0.82em;';
-
-            const autoHdr = document.createElement('div');
-            autoHdr.style.cssText = 'color:#80ccff; margin-bottom:4px; font-weight:bold;';
-            autoHdr.textContent = `⚙ Automation — Ch${c + 1}`;
-            autoEditor.appendChild(autoHdr);
-
-            // Param selector for the whole channel
-            const paramRow = document.createElement('div');
-            paramRow.style.cssText = 'display:flex; gap:8px; align-items:center; margin-bottom:6px;';
-            const paramLbl = document.createElement('label');
-            paramLbl.textContent = 'Parameter:';
-            paramLbl.style.color = '#888';
-            paramRow.appendChild(paramLbl);
-            const paramSel = document.createElement('select');
-            paramSel.id = `autoParam_${c}`;
-            paramSel.style.cssText = 'font-size:0.9em; background:#1a1a1a; color:#ccc; border:1px solid #444;';
-            [['LPF Cutoff (0x00)', 0], ['Amplitude (0x01)', 1]].forEach(([lbl, val]) => {
-                const o = document.createElement('option');
-                o.value = val;
-                o.textContent = lbl;
-                if ((audioSteps[c][0] && audioSteps[c][0].paramId === val) || val === 0) o.selected = true;
-                paramSel.appendChild(o);
-            });
-            paramRow.appendChild(paramSel);
-            autoEditor.appendChild(paramRow);
-
-            // Value grid: audioNumSteps cells for automation values
-            const autoGrid = document.createElement('div');
-            autoGrid.style.cssText = 'display:flex; flex-wrap:wrap; gap:2px;';
-            for (let s = 0; s < audioNumSteps; s++) {
-                const cell = audioSteps[c][s];
-                const val = (cell && cell.paramId !== undefined) ? cell.value : 128;
-                const inp = document.createElement('input');
-                inp.type = 'number';
-                inp.min = 0; inp.max = 255;
-                inp.value = val;
-                inp.style.cssText = 'width:36px; font-size:0.78em; background:#1a1a1a; color:#99ccff; border:1px solid #333; padding:1px; text-align:center;';
-                inp.title = `Step ${s + 1} value (0–255)`;
-                inp.onchange = () => {
-                    const paramId = parseInt(document.getElementById(`autoParam_${c}`).value);
-                    audioSteps[c][s] = { paramId, value: Math.max(0, Math.min(255, parseInt(inp.value) || 0)) };
-                };
-                autoGrid.appendChild(inp);
-            }
-            autoEditor.appendChild(autoGrid);
-            wrapper.appendChild(autoEditor);
-        }
-
+        adsrRow.appendChild(adsrFields);
+        wrapper.appendChild(adsrRow);
         container.appendChild(wrapper);
-
-        if (!isAuto) {
-            _renderChannel(c);
-        }
+        _renderChannel(c);
     }
+
+    // ================================================================
+    // AUTOMATION TRACKS (addable, separate from audio channels)
+    // ================================================================
+    // Automation tracks section (always rendered so users can add tracks)
+    {
+        const autoSection = document.createElement('div');
+        autoSection.style.cssText = 'margin-top: 12px; border-top: 1px solid #333; padding-top: 8px;';
+
+        const autoTitle = document.createElement('div');
+        autoTitle.style.cssText = 'font-size:0.8em; color:#666; margin-bottom:6px; letter-spacing:0.05em; text-transform:uppercase;';
+        autoTitle.textContent = 'Automation Tracks';
+        autoSection.appendChild(autoTitle);
+
+        automationTracks.forEach((trk, i) => {
+            _buildAutomationTrackRow(autoSection, trk, i);
+        });
+
+        // "Add Automation Track" button
+        const addBtn = document.createElement('button');
+        addBtn.textContent = '+ Add Automation Track';
+        addBtn.style.cssText = 'margin-top:6px; font-size:0.8em; padding:4px 10px; background:#1a2a1a; color:#88cc88; border:1px solid #446644; border-radius:3px; cursor:pointer;';
+        addBtn.onclick = addAutomationTrack;
+        autoSection.appendChild(addBtn);
+
+        container.appendChild(autoSection);
+    }
+}
+
+/**
+ * Build and append a single automation track row into *parentEl*.
+ * @param {HTMLElement} parentEl  Container to append to.
+ * @param {{targetScope:number, paramId:number, steps:number[]}} trk  Track data.
+ * @param {number} i  Index in automationTracks[].
+ */
+function _buildAutomationTrackRow(parentEl, trk, i) {
+    const wrapper = document.createElement('div');
+    wrapper.id = `autoTrackRow_${i}`;
+    wrapper.style.cssText = 'display:flex; align-items:flex-start; gap:0; margin-bottom:8px;';
+
+    // --- Controls (same fixed width as audio channels for alignment) ---
+    const controls = document.createElement('div');
+    controls.style.cssText = 'display:flex; flex-direction:column; gap:4px; flex:0 0 140px; flex-shrink:0; padding: 6px 8px; background:#1a1a1a; border:1px solid #2a1a3a; border-radius:4px 0 0 4px; border-right:none;';
+
+    // Row 1: Label + remove button
+    const headerRow = document.createElement('div');
+    headerRow.style.cssText = 'display:flex; align-items:center; gap:4px;';
+
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'font-size:0.75em; color:#aa88cc; flex:1; white-space:nowrap; font-weight:bold;';
+    lbl.textContent = `Auto ${i + 1}`;
+    headerRow.appendChild(lbl);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = '×';
+    removeBtn.title = 'Remove this automation track';
+    removeBtn.style.cssText = 'font-size:0.8em; color:#cc6666; background:transparent; border:1px solid #664444; border-radius:2px; cursor:pointer; padding:0 4px; line-height:1.4;';
+    removeBtn.onclick = () => removeAutomationTrack(i);
+    headerRow.appendChild(removeBtn);
+    controls.appendChild(headerRow);
+
+    // Row 2: Target scope dropdown
+    const tgtRow = document.createElement('div');
+    tgtRow.style.cssText = 'display:flex; align-items:center; gap:3px;';
+    const tgtLbl = document.createElement('label');
+    tgtLbl.textContent = 'Target:';
+    tgtLbl.style.cssText = 'font-size:0.75em; color:#666; white-space:nowrap;';
+    tgtRow.appendChild(tgtLbl);
+    const tgtSel = document.createElement('select');
+    tgtSel.style.cssText = 'font-size:0.75em; background:#1a1a1a; color:#cc99ff; border:1px solid #553366; flex:1;';
+    const scopeOpts = [
+        ['Ch 1', 0], ['Ch 2', 1], ['Ch 3', 2], ['Global', 0xFF],
+    ];
+    scopeOpts.forEach(([label, val]) => {
+        const o = document.createElement('option');
+        o.value = val;
+        o.textContent = label;
+        if (val === trk.targetScope) o.selected = true;
+        tgtSel.appendChild(o);
+    });
+    tgtSel.onchange = () => { trk.targetScope = parseInt(tgtSel.value); };
+    tgtRow.appendChild(tgtSel);
+    controls.appendChild(tgtRow);
+
+    // Row 3: Parameter dropdown
+    const paramRow = document.createElement('div');
+    paramRow.style.cssText = 'display:flex; align-items:center; gap:3px;';
+    const paramLbl = document.createElement('label');
+    paramLbl.textContent = 'Param:';
+    paramLbl.style.cssText = 'font-size:0.75em; color:#666; white-space:nowrap;';
+    paramRow.appendChild(paramLbl);
+    const paramSel = document.createElement('select');
+    paramSel.style.cssText = 'font-size:0.75em; background:#1a1a1a; color:#99ccff; border:1px solid #334455; flex:1;';
+    [['LPF Cutoff', 0], ['Amplitude', 1]].forEach(([label, val]) => {
+        const o = document.createElement('option');
+        o.value = val;
+        o.textContent = label;
+        if (val === trk.paramId) o.selected = true;
+        paramSel.appendChild(o);
+    });
+    paramSel.onchange = () => { trk.paramId = parseInt(paramSel.value); };
+    paramRow.appendChild(paramSel);
+    controls.appendChild(paramRow);
+
+    wrapper.appendChild(controls);
+
+    // --- Value grid ---
+    const gridWrap = document.createElement('div');
+    gridWrap.style.cssText = 'flex:1; background:#111; border:1px solid #2a1a3a; border-radius:0 4px 4px 0; padding:6px 6px 6px 4px; overflow-x:auto;';
+
+    const autoGrid = document.createElement('div');
+    autoGrid.id = `autoGrid_${i}`;
+    autoGrid.style.cssText = 'display:flex; flex-wrap:wrap; gap:2px;';
+
+    for (let s = 0; s < audioNumSteps; s++) {
+        const val = trk.steps[s] !== undefined ? trk.steps[s] : 128;
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.min = 0; inp.max = 255;
+        inp.value = val;
+        inp.style.cssText = 'width:34px; font-size:0.75em; background:#1a1a1a; color:#99ccff; border:1px solid #333; padding:1px; text-align:center;';
+        inp.title = `Step ${s + 1} (0–255)`;
+        const stepIdx = s;
+        inp.onchange = () => {
+            trk.steps[stepIdx] = Math.max(0, Math.min(255, parseInt(inp.value) || 0));
+        };
+        autoGrid.appendChild(inp);
+    }
+
+    gridWrap.appendChild(autoGrid);
+    wrapper.appendChild(gridWrap);
+    parentEl.appendChild(wrapper);
+}
+
+/** Add a new blank automation track and rebuild the grid. */
+function addAutomationTrack() {
+    automationTracks.push({
+        targetScope: 0xFF,  // default: Global Master Bus
+        paramId: 0,         // default: LPF Cutoff
+        steps: new Array(audioNumSteps).fill(128),
+    });
+    _resizeGrid();
+}
+
+/** Remove the automation track at index *i* and rebuild the grid. */
+function removeAutomationTrack(i) {
+    automationTracks.splice(i, 1);
+    _resizeGrid();
 }
 
 function _buildGridHeader() {
@@ -2353,10 +2437,7 @@ function _selectDuration(beats, label, clickedBtn) {
 function audioClearAll() {
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
         audioSteps[c] = new Array(audioNumSteps).fill(null);
-        // Only re-render audio channels; automation channels use a different editor
-        if (audioChannelTrackTypes[c] !== 1) {
-            _renderChannel(c);
-        }
+        _renderChannel(c);
     }
 }
 
@@ -2398,48 +2479,34 @@ function _buildSequenceForChannel(ch) {
     return sequence;
 }
 
-/** Build automation step pairs [param_id, value] for a v2 Automation channel. */
-function _buildAutomationForChannel(ch) {
-    const steps = [];
-    const defaultParamSel = document.getElementById(`autoParam_${ch}`);
-    const defaultParamId = defaultParamSel ? parseInt(defaultParamSel.value) : 0;
-    for (let s = 0; s < audioNumSteps; s++) {
-        const cell = audioSteps[ch][s];
-        if (cell && cell.paramId !== undefined) {
-            steps.push([cell.paramId, Math.max(0, Math.min(255, cell.value))]);
-        } else {
-            // Default: LPF fully open (255) or use channel default param
-            steps.push([defaultParamId, 255]);
-        }
-    }
-    return steps;
-}
-
 function _buildPreviewPayload() {
     const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
     const channels = [];
+
+    // 3 fixed audio channels
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        const trackType = audioChannelTrackTypes[c] || 0;
-        if (trackType === 1) {
-            // Automation channel
-            channels.push({
-                track_type: 'automation',
-                steps: _buildAutomationForChannel(c),
-            });
-        } else {
-            // Audio channel — include optional ADSR override
-            const ch = {
-                patch: audioChannelPatches[c],
-                track_type: 'audio',
-                sequence: _buildSequenceForChannel(c),
-            };
-            const ovr = audioChannelAdsrOverrides[c];
-            if (ovr && ovr.enabled) {
-                ch.adsr_override = [ovr.a, ovr.d, ovr.s, ovr.r];
-            }
-            channels.push(ch);
+        const ch = {
+            patch: audioChannelPatches[c],
+            track_type: 'audio',
+            sequence: _buildSequenceForChannel(c),
+        };
+        const ovr = audioChannelAdsrOverrides[c];
+        if (ovr && ovr.enabled) {
+            ch.adsr_override = [ovr.a, ovr.d, ovr.s, ovr.r];
         }
+        channels.push(ch);
     }
+
+    // Automation tracks (addable extras)
+    for (let i = 0; i < automationTracks.length; i++) {
+        const trk = automationTracks[i];
+        channels.push({
+            track_type: 'automation',
+            target_scope: trk.targetScope,
+            steps: trk.steps.map(v => [trk.paramId, v]),
+        });
+    }
+
     return { bpm, channels };
 }
 
@@ -2496,38 +2563,48 @@ function _jseqUnitsToDuration(units) {
 
 function _encodeJseq() {
     const bpm = parseInt(document.getElementById('audioBpm').value) || 120;
-    const compiledChannels = [];
+    const totalChannels = AUDIO_NUM_CHANNELS + automationTracks.length;
     let size = 8; // global header
 
+    // Compile audio channels
+    const compiledAudio = [];
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        const trackType = audioChannelTrackTypes[c] || 0;
         const ovr = audioChannelAdsrOverrides[c];
-        const hasOverride = trackType === 0 && ovr && ovr.enabled ? 1 : 0;
-
-        const seq = trackType === 1 ? _buildAutomationForChannel(c) : _buildSequenceForChannel(c);
-        compiledChannels.push({ trackType, seq, hasOverride });
-
+        const hasOverride = ovr && ovr.enabled ? 1 : 0;
+        const seq = _buildSequenceForChannel(c);
+        compiledAudio.push({ seq, hasOverride });
         // 1 (patch) + 1 (track_type) + 1 (override_flag) + [4 if override] + 2 (step_count) + N*2
         size += 3 + (hasOverride ? 4 : 0) + 2 + seq.length * 2;
+    }
+
+    // Compile automation tracks
+    const compiledAuto = [];
+    for (let i = 0; i < automationTracks.length; i++) {
+        const trk = automationTracks[i];
+        const steps = trk.steps.map(v => [trk.paramId, v]);
+        compiledAuto.push({ targetScope: trk.targetScope, steps });
+        // 1 (scope) + 1 (track_type=1) + 1 (override=0) + 2 (step_count) + N*2
+        size += 3 + 2 + steps.length * 2;
     }
 
     const buf = new ArrayBuffer(size);
     const view = new DataView(buf);
     let pos = 0;
 
-    // Global header — version 2
+    // Global header — JSEQ v2
     view.setUint8(pos++, 0x4A); view.setUint8(pos++, 0x53);
     view.setUint8(pos++, 0x45); view.setUint8(pos++, 0x51);
-    view.setUint8(pos++, 2);   // JSEQ v2
+    view.setUint8(pos++, 2);   // version = 2
     view.setUint16(pos, bpm, true); pos += 2;
-    view.setUint8(pos++, AUDIO_NUM_CHANNELS);
+    view.setUint8(pos++, totalChannels);  // total = audio + automation
 
+    // Write audio channels
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        const { trackType, seq, hasOverride } = compiledChannels[c];
+        const { seq, hasOverride } = compiledAudio[c];
         const patchIdx = JSEQ_PATCH_NAMES.indexOf(audioChannelPatches[c]);
 
-        view.setUint8(pos++, patchIdx >= 0 ? patchIdx : 0); // patch_idx
-        view.setUint8(pos++, trackType);                     // track_type
+        view.setUint8(pos++, patchIdx >= 0 ? patchIdx : 0); // scope_or_patch = patch_idx
+        view.setUint8(pos++, 0);                             // track_type = Audio (0)
         view.setUint8(pos++, hasOverride);                   // override_flag
 
         if (hasOverride) {
@@ -2540,25 +2617,35 @@ function _encodeJseq() {
 
         view.setUint16(pos, seq.length, true); pos += 2;
 
-        for (let i = 0; i < seq.length; i++) {
-            const step = seq[i];
-            if (trackType === 1) {
-                // Automation step: [param_id, value]
-                view.setUint8(pos++, step[0]);
-                view.setUint8(pos++, step[1]);
+        for (const step of seq) {
+            if (step[0] === null) {
+                // V2 BPM meta-event: pitch 0xFF + new BPM byte
+                view.setUint8(pos++, 0xFF);
+                view.setUint8(pos++, Math.max(1, Math.min(255, step[1])));
             } else {
-                if (step[0] === null) {
-                    // V2 BPM meta-event: pitch 0xFF + new BPM in the payload byte.
-                    view.setUint8(pos++, 0xFF);
-                    view.setUint8(pos++, Math.max(1, Math.min(255, step[1])));
-                } else {
-                    // Audio step: [pitch_idx, dur_units]
-                    view.setUint8(pos++, step[0] === '-' ? 0 : _noteToJseqIndex(step[0]));
-                    view.setUint8(pos++, _durationToJseqUnits(step[1]));
-                }
+                // Audio step: [pitch_idx, dur_units]
+                view.setUint8(pos++, step[0] === '-' ? 0 : _noteToJseqIndex(step[0]));
+                view.setUint8(pos++, _durationToJseqUnits(step[1]));
             }
         }
     }
+
+    // Write automation channels
+    for (let i = 0; i < compiledAuto.length; i++) {
+        const { targetScope, steps } = compiledAuto[i];
+
+        view.setUint8(pos++, targetScope & 0xFF);  // scope_or_patch = target_scope
+        view.setUint8(pos++, 1);                   // track_type = Automation (1)
+        view.setUint8(pos++, 0);                   // override_flag = 0 (automation has no ADSR)
+
+        view.setUint16(pos, steps.length, true); pos += 2;
+
+        for (const [paramId, value] of steps) {
+            view.setUint8(pos++, paramId);
+            view.setUint8(pos++, Math.max(0, Math.min(255, value)));
+        }
+    }
+
     return buf;
 }
 
@@ -2648,13 +2735,13 @@ async function audioLoad() {
             const numSteps = view.getUint16(pos, true); pos += 2;
 
             if (trackType === 1) {
-                // V2 Automation channel
+                // V2 Automation channel: patchIdx byte is target_scope (0-15 or 0xFF=Global)
                 const autoSteps = [];
                 for (let s = 0; s < numSteps; s++) {
                     if (pos + 2 > buf.byteLength) { console.warn(`Truncated at automation step ${s}`); break; }
                     autoSteps.push({ paramId: view.getUint8(pos++), value: view.getUint8(pos++) });
                 }
-                loadedChannels.push({ trackType: 1, patch: patchName, autoSteps, adsrOverride });
+                loadedChannels.push({ trackType: 1, patch: patchName, targetScope: patchIdx, autoSteps, adsrOverride });
             } else {
                 // Audio channel (v1 or v2)
                 let chanBeats = 0;
@@ -2693,34 +2780,42 @@ async function audioLoad() {
         updateGridConfig();
         audioClearAll();
 
-        for (let c = 0; c < loadedChannels.length; c++) {
-            if (c >= AUDIO_NUM_CHANNELS) break;
-            const lc = loadedChannels[c];
+        // Clear existing automation tracks so we start fresh
+        automationTracks = [];
 
-            audioChannelTrackTypes[c] = lc.trackType;
-            audioChannelPatches[c] = lc.patch;
-
-            if (lc.adsrOverride) {
-                audioChannelAdsrOverrides[c] = {
-                    enabled: true,
-                    a: lc.adsrOverride[0], d: lc.adsrOverride[1],
-                    s: lc.adsrOverride[2], r: lc.adsrOverride[3],
-                };
-            }
-
+        let audioChCount = 0;
+        for (const lc of loadedChannels) {
             if (lc.trackType === 1) {
-                // Automation channel: populate audioSteps with paramId/value pairs
+                // Automation channel: push into automationTracks.
+                // Use the stored targetScope if available, otherwise default to Global (0xFF).
+                const targetScope = lc.targetScope !== undefined ? lc.targetScope : 0xFF;
+                const steps = new Array(audioNumSteps).fill(128);
+                let paramId = 0;
                 lc.autoSteps.forEach((step, s) => {
-                    if (s < audioNumSteps) audioSteps[c][s] = step;
+                    if (s < audioNumSteps) {
+                        paramId = step.paramId;   // use last seen paramId for the track
+                        steps[s] = step.value;
+                    }
                 });
+                automationTracks.push({ targetScope, paramId, steps });
             } else {
-                // Audio channel: populate note steps
+                // Audio channel (up to AUDIO_NUM_CHANNELS)
+                const c = audioChCount;
+                if (c >= AUDIO_NUM_CHANNELS) { audioChCount++; continue; }
+
+                audioChannelPatches[c] = lc.patch;
+
+                if (lc.adsrOverride) {
+                    audioChannelAdsrOverrides[c] = {
+                        enabled: true,
+                        a: lc.adsrOverride[0], d: lc.adsrOverride[1],
+                        s: lc.adsrOverride[2], r: lc.adsrOverride[3],
+                    };
+                }
+
                 let currentStep = 0;
                 for (const item of lc.seq) {
                     if (item.meta === 'bpm') {
-                        // V2 BPM meta-event: store in the step grid so that
-                        // audioPreviewBrowser() can honour live tempo changes.
-                        // One step slot (1/32 beat) is consumed by the meta-event.
                         if (currentStep < audioNumSteps) {
                             audioSteps[c][currentStep] = { meta: 'bpm', bpm: item.bpm };
                             currentStep += 1;
@@ -2739,6 +2834,7 @@ async function audioLoad() {
                     }
                     currentStep += span;
                 }
+                audioChCount++;
             }
         }
 
@@ -2746,9 +2842,14 @@ async function audioLoad() {
         _resizeGrid();
 
         // Restore patch selectors now that DOM has been rebuilt
-        for (let c = 0; c < Math.min(loadedChannels.length, AUDIO_NUM_CHANNELS); c++) {
-            const patchSelect = document.querySelector(`#stepGrid_${c}`)?.closest('.channel-row')?.querySelector('select.channel-patch');
-            if (patchSelect) patchSelect.value = loadedChannels[c].patch;
+        // Only audio channels (trackType === 0) are assigned to slots 0-2.
+        let audioSlot = 0;
+        for (const lc of loadedChannels) {
+            if (lc.trackType !== 0) continue;
+            if (audioSlot >= AUDIO_NUM_CHANNELS) break;
+            const patchSelect = document.querySelector(`#stepGrid_${audioSlot}`)?.closest('.channel-row')?.querySelector('select.channel-patch');
+            if (patchSelect) patchSelect.value = lc.patch;
+            audioSlot++;
         }
 
         document.getElementById('audioSeqName').value = filename.replace('.jseq', '');
@@ -3146,9 +3247,7 @@ function audioPreviewBrowser() {
     let hasNotes = false;
 
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        // V2: skip Automation channels during browser preview (no audio output)
-        if (audioChannelTrackTypes[c] === 1) continue;
-
+        // All audio channels produce sound; automation tracks are separate and skipped.
         const patchName = audioChannelPatches[c] || 'BEEP';
 
         // V2: build a patched BROWSER_PATCHES entry if ADSR override is active.

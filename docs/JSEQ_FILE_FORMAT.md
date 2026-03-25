@@ -57,13 +57,21 @@ V2 extends the channel header to support **Track Types** and **Inline ADSR Overr
 
 ### 3.1 V2 Channel Header (5–9 Bytes)
 
+The first byte (`+0x00`) has a **dual purpose** depending on Track Type:
+
 | Byte Offset | Type    | Size    | Description |
 | :--- | :--- | :--- | :--- |
-| `+0x00`     | `uint8` | 1 byte  | **Patch Index:** Synthesizer instrument (same table as v1) |
+| `+0x00`     | `uint8` | 1 byte  | **Audio:** Patch Index (see §4.1). **Automation:** Target Scope — `0x00`–`0x0F` targets a specific Audio channel by index (0-based); `0xFF` targets the Global Master Bus |
 | `+0x01`     | `uint8` | 1 byte  | **Track Type:** `0x00` = Audio, `0x01` = Automation |
-| `+0x02`     | `uint8` | 1 byte  | **Override Flag:** `0x00` = no override, `0x01` = ADSR multipliers follow |
+| `+0x02`     | `uint8` | 1 byte  | **Override Flag:** `0x00` = no override, `0x01` = ADSR multipliers follow *(Audio only; always `0x00` for Automation)* |
 | `+0x03`–`+0x06` | `uint8[4]` | 4 bytes | *(only if Override Flag = `0x01`)* **ADSR Multipliers:** `[Attack, Decay, Sustain, Release]` — each value ÷ 100 = float multiplier (e.g. `100` = 1.0×, `200` = 2.0×, `50` = 0.5×) |
 | `+N, +N+1`  | `uint16` | 2 bytes | **Step Count:** Number of step pairs (little-endian) |
+
+> **Global Channel Count:** The `num_channels` byte in the Global Header is the
+> total of all tracks — Audio **and** Automation combined.  The `SynthManager`
+> assigns a `channel_idx` (0-based, Audio tracks only) to each Audio channel as
+> they are parsed, so that Automation channels with a matching `Target Scope` can
+> apply per-channel filters or amplitude changes without touching other outputs.
 
 ### 3.2 V2 Audio Track Steps (`N` × 2 Bytes)
 
@@ -99,6 +107,13 @@ re-purposed as a parameter modulation value:
 
 Each automation step fires at a **1/32-beat interval** (matching the finest
 audio note resolution), so 32 automation steps cover exactly 1 beat.
+
+#### Target Scope Routing (Header Byte `+0x00`)
+
+| Scope value | Effect |
+| :---------- | :----- |
+| `0x00`–`0x0F` | Apply to a **specific Audio channel** (index = value).  For LPF, the Biquad filter is stored per-note via `synthio.Note.filter`.  For Amplitude, envelope levels are scaled for that channel only. |
+| `0xFF` | Apply to the **Global Master Bus** via `synth.filter` (LPF) or `_automation_amplitude` (Amplitude).  All audio output is affected. |
 
 #### Automation Parameter IDs
 

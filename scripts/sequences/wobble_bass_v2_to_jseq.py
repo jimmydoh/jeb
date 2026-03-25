@@ -1,9 +1,13 @@
 """JSEQ v2 example: Dubstep wobble bass with automation + ADSR override.
 
 Demonstrates the three key v2 features:
-  1. Automation track — LPF cutoff wobble (Channel 3)
+  1. Automation track — LPF cutoff wobble targeting Audio Channel 0 (target_scope=0x00)
   2. Inline ADSR override — slow-attack PAD (Channel 2)
   3. BPM meta-event — tempo drop mid-sequence (Channel 1)
+
+In v2, the first byte of an Automation channel header is the ``target_scope``:
+  - 0x00–0x0F: targets a specific audio channel by index
+  - 0xFF     : targets the Global Master Bus (all audio output)
 
 Run this script with CPython 3 to produce ``wobble_bass.jseq``:
 
@@ -109,9 +113,9 @@ for b0, b1 in ch2_seq:
 #    Shape: a "saw-down" LFO pattern repeating every 8 steps (1/4 beat),
 #    descending from 255 → 0 to mimic a falling low-pass filter cutoff.
 # ---------------------------------------------------------------------------
-out.append(0)   # patch_idx (unused for automation but required by format)
+out.append(0)   # target_scope = 0 (targets Audio Channel 0, the bass line — index 0)
 out.append(1)   # track_type = Automation
-out.append(0)   # override_flag = off
+out.append(0)   # override_flag = off (automation channels never carry ADSR overrides)
 
 TOTAL_BARS   = 8
 BEATS_PER_BAR = 4

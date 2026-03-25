@@ -53,10 +53,12 @@ class SynthManager:
         # RAM cache for explicitly preloaded .jseq files
         self._jseq_cache = {}
 
-        # V2 automation state: current LPF cutoff and amplitude scale.
+        # V2 automation state: global and per-channel amplitude/filter values.
         # These are updated by _apply_automation() and consumed when new notes
         # are pressed via play_sequence().
-        self._automation_amplitude = 1.0
+        self._automation_amplitude = 1.0           # global amplitude scale (0xFF scope)
+        self._channel_filters = {}                 # audio_ch_idx → synthio.Biquad or None
+        self._channel_amplitudes = {}              # audio_ch_idx → float 0.0–1.0
 
     @property
     def source(self):
@@ -138,6 +140,10 @@ class SynthManager:
           that replaces the patch's default ADSR envelope.
         - Meta-events: a step of ``(None, new_bpm)`` signals a real-time BPM change
           mid-sequence (Pitch Index 255 in the binary format).
+        - Per-channel automation routing: if the channel dict carries a
+          ``'channel_idx'`` key, per-channel filters (``_channel_filters``) and
+          per-channel amplitude overrides (``_channel_amplitudes``) are applied
+          in addition to — or instead of — the global automation state.
 
         Args:
             sequence_data (dict): Dict with 'bpm' and 'sequence' list.
@@ -145,6 +151,9 @@ class SynthManager:
         """
         bpm = sequence_data.get('bpm', 120)
         beat_duration = 60.0 / bpm
+
+        # channel_idx is set by _load_jseq_v2 for per-channel automation routing.
+        channel_idx = sequence_data.get('channel_idx', None)
 
         # LOGIC UPDATE:
         # sequence_data.get('patch') -> Returns Patch Object or None
@@ -180,27 +189,42 @@ class SynthManager:
             duration_sec = duration_beats * beat_duration
 
             if freq > 0:
-                # V2: scale the envelope's attack level by the current automation
-                # amplitude.  If no automation is running, _automation_amplitude
-                # is 1.0 and the envelope is unchanged.
+                # V2: determine effective amplitude.
+                # Per-channel amplitude (from automation targeting this channel)
+                # takes precedence over the global _automation_amplitude.
+                if channel_idx is not None and channel_idx in self._channel_amplitudes:
+                    amplitude = self._channel_amplitudes[channel_idx]
+                else:
+                    amplitude = self._automation_amplitude
+
+                # Scale the envelope if automation has changed the amplitude.
                 # Use a threshold rather than exact float equality to avoid
-                # floating-point precision issues (e.g. 255/255.0 → 1.0 exactly,
-                # but lower values like 254/255.0 are irrational).
+                # floating-point precision issues.
                 active_envelope = envelope
-                if abs(self._automation_amplitude - 1.0) > 0.001 and hasattr(envelope, 'attack_time'):
+                if abs(amplitude - 1.0) > 0.001 and hasattr(envelope, 'attack_time'):
                     active_envelope = synthio.Envelope(
                         attack_time=envelope.attack_time,
                         decay_time=envelope.decay_time,
-                        sustain_level=envelope.sustain_level * self._automation_amplitude,
+                        sustain_level=envelope.sustain_level * amplitude,
                         release_time=envelope.release_time,
-                        attack_level=envelope.attack_level * self._automation_amplitude,
+                        attack_level=envelope.attack_level * amplitude,
                     )
-                # Play note
+
                 n = synthio.Note(
                     frequency=freq,
                     waveform=wave,
                     envelope=active_envelope
                 )
+
+                # V2: apply per-channel Biquad filter to the note object if one
+                # has been set by a concurrent automation task targeting this
+                # specific channel index.
+                if channel_idx is not None and channel_idx in self._channel_filters:
+                    try:
+                        n.filter = self._channel_filters[channel_idx]
+                    except AttributeError:
+                        pass  # Graceful degradation for CircuitPython versions without per-note filter
+
                 self.synth.press(n)
                 await asyncio.sleep(duration_sec)
                 self.synth.release(n)
@@ -363,16 +387,20 @@ class SynthManager:
 
         V2 channel header layout (variable size):
 
-        +---------+------------+-----------------------------------------------+
-        | Byte(s) | Field      | Description                                   |
-        +=========+============+===============================================+
-        | 0       | patch_idx  | Synthesizer patch index                       |
-        | 1       | track_type | 0x00 = Audio, 0x01 = Automation               |
-        | 2       | ovr_flag   | 0x01 = ADSR multiplier bytes follow, else 0   |
-        | 3–6     | adsr_mult  | (only if ovr_flag=1) Attack/Decay/Sustain/    |
-        |         |            | Release multipliers, each ÷100 = float scale  |
-        | N, N+1  | step_count | Number of step pairs (little-endian uint16)   |
-        +---------+------------+-----------------------------------------------+
+        +---------+-----------------+-------------------------------------------+
+        | Byte(s) | Field           | Description                               |
+        +=========+=================+===========================================+
+        | 0       | scope_or_patch  | Audio: patch index.                       |
+        |         |                 | Automation: target scope                  |
+        |         |                 |   0x00–0x0F = specific audio channel idx  |
+        |         |                 |   0xFF      = Global Master Bus           |
+        | 1       | track_type      | 0x00 = Audio, 0x01 = Automation           |
+        | 2       | ovr_flag        | 0x01 = ADSR multiplier bytes follow (Audio|
+        |         |                 | only), else 0                             |
+        | 3–6     | adsr_mult       | (only if ovr_flag=1) Attack/Decay/Sustain |
+        |         |                 | /Release multipliers, each ÷100 = scale   |
+        | N, N+1  | step_count      | Number of step pairs (little-endian u16)  |
+        +---------+-----------------+-------------------------------------------+
 
         Audio step (2 bytes):  ``[pitch_idx, dur_units]``
           * ``pitch_idx == 0``   → rest
@@ -382,20 +410,26 @@ class SynthManager:
         Automation step (2 bytes):  ``[param_id, value]``
           * param_id ``0x00`` = LPF cutoff  (0–255 → 0–20 000 Hz)
           * param_id ``0x01`` = amplitude   (0–255 → 0.0–1.0)
+
+        The total channel count in the global header includes all tracks
+        (Audio + Automation combined).  Audio channels receive a
+        ``'channel_idx'`` key (0-based count among Audio tracks only) so
+        that concurrent Automation tasks can target them by index.
         """
         bpm = data[5] | (data[6] << 8)
         num_channels = data[7]
 
         channels = []
         pos = 8
+        audio_channel_idx = 0   # counts Audio channels only; used as channel_idx key
         for _ in range(num_channels):
             # Minimum channel header: patch(1) + track_type(1) + ovr_flag(1) + step_count(2)
             if pos + 5 > len(data):
                 break
 
-            patch_idx   = data[pos]
-            track_type  = data[pos + 1]   # 0=audio, 1=automation
-            ovr_flag    = data[pos + 2]   # 0=no override, 1=ADSR multipliers follow
+            scope_or_patch = data[pos]            # reinterpreted per track_type below
+            track_type     = data[pos + 1]        # 0=audio, 1=automation
+            ovr_flag       = data[pos + 2]        # 0=no override, 1=ADSR multipliers follow
             pos += 3
 
             # Optional inline ADSR override bytes
@@ -405,7 +439,7 @@ class SynthManager:
                     break
                 adsr = (data[pos], data[pos + 1], data[pos + 2], data[pos + 3])
                 pos += 4
-                patch_name = JSEQ_PATCH_NAMES[patch_idx] if 0 <= patch_idx < len(JSEQ_PATCH_NAMES) else 'SELECT'
+                patch_name = JSEQ_PATCH_NAMES[scope_or_patch] if 0 <= scope_or_patch < len(JSEQ_PATCH_NAMES) else 'SELECT'
                 base_patch = getattr(Patches, patch_name, Patches.SELECT)
                 envelope_override = self._apply_adsr_multipliers(base_patch['envelope'], adsr)
 
@@ -415,11 +449,11 @@ class SynthManager:
             step_count = data[pos] | (data[pos + 1] << 8)
             pos += 2
 
-            patch_name = JSEQ_PATCH_NAMES[patch_idx] if 0 <= patch_idx < len(JSEQ_PATCH_NAMES) else 'SELECT'
-            patch = getattr(Patches, patch_name, Patches.SELECT)
-
             if track_type == 0x01:
-                # Automation channel
+                # Automation channel: scope_or_patch byte is the target_scope.
+                #   0x00–0x0F → target a specific audio channel by index
+                #   0xFF      → target the global master bus
+                target_scope = scope_or_patch
                 steps = []
                 for _ in range(step_count):
                     if pos + 2 > len(data):
@@ -428,9 +462,16 @@ class SynthManager:
                     value    = data[pos + 1]
                     pos += 2
                     steps.append((param_id, value))
-                channels.append({'bpm': bpm, 'type': 'automation', 'steps': steps})
+                channels.append({
+                    'bpm': bpm,
+                    'type': 'automation',
+                    'target_scope': target_scope,
+                    'steps': steps,
+                })
             else:
-                # Audio channel (default)
+                # Audio channel (default): scope_or_patch byte is the patch index.
+                patch_name = JSEQ_PATCH_NAMES[scope_or_patch] if 0 <= scope_or_patch < len(JSEQ_PATCH_NAMES) else 'SELECT'
+                patch = getattr(Patches, patch_name, Patches.SELECT)
                 sequence = []
                 for _ in range(step_count):
                     if pos + 2 > len(data):
@@ -447,10 +488,17 @@ class SynthManager:
                         duration_beats = dur_units / 32.0
                         sequence.append((freq, duration_beats))
 
-                ch = {'bpm': bpm, 'patch': patch, 'sequence': sequence, 'type': 'audio'}
+                ch = {
+                    'bpm': bpm,
+                    'patch': patch,
+                    'sequence': sequence,
+                    'type': 'audio',
+                    'channel_idx': audio_channel_idx,  # used by _apply_automation per-channel routing
+                }
                 if envelope_override is not None:
                     ch['envelope_override'] = envelope_override
                 channels.append(ch)
+                audio_channel_idx += 1
 
         return channels
 
@@ -485,47 +533,48 @@ class SynthManager:
             attack_level=base_envelope.attack_level,
         )
 
-    def _apply_automation(self, param_id, value):
+    def _apply_automation(self, param_id, value, target_channel=0xFF):
         """Apply a single automation step to the live synth engine.
 
-        This is the low-level hook for v2 Automation track playback.  The
-        mapping intentionally mirrors the constants defined at module level
-        (``JSEQ_PARAM_LPF_CUTOFF``, ``JSEQ_PARAM_AMPLITUDE``).
+        Routes the parameter change to either a specific audio channel or the
+        global synthesizer output depending on *target_channel*:
 
-        For ``JSEQ_PARAM_LPF_CUTOFF`` a ``synthio.Biquad`` low-pass filter is
-        constructed and assigned to ``self.synth.filter``, which applies it
-        globally to all synthesizer output.
-
-        For ``JSEQ_PARAM_AMPLITUDE`` the mapped level is stored in
-        ``self._automation_amplitude`` so that subsequent notes pressed by
-        ``play_sequence`` pick up the scaled amplitude.
+        * ``target_channel == 0xFF`` (255) — Global Master Bus.  The Biquad
+          filter is applied to ``self.synth.filter`` (all output); the
+          amplitude is stored in ``self._automation_amplitude``.
+        * ``target_channel 0–15`` — Per-channel scope.  The Biquad filter is
+          stored in ``self._channel_filters[target_channel]`` so that the next
+          note pressed by the matching ``play_sequence`` task picks it up via
+          ``n.filter``.  The amplitude is stored in
+          ``self._channel_amplitudes[target_channel]``.
 
         Args:
-            param_id (int): Target parameter identifier (0x00 or 0x01).
-            value (int):    Raw modulation value (0–255).
+            param_id (int):       Target parameter identifier (0x00 or 0x01).
+            value (int):          Raw modulation value (0–255).
+            target_channel (int): Audio channel index (0–15) or 0xFF for global.
         """
         if param_id == JSEQ_PARAM_LPF_CUTOFF:
-            # Map 0-255 to a 0–20 000 Hz LPF cutoff range.
             cutoff_hz = (value / 255.0) * 20000.0
-            JEBLogger.debug("SYNTH", f"Automation LPF cutoff: {cutoff_hz:.1f} Hz")
-            # Apply a Butterworth-approximation Biquad LPF (Q=0.7071) to the
-            # synthesizer output.  synthio.Biquad is available on CircuitPython
-            # 9.x (RP2350 target).
+            JEBLogger.debug("SYNTH", f"Automation LPF: {cutoff_hz:.1f} Hz -> scope={target_channel:#04x}")
             try:
                 lpf = synthio.Biquad(synthio.FilterMode.LOW_PASS, cutoff_hz, 0.7071)
-                self.synth.filter = lpf
+                if target_channel == 0xFF:
+                    # Global master bus filter
+                    self.synth.filter = lpf
+                else:
+                    # Per-channel: stored and applied when notes are pressed
+                    self._channel_filters[target_channel] = lpf
             except AttributeError:
-                # Graceful degradation if Biquad/FilterMode are not available
-                # in the current CircuitPython version.
                 JEBLogger.debug("SYNTH", "Biquad filter not available; skipping LPF automation")
         elif param_id == JSEQ_PARAM_AMPLITUDE:
-            # Map 0-255 to a 0.0–1.0 amplitude scale factor stored on the
-            # instance.  New notes pressed after this point will have their
-            # envelope attack_level scaled accordingly.
-            self._automation_amplitude = value / 255.0
-            JEBLogger.debug("SYNTH", f"Automation amplitude: {self._automation_amplitude:.3f}")
+            level = value / 255.0
+            JEBLogger.debug("SYNTH", f"Automation amplitude: {level:.3f} -> scope={target_channel:#04x}")
+            if target_channel == 0xFF:
+                self._automation_amplitude = level
+            else:
+                self._channel_amplitudes[target_channel] = level
         else:
-            JEBLogger.debug("SYNTH", f"Automation: unknown param_id={param_id:#04x}, value={value}")
+            JEBLogger.debug("SYNTH", f"Automation: unknown param_id={param_id:#04x}, scope={target_channel:#04x}")
 
     async def _play_automation(self, channel_data):
         """Play a v2 Automation channel by advancing through its steps.
@@ -533,15 +582,21 @@ class SynthManager:
         Each step fires at 1/32-beat intervals (the finest note resolution),
         matching the timing grid of concurrent audio channels.
 
+        The ``'target_scope'`` key in *channel_data* determines routing:
+        ``0xFF`` applies changes globally; ``0``–``15`` targets a specific
+        audio channel (per-note ``filter`` / ``_channel_amplitudes``).
+
         Args:
-            channel_data (dict): Channel dict with ``'bpm'`` and ``'steps'``
-                keys, as returned by ``_load_jseq_v2``.
+            channel_data (dict): Channel dict with ``'bpm'``, ``'steps'``, and
+                optional ``'target_scope'`` keys, as returned by
+                ``_load_jseq_v2``.
         """
         bpm = channel_data.get('bpm', 120)
+        target_scope = channel_data.get('target_scope', 0xFF)
         step_duration = (60.0 / bpm) / 32.0   # 1/32 of a beat in seconds
 
         for param_id, value in channel_data.get('steps', []):
-            self._apply_automation(param_id, value)
+            self._apply_automation(param_id, value, target_scope)
             await asyncio.sleep(step_duration)
 
     async def play_jseq(self, filepath):
