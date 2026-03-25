@@ -1942,13 +1942,14 @@ function _resizeGrid() {
         adsrChk.type = 'checkbox';
         adsrChk.id = `adsrChk_${c}`;
         adsrChk.checked = audioChannelAdsrOverrides[c].enabled;
+        adsrChk.style.cssText = 'width:16px; height:16px; cursor:pointer;';
         adsrChk.title = 'Enable inline ADSR multiplier override (JSEQ v2)';
         adsrRow.appendChild(adsrChk);
 
         const adsrLbl = document.createElement('label');
         adsrLbl.htmlFor = `adsrChk_${c}`;
-        adsrLbl.style.cssText = 'color:#888; white-space:nowrap; cursor:pointer; margin-right:4px;';
-        adsrLbl.textContent = 'ADSR ×';
+        adsrLbl.style.cssText = 'color:#888; white-space:nowrap; cursor:pointer;';
+        adsrLbl.textContent = 'ADSR';
         adsrRow.appendChild(adsrLbl);
 
         const adsrFields = document.createElement('span');
@@ -2250,25 +2251,7 @@ function _renderChannel(ch) {
         let isActive = false;
         let label = '—';
 
-        if (cell && cell.meta === 'bpm') {
-            // V2 BPM meta-event: render as a single-slot tempo marker.
-            span = 1;
-            label = `↻${cell.bpm}`;
-            btn.className = 'step-btn meta-bpm';
-            btn.title = `BPM Meta-Event: change tempo to ${cell.bpm} BPM. Click to remove.`;
-            const w = BASE_WIDTH;
-            btn.style.flex = `0 0 ${w}px`;
-            btn.style.height = '36px';
-            btn.style.boxSizing = 'border-box';
-            btn.style.overflow = 'hidden';
-            btn.style.cursor = 'pointer';
-            btn.textContent = label;
-            const metaIdx = s;
-            btn.onclick = () => { audioSteps[ch][metaIdx] = null; _renderChannel(ch); };
-            gridEl.appendChild(btn);
-            s += 1;
-            continue;
-        } else if (cell && cell.note !== undefined) {
+        if (cell && cell.note !== undefined) {
             span = cell.span;
             isActive = true;
 
@@ -2329,10 +2312,56 @@ function _renderChannel(ch) {
         btn.style.boxSizing = 'border-box';
         btn.style.overflow = 'hidden';
         btn.style.cursor = 'pointer';
+
+        if (cell && cell.meta === 'bpm') {
+            label = `↻${cell.bpm}\n` + label; // Put BPM above the note text
+            btn.style.whiteSpace = 'pre-wrap';
+            btn.style.lineHeight = '1.1';
+            btn.classList.add('meta-bpm'); // Keep your styling!
+        }
+
         btn.textContent = label;
 
         const clickIndex = s;
         btn.onclick = () => _toggleStep(ch, clickIndex);
+
+        if (ch === 0) {
+            const metaIdx = s; // Capture current step index
+            btn.addEventListener('contextmenu', (e) => {
+                e.preventDefault(); // Prevent the browser menu from opening
+
+                const existingBpm = (audioSteps[ch][metaIdx] && audioSteps[ch][metaIdx].meta === 'bpm')
+                    ? audioSteps[ch][metaIdx].bpm
+                    : '';
+
+                const input = prompt(`Step ${metaIdx + 1}: Enter new BPM (1-255)\nLeave blank to remove.`, existingBpm);
+
+                if (input === null) return; // User hit cancel
+
+                if (input.trim() === "") {
+                    // Remove BPM marker
+                    if (audioSteps[ch][metaIdx]) {
+                        delete audioSteps[ch][metaIdx].meta;
+                        delete audioSteps[ch][metaIdx].bpm;
+                        // If the cell is now completely empty, null it out
+                        if (audioSteps[ch][metaIdx].note === undefined) {
+                            audioSteps[ch][metaIdx] = null;
+                        }
+                    }
+                } else {
+                    // Add/Update BPM marker
+                    const parsed = parseInt(input);
+                    if (!isNaN(parsed) && parsed > 0 && parsed <= 255) {
+                        if (!audioSteps[ch][metaIdx]) audioSteps[ch][metaIdx] = {};
+                        audioSteps[ch][metaIdx].meta = 'bpm';
+                        audioSteps[ch][metaIdx].bpm = parsed;
+                    } else {
+                        alert("Invalid BPM. Must be between 1 and 255.");
+                    }
+                }
+                _renderChannel(ch); // Redraw the channel to show the changes
+            });
+        }
 
         gridEl.appendChild(btn);
         s += span;
@@ -2611,12 +2640,21 @@ function _encodeJseq() {
 
     // Compile automation tracks
     const compiledAuto = [];
+    const autoStepsPerCell = Math.round(BASE_RES * 32);
     for (let i = 0; i < automationTracks.length; i++) {
         const trk = automationTracks[i];
-        const steps = trk.steps.map(v => [trk.paramId, v]);
-        compiledAuto.push({ targetScope: trk.targetScope, steps });
-        // 1 (scope) + 1 (track_type=1) + 1 (override=0) + 2 (step_count) + N*2
-        size += 3 + 2 + steps.length * 2;
+        const expandedSteps = [];
+
+        for (let s = 0; s < audioNumSteps; s++) {
+            const val = trk.steps[s] !== undefined ? trk.steps[s] : 128;
+            // Sample and hold: duplicate the value for the hardware
+            for (let k = 0; k < autoStepsPerCell; k++) {
+                expandedSteps.push([trk.paramId, val]);
+            }
+        }
+        compiledAuto.push({ targetScope: trk.targetScope, steps: expandedSteps });
+        // NOTE: Make sure the size calculation uses expandedSteps.length!
+        size += 3 + 2 + expandedSteps.length * 2;
     }
 
     // Master Event Track (Type 0x02): 1 (scope=0xFF) + 1 (type=0x02) + 1 (override=0) + 2 (step_count) + N*2
@@ -2849,29 +2887,36 @@ async function audioLoad() {
                 // commands store a { meta: 'bpm', bpm } cell at the current step
                 // slot in audioSteps[0] so the grid displays ↻BPM markers and
                 // audioPreviewBrowser() can recalculate tempo mid-playback.
-                let masterPos = 0;
+                let masterBeats = 0; // Track in beats, not raw units
                 for (const [cmdId, val] of lc.masterEventSteps) {
                     if (cmdId === 0x00) {
-                        // REST: advance timeline by `val` 1/32-beat slots
-                        masterPos += val;
+                        // REST: convert 1/32nd units to beats
+                        masterBeats += _jseqUnitsToDuration(val);
                     } else if (cmdId === 0x01) {
-                        // BPM_CHANGE: scatter marker to audioSteps[0] at masterPos
-                        if (masterPos < audioNumSteps) {
-                            audioSteps[0][masterPos] = { meta: 'bpm', bpm: val };
+                        // BPM_CHANGE: Convert beats to grid index via BASE_RES
+                        const gridIdx = Math.round(masterBeats / BASE_RES);
+                        if (gridIdx < audioNumSteps) {
+                            // Merge instead of overwriting!
+                            if (!audioSteps[0][gridIdx]) audioSteps[0][gridIdx] = {};
+                            audioSteps[0][gridIdx].meta = 'bpm';
+                            audioSteps[0][gridIdx].bpm = val;
                         }
-                        // BPM_CHANGE itself does not advance time
                     }
                 }
             } else if (lc.trackType === 1) {
-                // Automation channel: push into automationTracks.
-                // Use the stored targetScope if available, otherwise default to Global (0xFF).
                 const targetScope = lc.targetScope !== undefined ? lc.targetScope : 0xFF;
                 const steps = new Array(audioNumSteps).fill(128);
                 let paramId = 0;
+
+                const autoStepsPerCell = Math.round(BASE_RES * 32);
                 lc.autoSteps.forEach((step, s) => {
-                    if (s < audioNumSteps) {
-                        paramId = step.paramId;   // use last seen paramId for the track
-                        steps[s] = step.value;
+                    // Only take the first hardware value of each UI cell chunk
+                    if (s % autoStepsPerCell === 0) {
+                        const gridIdx = Math.floor(s / autoStepsPerCell);
+                        if (gridIdx < audioNumSteps) {
+                            paramId = step.paramId;
+                            steps[gridIdx] = step.value;
+                        }
                     }
                 });
                 automationTracks.push({ targetScope, paramId, steps });
@@ -3140,7 +3185,7 @@ function _browserGetNoiseBuffer(audioCtx) {
  * Uses an OscillatorNode (or noise BufferSourceNode) routed through a
  * GainNode with ADSR automation for click-free attack and release.
  */
-function _browserScheduleNote(audioCtx, freq, patchOrName, startTime, durationSec) {
+function _browserScheduleNote(audioCtx, freq, patchOrName, startTime, durationSec, destinationNode) {
     // Accept either a patch name string (looked up in BROWSER_PATCHES) or a
     // patch object directly.  The object form is used when the caller has
     // already computed an ADSR-overridden patch without polluting the global
@@ -3168,7 +3213,7 @@ function _browserScheduleNote(audioCtx, freq, patchOrName, startTime, durationSe
     const sustainEnd = startTime + noteDuration;
     gainNode.gain.setValueAtTime(sustainLevel, sustainEnd);
     gainNode.gain.linearRampToValueAtTime(0, stopTime);
-    gainNode.connect(audioCtx.destination);
+    gainNode.connect(destinationNode || audioCtx.destination);
 
     if (isNoise) {
         const src = audioCtx.createBufferSource();
@@ -3228,7 +3273,7 @@ function browserStopAll() {
  * @param {number}       slotSec        - Duration of one slot (BASE_RES beats × beat length)
  * @param {number}       totalSteps     - Total number of 1/32nd slots in the sequence
  */
-function _browserStartPlayhead(audioCtx, scheduleOffset, slotSec, totalSteps) {
+function _browserStartPlayhead(audioCtx, scheduleOffset, stepTimes, totalSteps) {
     const inner = document.getElementById('audioGridInner');
     const scroller = document.getElementById('audioGridScroller');
     const grid0 = document.getElementById('stepGrid_0');
@@ -3255,34 +3300,54 @@ function _browserStartPlayhead(audioCtx, scheduleOffset, slotSec, totalSteps) {
     ph.style.display = 'block';
 
     // Measure the pixel offset of the first step slot from the left edge of #audioGridInner.
-    // grid0.offsetLeft is relative to its offset parent, which is the channel-row div; but
-    // the channel-rows sit inside #audioGridInner with padding:10px and no additional offset,
-    // so we walk up via offsetParent to accumulate the real left relative to #audioGridInner.
     let gridOffsetLeft = 0;
     let el = grid0;
     while (el && el !== inner) {
         gridOffsetLeft += el.offsetLeft;
         el = el.offsetParent;
     }
-    const stepPx = BASE_WIDTH + GAP; // 16 px per 1/32nd slot
+
+    // Calculate the width of one step (assuming BASE_WIDTH and GAP are available in scope)
+    const stepPx = BASE_WIDTH + (typeof GAP !== 'undefined' ? GAP : 2);
 
     function tick() {
-        // Stop animating if the audio context has been closed (e.g. user pressed Stop).
-        if (!_webAudioCtx || _webAudioCtx.state === 'closed') {
-            _browserStopPlayhead();
+        // Stop animating if the audio context has been closed
+        if (!audioCtx || audioCtx.state === 'closed') {
+            if (typeof _browserStopPlayhead === 'function') _browserStopPlayhead();
             return;
         }
 
-        const elapsed = _webAudioCtx.currentTime - scheduleOffset;
-        const currentSlot = Math.floor(elapsed / slotSec);
+        const now = audioCtx.currentTime;
 
-        if (currentSlot >= totalSteps) {
+        // Wait for playback to actually start
+        if (now < scheduleOffset) {
+            ph.style.left = gridOffsetLeft + 'px';
+            _browserPlayheadRaf = requestAnimationFrame(tick);
+            return;
+        }
+
+        // Find which step we are currently in based on the dynamic timestamps
+        let currentStep = 0;
+        while (currentStep < totalSteps && now >= stepTimes[currentStep + 1]) {
+            currentStep++;
+        }
+
+        if (currentStep >= totalSteps) {
             // Sequence has finished — hide the playhead and stop the loop.
-            _browserStopPlayhead();
+            if (typeof _browserStopPlayhead === 'function') _browserStopPlayhead();
+            else ph.style.display = 'none';
             return;
         }
 
-        const left = gridOffsetLeft + currentSlot * stepPx;
+        // Sub-step interpolation for smooth, time-accurate gliding across the current block
+        const stepStart = stepTimes[currentStep];
+        const stepEnd = stepTimes[currentStep + 1];
+        const progress = (stepEnd > stepStart) ? (now - stepStart) / (stepEnd - stepStart) : 0;
+
+        // Calculate the exact fractional slot and convert to pixels
+        const exactSlot = currentStep + progress;
+        const left = gridOffsetLeft + (exactSlot * stepPx);
+
         ph.style.left = left + 'px';
 
         // Auto-scroll to keep the playhead comfortably in view.
@@ -3299,6 +3364,10 @@ function _browserStartPlayhead(audioCtx, scheduleOffset, slotSec, totalSteps) {
         _browserPlayheadRaf = requestAnimationFrame(tick);
     }
 
+    // Cancel any rogue existing animation loops before starting
+    if (typeof _browserPlayheadRaf !== 'undefined' && _browserPlayheadRaf) {
+        cancelAnimationFrame(_browserPlayheadRaf);
+    }
     _browserPlayheadRaf = requestAnimationFrame(tick);
 }
 
@@ -3317,22 +3386,81 @@ function _browserStopPlayhead() {
  * Notes are pre-calculated and precisely scheduled against AudioContext.currentTime.
  */
 function audioPreviewBrowser() {
+    if (!audioStudioInitialized) return;
     browserStopAll();
 
     const audioCtx = _getAudioContext();
     const initialBpm = parseInt(document.getElementById('audioBpm').value) || 120;
     const scheduleOffset = audioCtx.currentTime + 0.05;
 
-    let hasNotes = false;
+    // 1. PRE-CALCULATE TIMELINE (Fixes Channel 1 & 2 drifting from Channel 0's BPM changes)
+    const stepTimes = new Float32Array(audioNumSteps + 1);
+    let currentBpm = initialBpm;
+    let cursor = scheduleOffset;
 
+    for (let s = 0; s < audioNumSteps; s++) {
+        stepTimes[s] = cursor;
+        const cell = audioSteps[0][s]; // BPM markers are saved here
+        if (cell && cell.meta === 'bpm') {
+            currentBpm = cell.bpm;
+        }
+        const beatDuration = 60.0 / currentBpm;
+        cursor += BASE_RES * beatDuration;
+    }
+    stepTimes[audioNumSteps] = cursor; // End time
+
+    // 2. BUILD VIRTUAL MIXING CONSOLE
+    // Master Bus (Scope 0xFF)
+    const masterFilter = audioCtx.createBiquadFilter();
+    masterFilter.type = 'lowpass';
+    masterFilter.frequency.value = 20000;
+    const masterGain = audioCtx.createGain();
+    masterGain.gain.value = 1.0;
+    masterFilter.connect(masterGain);
+    masterGain.connect(audioCtx.destination);
+
+    // Channel Buses (Scopes 0, 1, 2)
+    const channelBuses = [];
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
-        // All audio channels produce sound; automation tracks are separate and skipped.
-        const patchName = audioChannelPatches[c] || 'BEEP';
+        const f = audioCtx.createBiquadFilter();
+        f.type = 'lowpass';
+        f.frequency.value = 20000;
+        const g = audioCtx.createGain();
+        g.gain.value = 1.0;
 
-        // V2: build a patched BROWSER_PATCHES entry if ADSR override is active.
-        // Use a local Map instead of mutating the global BROWSER_PATCHES so that
-        // repeated previews don't accumulate stale entries.
+        f.connect(g);
+        g.connect(masterFilter); // Route channels into the master bus
+        channelBuses.push({ filter: f, gain: g });
+    }
+
+    // 3. APPLY AUTOMATION TRACKS TO BUSES
+    automationTracks.forEach(trk => {
+        const targetFilter = trk.targetScope === 0xFF ? masterFilter : channelBuses[trk.targetScope]?.filter;
+        const targetGain = trk.targetScope === 0xFF ? masterGain : channelBuses[trk.targetScope]?.gain;
+        if (!targetFilter || !targetGain) return;
+
+        for (let s = 0; s < audioNumSteps; s++) {
+            const time = stepTimes[s];
+            const val = trk.steps[s] !== undefined ? trk.steps[s] : 128;
+
+            if (trk.paramId === 0x00) { // LPF
+                const freq = (val / 255.0) * 20000.0;
+                // Linear ramp makes it sound buttery smooth in the browser!
+                targetFilter.frequency.linearRampToValueAtTime(Math.max(10, freq), time);
+            } else if (trk.paramId === 0x01) { // AMPLITUDE
+                const level = val / 255.0;
+                targetGain.gain.linearRampToValueAtTime(level, time);
+            }
+        }
+    });
+
+    // 4. SCHEDULE AUDIO NOTES
+    let hasNotes = false;
+    for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        const patchName = audioChannelPatches[c] || 'BEEP';
         let effectivePatch = BROWSER_PATCHES[patchName] || BROWSER_PATCHES['BEEP'];
+
+        // Apply ADSR Overrides
         const ovr = audioChannelAdsrOverrides[c];
         if (ovr && ovr.enabled) {
             const base = effectivePatch;
@@ -3344,41 +3472,26 @@ function audioPreviewBrowser() {
             });
         }
 
-        // V2: per-channel BPM tracking so meta-events update tempo mid-sequence.
-        let currentBpm = initialBpm;
-        let beatDuration = 60.0 / currentBpm;
-        let cursor = scheduleOffset;
-
         for (let s = 0; s < audioNumSteps; s++) {
             const step = audioSteps[c][s];
-
-            // V2: BPM meta-event — update tempo for all subsequent notes on this channel.
-            if (step && step.meta === 'bpm') {
-                currentBpm = step.bpm;
-                beatDuration = 60.0 / currentBpm;
-                // The meta-event occupies one 1/32-beat slot at the new tempo.
-                cursor += BASE_RES * beatDuration;
-                continue;
-            }
-
-            const slotSec = BASE_RES * beatDuration;
-
             if (step && step.note && step.note !== '-') {
-                const noteSec = step.duration * beatDuration;
+                // Calculate note duration based on real time
+                const noteEndTime = stepTimes[Math.min(s + step.span, audioNumSteps)];
+                const noteSec = noteEndTime - stepTimes[s];
+
                 const freq = _jseqIndexToFreq(_noteToJseqIndex(step.note));
                 if (freq > 0) {
-                    _browserScheduleNote(audioCtx, freq, effectivePatch, cursor, noteSec);
+                    // Pass the channel's specific filter as the destination node
+                    _browserScheduleNote(audioCtx, freq, effectivePatch, stepTimes[s], noteSec, channelBuses[c].filter);
                     hasNotes = true;
                 }
             }
-            cursor += slotSec;
         }
     }
 
     if (hasNotes) {
         showStatus('audioStatus', '🔊 Playing in browser…', 'success');
-        const initialSlotSec = BASE_RES * (60.0 / initialBpm);
-        _browserStartPlayhead(audioCtx, scheduleOffset, initialSlotSec, audioNumSteps);
+        _browserStartPlayhead(audioCtx, scheduleOffset, stepTimes, audioNumSteps);
     } else {
         showStatus('audioStatus', 'No notes to play — add some steps first', 'error');
     }
