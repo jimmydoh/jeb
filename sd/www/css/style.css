@@ -401,6 +401,26 @@ canvas.topo-canvas {
     border-radius: 4px;
     padding: 6px 8px;
 }
+.channel-row.channel-muted {
+    opacity: 0.45;
+}
+.channel-mute-btn {
+    flex-shrink: 0;
+    padding: 3px 6px;
+    font-size: 0.72em;
+    font-weight: bold;
+    background: #2a2a2a;
+    color: #888;
+    border: 1px solid #555;
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+}
+.channel-mute-btn.muted {
+    background: #4a1010;
+    color: #ff6666;
+    border-color: #cc2222;
+}
 .channel-label {
     width: 28px;
     font-size: 0.75em;
