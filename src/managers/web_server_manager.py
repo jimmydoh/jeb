@@ -1287,16 +1287,46 @@ class WebServerManager:
                     if not isinstance(ch, dict):
                         return Response(request, '{"error": "each channel must be an object"}',
                                       content_type="application/json", status=400)
-                    sequence = ch.get("sequence")
-                    if not sequence or not isinstance(sequence, list):
-                        return Response(request, '{"error": "each channel must have a sequence array"}',
-                                      content_type="application/json", status=400)
-                    patch_name = ch.get("patch", "SELECT")
-                    channel_dicts.append({
-                        'bpm': bpm,
-                        'patch': patch_name,
-                        'sequence': sequence,
-                    })
+
+                    track_type = ch.get("track_type", "audio")
+
+                    if track_type == "automation":
+                        # V2 Automation channel: expects a 'steps' array of [param_id, value] pairs
+                        steps_raw = ch.get("steps", [])
+                        if not isinstance(steps_raw, list):
+                            return Response(request, '{"error": "automation channel must have a steps array"}',
+                                          content_type="application/json", status=400)
+                        steps = [(int(s[0]), int(s[1])) for s in steps_raw if len(s) == 2]
+                        channel_dicts.append({
+                            'bpm': bpm,
+                            'type': 'automation',
+                            'steps': steps,
+                        })
+                    else:
+                        # Audio channel (v1 and v2)
+                        sequence = ch.get("sequence")
+                        if not sequence or not isinstance(sequence, list):
+                            return Response(request, '{"error": "each audio channel must have a sequence array"}',
+                                          content_type="application/json", status=400)
+                        patch_name = ch.get("patch", "SELECT")
+                        ch_dict = {
+                            'bpm': bpm,
+                            'patch': patch_name,
+                            'sequence': sequence,
+                            'type': 'audio',
+                        }
+                        # V2: optional inline ADSR override [attack, decay, sustain, release] multipliers
+                        adsr_override = ch.get("adsr_override")
+                        if adsr_override and isinstance(adsr_override, list) and len(adsr_override) == 4:
+                            if self.synth_manager is not None:
+                                from utilities.synth_registry import Patches
+                                base_patch = getattr(Patches, patch_name, Patches.SELECT)
+                                env_override = self.synth_manager._apply_adsr_multipliers(
+                                    base_patch['envelope'],
+                                    tuple(int(v) for v in adsr_override)
+                                )
+                                ch_dict['envelope_override'] = env_override
+                        channel_dicts.append(ch_dict)
 
                 if self.synth_manager is None:
                     return Response(request, '{"status": "no_synth", "message": "Synth manager not available"}',
