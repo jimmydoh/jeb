@@ -790,8 +790,12 @@ def test_load_jseq_v2_adsr_override():
 
     # PAD patch: attack_time=0.5 → ×2.0 = 1.0
     assert abs(env.attack_time - 1.0) < 0.001, f"attack_time mismatch: {env.attack_time}"
+    # PAD decay_time=0.2 → ×1.0 = 0.2 (unchanged)
+    assert abs(env.decay_time - 0.2) < 0.001, f"decay_time mismatch: {env.decay_time}"
     # PAD sustain_level=0.8 → ×0.5 = 0.4
     assert abs(env.sustain_level - 0.4) < 0.001, f"sustain_level mismatch: {env.sustain_level}"
+    # PAD release_time=0.5 → ×1.0 = 0.5 (unchanged)
+    assert abs(env.release_time - 0.5) < 0.001, f"release_time mismatch: {env.release_time}"
     print("✓ v2 ADSR override test passed")
 
 
@@ -804,8 +808,11 @@ def test_load_jseq_v2_automation_channel():
 
     synth = SynthManager()
 
+    PARAM_LPF = synth_manager_module.JSEQ_PARAM_LPF_CUTOFF
+    PARAM_AMP = synth_manager_module.JSEQ_PARAM_AMPLITUDE
+
     # 3 automation steps: LPF at 64, LPF at 128, amplitude at 200
-    steps = [(0x00, 64), (0x00, 128), (0x01, 200)]
+    steps = [(PARAM_LPF, 64), (PARAM_LPF, 128), (PARAM_AMP, 200)]
     data = _build_jseq_v2(120, [{'patch_idx': 0, 'track_type': 1, 'override': None,
                                    'steps': steps}])
 
@@ -820,9 +827,9 @@ def test_load_jseq_v2_automation_channel():
     ch = channels[0]
     assert ch.get('type') == 'automation', f"Expected 'automation', got '{ch.get('type')}'"
     assert len(ch['steps']) == 3
-    assert ch['steps'][0] == (0x00, 64)
-    assert ch['steps'][1] == (0x00, 128)
-    assert ch['steps'][2] == (0x01, 200)
+    assert ch['steps'][0] == (PARAM_LPF, 64)
+    assert ch['steps'][1] == (PARAM_LPF, 128)
+    assert ch['steps'][2] == (PARAM_AMP, 200)
     print("✓ v2 automation channel test passed")
 
 

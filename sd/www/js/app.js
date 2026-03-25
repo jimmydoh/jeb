@@ -2682,7 +2682,12 @@ async function audioLoad() {
                 // Audio channel: populate note steps
                 let currentStep = 0;
                 for (const item of lc.seq) {
-                    if (item.meta) continue; // skip meta-events in the UI
+                    // V2 BPM meta-events are preserved in the intermediate `lc.seq`
+                    // representation so that round-trip saves encode them faithfully.
+                    // They are skipped here because the Audio Studio grid does not yet
+                    // have a dedicated "BPM lane" for timeline tempo automation; the
+                    // sequence plays back with meta-events intact via synth_manager.py.
+                    if (item.meta) continue; // skip meta-events in the grid UI
 
                     const span = Math.round(item.dur / BASE_RES);
                     if (currentStep + span > audioNumSteps) break;
@@ -2916,8 +2921,14 @@ function _browserGetNoiseBuffer(audioCtx) {
  * Uses an OscillatorNode (or noise BufferSourceNode) routed through a
  * GainNode with ADSR automation for click-free attack and release.
  */
-function _browserScheduleNote(audioCtx, freq, patchName, startTime, durationSec) {
-    const patch = BROWSER_PATCHES[patchName] || BROWSER_PATCHES['BEEP'];
+function _browserScheduleNote(audioCtx, freq, patchOrName, startTime, durationSec) {
+    // Accept either a patch name string (looked up in BROWSER_PATCHES) or a
+    // patch object directly.  The object form is used when the caller has
+    // already computed an ADSR-overridden patch without polluting the global
+    // BROWSER_PATCHES registry.
+    const patch = (typeof patchOrName === 'string')
+        ? (BROWSER_PATCHES[patchOrName] || BROWSER_PATCHES['BEEP'])
+        : (patchOrName || BROWSER_PATCHES['BEEP']);
     const { type, attack, decay, sustain, release, attackLevel } = patch;
     const isNoise = (type === 'noise');
     const noteDuration = Math.max(durationSec, 0.01);
@@ -3103,21 +3114,19 @@ function audioPreviewBrowser() {
 
         const patchName = audioChannelPatches[c] || 'BEEP';
 
-        // V2: build a patched BROWSER_PATCHES entry if ADSR override is active
-        let effectivePatchName = patchName;
+        // V2: build a patched BROWSER_PATCHES entry if ADSR override is active.
+        // Use a local Map instead of mutating the global BROWSER_PATCHES so that
+        // repeated previews don't accumulate stale entries.
+        let effectivePatch = BROWSER_PATCHES[patchName] || BROWSER_PATCHES['BEEP'];
         const ovr = audioChannelAdsrOverrides[c];
         if (ovr && ovr.enabled) {
-            const base = BROWSER_PATCHES[patchName] || BROWSER_PATCHES['BEEP'];
-            const overridePatch = Object.assign({}, base, {
+            const base = effectivePatch;
+            effectivePatch = Object.assign({}, base, {
                 attack:  base.attack  * (ovr.a / 100.0),
                 decay:   base.decay   * (ovr.d / 100.0),
                 sustain: Math.min(1.0, base.sustain * (ovr.s / 100.0)),
                 release: base.release * (ovr.r / 100.0),
             });
-            // Register the override patch under a unique key for this render
-            const overrideKey = `__override_ch${c}`;
-            BROWSER_PATCHES[overrideKey] = overridePatch;
-            effectivePatchName = overrideKey;
         }
 
         let cursor = scheduleOffset;
@@ -3132,7 +3141,7 @@ function audioPreviewBrowser() {
                 const noteSec = step.duration * beatDuration;
                 const freq = _jseqIndexToFreq(_noteToJseqIndex(step.note));
                 if (freq > 0) {
-                    _browserScheduleNote(audioCtx, freq, effectivePatchName, cursor, noteSec);
+                    _browserScheduleNote(audioCtx, freq, effectivePatch, cursor, noteSec);
                     hasNotes = true;
                 }
             }

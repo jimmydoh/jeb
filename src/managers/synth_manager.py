@@ -453,8 +453,13 @@ class SynthManager:
         s_mult = multipliers[2] / 100.0
         r_mult = multipliers[3] / 100.0
         return synthio.Envelope(
+            # Time values are not clamped to a maximum: synthio accepts any
+            # non-negative float, so arbitrarily long attack/decay/release times
+            # are valid. A multiplier of 0 produces an instant (0-second) stage.
             attack_time=base_envelope.attack_time * a_mult,
             decay_time=base_envelope.decay_time * d_mult,
+            # Sustain level is a 0.0–1.0 amplitude fraction; cap it to avoid
+            # over-driving the synthesizer output.
             sustain_level=min(1.0, base_envelope.sustain_level * s_mult),
             release_time=base_envelope.release_time * r_mult,
             attack_level=base_envelope.attack_level,
