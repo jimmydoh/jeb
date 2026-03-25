@@ -38,6 +38,12 @@ JSEQ_TRACK_GLOBAL_EVENT = 0x02  # Event-based global commands [command_id, value
 JSEQ_CMD_REST       = 0x00  # Wait: value = duration in 1/32-beat units
 JSEQ_CMD_BPM_CHANGE = 0x01  # Change playback BPM: value = new BPM (1–255)
 
+# JSEQ v2.2 Tie Command sentinel — pitch index 0xFF in an audio track step.
+# When parsed by _load_jseq_v2, the step is stored as ('TIE', dur_beats).
+# play_sequence() extends the current note's sleep without re-triggering the
+# ADSR envelope, enabling infinite sustains and smooth legato transitions.
+JSEQ_TIE = 'TIE'
+
 class SynthManager:
     """
     A reusable SynthIO engine.
@@ -147,9 +153,12 @@ class SynthManager:
         """
         Play a sequence of notes defined in Tones format.
 
-        Supports JSEQ v2 features:
+        Supports JSEQ v2.2 features:
         - ``envelope_override``: a pre-built synthio.Envelope in the channel dict
           that replaces the patch's default ADSR envelope.
+        - **Tie Command** (``JSEQ_TIE = 'TIE'``): extends the current note's
+          sleep duration without releasing and re-pressing it, enabling smooth
+          infinite sustains and legato transitions.
         - Per-channel automation routing: if the channel dict carries a
           ``'channel_idx'`` key, per-channel filters (``_channel_filters``) and
           per-channel amplitude overrides (``_channel_amplitudes``) are applied
@@ -157,10 +166,8 @@ class SynthManager:
 
         In JSEQ v2.2, BPM changes are handled by a concurrent Type 0x02
         Master Event Track task that updates ``self._shared_bpm``.  Audio
-        channel tasks read ``self._shared_bpm`` at the start of each note so
-        that tempo changes are reflected immediately without the self-referential
-        clock problem.  Legacy ``(None, new_bpm)`` meta-event tuples produced by
-        older v2 parsers are still handled gracefully for backward compat.
+        channel tasks read ``self._shared_bpm`` at the start of each step so
+        that tempo changes are reflected immediately.
 
         Args:
             sequence_data (dict): Dict with 'bpm' and 'sequence' list.
@@ -169,12 +176,7 @@ class SynthManager:
         # channel_idx is set by _load_jseq_v2 for per-channel automation routing.
         channel_idx = sequence_data.get('channel_idx', None)
 
-        # LOGIC UPDATE:
-        # sequence_data.get('patch') -> Returns Patch Object or None
-        # patch -> Returns Patch Object or None
-        # Patches.SELECT -> The guaranteed fallback
         active_patch = patch or sequence_data.get('patch') or Patches.SELECT
-
         if isinstance(active_patch, str):
             active_patch = getattr(Patches, active_patch, Patches.SELECT)
 
@@ -185,40 +187,48 @@ class SynthManager:
         # V2: use inline ADSR override envelope if provided, else patch default.
         envelope = sequence_data.get('envelope_override') or active_patch["envelope"]
 
+        # Track the currently pressed note object so Tie steps can extend it
+        # without re-triggering the ADSR envelope.
+        active_note_obj = None
+
         for item in sequence_data['sequence']:
-            # Handle both (freq, dur) and ('NoteName', dur) formats
             tone_val, duration_beats = item
 
+            # Read current BPM from shared state each step so the Master Event
+            # Track can update tempo in real time.
+            beat_duration = 60.0 / self._shared_bpm
+            duration_sec = duration_beats * beat_duration
+
+            # V2.2 Tie Command: hold the current note, extend sleep only.
+            if tone_val == JSEQ_TIE:
+                if active_note_obj is not None:
+                    await asyncio.sleep(duration_sec)
+                continue
+
             # Backward-compat: v2 (pre-v2.2) files may emit (None, new_bpm)
-            # meta-event tuples from the audio track parser.  Honour them by
-            # updating _shared_bpm so all concurrent tasks stay in sync.
+            # meta-event tuples.  Honour them by updating _shared_bpm.
             if tone_val is None:
                 self._shared_bpm = int(duration_beats)
                 JEBLogger.debug("SYNTH", f"Compat meta-event: BPM → {self._shared_bpm}")
                 continue
+
+            # Release the previous note before pressing a new one.
+            if active_note_obj is not None:
+                self.synth.release(active_note_obj)
+                active_note_obj = None
 
             if isinstance(tone_val, (int, float)):
                 freq = tone_val
             else:
                 freq = note(tone_val)
 
-            # Read current BPM from shared state so the Master Event Track can
-            # update tempo in real time without any action from this task.
-            beat_duration = 60.0 / self._shared_bpm
-            duration_sec = duration_beats * beat_duration
-
             if freq > 0:
                 # V2: determine effective amplitude.
-                # Per-channel amplitude (from automation targeting this channel)
-                # takes precedence over the global _automation_amplitude.
                 if channel_idx is not None and channel_idx in self._channel_amplitudes:
                     amplitude = self._channel_amplitudes[channel_idx]
                 else:
                     amplitude = self._automation_amplitude
 
-                # Scale the envelope if automation has changed the amplitude.
-                # Use a threshold rather than exact float equality to avoid
-                # floating-point precision issues.
                 active_envelope = envelope
                 if abs(amplitude - 1.0) > 0.001 and hasattr(envelope, 'attack_time'):
                     active_envelope = synthio.Envelope(
@@ -235,9 +245,7 @@ class SynthManager:
                     envelope=active_envelope
                 )
 
-                # V2: apply per-channel Biquad filter to the note object if one
-                # has been set by a concurrent automation task targeting this
-                # specific channel index.
+                # V2: apply per-channel Biquad filter to the note object.
                 if channel_idx is not None and channel_idx in self._channel_filters:
                     try:
                         n.filter = self._channel_filters[channel_idx]
@@ -245,14 +253,22 @@ class SynthManager:
                         pass  # Graceful degradation for CircuitPython versions without per-note filter
 
                 self.synth.press(n)
+                active_note_obj = n
                 await asyncio.sleep(duration_sec)
-                self.synth.release(n)
             else:
-                # Rest
+                # Rest — release any held note first.
+                if active_note_obj is not None:
+                    self.synth.release(active_note_obj)
+                    active_note_obj = None
                 await asyncio.sleep(duration_sec)
 
-            # Small gap between notes for articulation
+            # Small gap between notes for articulation (not applied after Ties)
             await asyncio.sleep(0.01)
+
+        # Release the final note when the sequence ends.
+        if active_note_obj is not None:
+            self.synth.release(active_note_obj)
+            active_note_obj = None
 
     async def start_generative_drone(self):
         """Creates an infinite, shifting background drone."""
@@ -421,10 +437,9 @@ class SynthManager:
         +---------+-----------------+-------------------------------------------+
 
         Audio step (2 bytes):  ``[pitch_idx, dur_units]``
-          * ``pitch_idx == 0`` = rest
-          * otherwise          = MIDI note = ``pitch_idx - 1``
-          (Pitch 0xFF meta-events are no longer emitted by v2.2; backward-compat
-          parsing of pre-v2.2 pitch-0xFF meta-events is preserved here.)
+          * ``pitch_idx == 0``   = rest
+          * ``pitch_idx == 0xFF``= Tie Command: extend previous note, no new press
+          * otherwise            = MIDI note = ``pitch_idx - 1``
 
         Automation step (2 bytes):  ``[param_id, value]``
           * param_id ``0x00`` = LPF cutoff  (0-255 -> 0-20 000 Hz)
@@ -522,10 +537,10 @@ class SynthManager:
                     pos += 2
 
                     if note_idx == 0xFF:
-                        # Backward-compat: pre-v2.2 files encode BPM changes as
-                        # pitch 0xFF in audio tracks.  Convert to legacy meta-event
-                        # tuple so play_sequence() can update _shared_bpm.
-                        sequence.append((None, dur_units))
+                        # V2.2 Tie Command: extend the previous note's duration
+                        # without re-triggering the ADSR envelope.
+                        duration_beats = dur_units / 32.0
+                        sequence.append((JSEQ_TIE, duration_beats))
                     else:
                         freq = 0 if note_idx == 0 else _jseq_midi_to_freq(note_idx - 1)
                         duration_beats = dur_units / 32.0

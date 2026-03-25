@@ -73,14 +73,24 @@ The first byte (`+0x00`) has a **dual purpose** depending on Track Type:
 
 ### 3.2 V2 Audio Track Steps (`N` × 2 Bytes)
 
-Audio tracks use the same 2-byte step pair as v1:
+Audio tracks use the same 2-byte step pair as v1, with one reserved Pitch Index added in v2.2:
 
 | Byte Offset | Type    | Size    | Description |
 | :--- | :--- | :--- | :--- |
-| `+0x00`     | `uint8` | 1 byte  | **Pitch Index:** `0` = Rest, `1`–`254` = MIDI Note Offset |
-| `+0x01`     | `uint8` | 1 byte  | **Duration:** time in 1/32nd beat units |
+| `+0x00`     | `uint8` | 1 byte  | **Pitch Index:** `0` = Rest, `1`–`254` = MIDI Note Offset, `255` (`0xFF`) = **Tie Command** |
+| `+0x01`     | `uint8` | 1 byte  | **Duration:** time in 1/32nd beat units (for both notes and Tie steps) |
 
-> **Removed in v2.2:** Pitch Index `0xFF` (255) was previously used as an in-band BPM meta-event marker.  New files no longer encode BPM changes inside audio tracks.  For backward compatibility, the parser still recognises pitch `0xFF` in audio tracks from pre-v2.2 files and converts them to legacy `(None, bpm)` tuples.
+#### Tie Command (Pitch Index = `0xFF`)
+
+When byte `+0x00` of an audio step is `0xFF`, the step is a **Tie Command** rather than a new note press.  The Duration byte specifies how long to extend the *currently held* note.  `play_sequence()` advances the sleep timer without calling `synth.release()` / `synth.press()`, so the ADSR envelope is never re-triggered.
+
+**Use cases:**
+- **Infinite sustains** on pads that require attack-release cycles longer than 255/32 ≈ 7.97 beats.
+- **Legato transitions** — hold one note's release phase into the start of the next note.
+
+If no note is currently held when a Tie is encountered (e.g., the Tie is the very first step), the Tie is treated as a rest.
+
+Long notes from the Web Studio are automatically split into a normal note step followed by chained Tie steps whenever the total duration exceeds 255 duration units.
 
 ### 3.3 V2 Automation Track Steps (`N` × 2 Bytes)
 

@@ -2483,9 +2483,7 @@ function _buildSequenceForChannel(ch) {
         } else if (cell.meta === 'bpm') {
             // V2.2: BPM meta-event cells are treated as a single-slot rest in
             // the audio track.  The actual BPM change is written by _encodeJseq
-            // into the dedicated Type 0x02 Master Event Track so that the
-            // Master Event task drives tempo changes rather than the audio task
-            // itself ("self-referential clock" problem).
+            // into the dedicated Type 0x02 Master Event Track.
             accumulatedRest += BASE_RES;
         } else if (cell.note !== undefined) {
             while (accumulatedRest > 0) {
@@ -2493,7 +2491,21 @@ function _buildSequenceForChannel(ch) {
                 sequence.push(['-', chunk]);
                 accumulatedRest -= chunk;
             }
-            sequence.push([cell.note || '-', cell.duration]);
+            // Emit the note, followed by Tie steps for any duration overflow.
+            // A single step can hold at most 255/32 = ~7.97 beats.  Notes
+            // longer than this (e.g., from Tie-extended spans loaded from file)
+            // are chained: the first step uses pitch_idx, subsequent steps use
+            // null as the Tie sentinel so _encodeJseq writes 0xFF.
+            const MAX_DUR_BEATS = 255 / 32.0;
+            let remaining = cell.duration;
+            const firstChunk = Math.min(MAX_DUR_BEATS, remaining);
+            sequence.push([cell.note || '-', firstChunk]);
+            remaining -= firstChunk;
+            while (remaining > 0) {
+                const chunk = Math.min(MAX_DUR_BEATS, remaining);
+                sequence.push([null, chunk]);  // null = Tie sentinel → 0xFF pitch
+                remaining -= chunk;
+            }
         }
     }
 
@@ -2691,11 +2703,15 @@ function _encodeJseq() {
         view.setUint16(pos, seq.length, true); pos += 2;
 
         for (const step of seq) {
-            // V2.2: no pitch 0xFF meta-events in audio tracks — BPM changes are
-            // written to the dedicated Type 0x02 Master Event Track below.
-            // Audio step: [pitch_idx, dur_units]
-            view.setUint8(pos++, step[0] === '-' ? 0 : _noteToJseqIndex(step[0]));
-            view.setUint8(pos++, _durationToJseqUnits(step[1]));
+            if (step[0] === null) {
+                // Tie Command: pitch 0xFF + duration units
+                view.setUint8(pos++, 0xFF);
+                view.setUint8(pos++, _durationToJseqUnits(step[1]));
+            } else {
+                // Audio step: [pitch_idx, dur_units]
+                view.setUint8(pos++, step[0] === '-' ? 0 : _noteToJseqIndex(step[0]));
+                view.setUint8(pos++, _durationToJseqUnits(step[1]));
+            }
         }
     }
 
@@ -2852,9 +2868,10 @@ async function audioLoad() {
                     const durByte = view.getUint8(pos++);
 
                     if (version >= 2 && noteIdx === 0xFF) {
-                        // Backward-compat: pre-v2.2 files may embed pitch 0xFF BPM
-                        // meta-events directly in audio tracks.  Treat as a BPM marker.
-                        seq.push({ meta: 'bpm', bpm: durByte });
+                        // V2.2 Tie Command: extend previous note without re-triggering ADSR.
+                        const dur = _jseqUnitsToDuration(durByte);
+                        seq.push({ tie: true, dur });
+                        chanBeats += dur;
                         continue;
                     }
 
@@ -2936,14 +2953,21 @@ async function audioLoad() {
                 }
 
                 let currentStep = 0;
+                let lastNoteStep = -1;  // track position of the most recent note for Tie extension
                 for (const item of lc.seq) {
-                    if (item.meta === 'bpm') {
-                        // Backward-compat: pre-v2.2 files with pitch 0xFF in audio tracks
-                        // store BPM markers directly in the audio sequence.
-                        if (currentStep < audioNumSteps) {
-                            audioSteps[c][currentStep] = { meta: 'bpm', bpm: item.bpm };
-                            currentStep += 1;
+                    if (item.tie) {
+                        // V2.2 Tie Command: extend the previous note's span so
+                        // audioPreviewBrowser calculates the correct hold duration
+                        // without scheduling a new note press.
+                        const span = Math.round(item.dur / BASE_RES);
+                        if (lastNoteStep >= 0 && audioSteps[c][lastNoteStep]) {
+                            audioSteps[c][lastNoteStep].span += span;
+                            audioSteps[c][lastNoteStep].duration += item.dur;
                         }
+                        for (let i = 0; i < span && currentStep + i < audioNumSteps; i++) {
+                            audioSteps[c][currentStep + i] = { covered: true };
+                        }
+                        currentStep += span;
                         continue;
                     }
 
@@ -2955,6 +2979,9 @@ async function audioLoad() {
                         for (let i = 1; i < span; i++) {
                             audioSteps[c][currentStep + i] = { covered: true };
                         }
+                        lastNoteStep = currentStep;
+                    } else {
+                        lastNoteStep = -1;  // rest breaks Tie chain
                     }
                     currentStep += span;
                 }
