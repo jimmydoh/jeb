@@ -1790,6 +1790,8 @@ const JSEQ_PATCH_NAMES = [
     'RETRO_LEAD', 'RETRO_BASS', 'RETRO_NOISE',
     'BEEP', 'BEEP_SQUARE', 'PAD', 'PUNCH',
     'ALARM', 'SCANNER', 'CLICK', 'NOISE', 'SELECT',
+    'DATA_STREAM', 'ETHEREAL', 'ENGINE_HUM',
+    'TEXT_SCROLL', 'SUCCESS', 'ERROR',
 ];
 
 const AUDIO_OCTAVES = [2, 3, 4, 5, 6, 7];
@@ -2618,6 +2620,12 @@ const BROWSER_PATCHES = {
     'CLICK':       { type: 'square',   attack: 0.001, decay: 0.05, sustain: 0.0, release: 0.05, attackLevel: 1.0 },
     'NOISE':       { type: 'noise',    attack: 0.01,  decay: 0.15, sustain: 0.0, release: 0.1,  attackLevel: 1.0 },
     'SELECT':      { type: 'square',   attack: 0.001, decay: 0.05, sustain: 0.0, release: 0.05, attackLevel: 1.0 },
+    'DATA_STREAM': { type: 'square',   attack: 0.05,  decay: 0.1,  sustain: 0.0, release: 0.1,  attackLevel: 0.15 },
+    'ETHEREAL':    { type: 'triangle', attack: 1.0,   decay: 0.5,  sustain: 0.7, release: 2.0,  attackLevel: 0.7 },
+    'ENGINE_HUM':  { type: 'triangle', attack: 1.5,   decay: 0.0,  sustain: 0.4, release: 1.5,  attackLevel: 0.4 },
+    'TEXT_SCROLL': { type: 'triangle', attack: 0.001, decay: 0.03,  sustain: 0.0, release: 0.03,  attackLevel: 0.3 },
+    'SUCCESS':     { type: 'sine',     attack: 0.01,  decay: 0.2,  sustain: 0.0, release: 0.4,  attackLevel: 0.8 },
+    'ERROR':       { type: 'sawtooth', attack: 0.005,  decay: 0.1,  sustain: 0.6, release: 0.1,  attackLevel: 1.0 }
 };
 
 /** Generate a shared noise AudioBuffer for the current AudioContext (created once). */
