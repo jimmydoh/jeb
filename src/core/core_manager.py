@@ -196,7 +196,12 @@ class CoreManager:
                 "audio/menu/select.wav",
             ]
         )
-        self.synth = SynthManager(sample_rate=22050, channel_count=1)
+        self.synth = SynthManager(sample_rate=22050, channel_count=1, root_data_dir=self.root_data_dir)
+        self.synth.preload(
+            [
+                "sequences/menu_tick.jseq",
+            ]
+        )
         self.audio.attach_synth(self.synth.source)  # Connect synth to audio mixer
 
         # Init Display (OLED)
