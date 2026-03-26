@@ -1812,7 +1812,10 @@ let audioNumSteps = 64;    // Calculated strictly on BASE_RES
 let audioSteps = [];
 let audioChannelPatches = [];
 // V2: per-channel ADSR override config (audio channels only — always type 0)
+const DEFAULT_ADSR_OVERRIDE = () => ({ enabled: false, a: 100, d: 100, s: 100, r: 100 });
 let audioChannelAdsrOverrides = [];
+// Mute state per audio channel (browser preview only — ignored during export)
+let audioChannelMutes = [];
 // V2: automation tracks (separate from the 3 fixed audio channels)
 // Each entry: { targetScope: 0xFF, paramId: 0, steps: number[] }
 //   targetScope: 0–2 = targets audio channel 0/1/2, 0xFF = Global Master Bus
@@ -1830,7 +1833,8 @@ function initAudioStudio() {
         for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
             audioSteps.push(new Array(audioNumSteps).fill(null));
             audioChannelPatches.push(JSEQ_PATCH_NAMES[c] || 'SELECT');
-            audioChannelAdsrOverrides.push({ enabled: false, a: 100, d: 100, s: 100, r: 100 });
+            audioChannelAdsrOverrides.push(DEFAULT_ADSR_OVERRIDE());
+            audioChannelMutes.push(false);
         }
 
         _buildNotePicker();
@@ -1874,7 +1878,7 @@ function _resizeGrid() {
         }
 
         if (!audioChannelAdsrOverrides[c]) {
-            audioChannelAdsrOverrides[c] = { enabled: false, a: 100, d: 100, s: 100, r: 100 };
+            audioChannelAdsrOverrides[c] = DEFAULT_ADSR_OVERRIDE();
         }
     }
 
@@ -1901,11 +1905,11 @@ function _resizeGrid() {
 
         // --- Channel row: label + patch selector + step grid ---
         const row = document.createElement('div');
-        row.className = 'channel-row';
+        row.className = 'channel-row' + (audioChannelMutes[c] ? ' channel-muted' : '');
         row.style.cssText = 'display: flex; flex-wrap: nowrap; align-items: center;';
 
         const controls = document.createElement('div');
-        controls.style.cssText = 'display: flex; gap: 5px; flex: 0 0 140px; flex-shrink: 0;';
+        controls.style.cssText = 'display: flex; gap: 5px; flex: 0 0 168px; flex-shrink: 0;';
 
         const lbl = document.createElement('div');
         lbl.className = 'channel-label';
@@ -1925,6 +1929,20 @@ function _resizeGrid() {
         sel.onchange = () => { audioChannelPatches[c] = sel.value; };
         controls.appendChild(sel);
 
+        // Mute toggle button (browser preview only — ignored during export)
+        const muteBtn = document.createElement('button');
+        muteBtn.id = `muteBtn_${c}`;
+        muteBtn.textContent = 'M';
+        muteBtn.title = 'Mute this channel during browser preview';
+        muteBtn.className = 'channel-mute-btn';
+        muteBtn.classList.toggle('muted', audioChannelMutes[c]);
+        muteBtn.onclick = () => {
+            audioChannelMutes[c] = !audioChannelMutes[c];
+            muteBtn.classList.toggle('muted', audioChannelMutes[c]);
+            row.classList.toggle('channel-muted', audioChannelMutes[c]);
+        };
+        controls.appendChild(muteBtn);
+
         row.appendChild(controls);
 
         const grid = document.createElement('div');
@@ -1934,9 +1952,9 @@ function _resizeGrid() {
         wrapper.appendChild(row);
 
         // --- ADSR override row (aligned to grid start) ---
-        // Controls section is 140px + 8px padding inside channel-row = 148px offset.
+        // Controls section is 168px + 8px padding inside channel-row = 176px offset.
         const adsrRow = document.createElement('div');
-        adsrRow.style.cssText = 'display: flex; align-items: center; gap: 6px; margin-top: 3px; padding-left: 148px; font-size: 0.8em;';
+        adsrRow.style.cssText = 'display: flex; align-items: center; gap: 6px; margin-top: 3px; padding-left: 176px; font-size: 0.8em;';
 
         const adsrChk = document.createElement('input');
         adsrChk.type = 'checkbox';
@@ -2013,22 +2031,33 @@ function _resizeGrid() {
 
         container.appendChild(autoSection);
     }
+    _calculateTotalRuntime();
 }
 
 /**
  * Build and append a single automation track row into *parentEl*.
+ *
+ * The value grid is rendered as a canvas draw lane: click or click-drag
+ * to paint an automation envelope. Each pixel column maps 1-to-1 with an
+ * audio step column (BASE_WIDTH px wide, GAP px apart), so the bars align
+ * perfectly with the audio track buttons above.
+ *
  * @param {HTMLElement} parentEl  Container to append to.
  * @param {{targetScope:number, paramId:number, steps:number[]}} trk  Track data.
  * @param {number} i  Index in automationTracks[].
  */
 function _buildAutomationTrackRow(parentEl, trk, i) {
+    const CANVAS_HEIGHT = 72;
+
     const wrapper = document.createElement('div');
     wrapper.id = `autoTrackRow_${i}`;
-    wrapper.style.cssText = 'display:flex; align-items:flex-start; gap:0; margin-bottom:8px;';
+    wrapper.style.cssText = 'display:flex; align-items:stretch; gap:0; margin-bottom:8px;';
 
-    // --- Controls (same fixed width as audio channels for alignment) ---
+    // --- Controls panel ---
+    // Width is set to 176px = 8px (channel-row left padding) + 168px (audio controls),
+    // so the canvas lane starts at the same horizontal position as the audio step grid.
     const controls = document.createElement('div');
-    controls.style.cssText = 'display:flex; flex-direction:column; gap:4px; flex:0 0 140px; flex-shrink:0; padding: 6px 8px; background:#1a1a1a; border:1px solid #2a1a3a; border-radius:4px 0 0 4px; border-right:none;';
+    controls.style.cssText = 'display:flex; flex-direction:column; justify-content:center; gap:4px; flex:0 0 176px; flex-shrink:0; padding:6px 8px; background:#1a1a1a; border:1px solid #2a1a3a; border-radius:4px 0 0 4px; border-right:none;';
 
     // Row 1: Label + remove button
     const headerRow = document.createElement('div');
@@ -2055,11 +2084,8 @@ function _buildAutomationTrackRow(parentEl, trk, i) {
     tgtLbl.style.cssText = 'font-size:0.75em; color:#666; white-space:nowrap;';
     tgtRow.appendChild(tgtLbl);
     const tgtSel = document.createElement('select');
-    tgtSel.style.cssText = 'font-size:0.75em; background:#1a1a1a; color:#cc99ff; border:1px solid #553366; flex:1;';
-    const scopeOpts = [
-        ['Ch 1', 0], ['Ch 2', 1], ['Ch 3', 2], ['Global', 0xFF],
-    ];
-    scopeOpts.forEach(([label, val]) => {
+    tgtSel.style.cssText = 'font-size:0.75em; background:#1a1a1a; color:#cc99ff; border:1px solid #553366; flex:1; padding:1px 2px; width:auto;';
+    [['Ch 1', 0], ['Ch 2', 1], ['Ch 3', 2], ['Global', 0xFF]].forEach(([label, val]) => {
         const o = document.createElement('option');
         o.value = val;
         o.textContent = label;
@@ -2078,7 +2104,7 @@ function _buildAutomationTrackRow(parentEl, trk, i) {
     paramLbl.style.cssText = 'font-size:0.75em; color:#666; white-space:nowrap;';
     paramRow.appendChild(paramLbl);
     const paramSel = document.createElement('select');
-    paramSel.style.cssText = 'font-size:0.75em; background:#1a1a1a; color:#99ccff; border:1px solid #334455; flex:1;';
+    paramSel.style.cssText = 'font-size:0.75em; background:#1a1a1a; color:#99ccff; border:1px solid #334455; flex:1; padding:1px 2px; width:auto;';
     [['LPF Cutoff', 0], ['Amplitude', 1]].forEach(([label, val]) => {
         const o = document.createElement('option');
         o.value = val;
@@ -2092,32 +2118,109 @@ function _buildAutomationTrackRow(parentEl, trk, i) {
 
     wrapper.appendChild(controls);
 
-    // --- Value grid ---
-    const gridWrap = document.createElement('div');
-    gridWrap.style.cssText = 'flex:1; background:#111; border:1px solid #2a1a3a; border-radius:0 4px 4px 0; padding:6px 6px 6px 4px; overflow-x:auto;';
+    // --- Canvas draw lane ---
+    // Canvas width is calculated so each step occupies exactly BASE_WIDTH px with GAP px
+    // between steps — identical to the audio step button layout above.
+    const totalWidth = audioNumSteps * BASE_WIDTH + Math.max(0, audioNumSteps - 1) * GAP;
 
-    const autoGrid = document.createElement('div');
-    autoGrid.id = `autoGrid_${i}`;
-    autoGrid.style.cssText = 'display:flex; flex-wrap:wrap; gap:2px;';
+    const canvasWrap = document.createElement('div');
+    canvasWrap.style.cssText = 'flex:1; min-width:0; background:#0d0d0d; border:1px solid #2a1a3a; border-left:none; border-radius:0 4px 4px 0; overflow:hidden;';
 
-    for (let s = 0; s < audioNumSteps; s++) {
-        const val = trk.steps[s] !== undefined ? trk.steps[s] : 128;
-        const inp = document.createElement('input');
-        inp.type = 'number';
-        inp.min = 0; inp.max = 255;
-        inp.value = val;
-        inp.style.cssText = 'width:34px; font-size:0.75em; background:#1a1a1a; color:#99ccff; border:1px solid #333; padding:1px; text-align:center;';
-        inp.title = `Step ${s + 1} (0–255)`;
-        const stepIdx = s;
-        inp.onchange = () => {
-            trk.steps[stepIdx] = Math.max(0, Math.min(255, parseInt(inp.value) || 0));
-        };
-        autoGrid.appendChild(inp);
+    const canvas = document.createElement('canvas');
+    canvas.id = `autoCanvas_${i}`;
+    canvas.width = totalWidth;
+    canvas.height = CANVAS_HEIGHT;
+    canvas.style.cssText = `display:block; width:${totalWidth}px; height:${CANVAS_HEIGHT}px; cursor:crosshair;`;
+    canvas.title = 'Click and drag to draw automation envelope (top = 255, bottom = 0)';
+
+    /** Redraw the full canvas from trk.steps[]. */
+    function _draw() {
+        const ctx = canvas.getContext('2d');
+        const H = CANVAS_HEIGHT;
+        const W = totalWidth;
+
+        // Background
+        ctx.fillStyle = '#0d0d0d';
+        ctx.fillRect(0, 0, W, H);
+
+        // Reference line at 50% (value = 128)
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#2a2a2a';
+        ctx.beginPath();
+        ctx.moveTo(0, Math.round(H * 0.5));
+        ctx.lineTo(W, Math.round(H * 0.5));
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Bars — one per BASE_RES step, same x as the audio button above it
+        for (let s = 0; s < audioNumSteps; s++) {
+            const val = trk.steps[s] !== undefined ? trk.steps[s] : 128;
+            const x = s * (BASE_WIDTH + GAP);
+            const barH = Math.max(1, Math.round((val / 255) * H));
+            const y = H - barH;
+
+            // Hue shifts from blue (low) → violet (mid) → magenta (high)
+            const t = val / 255;
+            const r = Math.round(80  + t * 175);
+            const g = Math.round(40  + t * 40);
+            const b = Math.round(180 - t * 60);
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(x, y, BASE_WIDTH, barH);
+
+            // Subtle highlight cap at the top of each bar
+            if (barH > 2) {
+                ctx.fillStyle = 'rgba(255,255,255,0.25)';
+                ctx.fillRect(x, y, BASE_WIDTH, 2);
+            }
+        }
     }
 
-    gridWrap.appendChild(autoGrid);
-    wrapper.appendChild(gridWrap);
+    /** Convert a canvas-relative x coordinate to a step index. */
+    function _stepFromX(x) {
+        return Math.min(audioNumSteps - 1, Math.max(0, Math.floor(x / (BASE_WIDTH + GAP))));
+    }
+
+    /** Convert a canvas-relative y coordinate to a 0–255 value (top = 255). */
+    function _valFromY(y) {
+        return Math.min(255, Math.max(0, Math.round((1 - y / CANVAS_HEIGHT) * 255)));
+    }
+
+    /** Read pointer position from a mouse or touch event and update the data + canvas. */
+    function _applyAt(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width  / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (clientX - rect.left) * scaleX;
+        const y = (clientY - rect.top)  * scaleY;
+        trk.steps[_stepFromX(x)] = _valFromY(y);
+        _draw();
+    }
+
+    let _drawing = false;
+
+    canvas.addEventListener('mousedown', e => { _drawing = true; _applyAt(e.clientX, e.clientY); });
+    canvas.addEventListener('mousemove', e => { if (_drawing) _applyAt(e.clientX, e.clientY); });
+    canvas.addEventListener('mouseup',   () => { _drawing = false; });
+    canvas.addEventListener('mouseleave',() => { _drawing = false; });
+
+    canvas.addEventListener('touchstart', e => {
+        e.preventDefault();
+        _drawing = true;
+        _applyAt(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        if (_drawing) _applyAt(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    canvas.addEventListener('touchend', () => { _drawing = false; });
+
+    canvasWrap.appendChild(canvas);
+    wrapper.appendChild(canvasWrap);
     parentEl.appendChild(wrapper);
+
+    // Render initial state
+    _draw();
 }
 
 /** Add a new blank automation track and rebuild the grid. */
@@ -2360,6 +2463,7 @@ function _renderChannel(ch) {
                     }
                 }
                 _renderChannel(ch); // Redraw the channel to show the changes
+                _calculateTotalRuntime();
             });
         }
 
@@ -2466,8 +2570,10 @@ function _selectDuration(beats, label, clickedBtn) {
 function audioClearAll() {
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
         audioSteps[c] = new Array(audioNumSteps).fill(null);
-        _renderChannel(c);
+        audioChannelAdsrOverrides[c] = DEFAULT_ADSR_OVERRIDE();
     }
+    automationTracks = [];
+    _resizeGrid();
 }
 
 function _buildSequenceForChannel(ch) {
@@ -2893,9 +2999,6 @@ async function audioLoad() {
         updateGridConfig();
         audioClearAll();
 
-        // Clear existing automation tracks so we start fresh
-        automationTracks = [];
-
         let audioChCount = 0;
         for (const lc of loadedChannels) {
             if (lc.trackType === 2) {
@@ -3005,6 +3108,7 @@ async function audioLoad() {
 
         document.getElementById('audioSeqName').value = filename.replace('.jseq', '');
         showStatus('audioStatus', '📂 Loaded ' + filename, 'success');
+        _calculateTotalRuntime();
 
     } catch (e) {
         showStatus('audioStatus', 'Error loading sequence: ' + e.message, 'error');
@@ -3409,6 +3513,32 @@ function _browserStopPlayhead() {
 }
 
 /**
+ * Calculate the total playback runtime of the current sequence in seconds,
+ * correctly accounting for mid-sequence BPM changes stored in audioSteps[0].
+ * Updates the #audioRuntime display element.
+ */
+function _calculateTotalRuntime() {
+    if (!audioStudioInitialized) return;
+    const initialBpm = parseInt(document.getElementById('audioBpm').value) || 120;
+    let currentBpm = initialBpm;
+    let totalSeconds = 0;
+
+    for (let s = 0; s < audioNumSteps; s++) {
+        const cell = audioSteps[0][s];
+        if (cell && cell.meta === 'bpm') {
+            currentBpm = cell.bpm;
+        }
+        totalSeconds += BASE_RES * (60.0 / currentBpm);
+    }
+
+    const totalSecondsRounded = Math.round(totalSeconds);
+    const mins = Math.floor(totalSecondsRounded / 60);
+    const secs = totalSecondsRounded % 60;
+    const el = document.getElementById('audioRuntime');
+    if (el) el.textContent = `Runtime: ${mins}m ${String(secs).padStart(2, '0')}s`;
+}
+
+/**
  * Play the current sequencer grid in the browser using Web Audio API.
  * Notes are pre-calculated and precisely scheduled against AudioContext.currentTime.
  */
@@ -3484,6 +3614,9 @@ function audioPreviewBrowser() {
     // 4. SCHEDULE AUDIO NOTES
     let hasNotes = false;
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        // Skip muted channels during browser preview
+        if (audioChannelMutes[c]) continue;
+
         const patchName = audioChannelPatches[c] || 'BEEP';
         let effectivePatch = BROWSER_PATCHES[patchName] || BROWSER_PATCHES['BEEP'];
 
