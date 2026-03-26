@@ -1813,6 +1813,8 @@ let audioSteps = [];
 let audioChannelPatches = [];
 // V2: per-channel ADSR override config (audio channels only — always type 0)
 let audioChannelAdsrOverrides = [];
+// Mute state per audio channel (browser preview only — ignored during export)
+let audioChannelMutes = [];
 // V2: automation tracks (separate from the 3 fixed audio channels)
 // Each entry: { targetScope: 0xFF, paramId: 0, steps: number[] }
 //   targetScope: 0–2 = targets audio channel 0/1/2, 0xFF = Global Master Bus
@@ -1831,6 +1833,7 @@ function initAudioStudio() {
             audioSteps.push(new Array(audioNumSteps).fill(null));
             audioChannelPatches.push(JSEQ_PATCH_NAMES[c] || 'SELECT');
             audioChannelAdsrOverrides.push({ enabled: false, a: 100, d: 100, s: 100, r: 100 });
+            audioChannelMutes.push(false);
         }
 
         _buildNotePicker();
@@ -1901,11 +1904,11 @@ function _resizeGrid() {
 
         // --- Channel row: label + patch selector + step grid ---
         const row = document.createElement('div');
-        row.className = 'channel-row';
+        row.className = 'channel-row' + (audioChannelMutes[c] ? ' channel-muted' : '');
         row.style.cssText = 'display: flex; flex-wrap: nowrap; align-items: center;';
 
         const controls = document.createElement('div');
-        controls.style.cssText = 'display: flex; gap: 5px; flex: 0 0 140px; flex-shrink: 0;';
+        controls.style.cssText = 'display: flex; gap: 5px; flex: 0 0 168px; flex-shrink: 0;';
 
         const lbl = document.createElement('div');
         lbl.className = 'channel-label';
@@ -1925,6 +1928,20 @@ function _resizeGrid() {
         sel.onchange = () => { audioChannelPatches[c] = sel.value; };
         controls.appendChild(sel);
 
+        // Mute toggle button (browser preview only — ignored during export)
+        const muteBtn = document.createElement('button');
+        muteBtn.id = `muteBtn_${c}`;
+        muteBtn.textContent = 'M';
+        muteBtn.title = 'Mute this channel during browser preview';
+        muteBtn.className = 'channel-mute-btn';
+        muteBtn.classList.toggle('muted', audioChannelMutes[c]);
+        muteBtn.onclick = () => {
+            audioChannelMutes[c] = !audioChannelMutes[c];
+            muteBtn.classList.toggle('muted', audioChannelMutes[c]);
+            row.classList.toggle('channel-muted', audioChannelMutes[c]);
+        };
+        controls.appendChild(muteBtn);
+
         row.appendChild(controls);
 
         const grid = document.createElement('div');
@@ -1934,9 +1951,9 @@ function _resizeGrid() {
         wrapper.appendChild(row);
 
         // --- ADSR override row (aligned to grid start) ---
-        // Controls section is 140px + 8px padding inside channel-row = 148px offset.
+        // Controls section is 168px + 8px padding inside channel-row = 176px offset.
         const adsrRow = document.createElement('div');
-        adsrRow.style.cssText = 'display: flex; align-items: center; gap: 6px; margin-top: 3px; padding-left: 148px; font-size: 0.8em;';
+        adsrRow.style.cssText = 'display: flex; align-items: center; gap: 6px; margin-top: 3px; padding-left: 176px; font-size: 0.8em;';
 
         const adsrChk = document.createElement('input');
         adsrChk.type = 'checkbox';
@@ -3484,6 +3501,9 @@ function audioPreviewBrowser() {
     // 4. SCHEDULE AUDIO NOTES
     let hasNotes = false;
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
+        // Skip muted channels during browser preview
+        if (audioChannelMutes[c]) continue;
+
         const patchName = audioChannelPatches[c] || 'BEEP';
         let effectivePatch = BROWSER_PATCHES[patchName] || BROWSER_PATCHES['BEEP'];
 
