@@ -2031,6 +2031,7 @@ function _resizeGrid() {
 
         container.appendChild(autoSection);
     }
+    _calculateTotalRuntime();
 }
 
 /**
@@ -2462,6 +2463,7 @@ function _renderChannel(ch) {
                     }
                 }
                 _renderChannel(ch); // Redraw the channel to show the changes
+                _calculateTotalRuntime();
             });
         }
 
@@ -3106,6 +3108,7 @@ async function audioLoad() {
 
         document.getElementById('audioSeqName').value = filename.replace('.jseq', '');
         showStatus('audioStatus', '📂 Loaded ' + filename, 'success');
+        _calculateTotalRuntime();
 
     } catch (e) {
         showStatus('audioStatus', 'Error loading sequence: ' + e.message, 'error');
@@ -3507,6 +3510,32 @@ function _browserStopPlayhead() {
     }
     const ph = document.getElementById('audioPlayhead');
     if (ph) ph.style.display = 'none';
+}
+
+/**
+ * Calculate the total playback runtime of the current sequence in seconds,
+ * correctly accounting for mid-sequence BPM changes stored in audioSteps[0].
+ * Updates the #audioRuntime display element.
+ */
+function _calculateTotalRuntime() {
+    if (!audioStudioInitialized) return;
+    const initialBpm = parseInt(document.getElementById('audioBpm').value) || 120;
+    let currentBpm = initialBpm;
+    let totalSeconds = 0;
+
+    for (let s = 0; s < audioNumSteps; s++) {
+        const cell = audioSteps[0][s];
+        if (cell && cell.meta === 'bpm') {
+            currentBpm = cell.bpm;
+        }
+        totalSeconds += BASE_RES * (60.0 / currentBpm);
+    }
+
+    const totalSecondsRounded = Math.round(totalSeconds);
+    const mins = Math.floor(totalSecondsRounded / 60);
+    const secs = totalSecondsRounded % 60;
+    const el = document.getElementById('audioRuntime');
+    if (el) el.textContent = `Runtime: ${mins}m ${String(secs).padStart(2, '0')}s`;
 }
 
 /**
