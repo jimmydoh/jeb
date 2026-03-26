@@ -301,7 +301,8 @@
                 <div class="audio-transport" style="display:flex; flex-wrap:wrap; gap:15px; align-items:center;">
                     <div style="display:flex; gap:10px; align-items:center; background:#222; padding:5px 10px; border-radius:4px;">
                         <label>BPM:</label>
-                        <input type="number" id="audioBpm" value="120" min="20" max="300" style="width:60px;">
+                        <input type="number" id="audioBpm" value="120" min="20" max="300" style="width:60px;" oninput="_calculateTotalRuntime()">
+                        <span id="audioRuntime" style="color:#80ccff; font-size:0.85em; white-space:nowrap;" title="Total sequence runtime">Runtime: 0m 00s</span>
                         <button onclick="audioPreview()">▶ Play on Hardware</button>
                         <button onclick="audioPreviewBrowser()">🔊 Play in Browser</button>
                         <button class="secondary" onclick="audioStop()">■ Stop</button>
