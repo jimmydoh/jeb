@@ -1812,6 +1812,7 @@ let audioNumSteps = 64;    // Calculated strictly on BASE_RES
 let audioSteps = [];
 let audioChannelPatches = [];
 // V2: per-channel ADSR override config (audio channels only — always type 0)
+const DEFAULT_ADSR_OVERRIDE = () => ({ enabled: false, a: 100, d: 100, s: 100, r: 100 });
 let audioChannelAdsrOverrides = [];
 // Mute state per audio channel (browser preview only — ignored during export)
 let audioChannelMutes = [];
@@ -1832,7 +1833,7 @@ function initAudioStudio() {
         for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
             audioSteps.push(new Array(audioNumSteps).fill(null));
             audioChannelPatches.push(JSEQ_PATCH_NAMES[c] || 'SELECT');
-            audioChannelAdsrOverrides.push({ enabled: false, a: 100, d: 100, s: 100, r: 100 });
+            audioChannelAdsrOverrides.push(DEFAULT_ADSR_OVERRIDE());
             audioChannelMutes.push(false);
         }
 
@@ -1877,7 +1878,7 @@ function _resizeGrid() {
         }
 
         if (!audioChannelAdsrOverrides[c]) {
-            audioChannelAdsrOverrides[c] = { enabled: false, a: 100, d: 100, s: 100, r: 100 };
+            audioChannelAdsrOverrides[c] = DEFAULT_ADSR_OVERRIDE();
         }
     }
 
@@ -2567,8 +2568,10 @@ function _selectDuration(beats, label, clickedBtn) {
 function audioClearAll() {
     for (let c = 0; c < AUDIO_NUM_CHANNELS; c++) {
         audioSteps[c] = new Array(audioNumSteps).fill(null);
-        _renderChannel(c);
+        audioChannelAdsrOverrides[c] = DEFAULT_ADSR_OVERRIDE();
     }
+    automationTracks = [];
+    _resizeGrid();
 }
 
 function _buildSequenceForChannel(ch) {
@@ -2993,9 +2996,6 @@ async function audioLoad() {
 
         updateGridConfig();
         audioClearAll();
-
-        // Clear existing automation tracks so we start fresh
-        automationTracks = [];
 
         let audioChCount = 0;
         for (const lc of loadedChannels) {
