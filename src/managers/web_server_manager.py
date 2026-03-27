@@ -34,6 +34,16 @@ from adafruit_httpserver import Server, Request, Response, GET, POST
 from utilities.logger import JEBLogger, LogLevel
 from utilities.palette import Palette
 
+try:
+    from adafruit_httpserver import FileResponse
+except ImportError:
+    FileResponse = None
+
+try:
+    from adafruit_httpserver import ChunkedResponse
+except ImportError:
+    ChunkedResponse = None
+
 class WebServerManager:
     """
     Async HTTP server for field service configuration and monitoring.
@@ -223,19 +233,8 @@ class WebServerManager:
         @self.server.route("/", GET)
         def index(request: Request):
             """Serve the main configuration page."""
-            html_paths = ["/sd/www/index.html", "www/index.html", "src/www/index.html"]
-
-            for path in html_paths:
-                try:
-                    import os
-                    os.stat(path) # Fast check if the file exists in this location
-
-                    # File found! Pass it to our bulletproof streaming helper
-                    return self._stream_file(request, path, "text/html")
-                except OSError:
-                    continue # File not found here, try the next path in the list
-
-            # Fallback: Return minimal error page if HTML file is missing entirely
+            filepaths = ["/sd/www/index.html", "www/index.html", "src/www/index.html"]
+            filetype = "text/html"
             error_html = """<!DOCTYPE html>
             <html>
             <head>
@@ -248,34 +247,42 @@ class WebServerManager:
             </body>
             </html>"""
 
-            return Response(request, error_html, content_type="text/html")
+            return self._static_file(request, filepaths, filetype, error_html)
 
         # --- STATIC ASSETS ---
 
         @self.server.route("/css/style.css", GET)
         def serve_css(request: Request):
             """Serve the compiled CSS stylesheet."""
-            return self._stream_file(request, "/sd/www/css/style.css", "text/css")
-
-        @self.server.route("/css/style.min.css", GET)
-        def serve_css_min(request: Request):
-            """Serve the minified CSS stylesheet."""
-            return self._stream_file(request, "/sd/www/css/style.min.css", "text/css")
+            filepaths = [
+                "/sd/www/css/style.min.css", "www/css/style.min.css", "src/www/css/style.min.css",
+                "/sd/www/css/style.css", "www/css/style.css", "src/www/css/style.css"
+            ]
+            filetype = "text/css"
+            error_html = """/* CSS file not found. Please ensure style.css is present. */"""
+            return self._static_file(request, filepaths, filetype, error_html)
 
         @self.server.route("/css/retro-theme.css", GET)
         def serve_retro_css(request: Request):
             """Serve the retro theme CSS stylesheet."""
-            return self._stream_file(request, "/sd/www/css/retro-theme.css", "text/css")
+            filepaths = [
+                "/sd/www/css/retro-theme.min.css", "www/css/retro-theme.min.css", "src/www/css/retro-theme.min.css",
+                "/sd/www/css/retro-theme.css", "www/css/retro-theme.css", "src/www/css/retro-theme.css"
+            ]
+            filetype = "text/css"
+            error_html = """/* Retro theme CSS file not found. Please ensure retro-theme.css is present. */"""
+            return self._static_file(request, filepaths, filetype, error_html)
 
         @self.server.route("/js/app.js", GET)
         def serve_js(request: Request):
             """Serve the frontend JavaScript engine."""
-            return self._stream_file(request, "/sd/www/js/app.js", "application/javascript")
-
-        @self.server.route("/js/app.min.js", GET)
-        def serve_js_min(request: Request):
-            """Serve the minified frontend JavaScript engine."""
-            return self._stream_file(request, "/sd/www/js/app.min.js", "application/javascript")
+            filepaths = [
+                "/sd/www/js/app.min.js", "www/js/app.min.js", "src/www/js/app.min.js",
+                "/sd/www/js/app.js", "www/js/app.js", "src/www/js/app.js"
+            ]
+            filetype = "application/javascript"
+            error_html = """/* JavaScript file not found. Please ensure app.js is present. */"""
+            return self._static_file(request, filepaths, filetype, error_html)
 
         # API: Get global config
         @self.server.route("/api/config/global", GET)
@@ -1829,34 +1836,43 @@ class WebServerManager:
             print(f"Error saving config: {e}")
             raise
 
+    def _static_file(self, request, filepaths, filetype, error_html):
+        for filepath in filepaths:
+            try:
+                os.stat(filepath) # Fast check if the file exists in this location
+
+                # File found! Pass it to our bulletproof streaming helper
+                return self._stream_file(request, filepath, filetype)
+            except OSError:
+                continue # File not found here, try the next path in the list
+
+        return Response(request, error_html, content_type=filetype)
+
     def _stream_file(self, request, filepath, content_type):
         """Dual-compatible file streaming for both Pico and Windows Emulator."""
         try:
-            import os
             os.stat(filepath) # Fast check if file exists
 
             # 1. Try optimized hardware method (Pico)
-            try:
-                from adafruit_httpserver import FileResponse
+            if FileResponse:
                 return FileResponse(request, filename=filepath, root_path="/")
 
             # 2. Fallback for Windows Emulator
-            except ImportError:
+            if ChunkedResponse:
                 def chunked_generator(fp, chunk_size=1024):
-                    with open(fp, "r", encoding="utf-8") as f:
+                    # Use "rb" (read binary) to safely handle images, audio, and text alike
+                    with open(fp, "rb") as f:
                         while True:
                             chunk = f.read(chunk_size)
                             if not chunk:
                                 break
                             yield chunk
 
-                try:
-                    from adafruit_httpserver import ChunkedResponse
-                    return ChunkedResponse(request, chunked_generator(filepath), content_type=content_type)
-                except ImportError:
-                    # Absolute worst-case fallback
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        return Response(request, f.read(), content_type=content_type)
+                return ChunkedResponse(request, chunked_generator(filepath), content_type=content_type)
+
+            # 3. Absolute worst-case fallback
+            with open(filepath, "rb") as f:
+                return Response(request, f.read(), content_type=content_type)
 
         except OSError:
             return Response(request, "File not found", status=404, content_type="text/plain")
