@@ -2586,10 +2586,12 @@ function _buildSequenceForChannel(ch) {
             accumulatedRest += BASE_RES;
         } else if (cell.covered) {
             continue;
-        } else if (cell.meta === 'bpm') {
-            // V2.2: BPM meta-event cells are treated as a single-slot rest in
-            // the audio track.  The actual BPM change is written by _encodeJseq
+        } else if (cell.meta === 'bpm' && cell.note === undefined) {
+            // V2.2: BPM-only meta-event cells are treated as a single-slot rest
+            // in the audio track.  The actual BPM change is written by _encodeJseq
             // into the dedicated Type 0x02 Master Event Track.
+            // If a cell carries BOTH a BPM marker and a note, fall through to the
+            // note branch so the note is not silently dropped.
             accumulatedRest += BASE_RES;
         } else if (cell.note !== undefined) {
             while (accumulatedRest > 0) {
@@ -2731,14 +2733,17 @@ function _encodeJseq() {
     const masterSteps = [];
     let masterPos = 0;
     for (const [stepIdx, newBpm] of bpmEvents) {
-        let restUnits = stepIdx - masterPos;
+        // Convert the grid-step gap to 1/32-beat units so the decoder can
+        // recover the exact step index.  Each BASE_RES grid step = BASE_RES*32
+        // duration units (e.g. BASE_RES=0.125 → 4 units per step).
+        let restUnits = (stepIdx - masterPos) * Math.round(BASE_RES * 32);
         while (restUnits > 0) {
             const chunk = Math.min(255, restUnits);
             masterSteps.push([0x00, chunk]);   // JSEQ_CMD_REST
             restUnits -= chunk;
         }
         masterSteps.push([0x01, Math.max(1, Math.min(255, newBpm))]);  // JSEQ_CMD_BPM_CHANGE
-        masterPos = stepIdx + 1;  // BPM_CHANGE occupies 0 time units
+        masterPos = stepIdx;  // BPM_CHANGE occupies 0 time units; timeline stays at stepIdx
     }
     const hasMasterTrack = masterSteps.length > 0;
 
