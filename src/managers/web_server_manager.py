@@ -8,12 +8,11 @@ Features:
 - Configuration editor (global and mode settings)
 - File browser (upload/download SD card files)
 - Console output viewer
-- Log viewer
-- Manual OTA update trigger
-- Debug mode toggle
+- Log viewer with filtering
 - Satellite reordering
-- Pixel Art Studio (live LED matrix drawing canvas)
+- Pixel Art Studio (live LED matrix drawing canvas, multi-frame animation editor)
 - Audio Studio (multi-channel chiptune sequence editor and .jseq export)
+- Admin mode with OTA update triggers
 
 Dependencies:
 - JEBLogger (for logging within the web server)
@@ -23,15 +22,27 @@ Dependencies:
 """
 
 import asyncio
+import binascii
 import json
 import os
 import gc
+import sys
 import time
 
 from adafruit_httpserver import Server, Request, Response, GET, POST
 
 from utilities.logger import JEBLogger, LogLevel
 from utilities.palette import Palette
+
+try:
+    from adafruit_httpserver import FileResponse
+except ImportError:
+    FileResponse = None
+
+try:
+    from adafruit_httpserver import ChunkedResponse
+except ImportError:
+    ChunkedResponse = None
 
 class WebServerManager:
     """
@@ -99,6 +110,14 @@ class WebServerManager:
     @property
     def synth_manager(self):
         return getattr(self.app, 'synth', None) if self.app else None
+
+    @property
+    def audio_manager(self):
+        return getattr(self.app, 'audio', None) if self.app else None
+
+    @property
+    def buzzer_manager(self):
+        return getattr(self.app, 'buzzer', None) if self.app else None
 
     @property
     def hid(self):
@@ -214,19 +233,8 @@ class WebServerManager:
         @self.server.route("/", GET)
         def index(request: Request):
             """Serve the main configuration page."""
-            html_paths = ["/sd/www/index.html", "www/index.html", "src/www/index.html"]
-
-            for path in html_paths:
-                try:
-                    import os
-                    os.stat(path) # Fast check if the file exists in this location
-
-                    # File found! Pass it to our bulletproof streaming helper
-                    return self._stream_file(request, path, "text/html")
-                except OSError:
-                    continue # File not found here, try the next path in the list
-
-            # Fallback: Return minimal error page if HTML file is missing entirely
+            filepaths = ["/sd/www/index.html", "www/index.html", "src/www/index.html"]
+            filetype = "text/html"
             error_html = """<!DOCTYPE html>
             <html>
             <head>
@@ -239,29 +247,42 @@ class WebServerManager:
             </body>
             </html>"""
 
-            return Response(request, error_html, content_type="text/html")
+            return self._static_file(request, filepaths, filetype, error_html)
 
         # --- STATIC ASSETS ---
 
         @self.server.route("/css/style.css", GET)
         def serve_css(request: Request):
             """Serve the compiled CSS stylesheet."""
-            return self._stream_file(request, "/sd/www/css/style.css", "text/css")
+            filepaths = [
+                "/sd/www/css/style.min.css", "www/css/style.min.css", "src/www/css/style.min.css",
+                "/sd/www/css/style.css", "www/css/style.css", "src/www/css/style.css"
+            ]
+            filetype = "text/css"
+            error_html = """/* CSS file not found. Please ensure style.css is present. */"""
+            return self._static_file(request, filepaths, filetype, error_html)
 
-        @self.server.route("/css/style.min.css", GET)
-        def serve_css_min(request: Request):
-            """Serve the minified CSS stylesheet."""
-            return self._stream_file(request, "/sd/www/css/style.min.css", "text/css")
+        @self.server.route("/css/retro-theme.css", GET)
+        def serve_retro_css(request: Request):
+            """Serve the retro theme CSS stylesheet."""
+            filepaths = [
+                "/sd/www/css/retro-theme.min.css", "www/css/retro-theme.min.css", "src/www/css/retro-theme.min.css",
+                "/sd/www/css/retro-theme.css", "www/css/retro-theme.css", "src/www/css/retro-theme.css"
+            ]
+            filetype = "text/css"
+            error_html = """/* Retro theme CSS file not found. Please ensure retro-theme.css is present. */"""
+            return self._static_file(request, filepaths, filetype, error_html)
 
         @self.server.route("/js/app.js", GET)
         def serve_js(request: Request):
             """Serve the frontend JavaScript engine."""
-            return self._stream_file(request, "/sd/www/js/app.js", "application/javascript")
-
-        @self.server.route("/js/app.min.js", GET)
-        def serve_js_min(request: Request):
-            """Serve the minified frontend JavaScript engine."""
-            return self._stream_file(request, "/sd/www/js/app.min.js", "application/javascript")
+            filepaths = [
+                "/sd/www/js/app.min.js", "www/js/app.min.js", "src/www/js/app.min.js",
+                "/sd/www/js/app.js", "www/js/app.js", "src/www/js/app.js"
+            ]
+            filetype = "application/javascript"
+            error_html = """/* JavaScript file not found. Please ensure app.js is present. */"""
+            return self._static_file(request, filepaths, filetype, error_html)
 
         # API: Get global config
         @self.server.route("/api/config/global", GET)
@@ -358,7 +379,7 @@ class WebServerManager:
                     if chunk_size is None:
                         chunk_size = self.CHUNK_SIZE
                     try:
-                        with open(filepath, "rb", encoding="utf-8") as f:
+                        with open(filepath, "rb") as f:
                             while True:
                                 chunk = f.read(chunk_size)
                                 if not chunk:
@@ -440,7 +461,7 @@ class WebServerManager:
                 bytes_written = 0
                 upload_method = "unknown"
 
-                with open(filepath, "wb", encoding="utf-8") as f:
+                with open(filepath, "wb") as f:
                     # Try to use streaming interface if available
                     # First, check for request.stream (newer adafruit_httpserver versions)
                     if hasattr(request, 'stream') and request.stream:
@@ -742,50 +763,6 @@ class WebServerManager:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
-        # API: Trigger OTA update
-        @self.server.route("/api/actions/ota-update", POST)
-        def trigger_ota_update(request: Request):
-            """Trigger a manual OTA update."""
-            try:
-                # Set update flag
-                try:
-                    with open("/sd/UPDATE_FLAG.txt", "w", encoding="utf-8") as f:
-                        f.write("UPDATE_REQUESTED\n")
-                except OSError as e:
-                    # Provide more specific error message
-                    if e.errno == 30:  # Read-only filesystem
-                        error_msg = "SD card is read-only"
-                    elif e.errno == 28:  # No space left on device
-                        error_msg = "SD card is full"
-                    else:
-                        error_msg = f"Failed to write update flag: {e}"
-                    return Response(request, f'{{"error": "{error_msg}"}}',
-                                  content_type="application/json", status=500)
-
-                self.log("OTA update triggered - device will update on next boot")
-                return Response(request, '{"status": "update_scheduled"}',
-                              content_type="application/json")
-            except Exception as e:
-                return Response(request, f'{{"error": "{str(e)}"}}',
-                              content_type="application/json", status=500)
-
-        # API: Toggle debug mode
-        @self.server.route("/api/actions/toggle-debug", POST)
-        def toggle_debug(request: Request):
-            """Toggle debug mode."""
-            try:
-                self.config["debug_mode"] = not self.config.get("debug_mode", False)
-                self._save_config()
-
-                status = "enabled" if self.config["debug_mode"] else "disabled"
-                self.log(f"Debug mode {status}")
-
-                return Response(request, f'{{"status": "debug_{status}"}}',
-                              content_type="application/json")
-            except Exception as e:
-                return Response(request, f'{{"error": "{str(e)}"}}',
-                              content_type="application/json", status=500)
-
         # API: Reorder satellites
         @self.server.route("/api/actions/reorder-satellites", POST)
         def reorder_satellites(request: Request):
@@ -842,7 +819,15 @@ class WebServerManager:
 
                 # Request tutorial variant if asked
                 tutorial = data.get("tutorial", False)
-                self.app._pending_mode_variant = "TUTORIAL" if tutorial else None
+                variant = data.get("variant")
+
+                # Allow custom string variants, fallback to TUTORIAL bool for legacy UI calls
+                if variant:
+                    self.app._pending_mode_variant = variant
+                elif tutorial:
+                    self.app._pending_mode_variant = "TUTORIAL"
+                else:
+                    self.app._pending_mode_variant = None
 
                 # Set high-priority console override (same as ConsoleManager)
                 self.app.console_override_mode = mode_id
@@ -858,6 +843,54 @@ class WebServerManager:
                               content_type="application/json")
             except Exception as e:
                 self.log(f"Error launching mode: {e}")
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Admin - get firmware version info
+        @self.server.route("/api/admin/version", GET)
+        def get_admin_version(request: Request):
+            """Return local and remote firmware version info for the Admin tab."""
+            try:
+                # 1. Get Local Version
+                local_version = None
+                try:
+                    # Look for the version file in the root directory (where ota_updater writes it)
+                    with open("version.json", "r") as vf:
+                        import json as _json
+                        vdata = _json.loads(vf.read())
+                        local_version = vdata.get("version")
+                except Exception:
+                    pass
+
+                # 2. Get Remote Version
+                update_url = self.config.get("update_url", "")
+                remote_version = None
+
+                if update_url and self._is_wifi_connected():
+                    try:
+                        JEBLogger.info("WEBS","Fetching remote version info from update URL")
+                        # Borrow the wifi manager's HTTP session to quickly fetch the remote version
+                        session = self.wifi_manager.create_http_session()
+                        v_url = f"{update_url.rstrip('/')}/version.json"
+
+                        # Keep the timeout very short (3s) so we don't freeze the web UI
+                        # if the github servers are hanging
+                        response = session.get(v_url, timeout=3)
+                        if response.status_code == 200:
+                            remote_data = response.json()
+                            remote_version = remote_data.get("version")
+                        response.close()
+                    except Exception as e:
+                        self.log(f"Failed to fetch remote version: {e}")
+
+                payload = {
+                    "local_version": local_version,
+                    "remote_version": remote_version,
+                    "update_url": update_url,
+                }
+                return Response(request, json.dumps(payload),
+                              content_type="application/json")
+            except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
 
@@ -1034,11 +1067,199 @@ class WebServerManager:
                     except OSError:
                         pass  # Directory already exists
 
-                    with open(filepath, "wb", encoding="utf-8") as f:
+                    with open(filepath, "wb") as f:
                         f.write(bytes(pixels))
 
                 self.log(f"Pixel art saved: {filepath}")
                 return Response(request, f'{{"status": "success", "path": "{filepath}"}}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Pixel library – list hardcoded icons.py constants and SD card .bin files
+        @self.server.route("/api/pixel/library", GET)
+        def get_pixel_library(request: Request):
+            """Return icon names from Icons class and .bin files from /sd/icons/."""
+            try:
+                icons_list = []
+                try:
+                    import utilities.icons as _icons
+
+                    # Safely extract all uppercase bytes constants dynamically
+                    for name in dir(_icons.Icons):
+                        if name.isupper():
+                            if isinstance(getattr(_icons.Icons, name), bytes):
+                                icons_list.append(name)
+                except ImportError:
+                    pass  # Module not found on this device
+
+                # Scan /sd/icons/ for .bin files and .janim animation files
+                bin_files = []
+                janim_files = []
+                try:
+                    for f in os.listdir("/sd/icons"):
+                        if f.lower().endswith(".bin"):
+                            bin_files.append(f)
+                        elif f.lower().endswith(".janim"):
+                            janim_files.append(f)
+                    bin_files.sort()
+                    janim_files.sort()
+                except OSError:
+                    pass
+
+                return Response(request, json.dumps({"icons": icons_list, "bins": bin_files, "janims": janim_files}),
+                                content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                                content_type="application/json", status=500)
+
+        # API: Load a binary icon – from /sd/icons/ (.bin) or from hardcoded Icons class
+        @self.server.route("/api/pixel/load", GET)
+        def load_pixel_icon(request: Request):
+            """Return raw pixel bytes (256 bytes) for a given icon.
+
+            If ``name`` ends in ``.bin``, the file is read from ``/sd/icons/``.
+            If ``name`` ends in ``.janim``, the raw animation bytes are returned.
+            Otherwise ``name`` is treated as a constant from the ``Icons`` class
+            in ``utilities.icons`` and the bytes are returned directly.
+            """
+            try:
+                name = request.query_params.get("name", "").strip()
+                if not name:
+                    return Response(request, '{"error": "name query parameter required"}',
+                                  content_type="application/json", status=400)
+
+                if name.lower().endswith(".bin") or name.lower().endswith(".janim"):
+                    # Load from SD card
+                    sanitized = self._sanitize_path("/sd/icons", name)
+                    if not sanitized.startswith("/sd/icons/"):
+                        return Response(request, '{"error": "invalid path"}',
+                                      content_type="application/json", status=400)
+                    try:
+                        with open(sanitized, "rb") as f:
+                            content = f.read()
+                        return Response(request, content, content_type="application/octet-stream")
+                    except OSError:
+                        return Response(request, '{"error": "File not found"}',
+                                      content_type="application/json", status=404)
+                else:
+                    # Load from hardcoded Icons class constant
+                    try:
+                        import utilities.icons as _icons
+                        icon_bytes = getattr(_icons.Icons, name, None)
+                        if icon_bytes is None or not isinstance(icon_bytes, bytes):
+                            return Response(request, f'{{"error": "Icon {name} not found in Icons class"}}',
+                                          content_type="application/json", status=404)
+                        return Response(request, bytes(icon_bytes), content_type="application/octet-stream")
+                    except ImportError:
+                        return Response(request, '{"error": "icons module not available on this device"}',
+                                      content_type="application/json", status=503)
+
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Save a multi-frame animation as a .janim file
+        @self.server.route("/api/pixel-art/save-animation", POST)
+        def save_animation(request: Request):
+            """Save a multi-frame sprite animation as a .janim file to /sd/icons/.
+
+            The request body must be a valid .janim V2 binary blob:
+              - 4 bytes magic: b'JANM'
+              - 1 byte: frame count (1-255)
+              - frame_count * 258 bytes: (2-byte duration + 256-byte pixel data)
+            """
+            try:
+                name = request.query_params.get("name", "").strip()
+                if not name:
+                    return Response(request, '{"error": "name query parameter required"}',
+                                  content_type="application/json", status=400)
+
+                valid_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+                if not all(c in valid_chars for c in name):
+                    return Response(request, '{"error": "name must contain only letters, numbers, and underscores"}',
+                                  content_type="application/json", status=400)
+
+                body = request.body
+                min_size = 4 + 1 + 258  # magic + frame_count + 1 frame
+                if not body or len(body) < min_size:
+                    return Response(request, f'{{"error": "request body must be a valid .janim binary (minimum {min_size} bytes)"}}',
+                                  content_type="application/json", status=400)
+
+                if body[:4] != b'JANM':
+                    return Response(request, '{"error": "invalid .janim file: missing JANM magic bytes"}',
+                                  content_type="application/json", status=400)
+
+                frame_count = body[4]
+                expected_size = 5 + frame_count * 258
+                if len(body) < expected_size:
+                    return Response(request, '{"error": "truncated .janim file: not enough frame data"}',
+                                  content_type="application/json", status=400)
+
+                if frame_count < 1 or frame_count > 255:
+                    return Response(request, '{"error": "frame_count must be 1-255"}',
+                                  content_type="application/json", status=400)
+
+                filepath = f"/sd/icons/{name.lower()}.janim"
+
+                if not self._testing:
+                    try:
+                        os.mkdir("/sd/icons")
+                    except OSError:
+                        pass  # Directory already exists
+
+                    with open(filepath, "wb") as f:
+                        f.write(body)
+
+                self.log(f"Animation saved: {filepath} ({frame_count} frames)")
+                return Response(request, f'{{"status": "success", "path": "{filepath}", "frames": {frame_count}}}',
+                              content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Preview a multi-frame animation on the live LED matrix
+        @self.server.route("/api/pixel-art/preview-animation", POST)
+        def preview_animation(request: Request):
+            """Display a single animation frame on the live LED matrix.
+
+            Accepts JSON: {"pixels": [256 ints], "frame": N}
+            This is called per-frame during client-side playback so the physical
+            matrix stays in sync with the web UI.
+            """
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                pixels = data.get("pixels")
+                if not pixels or len(pixels) != 256:
+                    return Response(request, '{"error": "pixels must be an array of 256 values"}',
+                                  content_type="application/json", status=400)
+
+                for v in pixels:
+                    if not isinstance(v, int) or v < 0 or v > 255:
+                        return Response(request, '{"error": "pixel values must be integers 0-255"}',
+                                      content_type="application/json", status=400)
+
+                if self.matrix_manager is None:
+                    return Response(request, '{"status": "no_matrix", "message": "Matrix manager not available"}',
+                                  content_type="application/json")
+
+                self.matrix_manager.clear()
+                for y in range(16):
+                    for x in range(16):
+                        val = pixels[y * 16 + x]
+                        if val != 0:
+                            color = Palette.LIBRARY.get(val)
+                            if color:
+                                self.matrix_manager.draw_pixel(x, y, color)
+
+                frame_num = data.get("frame", 0)
+                self.log(f"Animation frame {frame_num} previewed on matrix")
+                return Response(request, '{"status": "success"}',
                               content_type="application/json")
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',
@@ -1073,16 +1294,46 @@ class WebServerManager:
                     if not isinstance(ch, dict):
                         return Response(request, '{"error": "each channel must be an object"}',
                                       content_type="application/json", status=400)
-                    sequence = ch.get("sequence")
-                    if not sequence or not isinstance(sequence, list):
-                        return Response(request, '{"error": "each channel must have a sequence array"}',
-                                      content_type="application/json", status=400)
-                    patch_name = ch.get("patch", "SELECT")
-                    channel_dicts.append({
-                        'bpm': bpm,
-                        'patch': patch_name,
-                        'sequence': sequence,
-                    })
+
+                    track_type = ch.get("track_type", "audio")
+
+                    if track_type == "automation":
+                        # V2 Automation channel: expects a 'steps' array of [param_id, value] pairs
+                        steps_raw = ch.get("steps", [])
+                        if not isinstance(steps_raw, list):
+                            return Response(request, '{"error": "automation channel must have a steps array"}',
+                                          content_type="application/json", status=400)
+                        steps = [(int(s[0]), int(s[1])) for s in steps_raw if len(s) == 2]
+                        channel_dicts.append({
+                            'bpm': bpm,
+                            'type': 'automation',
+                            'steps': steps,
+                        })
+                    else:
+                        # Audio channel (v1 and v2)
+                        sequence = ch.get("sequence")
+                        if not sequence or not isinstance(sequence, list):
+                            return Response(request, '{"error": "each audio channel must have a sequence array"}',
+                                          content_type="application/json", status=400)
+                        patch_name = ch.get("patch", "SELECT")
+                        ch_dict = {
+                            'bpm': bpm,
+                            'patch': patch_name,
+                            'sequence': sequence,
+                            'type': 'audio',
+                        }
+                        # V2: optional inline ADSR override [attack, decay, sustain, release] multipliers
+                        adsr_override = ch.get("adsr_override")
+                        if adsr_override and isinstance(adsr_override, list) and len(adsr_override) == 4:
+                            if self.synth_manager is not None:
+                                from utilities.synth_registry import Patches
+                                base_patch = getattr(Patches, patch_name, Patches.SELECT)
+                                env_override = self.synth_manager._apply_adsr_multipliers(
+                                    base_patch['envelope'],
+                                    tuple(int(v) for v in adsr_override)
+                                )
+                                ch_dict['envelope_override'] = env_override
+                        channel_dicts.append(ch_dict)
 
                 if self.synth_manager is None:
                     return Response(request, '{"status": "no_synth", "message": "Synth manager not available"}',
@@ -1116,20 +1367,31 @@ class WebServerManager:
                     return Response(request, '{"error": "request body must contain .jseq binary data (minimum 8 bytes)"}',
                                   content_type="application/json", status=400)
 
-                if body[:4] != b'JSEQ':
+                # Decode the safe Base64 text back into pristine, uncorrupted bytes
+                try:
+                    raw_bytes = binascii.a2b_base64(body)
+                except Exception:
+                    return Response(request, '{"error": "invalid base64 payload"}',
+                                  content_type="application/json", status=400)
+
+                if len(raw_bytes) < 8:
+                    return Response(request, '{"error": "request body must contain .jseq binary data (minimum 8 bytes)"}',
+                                  content_type="application/json", status=400)
+
+                if raw_bytes[:4] != b'JSEQ':
                     return Response(request, '{"error": "invalid .jseq file: missing JSEQ magic bytes"}',
                                   content_type="application/json", status=400)
 
                 filepath = f"/sd/sequences/{name.lower()}.jseq"
 
-                if not self._testing:
+                if not getattr(self, "_testing", False):
                     try:
                         os.mkdir("/sd/sequences")
                     except OSError:
                         pass  # Directory already exists
 
                     with open(filepath, "wb") as f:
-                        f.write(body)
+                        f.write(raw_bytes)
 
                 self.log(f"Synth sequence saved: {filepath}")
                 return Response(request, f'{{"status": "success", "path": "{filepath}"}}',
@@ -1150,6 +1412,201 @@ class WebServerManager:
                 self.log("Synth playback stopped")
                 return Response(request, '{"status": "stopped"}',
                               content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Audio library – list available tones and WAV files
+        @self.server.route("/api/audio/library", GET)
+        def get_audio_library(request: Request):
+            """Return available tone names from tones.py and .wav files from /sd/audio/."""
+            try:
+                tones_list = []
+                try:
+                    # Force a fresh load from disk to catch live web-edits
+                    sys.modules.pop('utilities.tones', None)
+                    import utilities.tones as _tones
+
+                    # Safely extract all uppercase dictionary constants dynamically
+                    for name in dir(_tones):
+                        if name.isupper() and name != "NOTE_FREQUENCIES":
+                            if isinstance(getattr(_tones, name), dict):
+                                tones_list.append(name)
+                except ImportError:
+                    pass  # Module not found
+
+                # Scan /sd/audio/ recursively for .wav files
+                wav_files = self._list_wav_files("/sd/audio")
+
+                # Scan /sd/sequences/ for .jseq files
+                jseq_list = []
+                try:
+                    for f in os.listdir("/sd/sequences"):
+                        if f.lower().endswith(".jseq"):
+                            jseq_list.append(f)
+                except OSError:
+                    pass
+
+                return Response(request, json.dumps({"tones": tones_list, "wavs": wav_files, "jseqs": jseq_list}),
+                                content_type="application/json")
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                                content_type="application/json", status=500)
+
+        # API: Return tone sequence data for a single named tone (for browser playback)
+        @self.server.route("/api/audio/tone", GET)
+        def get_tone_data(request: Request):
+            """Return serialised sequence data for a named tone from tones.py.
+
+            Query parameter:
+                name (str): Uppercase tone constant name, e.g. SYSTEM_BOOT
+
+            Returns JSON:
+                {"bpm": 120, "patch": "SELECT", "sequence": [["C4", 0.25], ...]}
+            """
+            try:
+                name = request.query_params.get("name", "").strip().upper()
+                if not name:
+                    return Response(request, '{"error": "name query parameter required"}',
+                                    content_type="application/json", status=400)
+
+                try:
+                    import utilities.tones as _tones
+                    tone_data = getattr(_tones, name, None)
+                    if tone_data is None or not isinstance(tone_data, dict):
+                        return Response(request, f'{{"error": "Tone {name} not found"}}',
+                                        content_type="application/json", status=404)
+
+                    patch = tone_data.get("patch", {})
+                    patch_name = patch.get("name", "BEEP") if isinstance(patch, dict) else "BEEP"
+                    sequence = tone_data.get("sequence", [])
+                    serialized = [[note, dur] for note, dur in sequence]
+
+                    result = json.dumps({
+                        "bpm": tone_data.get("bpm", 120),
+                        "patch": patch_name,
+                        "sequence": serialized,
+                    })
+                    return Response(request, result, content_type="application/json")
+                except ImportError:
+                    return Response(request, '{"error": "tones module not available"}',
+                                    content_type="application/json", status=503)
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                                content_type="application/json", status=500)
+
+        # API: Load a .jseq sequence file from /sd/sequences/
+        @self.server.route("/api/synth/load", GET)
+        def load_synth_sequence(request: Request):
+            """Load a .jseq binary sequence file from /sd/sequences/."""
+            try:
+                name = request.query_params.get("name", "").strip()
+                if not name:
+                    return Response(request, '{"error": "name query parameter required"}',
+                                  content_type="application/json", status=400)
+
+                sanitized = self._sanitize_path("/sd/sequences", name)
+                if not sanitized.startswith("/sd/sequences/"):
+                    return Response(request, '{"error": "invalid path"}',
+                                  content_type="application/json", status=400)
+
+                try:
+                    with open(sanitized, "rb") as f:
+                        content = f.read()
+                    return Response(request, content, content_type="application/octet-stream")
+                except OSError:
+                    return Response(request, '{"error": "File not found"}',
+                                  content_type="application/json", status=404)
+
+            except Exception as e:
+                return Response(request, f'{{"error": "{str(e)}"}}',
+                              content_type="application/json", status=500)
+
+        # API: Play a tone/sequence or WAV file
+        @self.server.route("/api/audio/play", POST)
+        def play_audio(request: Request):
+            """Play a pre-defined tone/sequence or a WAV file.
+
+            JSON body for tone/sequence:
+                {"type": "tone", "name": "UI_CONFIRM", "target": "buzzer"}
+                {"type": "tone", "name": "SYSTEM_BOOT", "target": "synth"}
+
+            JSON body for WAV playback:
+                {"type": "wav", "filename": "audio/menu/tick.wav"}
+            """
+            try:
+                data = request.json()
+                if not data:
+                    return Response(request, '{"error": "Invalid JSON"}',
+                                  content_type="application/json", status=400)
+
+                play_type = data.get("type", "")
+
+                if play_type == "tone":
+                    name = data.get("name", "").strip().upper()
+                    target = data.get("target", "synth").strip().lower()
+
+                    if not name:
+                        return Response(request, '{"error": "name is required"}',
+                                      content_type="application/json", status=400)
+
+                    if target not in ("buzzer", "synth"):
+                        return Response(request, '{"error": "target must be buzzer or synth"}',
+                                      content_type="application/json", status=400)
+
+                    if target == "buzzer":
+                        if self.buzzer_manager is None:
+                            return Response(request, '{"status": "no_buzzer", "message": "Buzzer manager not available"}',
+                                          content_type="application/json")
+                        # BuzzerManager.play_sequence() resolves name strings internally
+                        self.buzzer_manager.play_sequence(name)
+                    else:
+                        if self.synth_manager is None:
+                            return Response(request, '{"status": "no_synth", "message": "Synth manager not available"}',
+                                          content_type="application/json")
+                        try:
+                            import utilities.tones as _tones
+                            tone_data = getattr(_tones, name, None)
+                            if tone_data is None or not isinstance(tone_data, dict):
+                                return Response(request, f'{{"error": "Tone {name} not found in tones.py"}}',
+                                              content_type="application/json", status=404)
+                            self.synth_manager.preview_channels([tone_data])
+                        except ImportError:
+                            return Response(request, '{"error": "tones module not available on this device"}',
+                                          content_type="application/json", status=503)
+
+                    self.log(f"Audio play: tone '{name}' on {target}")
+                    return Response(request, '{"status": "success"}',
+                                  content_type="application/json")
+
+                elif play_type == "wav":
+                    filename = data.get("filename", "").strip()
+                    if not filename:
+                        return Response(request, '{"error": "filename is required"}',
+                                      content_type="application/json", status=400)
+
+                    # Security: sanitize path and ensure it resolves within /sd/audio/
+                    sanitized = self._sanitize_path("/sd", filename)
+                    if not sanitized.startswith("/sd/audio/"):
+                        return Response(request, '{"error": "invalid filename"}',
+                                      content_type="application/json", status=400)
+
+                    # Pass the path relative to /sd/ (what audio_manager.play() expects)
+                    safe_filename = sanitized[4:]  # Strip "/sd/" prefix (4 chars)
+
+                    if self.audio_manager is None:
+                        return Response(request, '{"status": "no_audio", "message": "Audio manager not available"}',
+                                      content_type="application/json")
+
+                    self.audio_manager.play(safe_filename)
+                    self.log(f"Audio play: WAV '{safe_filename}'")
+                    return Response(request, '{"status": "success"}',
+                                  content_type="application/json")
+
+                else:
+                    return Response(request, '{"error": "type must be tone or wav"}',
+                                  content_type="application/json", status=400)
+
             except Exception as e:
                 return Response(request, f'{{"error": "{str(e)}"}}',
                               content_type="application/json", status=500)
@@ -1379,34 +1836,43 @@ class WebServerManager:
             print(f"Error saving config: {e}")
             raise
 
+    def _static_file(self, request, filepaths, filetype, error_html):
+        for filepath in filepaths:
+            try:
+                os.stat(filepath) # Fast check if the file exists in this location
+
+                # File found! Pass it to our bulletproof streaming helper
+                return self._stream_file(request, filepath, filetype)
+            except OSError:
+                continue # File not found here, try the next path in the list
+
+        return Response(request, error_html, content_type=filetype)
+
     def _stream_file(self, request, filepath, content_type):
         """Dual-compatible file streaming for both Pico and Windows Emulator."""
         try:
-            import os
             os.stat(filepath) # Fast check if file exists
 
             # 1. Try optimized hardware method (Pico)
-            try:
-                from adafruit_httpserver import FileResponse
+            if FileResponse:
                 return FileResponse(request, filename=filepath, root_path="/")
 
             # 2. Fallback for Windows Emulator
-            except ImportError:
+            if ChunkedResponse:
                 def chunked_generator(fp, chunk_size=1024):
-                    with open(fp, "r", encoding="utf-8") as f:
+                    # Use "rb" (read binary) to safely handle images, audio, and text alike
+                    with open(fp, "rb") as f:
                         while True:
                             chunk = f.read(chunk_size)
                             if not chunk:
                                 break
                             yield chunk
 
-                try:
-                    from adafruit_httpserver import ChunkedResponse
-                    return ChunkedResponse(request, chunked_generator(filepath), content_type=content_type)
-                except ImportError:
-                    # Absolute worst-case fallback
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        return Response(request, f.read(), content_type=content_type)
+                return ChunkedResponse(request, chunked_generator(filepath), content_type=content_type)
+
+            # 3. Absolute worst-case fallback
+            with open(filepath, "rb") as f:
+                return Response(request, f.read(), content_type=content_type)
 
         except OSError:
             return Response(request, "File not found", status=404, content_type="text/plain")
@@ -1433,6 +1899,29 @@ class WebServerManager:
             return {"path": path, "items": items}
         except Exception as e:
             raise RuntimeError(f"Error listing directory: {e}")
+
+    def _list_wav_files(self, path, _root=None):
+        """Recursively list .wav files under path, returning paths relative to /sd/."""
+        if _root is None:
+            _root = path
+        wav_files = []
+        try:
+            for item in os.listdir(path):
+                full_path = f"{path}/{item}"
+                try:
+                    stat = os.stat(full_path)
+                    is_dir = (stat[0] & 0x4000) != 0
+                    if is_dir:
+                        wav_files.extend(self._list_wav_files(full_path, _root))
+                    elif item.lower().endswith(".wav"):
+                        # Return path relative to /sd/ so it can be passed directly to audio_manager.play()
+                        rel = full_path[4:] if full_path.startswith("/sd/") else full_path
+                        wav_files.append(rel)
+                except OSError as e:
+                    JEBLogger.warning("WEBS", f"Could not stat {full_path} during WAV scan: {e}")
+        except OSError as e:
+            JEBLogger.warning("WEBS", f"WAV scan: directory not found or unreadable: {path} ({e})")
+        return wav_files
 
     async def start(self):
         """Start the web server."""

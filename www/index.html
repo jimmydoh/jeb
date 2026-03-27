@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JEB Field Service Configurator</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/retro-theme.css">
+</head>
+<body>
+    <div id="crtOverlay" aria-hidden="true"></div>
+    <button id="retroToggleBtn" onclick="toggleRetroTheme()" title="Toggle 16-bit retro mode">🕹 RETRO</button>
+    <div class="container">
+        <h1 id="mainTitle" onclick="adminEasterEgg()" title="🔧 JEB Field Service Configurator" style="cursor: default;">🔧 JEB Field Service Configurator</h1>
+
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('system')">System Status</button>
+            <button class="tab" onclick="showTab('config')">Config</button>
+            <button class="tab" onclick="showTab('modes')">Modes</button>
+            <button class="tab" onclick="showTab('files')">File Browser</button>
+            <button class="tab" onclick="showTab('logs')">Logs</button>
+            <button class="tab" onclick="showTab('console')">Console</button>
+            <button class="tab" onclick="showTab('pixelart')">Pixel Art Studio</button>
+            <button class="tab" onclick="showTab('audiostudio')">Audio Studio</button>
+            <button class="tab" onclick="showTab('hid')">HID</button>
+            <button class="tab" onclick="showTab('gamepad')">🎮 Gamepad</button>
+            <button id="adminTabBtn" class="tab admin-tab-hidden" onclick="showTab('admin')">⚙ Admin</button>
+        </div>
+
+        <div id="system" class="tab-content active">
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px;">
+                <h2>Dashboard</h2>
+                <div style="font-size: 0.85em; color: #aaa; background: #111; padding: 6px 12px; border-radius: 4px; border: 1px solid #333;">
+                    Free RAM: <strong id="sysRam" style="color: #2196F3;">-- KB</strong>
+                </div>
+            </div>
+
+            <div class="dashboard-layout">
+                <div class="dashboard-col">
+                    <div class="panel">
+                        <h3 class="panel-title">
+                            Device Status
+                            <button class="secondary" style="padding: 4px 8px; font-size: 0.8em;" onclick="loadSystemStatus()" title="Refresh">↺</button>
+                        </h3>
+                        <div id="systemStatus" style="margin-bottom: 10px;">
+                            <em style="color: #666; font-size: 0.9em;">Loading metrics...</em>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <h3 class="panel-title">System Controls</h3>
+                        <div class="action-grid">
+                            <button id="btnSleepToggle" onclick="toggleSleep()" style="background: #555;">Checking...</button>
+                            <button onclick="triggerReboot()" style="background: #d32f2f;">Reboot</button>
+                        </div>
+                        <div id="actionStatus" class="status" style="display:none; margin-top: 15px;"></div>
+                    </div>
+                </div>
+
+                <div class="dashboard-col">
+                    <div class="panel">
+                        <h3 class="panel-title">
+                            Real-Time Telemetry
+                            <div>
+                                <span id="telemetryStatus" class="telemetry-status disconnected">Disconnected</span>
+                                <button class="secondary" style="padding: 4px 8px; font-size: 0.8em; margin-left: 5px;" onclick="startTelemetry()">Connect</button>
+                                <button class="secondary" style="padding: 4px 8px; font-size: 0.8em;" onclick="stopTelemetry()">Stop</button>
+                            </div>
+                        </h3>
+
+                        <div class="info-grid" id="telemetryVoltages" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
+                            <em style="color: #666; font-size: 0.9em;">Waiting for telemetry data...</em>
+                        </div>
+
+                        <div id="telemetryCharts" style="display: flex; flex-direction: column; gap: 15px; margin-top: 20px;"></div>
+                    </div>
+
+                    <div class="panel">
+                        <h3 class="panel-title">Hardware Topology</h3>
+                        <div class="topo-wrapper">
+                            <canvas id="topoCanvas" height="200" class="topo-canvas"></canvas>
+                        </div>
+                        <p class="topo-hint">Click a node to jump to its HID panel</p>
+                    </div>
+
+                    <div class="panel">
+                        <h3 class="panel-title">Direct LED Controller</h3>
+                        <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                            <div>
+                                <label style="font-size: 12px; color: #aaa;">Index (-1 = All):</label><br>
+                                <input type="number" id="ledActionIndex" value="-1" style="width: 80px; padding: 8px; background: #333; color: white; border: 1px solid #444; border-radius: 3px;">
+                            </div>
+                            <div>
+                                <label style="font-size: 12px; color: #aaa;">Color:</label><br>
+                                <input type="color" id="ledActionColor" value="#00FFFF" style="height: 35px; width: 60px; background: none; border: none; cursor: pointer;">
+                            </div>
+                            <div>
+                                <label style="font-size: 12px; color: #aaa;">Animation:</label><br>
+                                <select id="ledActionAnim" style="padding: 8px; background: #333; color: white; border: 1px solid #444; border-radius: 3px;">
+                                    <option value="SOLID">SOLID</option>
+                                    <option value="FLASH">FLASH</option>
+                                    <option value="BREATH">BREATH</option>
+                                    <option value="CHASE">CHASE</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 12px; color: #aaa;">Speed:</label><br>
+                                <input type="number" step="0.1" id="ledActionSpeed" value="1.0" style="width: 80px; padding: 8px; background: #333; color: white; border: 1px solid #444; border-radius: 3px;">
+                            </div>
+                            <div>
+                                <button onclick="triggerLED()" style="padding: 9px 20px; background: #2196F3; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: bold;">
+                                    Push State
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="config" class="tab-content">
+            <h2>⚙️ Global Configuration</h2>
+            <p style="color: #b0b0b0; margin-bottom: 20px;">Automatically generated from the system configuration dictionary.</p>
+
+            <form id="configForm">
+                <div id="dynamicConfigFields" style="display: flex; flex-direction: column; gap: 10px;"></div>
+
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button type="button" onclick="saveConfig()">💾 Save Configuration</button>
+                    <button type="button" class="secondary" onclick="loadConfig()">↺ Revert</button>
+                </div>
+            </form>
+            <div id="configStatus" class="status" style="display:none; margin-top: 15px;"></div>
+        </div>
+
+        <div id="modes" class="tab-content">
+            <h2>Game Modes</h2>
+            <div style="margin-bottom:15px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <span style="color:#b0b0b0; margin-right:4px;">Filter:</span>
+                <button class="mode-filter-btn active" onclick="filterModes('ALL', this)">All</button>
+                <button class="mode-filter-btn" onclick="filterModes('CORE', this)">Core Only</button>
+                <button class="mode-filter-btn" onclick="filterModes('ZERO_PLAYER', this)">Zero Player</button>
+                <button class="mode-filter-btn" onclick="filterModes('EXP1', this)">Industrial</button>
+                <button style="margin-left:auto;" onclick="loadModes()">↺ Refresh</button>
+            </div>
+            <div id="modesHardware" style="margin-bottom:12px;"></div>
+            <div id="modesList"></div>
+            <div id="modesStatus" class="status" style="display:none;"></div>
+        </div>
+
+        <div id="files" class="tab-content">
+            <h2>File Browser</h2>
+            <div>
+                <label>Current Path: <span id="currentPath">/sd</span></label>
+                <button onclick="loadFiles()">Refresh</button>
+            </div>
+            <div class="form-group" style="margin-top: 15px;">
+                <label>Upload File:</label>
+                <input type="file" id="fileUpload">
+                <button onclick="uploadFile()">Upload to Current Directory</button>
+            </div>
+            <ul class="file-list" id="fileList"></ul>
+        </div>
+
+        <div id="logs" class="tab-content">
+            <h2>System Logs</h2>
+            <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
+                <select id="logLevelFilter" onchange="loadLogs()" style="width:auto;">
+                    <option value="">All Levels</option>
+                    <option value="0">DEBUG+</option>
+                    <option value="1">INFO+</option>
+                    <option value="2">NOTE+</option>
+                    <option value="3">WARNING+</option>
+                    <option value="4">CRITICAL+</option>
+                    <option value="5">ERROR only</option>
+                </select>
+                <input type="text" id="logSearch" placeholder="Search logs…" oninput="loadLogs()" style="width:220px;">
+                <button onclick="loadLogs()">Refresh</button>
+                <button class="secondary" onclick="clearLogs()">Clear</button>
+            </div>
+            <div class="log-viewer" id="logViewer"></div>
+        </div>
+
+        <div id="console" class="tab-content">
+            <h2>Console</h2>
+            <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center;">
+                <button onclick="loadConsole()">Refresh</button>
+                <label style="display:inline; margin:0;">
+                    <input type="checkbox" id="consoleAutoRefresh" onchange="toggleConsoleAutoRefresh()"> Auto-refresh
+                </label>
+            </div>
+            <div class="log-viewer" id="consoleViewer"></div>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+                <input type="text" id="consoleInput" placeholder="Type command and press Enter…" style="flex:1;"
+                       onkeydown="if(event.key==='Enter') sendConsoleInput()">
+                <button onclick="sendConsoleInput()">Send</button>
+            </div>
+            <div id="consoleStatus" class="status" style="display:none;"></div>
+        </div>
+
+        <div id="pixelart" class="tab-content">
+            <h2>🎨 Pixel Art Studio</h2>
+            <p style="color: #b0b0b0; margin-bottom: 15px;">Draw 16×16 pixel art and preview it live on the LED matrix, then save as an icon or multi-frame animation.</p>
+            <div class="pixel-studio-layout">
+                <div class="pixel-canvas-wrap">
+                    <div class="pixel-grid" id="pixelGrid"
+                         onmousedown="pixelMouseDown(event)"
+                         onmousemove="pixelMouseMove(event)"
+                         onmouseup="pixelMouseUp()"
+                         onmouseleave="pixelMouseLeave()"></div>
+                    <canvas id="onionSkinCanvas" class="onion-skin-canvas" style="display:none;"></canvas>
+                    <div id="pixelTooltip" class="pixel-tooltip" style="display:none;"></div>
+
+                    <!-- Animation Timeline -->
+                    <div class="anim-timeline-wrap" style="margin-top:8px;">
+                        <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+                            <span style="color:#80ccff; font-size:0.85em; font-weight:bold;">🎞 Frames</span>
+                            <button onclick="animAddFrame()" title="Add blank frame">+ Add</button>
+                            <button onclick="animDuplicateFrame()" title="Duplicate current frame">⧉ Dup</button>
+                            <button onclick="animDeleteFrame()" class="secondary" title="Delete current frame">✕ Del</button>
+                            <button onclick="animMoveFrame(-1)" class="secondary" title="Move frame left">◀</button>
+                            <button onclick="animMoveFrame(1)" class="secondary" title="Move frame right">▶</button>
+                        </div>
+                        <div class="anim-timeline" id="animTimeline"></div>
+                    </div>
+
+                    <!-- Playback Controls -->
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; background:#1a1a1a; border:1px solid #333; border-radius:4px; padding:8px;">
+                        <span style="color:#80ccff; font-size:0.85em; font-weight:bold;">▶ Playback</span>
+                        <button onclick="animPlay()" id="animPlayBtn">▶ Play</button>
+                        <button onclick="animStop()" class="secondary">■ Stop</button>
+                        <label style="color:#b0b0b0; font-size:0.85em; margin-left:6px;" title="Duration of current frame">Frame ms:</label>
+                        <input type="number" id="animDuration" value="150" min="10" max="10000" step="10" style="width:65px;" onchange="updateFrameDuration(this.value)">
+                        <label style="color:#b0b0b0; font-size:0.85em; margin-left:6px;">
+                            <input type="checkbox" id="onionSkinToggle" onchange="toggleOnionSkin(this.checked)" style="margin-right:4px;">
+                            Onion Skin
+                        </label>
+                    </div>
+                </div>
+                <div class="pixel-studio-controls">
+                    <div class="form-group">
+                        <label>Selected Color: <span id="selectedColorName">OFF</span></label>
+                        <div id="selectedColorPreview" style="width:32px;height:32px;background:#000;border:2px solid #666;border-radius:3px;margin-top:4px;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Palette:</label>
+                        <div class="palette-grid" id="paletteGrid"></div>
+                    </div>
+
+                    <!-- File Operations -->
+                    <div style="background:#1a1a1a; border:1px solid #333; border-radius:4px; padding:10px; margin-top:15px;">
+                        <h4 style="margin:0 0 10px 0; color:#80ccff; font-size:0.9em;">📂 File Operations</h4>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+                            <label style="color:#b0b0b0; font-size:0.85em; white-space:nowrap;">icons.py:</label>
+                            <select id="iconLibSelect" style="flex:1; min-width:130px;">
+                                <option value="">Loading…</option>
+                            </select>
+                            <button onclick="pixelLoadIcon('lib')">📂 Load</button>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+                            <label style="color:#b0b0b0; font-size:0.85em; white-space:nowrap;">SD Icon:</label>
+                            <select id="iconBinSelect" style="flex:1; min-width:130px;">
+                                <option value="">Loading…</option>
+                            </select>
+                            <button onclick="pixelLoadIcon('bin')">📂 Load</button>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <label style="color:#b0b0b0; font-size:0.85em; white-space:nowrap;">SD Anim:</label>
+                            <select id="iconJanimSelect" style="flex:1; min-width:130px;">
+                                <option value="">Loading…</option>
+                            </select>
+                            <button onclick="pixelLoadIcon('janim')">📂 Load</button>
+                        </div>
+                    </div>
+
+                    <!-- Save section -->
+                    <div style="margin-top:12px;">
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+                            <label style="color:#b0b0b0; white-space:nowrap;">Save As:</label>
+                            <input type="text" id="iconName" placeholder="my_icon" maxlength="32" style="flex:1; min-width:130px;">
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button onclick="previewPixelArt()">▶ Preview on Matrix</button>
+                            <button onclick="savePixelArt()">💾 Save Icon</button>
+                            <button onclick="saveAnimation()">🎞 Save Animation</button>
+                            <button class="secondary" onclick="clearCanvas()">Clear</button>
+                        </div>
+                    </div>
+
+                    <div id="pixelArtStatus" class="status" style="display:none;margin-top:10px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="audiostudio" class="tab-content">
+            <h2>🎵 Audio Studio</h2>
+            <p style="color: #b0b0b0; margin-bottom: 15px;">Compose a multi-channel chiptune sequence, preview it live on the device, then save as a <code>.jseq</code> file.</p>
+
+            <div class="audio-studio-layout">
+                <!-- Transport controls -->
+                <div class="audio-transport" style="display:flex; flex-wrap:wrap; gap:15px; align-items:center;">
+                    <div style="display:flex; gap:10px; align-items:center; background:#222; padding:5px 10px; border-radius:4px;">
+                        <label>BPM:</label>
+                        <input type="number" id="audioBpm" value="120" min="20" max="300" style="width:60px;" oninput="_calculateTotalRuntime()">
+                        <span id="audioRuntime" style="color:#80ccff; font-size:0.85em; white-space:nowrap;" title="Total sequence runtime">Runtime: 0m 00s</span>
+                        <button onclick="audioPreview()">▶ Play on Hardware</button>
+                        <button onclick="audioPreviewBrowser()">🔊 Play in Browser</button>
+                        <button class="secondary" onclick="audioStop()">■ Stop</button>
+                    </div>
+
+                    <div style="display:flex; gap:10px; align-items:center; background:#222; padding:5px 10px; border-radius:4px;">
+                        <label>Length:</label>
+                        <input type="number" id="audioBarsInput" value="2" min="1" max="16" style="width:50px;" onchange="updateGridConfig()">
+                        <span style="color:#888; font-size:0.9em;">Bars</span>
+
+                        <label style="margin-left:10px;">Grid:</label>
+                        <select id="audioResInput" onchange="updateGridConfig()">
+                            <option value="0.5">1/8 Note</option>
+                            <option value="0.25" selected>1/16 Note</option>
+                            <option value="0.125">1/32 Note</option>
+                        </select>
+                    </div>
+
+                    <button class="secondary" onclick="audioClearAll()" style="margin-left:auto;">Clear All</button>
+                </div>
+
+                <div id="audioGridScroller" style="overflow-x: auto; background: #111; border: 1px solid #333; border-radius: 4px; padding-bottom: 10px; margin-top: 15px;">
+                    <div id="audioGridInner" style="min-width: max-content; padding: 10px; position: relative;">
+                        <div id="audioGridHeader" style="display: flex; margin-bottom: 5px;"></div>
+                        <div id="channelRows"></div>
+                    </div>
+                </div>
+
+                <!-- Note & Duration Picker -->
+                <div style="background:#1a1a1a; border:1px solid #333; border-radius:4px; padding:10px; margin-top:4px;">
+                    <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
+                        <div>
+                            <label style="color:#b0b0b0; font-size:0.85em;">Active Note: <strong id="activeNoteLabel" style="color:#4CAF50;">—</strong></label>
+                            <div class="note-picker" id="notePicker"></div>
+                        </div>
+                        <div>
+                            <label style="color:#b0b0b0; font-size:0.85em;">Duration: <strong id="activeDurLabel" style="color:#80ccff;">♩ Quarter (1 beat)</strong></label>
+                            <div class="duration-picker" id="durationPicker"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Save section -->
+                <div style="background:#1a1a1a; border:1px solid #333; border-radius:4px; padding:10px; margin-top:15px;">
+                    <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <label style="color:#b0b0b0;">Load:</label>
+                            <select id="jseqSelect" style="width:160px;">
+                                <option value="">Loading...</option>
+                            </select>
+                            <button onclick="audioLoad()">📂 Load</button>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <label style="color:#b0b0b0;">Save As:</label>
+                            <input type="text" id="audioSeqName" placeholder="my_sequence" maxlength="32" style="width:160px;">
+                            <button onclick="audioSave()">💾 Save .jseq</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="audioStatus" class="status" style="display:none; margin-top: 10px;"></div>
+            </div>
+
+            <!-- Tone / Sequence Trigger Card -->
+            <div style="background:#1a1a1a; border:1px solid #333; border-radius:6px; padding:16px; margin-top:20px;">
+                <h3 style="margin:0 0 10px 0; color:#80ccff;">🔔 Tone &amp; Sequence Trigger</h3>
+                <p style="color:#b0b0b0; margin-bottom:12px; font-size:0.9em;">Trigger a pre-programmed tone or sequence from <code>tones.py</code> live on the hardware.</p>
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                    <select id="toneSelect" style="flex:1; min-width:200px; max-width:340px;">
+                        <option value="">Loading tones…</option>
+                    </select>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <label style="color:#b0b0b0; font-size:0.9em;">Target:</label>
+                        <label style="color:#eee; font-size:0.9em;"><input type="radio" name="toneTarget" value="synth" checked> Synth</label>
+                        <label style="color:#eee; font-size:0.9em;"><input type="radio" name="toneTarget" value="buzzer"> Buzzer</label>
+                    </div>
+                    <button onclick="playTone()">▶ Hardware</button>
+                    <button onclick="playToneBrowser()">🔊 Browser</button>
+                </div>
+                <div id="toneStatus" class="status" style="display:none; margin-top:8px;"></div>
+            </div>
+
+            <!-- WAV Player Card -->
+            <div style="background:#1a1a1a; border:1px solid #333; border-radius:6px; padding:16px; margin-top:16px;">
+                <h3 style="margin:0 0 10px 0; color:#80ccff;">
+                    📼 WAV File Player
+                    <button onclick="loadAudioLibrary(true)" style="background:none; border:none; cursor:pointer; font-size:1em;" title="Refresh Library">🔄</button>
+                </h3>
+                <p style="color:#b0b0b0; margin-bottom:12px; font-size:0.9em;">Play a <code>.wav</code> file from <code>/sd/audio/</code> through the primary audio bus.</p>
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                    <select id="wavSelect" style="flex:1; min-width:200px; max-width:400px;">
+                        <option value="">Loading WAV files…</option>
+                    </select>
+                    <button onclick="playWav()">▶ Hardware</button>
+                    <button onclick="playWavBrowser()">🔊 Browser</button>
+                </div>
+                <div id="wavStatus" class="status" style="display:none; margin-top:8px;"></div>
+            </div>
+        </div>
+
+        <div id="hid" class="tab-content">
+            <h2>🕹️ HID</h2>
+            <p style="color: #b0b0b0; margin-bottom: 20px;">Inject virtual hardware inputs into the live HID state for each connected unit. Panels are generated dynamically from the active satellite topology. Connect to Telemetry to populate.</p>
+            <div id="hidDynamicContainer" style="display: flex; gap: 20px; flex-wrap: wrap;"></div>
+            <div id="hidRemoteStatus" class="status" style="display:none; margin-top:15px;"></div>
+        </div>
+
+        <div id="gamepad" class="tab-content">
+            <h2>🎮 Gamepad</h2>
+            <p style="color: #b0b0b0; margin-bottom: 16px;">Touch-optimised virtual gamepad. Use the D-Pad and action buttons to control the active game mode wirelessly. Connect to Telemetry first to enable input.</p>
+
+            <div class="gamepad-toolbar">
+                <div class="gamepad-toolbar-group">
+                    <label for="gamepadTargetSelect" style="color:#b0b0b0; font-size:0.85em; margin-right:8px;">Target unit:</label>
+                    <select id="gamepadTargetSelect" style="width:auto; padding:6px 10px; font-size:0.9em;"></select>
+                </div>
+                <div id="gamepadStatus" class="status" style="display:none; flex:1; margin-left:16px;"></div>
+            </div>
+
+            <div class="gamepad-layout">
+                <!-- D-Pad -->
+                <div class="gamepad-zone gamepad-zone-dpad">
+                    <div class="gamepad-dpad">
+                        <div class="gamepad-dpad-row">
+                            <button class="gamepad-dpad-btn gamepad-dpad-up" id="gpDpadUp">▲</button>
+                        </div>
+                        <div class="gamepad-dpad-row">
+                            <button class="gamepad-dpad-btn gamepad-dpad-left" id="gpDpadLeft">◀</button>
+                            <div class="gamepad-dpad-center"></div>
+                            <button class="gamepad-dpad-btn gamepad-dpad-right" id="gpDpadRight">▶</button>
+                        </div>
+                        <div class="gamepad-dpad-row">
+                            <button class="gamepad-dpad-btn gamepad-dpad-down" id="gpDpadDown">▼</button>
+                        </div>
+                    </div>
+                    <div class="gamepad-dpad-label">D-PAD</div>
+                </div>
+
+                <!-- Centre area: SELECT / START macros -->
+                <div class="gamepad-zone gamepad-zone-center">
+                    <button class="gamepad-select-btn" id="gpSelectBtn">SELECT</button>
+                    <button class="gamepad-start-btn" id="gpStartBtn">START</button>
+                </div>
+
+                <!-- Action buttons -->
+                <div class="gamepad-zone gamepad-zone-actions">
+                    <div class="gamepad-action-cluster">
+                        <button class="gamepad-action-btn gamepad-action-y" id="gpBtnY">Y</button>
+                        <div class="gamepad-action-row">
+                            <button class="gamepad-action-btn gamepad-action-x" id="gpBtnX">X</button>
+                            <button class="gamepad-action-btn gamepad-action-b" id="gpBtnB">B</button>
+                        </div>
+                        <button class="gamepad-action-btn gamepad-action-a" id="gpBtnA">A</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Macro buttons -->
+            <div style="margin-top: 24px;">
+                <h3 style="color: #b0b0b0; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px;">Gameplay Macros</h3>
+                <div class="gamepad-macro-grid" id="gamepadMacroGrid">
+                    <button class="gamepad-macro-btn" data-macro="estop">🛑 E-Stop</button>
+                    <button class="gamepad-macro-btn" data-macro="vanguard_override">⚡ Vanguard Override</button>
+                    <button class="gamepad-macro-btn" data-macro="emp">💥 EMP Bomb</button>
+                    <button class="gamepad-macro-btn" data-macro="stasis">❄️ Stasis Field</button>
+                    <button class="gamepad-macro-btn" data-macro="enc_reset">↺ Reset Encoder</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="admin" class="tab-content">
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px;">
+                <h2>⚙ Admin</h2>
+                <span style="font-size: 0.75em; color: #555; background: #111; padding: 4px 10px; border-radius: 3px; border: 1px solid #2a2a2a; letter-spacing: 0.08em;">RESTRICTED ACCESS</span>
+            </div>
+
+            <!-- OTA Update Card -->
+            <div class="panel admin-card" style="margin-bottom: 24px;">
+                <h3 class="panel-title" style="color: #FF9800;">🔄 OTA Firmware Update</h3>
+                <p style="color: #b0b0b0; margin-bottom: 15px; font-size: 0.9em;">Monitor firmware versions and trigger the over-the-air update workflow. The device must be connected to Wi-Fi.</p>
+
+                <div id="adminVersionInfo" style="margin-bottom: 18px;">
+                    <em style="color: #555; font-size: 0.9em;">Loading version info...</em>
+                </div>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                    <button class="admin-danger-btn" onclick="triggerOTAUpdateAction('AUTO_FULL')">🚀 Run Full Update</button>
+                    <button class="secondary" onclick="triggerOTAUpdateAction('AUTO_SD')">Repair SD Assets</button>
+                    <button class="secondary" onclick="loadAdminVersionInfo()" style="font-size: 0.85em;">↺ Refresh</button>
+                </div>
+                <div id="adminOtaStatus" class="status" style="display:none; margin-top: 15px;"></div>
+            </div>
+
+            <!-- Layout Configurator Card (migrated from main nav) -->
+            <div class="panel admin-card">
+                <h3 class="panel-title" style="color: #4CAF50;">📐 Layout Configurator</h3>
+                <p style="color: #b0b0b0; margin-bottom: 15px; font-size: 0.9em;">Configure the spatial offsets (X, Y) for connected satellites on the global animation canvas.</p>
+
+                <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 280px;">
+                        <div id="adminLayoutControls"></div>
+                        <div style="margin-top: 20px; display: flex; gap: 10px;">
+                            <button onclick="saveAdminLayout()">💾 Save &amp; Apply</button>
+                            <button class="secondary" onclick="loadAdminLayout()">↺ Revert</button>
+                        </div>
+                        <div id="adminLayoutStatus" class="status" style="display:none; margin-top: 15px;"></div>
+                    </div>
+
+                    <div style="flex: 2; min-width: 340px;">
+                        <h4 style="margin-bottom: 10px; color: #4CAF50; font-size: 0.9em;">Live Canvas Preview</h4>
+                        <div id="adminLayoutCanvasContainer" style="position: relative; width: 100%; height: 360px; background: #111; border: 1px solid #444; border-radius: 3px; overflow: hidden;">
+                            <div style="position: absolute; top: calc(50% - 64px); left: calc(50% - 64px); width: 128px; height: 128px; background: rgba(0, 150, 255, 0.1); border: 2px solid #0096FF; display: flex; align-items: center; justify-content: center; color: #0096FF; font-weight: bold; font-size: 0.85em; z-index: 10; box-sizing: border-box;">CORE (0,0)</div>
+                        </div>
+                        <p style="color: #888; font-size: 0.75em; margin-top: 8px; text-align: center;">1 Grid Square = 1 LED Pixel. Coordinates map outward from the Core.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

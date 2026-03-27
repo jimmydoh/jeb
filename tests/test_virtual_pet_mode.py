@@ -134,13 +134,35 @@ def test_virtual_pet_icon_exists():
     print(f"✓ VIRTUAL_PET icon exists ({len(icon)} pixels)")
 
 
+# ---------------------------------------------------------------------------
+# V2 .janim format constants (used by both cat_idle and cat_walk tests)
+# ---------------------------------------------------------------------------
+
+_JANIM_HEADER_SIZE   = 5    # b'JANM' (4) + frame_count (1)
+_JANIM_DURATION_SIZE = 2    # per-frame duration in ms (little-endian uint16)
+_JANIM_PIXEL_SIZE    = 256  # one 16×16 frame = 256 palette bytes
+_JANIM_FRAME_SIZE    = _JANIM_DURATION_SIZE + _JANIM_PIXEL_SIZE  # 258 bytes per frame
+
+
+def _janim_pixel_offset(frame_idx):
+    """Return the byte offset of pixel data for the given V2 frame index."""
+    return _JANIM_HEADER_SIZE + frame_idx * _JANIM_FRAME_SIZE + _JANIM_DURATION_SIZE
+
+
 def test_cat_idle_icon_exists():
-    """CAT_IDLE icon must be in Icons.ICON_LIBRARY with 256 pixels (16x16)."""
-    from utilities.icons import Icons
-    assert "CAT_IDLE" in Icons.ICON_LIBRARY, "CAT_IDLE icon not found in ICON_LIBRARY"
-    icon = Icons.ICON_LIBRARY["CAT_IDLE"]
-    assert len(icon) == 256, f"CAT_IDLE icon must be 256 pixels (16x16), got {len(icon)}"
-    print(f"✓ CAT_IDLE icon exists ({len(icon)} pixels)")
+    """cat_idle.janim must exist in sd/icons/ and be a valid V2 JANM file with ≥1 frame."""
+    janim_path = os.path.join(os.path.dirname(__file__), '..', 'sd', 'icons', 'cat_idle.janim')
+    assert os.path.exists(janim_path), f"cat_idle.janim not found at {janim_path}"
+    with open(janim_path, 'rb') as f:
+        data = f.read()
+    assert data[:4] == b'JANM', "cat_idle.janim missing JANM magic bytes"
+    frame_count = data[4]
+    assert frame_count >= 1, "cat_idle.janim must have at least 1 frame"
+    expected_size = _JANIM_HEADER_SIZE + frame_count * _JANIM_FRAME_SIZE
+    assert len(data) == expected_size, (
+        f"cat_idle.janim size mismatch: expected {expected_size}, got {len(data)}"
+    )
+    print(f"✓ cat_idle.janim exists ({frame_count} frames, {len(data)} bytes)")
 
 
 def test_cat_eat_icon_exists():
@@ -367,32 +389,42 @@ def test_stats_display_toggle():
 # ---------------------------------------------------------------------------
 
 def test_cat_walk_icon_exists():
-    """CAT_WALK sprite sheet must be in ICON_LIBRARY with 512 bytes (2 × 16x16)."""
-    from utilities.icons import Icons
-    assert "CAT_WALK" in Icons.ICON_LIBRARY, "CAT_WALK not found in ICON_LIBRARY"
-    icon = Icons.ICON_LIBRARY["CAT_WALK"]
-    assert len(icon) == 512, f"CAT_WALK must be 512 bytes (2 frames × 256), got {len(icon)}"
-    print(f"✓ CAT_WALK sprite sheet exists ({len(icon)} bytes, 2 frames)")
+    """cat_walk.janim must exist in sd/icons/ and be a valid V2 JANM file."""
+    janim_path = os.path.join(os.path.dirname(__file__), '..', 'sd', 'icons', 'cat_walk.janim')
+    assert os.path.exists(janim_path), f"cat_walk.janim not found at {janim_path}"
+    with open(janim_path, 'rb') as f:
+        data = f.read()
+    assert data[:4] == b'JANM', "cat_walk.janim missing JANM magic bytes"
+    frame_count = data[4]
+    assert frame_count >= 1, "cat_walk.janim must have at least 1 frame"
+    expected_size = _JANIM_HEADER_SIZE + frame_count * _JANIM_FRAME_SIZE
+    assert len(data) == expected_size, (
+        f"cat_walk.janim size mismatch: expected {expected_size}, got {len(data)}"
+    )
+    print(f"✓ cat_walk.janim exists ({frame_count} frames, {len(data)} bytes)")
 
 
 def test_cat_walk_frame_count():
-    """CAT_WALK must contain exactly 2 animation frames."""
-    from utilities.icons import Icons
-    icon = Icons.ICON_LIBRARY["CAT_WALK"]
-    frame_size = 16 * 16
-    frame_count = len(icon) // frame_size
-    assert frame_count == 2, f"Expected 2 frames in CAT_WALK, got {frame_count}"
-    print("✓ CAT_WALK has exactly 2 frames")
+    """cat_walk.janim must contain exactly 2 animation frames."""
+    janim_path = os.path.join(os.path.dirname(__file__), '..', 'sd', 'icons', 'cat_walk.janim')
+    with open(janim_path, 'rb') as f:
+        data = f.read()
+    frame_count = data[4]
+    assert frame_count == 2, f"Expected 2 frames in cat_walk.janim, got {frame_count}"
+    print("✓ cat_walk.janim has exactly 2 frames")
 
 
 def test_cat_walk_frames_differ():
-    """The two CAT_WALK frames must not be identical (different paw positions)."""
-    from utilities.icons import Icons
-    icon = Icons.ICON_LIBRARY["CAT_WALK"]
-    frame0 = icon[0:256]
-    frame1 = icon[256:512]
-    assert frame0 != frame1, "CAT_WALK frame 0 and frame 1 must differ"
-    print("✓ CAT_WALK frames are distinct")
+    """The two frames in cat_walk.janim must not be identical (different paw positions)."""
+    janim_path = os.path.join(os.path.dirname(__file__), '..', 'sd', 'icons', 'cat_walk.janim')
+    with open(janim_path, 'rb') as f:
+        data = f.read()
+    p0 = _janim_pixel_offset(0)
+    p1 = _janim_pixel_offset(1)
+    frame0 = data[p0 : p0 + _JANIM_PIXEL_SIZE]
+    frame1 = data[p1 : p1 + _JANIM_PIXEL_SIZE]
+    assert frame0 != frame1, "cat_walk.janim frame 0 and frame 1 must differ"
+    print("✓ cat_walk.janim frames are distinct")
 
 
 # ---------------------------------------------------------------------------

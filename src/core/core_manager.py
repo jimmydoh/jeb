@@ -196,7 +196,12 @@ class CoreManager:
                 "audio/menu/select.wav",
             ]
         )
-        self.synth = SynthManager(sample_rate=22050, channel_count=1)
+        self.synth = SynthManager(sample_rate=22050, channel_count=1, root_data_dir=self.root_data_dir)
+        self.synth.preload(
+            [
+                "sequences/menu_tick.jseq",
+            ]
+        )
         self.audio.attach_synth(self.synth.source)  # Connect synth to audio mixer
 
         # Init Display (OLED)
@@ -264,6 +269,7 @@ class CoreManager:
         # Sleep state
         self._sleeping = False
         self._sleep_timeout_ms = 5 * 60 * 1000  # 5 minutes in milliseconds
+        self._last_wake_time = ticks_ms()
 
     def _read_version(self):
         """Read version string from the VERSION file.
@@ -430,18 +436,27 @@ class CoreManager:
         if self.buzzer:             # Stop buzzer
             self.buzzer.stop()
 
-    async def run_mode_with_safety(self, mode_instance, target_sat=None):
+    async def run_mode_with_safety(self, mode_instance, target_sats=None):
         """Execute a task while monitoring for interrupts.
 
         Parameters:
             mode_instance: The mode instance to run.
-            target_sat (Satellite, optional): Specific satellite to monitor.
+            target_sats (list, optional): List of satellites to monitor. If any
+                disconnects, the mode is aborted with "LINK_LOST".
         """
         # Create the mode task
         sub_task = asyncio.create_task(mode_instance.execute())
 
-        if target_sat:
-            target_sat_monitor_task = asyncio.create_task(self.monitor_satellite(target_sat))
+        # Clear the event before spawning monitors so a stale set from a
+        # previous run does not immediately re-trigger LINK_LOST.
+        self.target_sat_event.clear()
+
+        sat_monitor_tasks = []
+        if target_sats:
+            for sat in target_sats:
+                sat_monitor_tasks.append(
+                    asyncio.create_task(self.monitor_satellite(sat))
+                )
 
         exit_reason = "UNKNOWN_EXIT"
 
@@ -467,8 +482,9 @@ class CoreManager:
                     self.abort_event.clear()  # Reset for future use
                     break
 
-                if target_sat and self.target_sat_event.is_set():
-                    JEBLogger.warning("CORE", f"Target satellite '{target_sat.sat_type_name}' disconnected during mode execution!")
+                if target_sats and self.target_sat_event.is_set():
+                    lost = [s.sat_type_name for s in target_sats if not s.is_active]
+                    JEBLogger.warning("CORE", f"Required satellite(s) disconnected during mode execution: {lost}")
                     exit_reason = "LINK_LOST"
                     self.display.update_status("LINK LOST", "EXITING MODE...")
                     break
@@ -488,8 +504,9 @@ class CoreManager:
         if not sub_task.done():
             sub_task.cancel()
 
-        if target_sat and not target_sat_monitor_task.done():
-            target_sat_monitor_task.cancel()
+        for task in sat_monitor_tasks:
+            if not task.done():
+                task.cancel()
 
         # Return routing logic
         if exit_reason == "MODE_COMPLETE":
@@ -624,6 +641,7 @@ class CoreManager:
         if not self._sleeping:
             return
         self._sleeping = False
+        self._last_wake_time = ticks_ms()
         # Restore LEDs and render rate
         self.leds.off_led(-1)
         self.renderer.target_frame_rate = self.renderer.DEFAULT_FRAME_RATE
@@ -645,7 +663,8 @@ class CoreManager:
                     await self._wake_system()
                 await asyncio.sleep(0.1)  # Throttled polling while sleeping
             else:
-                if self.hid.get_idle_time_ms() >= self._sleep_timeout_ms:
+                if self.hid.get_idle_time_ms() >= self._sleep_timeout_ms and \
+                   ticks_diff(ticks_ms(), getattr(self, '_last_wake_time', 0)) >= self._sleep_timeout_ms:
                     await self._enter_sleep()
                 await asyncio.sleep(0.02)  # Poll at 50Hz when awake
 
@@ -827,18 +846,27 @@ class CoreManager:
                 requirements = meta.get("requires", [])
 
                 # Check Dependencies
-                target_sat = None
+                target_sats = []
                 requirements_met = True
 
                 for req in requirements:
-                    if req == "CORE":
+                    if req in ("CORE", "DISPLAY", "HID", "AUDIO"):
                         continue
+
+                    # Evaluate Wi-Fi capability
+                    if req == "WIFI":
+                        # Fails if wifi was never passed to the core, or if the hardware failed to init
+                        if getattr(self, "wifi_manager", None) is None:
+                            requirements_met = False
+                            break
+                        continue
+
                     found = False
                     # Check self.satellites: Dict[slot_id: int, Satellite]
                     for sat in self.satellites.values():
                         if sat.sat_type_name == req and sat.is_active:
                             found = True
-                            target_sat = sat  # Set target satellite for monitoring
+                            target_sats.append(sat)  # Collect all required satellites
                             break
                     if not found:
                         requirements_met = False
@@ -892,14 +920,23 @@ class CoreManager:
                             self._pending_mode_variant = None  # Clear the flag immediately after consuming it
                         except Exception as e:
                             JEBLogger.error("CORE", f"Tutorial error for '{self.active_mode}': {e}")
+                    elif self._pending_mode_variant is not None:
+                        JEBLogger.info("CORE", f"Applying custom variant '{self._pending_mode_variant}' for mode '{self.active_mode}'")
+                        try:
+                            mode_instance.variant = self._pending_mode_variant  # Set the mode instance to the custom variant
+                            self._pending_mode_variant = None  # Clear the flag immediately after consuming it
+                        except Exception as e:
+                            JEBLogger.error("CORE", f"Custom variant error for '{self.active_mode}': {e}")
+
 
                     run_robust = True
                     while run_robust:
-                        if target_sat:
-                            # Send command to the sat to go ACTIVE
-                            target_sat.send(CMD_MODE, "ACTIVE")
+                        if target_sats:
+                            # Send command to each required satellite to go ACTIVE
+                            for sat in target_sats:
+                                sat.send(CMD_MODE, "ACTIVE")
                             result = await self.run_mode_with_safety(
-                                mode_instance, target_sat=target_sat
+                                mode_instance, target_sats=target_sats
                             )
                         else:
                             result = await self.run_mode_with_safety(mode_instance)
@@ -908,15 +945,13 @@ class CoreManager:
                             self.display.update_status(
                                 "LINK LOST", "RECONNECT IN 60s"
                             )
-                            asyncio.create_task(
-                                self.audio.play(
-                                    "link_lost.wav", bus_id=self.audio.CH_SFX
-                                )
+                            self.audio.play(
+                                "link_lost.wav", bus_id=self.audio.CH_SFX
                             )
                             await asyncio.sleep(1)
                             # 60 second countdown
                             disconnect_time = ticks_ms()
-                            while not target_sat.is_active and run_robust:
+                            while any(not s.is_active for s in target_sats) and run_robust:
                                 elapsed = ticks_diff(ticks_ms(), disconnect_time)
                                 if elapsed > 60000:
                                     run_robust = False
@@ -926,14 +961,12 @@ class CoreManager:
                                     "LINK LOST", f"ABORT IN: {secs_left}s"
                                 )
                                 await asyncio.sleep(0.1)
-                            if target_sat.is_active and run_robust:
+                            if all(s.is_active for s in target_sats) and run_robust:
                                 self.display.update_status(
                                     "LINK RESTORED", "RESUMING..."
                                 )
-                                asyncio.create_task(
-                                    self.audio.play(
-                                        "link_restored.wav", bus_id=self.audio.CH_SFX
-                                    )
+                                self.audio.play(
+                                    "link_restored.wav", bus_id=self.audio.CH_SFX
                                 )
                                 await asyncio.sleep(1)
                         elif result == "MODE_ERROR":

@@ -4,6 +4,7 @@
 import sys
 import os
 import json
+import struct
 
 try:
     import pytest
@@ -193,7 +194,7 @@ class MockApp:
     need those managers should pass an instance of this class as the
     ``app`` argument instead of using the old per-manager kwargs.
     """
-    def __init__(self, power=None, sat_network=None, matrix=None, synth=None, hid=None, data=None, mode_registry=None):
+    def __init__(self, power=None, sat_network=None, matrix=None, synth=None, hid=None, data=None, mode_registry=None, audio=None, buzzer=None):
         self.power = power
         self.sat_network = sat_network
         self.matrix = matrix
@@ -201,6 +202,8 @@ class MockApp:
         self.hid = hid
         self.data = data
         self.mode_registry = mode_registry or {}
+        self.audio = audio
+        self.buzzer = buzzer
 
 
 def test_initialization():
@@ -748,49 +751,6 @@ def test_ota_update_trigger():
         builtins.open = original_open
 
 
-def test_debug_mode_toggle():
-    """Test debug mode toggle endpoint."""
-    print("\nTesting debug mode toggle...")
-
-    config = {
-        "wifi_ssid": "TestNetwork",
-        "wifi_password": "TestPassword123",
-        "web_server_enabled": True,
-        "debug_mode": False
-    }
-
-    manager = WebServerManager(config, MockWiFiManager(), testing=True)
-    manager.server = MockServer(None, "/static")
-    manager.setup_routes()
-
-    # Find the toggle debug route
-    debug_route = None
-    for path, method, func in manager.server.routes:
-        if "toggle-debug" in path:
-            debug_route = func
-            break
-
-    assert debug_route is not None, "Toggle debug route not found"
-
-    # Test: Toggle debug mode on
-    request = MockRequest()
-    assert manager.config["debug_mode"] == False, "Debug mode should start as False"
-
-    response = debug_route(request)
-    assert response.status == 200, f"Should accept toggle, got {response.status}"
-    assert manager.config["debug_mode"] == True, "Debug mode should be toggled to True"
-    assert "debug_enabled" in response.body, f"Should indicate enabled, got {response.body}"
-
-    # Test: Toggle debug mode off
-    request = MockRequest()
-    response = debug_route(request)
-    assert response.status == 200, f"Should accept toggle, got {response.status}"
-    assert manager.config["debug_mode"] == False, "Debug mode should be toggled to False"
-    assert "debug_disabled" in response.body, f"Should indicate disabled, got {response.body}"
-
-    print("  ✓ Debug mode toggle test passed")
-
-
 def test_system_status():
     """Test system status endpoint."""
     print("\nTesting system status endpoint...")
@@ -902,8 +862,6 @@ def test_route_registration():
         '/api/files/upload',
         '/api/logs',
         '/api/console',
-        '/api/actions/ota-update',
-        '/api/actions/toggle-debug',
         '/api/actions/reorder-satellites',
         '/api/actions/launch-mode',
         '/api/system/status',
@@ -1623,6 +1581,488 @@ def test_pixel_art_matrix_manager_stored():
     print("  ✓ matrix_manager parameter test passed")
 
 
+def test_pixel_library_route_registered():
+    """Test that /api/pixel/library is registered."""
+    print("\nTesting pixel library route registration...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    registered = [p for p, _, _ in manager.server.routes]
+    assert "/api/pixel/library" in registered, "/api/pixel/library not registered"
+    assert "/api/pixel/load" in registered, "/api/pixel/load not registered"
+
+    print("  ✓ Pixel library routes registered test passed")
+
+
+def test_pixel_library_no_icons_module():
+    """Test /api/pixel/library when utilities.icons is not importable."""
+    print("\nTesting pixel library with no icons module...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/library")
+    assert handler is not None
+
+    request = MockRequest()
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    # Even with no icons module and no SD card, must return valid structure
+    assert "icons" in data
+    assert "bins" in data
+    assert isinstance(data["icons"], list)
+    assert isinstance(data["bins"], list)
+
+    print("  ✓ Pixel library (no icons module) test passed")
+
+
+def test_pixel_library_with_icons_module():
+    """Test /api/pixel/library discovers constants from Icons class."""
+    print("\nTesting pixel library with icons module...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/library")
+    assert handler is not None
+
+    request = MockRequest()
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert "icons" in data
+
+    # If icons module is available, expect at least the well-known constants
+    if len(data["icons"]) > 0:
+        assert "BLANK" in data["icons"], "BLANK should be in icons list"
+        assert "DEFAULT" in data["icons"], "DEFAULT should be in icons list"
+
+    print("  ✓ Pixel library (with icons module) test passed")
+
+
+def test_pixel_load_missing_name():
+    """Test /api/pixel/load returns 400 when name is missing."""
+    print("\nTesting pixel load missing name...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/load")
+    assert handler is not None
+
+    request = MockRequest()
+    # No 'name' param
+    response = handler(request)
+    assert response.status == 400
+    data = json.loads(response.body)
+    assert "error" in data
+
+    print("  ✓ Pixel load (missing name) test passed")
+
+
+def test_pixel_load_path_traversal():
+    """Test /api/pixel/load rejects path-traversal attempts for .bin files."""
+    print("\nTesting pixel load path traversal rejection...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/load")
+    assert handler is not None
+
+    request = MockRequest()
+    request.query_params = {"name": "../../etc/passwd.bin"}
+    response = handler(request)
+    assert response.status in (400, 404), f"Expected 400 or 404, got {response.status}"
+
+    print("  ✓ Pixel load (path traversal) test passed")
+
+
+def test_pixel_load_library_icon():
+    """Test /api/pixel/load returns bytes for a valid Icons class constant."""
+    print("\nTesting pixel load from library...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/load")
+    assert handler is not None
+
+    # Request a known constant – BLANK always exists in icons.py
+    request = MockRequest()
+    request.query_params = {"name": "BLANK"}
+    response = handler(request)
+
+    if response.status == 503:
+        # Icons module not available in this test environment – acceptable
+        print("  ✓ Pixel load (library icon) – module unavailable, skipped")
+        return
+
+    assert response.status == 200, f"Expected 200, got {response.status}: {response.body}"
+    # Body should be raw bytes (256 bytes for a 16×16 icon)
+    assert len(response.body) == 256
+
+    print("  ✓ Pixel load (library icon) test passed")
+
+
+def test_pixel_load_library_icon_not_found():
+    """Test /api/pixel/load returns 404 for an unknown Icons class constant."""
+    print("\nTesting pixel load unknown library icon...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/load")
+    assert handler is not None
+
+    request = MockRequest()
+    request.query_params = {"name": "NONEXISTENT_ICON_XYZ"}
+    response = handler(request)
+
+    if response.status == 503:
+        print("  ✓ Pixel load (unknown library icon) – module unavailable, skipped")
+        return
+
+    assert response.status == 404, f"Expected 404, got {response.status}"
+
+    print("  ✓ Pixel load (unknown library icon) test passed")
+
+
+def test_pixel_load_bin_file_not_found():
+    """Test /api/pixel/load returns 404 for a missing .bin file on SD card."""
+    print("\nTesting pixel load missing .bin file...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/load")
+    assert handler is not None
+
+    request = MockRequest()
+    request.query_params = {"name": "definitely_does_not_exist.bin"}
+    response = handler(request)
+    assert response.status == 404
+
+    print("  ✓ Pixel load (missing .bin) test passed")
+
+
+def test_pixel_art_save_no_encoding_error():
+    """Test that pixel art save works without encoding='utf-8' bug."""
+    print("\nTesting pixel art save (no encoding bug)...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save")
+    assert handler is not None
+
+    pixels = list(range(256))  # Values 0-255 to exercise all byte values
+    request = MockRequest()
+    request.json = lambda: {"name": "byte_range_test", "pixels": pixels}
+    response = handler(request)
+    # In testing mode no file I/O happens; just verify the save logic runs without error
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+
+    print("  ✓ Pixel art save (no encoding bug) test passed")
+
+
+# =====================================================================
+# Animation save / preview-animation tests
+# =====================================================================
+
+def _make_janim_body(frame_count=2, duration_ms=150):
+    """Helper: build a minimal valid .janim V2 binary blob.
+
+    V2 format: JANM (4) + frame_count (1) + [duration_le (2) + pixels (256)] * frame_count
+    """
+    body = bytearray(b'JANM')
+    body += bytes([frame_count])
+    for _ in range(frame_count):
+        body += struct.pack('<H', duration_ms)
+        body += bytes(256)
+    return bytes(body)
+
+
+def test_save_animation_route_registered():
+    """Test that /api/pixel-art/save-animation is registered."""
+    print("\nTesting save-animation route registration...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    registered = [p for p, _, _ in manager.server.routes]
+    assert "/api/pixel-art/save-animation" in registered
+    assert "/api/pixel-art/preview-animation" in registered
+
+    print("  ✓ Animation routes registered test passed")
+
+
+def test_save_animation_success():
+    """Test POST /api/pixel-art/save-animation in testing mode."""
+    print("\nTesting save-animation success...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save-animation")
+    assert handler is not None
+
+    request = MockRequest()
+    request.query_params = {"name": "test_anim"}
+    request.body = _make_janim_body(frame_count=3, duration_ms=300)
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert data["frames"] == 3
+    assert "test_anim" in data["path"]
+
+    print("  ✓ Save animation success test passed")
+
+
+def test_save_animation_missing_name():
+    """Test POST /api/pixel-art/save-animation returns 400 when name is absent."""
+    print("\nTesting save-animation missing name...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save-animation")
+    request = MockRequest()
+    request.query_params = {}
+    request.body = _make_janim_body()
+    response = handler(request)
+    assert response.status == 400
+    data = json.loads(response.body)
+    assert "error" in data
+
+    print("  ✓ Save animation missing name test passed")
+
+
+def test_save_animation_invalid_name():
+    """Test POST /api/pixel-art/save-animation rejects names with special chars."""
+    print("\nTesting save-animation invalid name...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save-animation")
+    request = MockRequest()
+    request.query_params = {"name": "bad name!"}
+    request.body = _make_janim_body()
+    response = handler(request)
+    assert response.status == 400
+
+    print("  ✓ Save animation invalid name test passed")
+
+
+def test_save_animation_bad_magic():
+    """Test POST /api/pixel-art/save-animation rejects body with wrong magic bytes."""
+    print("\nTesting save-animation bad magic bytes...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save-animation")
+    request = MockRequest()
+    request.query_params = {"name": "bad_magic"}
+    # Wrong magic (JSEQ instead of JANM) with otherwise valid V2 structure
+    request.body = b'JSEQ' + bytes([2]) + bytes(2 + 256) * 2
+    response = handler(request)
+    assert response.status == 400
+    data = json.loads(response.body)
+    assert "magic" in data["error"]
+
+    print("  ✓ Save animation bad magic test passed")
+
+
+def test_save_animation_truncated_body():
+    """Test POST /api/pixel-art/save-animation rejects a truncated payload."""
+    print("\nTesting save-animation truncated body...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save-animation")
+    request = MockRequest()
+    request.query_params = {"name": "truncated"}
+    # 3 frames declared but only 1 frame of V2 data provided (should fail)
+    request.body = b'JANM' + bytes([3]) + bytes(2 + 256)
+    response = handler(request)
+    assert response.status == 400
+
+    print("  ✓ Save animation truncated body test passed")
+
+
+def test_save_animation_empty_body():
+    """Test POST /api/pixel-art/save-animation returns 400 for empty body."""
+    print("\nTesting save-animation empty body...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/save-animation")
+    request = MockRequest()
+    request.query_params = {"name": "empty"}
+    request.body = b''
+    response = handler(request)
+    assert response.status == 400
+
+    print("  ✓ Save animation empty body test passed")
+
+
+def test_preview_animation_no_matrix():
+    """Test POST /api/pixel-art/preview-animation without matrix returns no_matrix."""
+    print("\nTesting preview-animation without matrix...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/preview-animation")
+    assert handler is not None
+
+    request = MockRequest()
+    request.json = lambda: {"pixels": [0] * 256, "frame": 0}
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "no_matrix"
+
+    print("  ✓ Preview animation (no matrix) test passed")
+
+
+def test_preview_animation_with_matrix():
+    """Test POST /api/pixel-art/preview-animation draws frame on the matrix."""
+    print("\nTesting preview-animation with matrix...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    mock_matrix = MockMatrixManager()
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(matrix=mock_matrix), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/preview-animation")
+    assert handler is not None
+
+    pixels = [0] * 256
+    pixels[0] = 11  # Red at (0,0)
+    request = MockRequest()
+    request.json = lambda: {"pixels": pixels, "frame": 1}
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert data["status"] == "success"
+    assert mock_matrix.cleared
+
+    print("  ✓ Preview animation (with matrix) test passed")
+
+
+def test_preview_animation_invalid_pixels():
+    """Test POST /api/pixel-art/preview-animation validates pixel array."""
+    print("\nTesting preview-animation pixel validation...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel-art/preview-animation")
+
+    # Wrong number of pixels
+    request = MockRequest()
+    request.json = lambda: {"pixels": [0] * 100, "frame": 0}
+    response = handler(request)
+    assert response.status == 400
+
+    # Out-of-range pixel value
+    bad_pixels = [0] * 256
+    bad_pixels[5] = 300
+    request2 = MockRequest()
+    request2.json = lambda: {"pixels": bad_pixels, "frame": 0}
+    response2 = handler(request2)
+    assert response2.status == 400
+
+    print("  ✓ Preview animation validation test passed")
+
+
+def test_pixel_library_includes_janims():
+    """Test GET /api/pixel/library response includes a 'janims' key."""
+    print("\nTesting pixel library includes janims key...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/library")
+    assert handler is not None
+
+    request = MockRequest()
+    response = handler(request)
+    assert response.status == 200
+    data = json.loads(response.body)
+    assert "janims" in data, "Library response must include 'janims' key"
+    assert isinstance(data["janims"], list)
+
+    print("  ✓ Pixel library includes janims test passed")
+
+
+def test_pixel_load_janim_not_found():
+    """Test /api/pixel/load returns 404 for a missing .janim file."""
+    print("\nTesting pixel load missing .janim file...")
+
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "TestPassword123", "web_server_enabled": True}
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    handler = _find_route(manager, "/api/pixel/load")
+    request = MockRequest()
+    request.query_params = {"name": "no_such_animation.janim"}
+    response = handler(request)
+    assert response.status == 404
+
+    print("  ✓ Pixel load (missing .janim) test passed")
+
+
 def test_jeblogger_buffer():
     """Test JEBLogger ring buffer capture."""
     print("\nTesting JEBLogger ring buffer...")
@@ -2076,11 +2516,12 @@ def test_synth_save_route():
     handler = _find_route(manager, "/api/synth/save")
     assert handler is not None
 
-    # Build a minimal valid .jseq binary
-    import struct
+    # Build a minimal valid .jseq binary, then base64-encode it (as the frontend does)
+    import struct, base64
     bpm = 120
-    body = b'JSEQ\x01' + struct.pack('<H', bpm) + b'\x01'
-    body += b'\x00' + struct.pack('<H', 1) + b'\x00\x20'  # 1 note: rest (index 0), 0x20=32 units = 1.0 beat (Q)
+    raw = b'JSEQ\x01' + struct.pack('<H', bpm) + b'\x01'
+    raw += b'\x00' + struct.pack('<H', 1) + b'\x00\x20'  # 1 note: rest (index 0), 0x20=32 units = 1.0 beat (Q)
+    body = base64.b64encode(raw)
 
     request = MockRequest()
     request.query_params = {"name": "test_seq"}
@@ -2098,22 +2539,23 @@ def test_synth_save_validation():
     """Test POST /api/synth/save validates name and binary data."""
     print("\nTesting synth save validation...")
 
+    import struct, base64
     manager, _ = _make_synth_manager()
     handler = _find_route(manager, "/api/synth/save")
 
     # Missing name
     req = MockRequest()
     req.query_params = {}
-    req.body = b'JSEQ\x01\x78\x00\x00'
+    req.body = base64.b64encode(b'JSEQ\x01\x78\x00\x00')
     assert handler(req).status == 400
 
     # Invalid name characters
     req2 = MockRequest()
     req2.query_params = {"name": "bad/name!"}
-    req2.body = b'JSEQ\x01\x78\x00\x00'
+    req2.body = base64.b64encode(b'JSEQ\x01\x78\x00\x00')
     assert handler(req2).status == 400
 
-    # Body too short
+    # Body too short (raw and encoded both short)
     req3 = MockRequest()
     req3.query_params = {"name": "ok_name"}
     req3.body = b'JS'
@@ -2122,7 +2564,7 @@ def test_synth_save_validation():
     # Wrong magic bytes
     req4 = MockRequest()
     req4.query_params = {"name": "ok_name"}
-    req4.body = b'NOPE\x01\x78\x00\x01'
+    req4.body = base64.b64encode(b'NOPE\x01\x78\x00\x01')
     assert handler(req4).status == 400
 
     print("  ✓ Synth save validation test passed")
@@ -2165,6 +2607,346 @@ def test_synth_stop_no_synth():
     assert data["status"] == "no_synth"
 
     print("  ✓ Synth stop (no synth) test passed")
+
+
+# ---------------------------------------------------------------------------
+# Audio Library and Play API Tests
+# ---------------------------------------------------------------------------
+
+class MockAudioManager:
+    """Mock AudioManager for testing WAV playback API."""
+    def __init__(self):
+        self.play_called = False
+        self.play_file_arg = None
+
+    def play(self, file, bus_id=1, loop=False, level=1.0, wait=False, interrupt=True):
+        self.play_called = True
+        self.play_file_arg = file
+
+
+class MockBuzzerManager:
+    """Mock BuzzerManager for testing tone trigger API."""
+    def __init__(self):
+        self.play_sequence_called = False
+        self.play_sequence_arg = None
+
+    def play_sequence(self, sequence_data, loop=None):
+        self.play_sequence_called = True
+        self.play_sequence_arg = sequence_data
+
+
+def _make_audio_manager(audio=None, buzzer=None, synth=None, config=None):
+    if config is None:
+        config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+    mock_app = MockApp(audio=audio, buzzer=buzzer, synth=synth)
+    manager = WebServerManager(config, MockWiFiManager(), app=mock_app, testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+    return manager
+
+
+def test_audio_library_route_registered():
+    """Test that /api/audio/library route is registered."""
+    print("\nTesting /api/audio/library route registration...")
+    manager = _make_audio_manager()
+    registered = [p for p, _, _ in manager.server.routes]
+    assert "/api/audio/library" in registered, "/api/audio/library not registered"
+    assert "/api/audio/play" in registered, "/api/audio/play not registered"
+    print("  ✓ Audio library/play routes registered test passed")
+
+
+def test_audio_library_no_file():
+    """Test GET /api/audio/library when tones.py cannot be opened."""
+    print("\nTesting /api/audio/library with missing tones file...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/library")
+    assert handler is not None
+
+    req = MockRequest()
+    resp = handler(req)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    # With no tones.py and no /sd/audio/, both lists should be empty
+    assert "tones" in data
+    assert "wavs" in data
+    assert isinstance(data["tones"], list)
+    assert isinstance(data["wavs"], list)
+    print("  ✓ Audio library (no file) test passed")
+
+
+def test_audio_library_with_tones_file():
+    """Test GET /api/audio/library parses a tones.py file correctly."""
+    import tempfile
+    import unittest.mock
+    print("\nTesting /api/audio/library with mocked tones.py...")
+
+    fake_tones_content = (
+        "NOTE_FREQUENCIES = {\n"
+        "    'C4': 261.63,\n"
+        "}\n"
+        "W = 4.0\n"
+        "SYSTEM_BOOT = {\n"
+        "    'bpm': 120,\n"
+        "    'sequence': [('C4', 0.25)]\n"
+        "}\n"
+        "UI_TICK = {\n"
+        "    'bpm': 200,\n"
+        "    'sequence': [('C5', 0.125)]\n"
+        "}\n"
+    )
+
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/library")
+
+    # Patch open() so /utilities/tones.py reads from an in-memory StringIO
+    import io
+    original_open = open
+    def patched_open(path, *args, **kwargs):
+        if path == "/utilities/tones.py":
+            return io.StringIO(fake_tones_content)
+        return original_open(path, *args, **kwargs)
+
+    with unittest.mock.patch("builtins.open", side_effect=patched_open):
+        req = MockRequest()
+        resp = handler(req)
+
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert "SYSTEM_BOOT" in data["tones"]
+    assert "UI_TICK" in data["tones"]
+    assert "NOTE_FREQUENCIES" not in data["tones"]
+    assert "W" not in data["tones"]  # Duration constant, not a sequence
+    print("  ✓ Audio library (tones file) test passed")
+
+
+def test_audio_play_invalid_json():
+    """Test POST /api/audio/play with invalid JSON."""
+    print("\nTesting /api/audio/play with invalid JSON...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/play")
+    assert handler is not None
+
+    req = MockRequest()
+    req.json = lambda: None
+    resp = handler(req)
+    assert resp.status == 400
+    data = json.loads(resp.body)
+    assert "error" in data
+    print("  ✓ Audio play invalid JSON test passed")
+
+
+def test_audio_play_invalid_type():
+    """Test POST /api/audio/play with unknown type."""
+    print("\nTesting /api/audio/play with unknown type...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "unknown"}
+    resp = handler(req)
+    assert resp.status == 400
+    data = json.loads(resp.body)
+    assert "error" in data
+    print("  ✓ Audio play unknown type test passed")
+
+
+def test_audio_play_tone_no_name():
+    """Test POST /api/audio/play tone without a name."""
+    print("\nTesting /api/audio/play tone missing name...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "tone", "target": "buzzer"}
+    resp = handler(req)
+    assert resp.status == 400
+    print("  ✓ Audio play tone missing name test passed")
+
+
+def test_audio_play_tone_invalid_target():
+    """Test POST /api/audio/play tone with an invalid target."""
+    print("\nTesting /api/audio/play tone invalid target...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "tone", "name": "SYSTEM_BOOT", "target": "speakers"}
+    resp = handler(req)
+    assert resp.status == 400
+    print("  ✓ Audio play tone invalid target test passed")
+
+
+def test_audio_play_tone_buzzer_no_manager():
+    """Test POST /api/audio/play tone on buzzer with no buzzer manager."""
+    print("\nTesting /api/audio/play tone on buzzer (no manager)...")
+    manager = _make_audio_manager(buzzer=None)
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "tone", "name": "SYSTEM_BOOT", "target": "buzzer"}
+    resp = handler(req)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["status"] == "no_buzzer"
+    print("  ✓ Audio play tone (no buzzer) test passed")
+
+
+def test_audio_play_tone_buzzer_calls_manager():
+    """Test POST /api/audio/play tone on buzzer calls buzzer_manager.play_sequence."""
+    print("\nTesting /api/audio/play tone on buzzer with manager...")
+    mock_buzzer = MockBuzzerManager()
+    manager = _make_audio_manager(buzzer=mock_buzzer)
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "tone", "name": "UI_CONFIRM", "target": "buzzer"}
+    resp = handler(req)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["status"] == "success"
+    assert mock_buzzer.play_sequence_called is True
+    assert mock_buzzer.play_sequence_arg == "UI_CONFIRM"
+    print("  ✓ Audio play tone on buzzer test passed")
+
+
+def test_audio_play_tone_synth_no_manager():
+    """Test POST /api/audio/play tone on synth with no synth manager."""
+    print("\nTesting /api/audio/play tone on synth (no manager)...")
+    manager = _make_audio_manager(synth=None)
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "tone", "name": "SYSTEM_BOOT", "target": "synth"}
+    resp = handler(req)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["status"] == "no_synth"
+    print("  ✓ Audio play tone (no synth) test passed")
+
+
+def test_audio_play_wav_no_filename():
+    """Test POST /api/audio/play wav without filename."""
+    print("\nTesting /api/audio/play wav missing filename...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "wav"}
+    resp = handler(req)
+    assert resp.status == 400
+    print("  ✓ Audio play wav missing filename test passed")
+
+
+def test_audio_play_wav_path_traversal():
+    """Test POST /api/audio/play wav rejects path traversal and out-of-directory filenames."""
+    print("\nTesting /api/audio/play wav path traversal rejection...")
+    manager = _make_audio_manager()
+    handler = _find_route(manager, "/api/audio/play")
+
+    # These should all be rejected (not under /sd/audio/)
+    for bad_path in [
+        "../etc/passwd",           # Traversal
+        "/etc/passwd",             # Absolute path
+        "audio/../secret.wav",     # Traversal into /sd/ root
+        "../../outside.wav",       # Traversal outside /sd/
+        "config.json",             # Not in audio directory
+    ]:
+        req = MockRequest()
+        req.json = lambda bp=bad_path: {"type": "wav", "filename": bp}
+        resp = handler(req)
+        assert resp.status == 400, f"Expected 400 for path: {bad_path}"
+    print("  ✓ Audio play wav path traversal test passed")
+
+
+def test_audio_play_wav_no_manager():
+    """Test POST /api/audio/play wav with no audio manager."""
+    print("\nTesting /api/audio/play wav (no audio manager)...")
+    manager = _make_audio_manager(audio=None)
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "wav", "filename": "audio/menu/tick.wav"}
+    resp = handler(req)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["status"] == "no_audio"
+    print("  ✓ Audio play wav (no audio manager) test passed")
+
+
+def test_audio_play_wav_calls_manager():
+    """Test POST /api/audio/play wav calls audio_manager.play with correct filename."""
+    print("\nTesting /api/audio/play wav with audio manager...")
+    mock_audio = MockAudioManager()
+    manager = _make_audio_manager(audio=mock_audio)
+    handler = _find_route(manager, "/api/audio/play")
+
+    req = MockRequest()
+    req.json = lambda: {"type": "wav", "filename": "audio/menu/tick.wav"}
+    resp = handler(req)
+    assert resp.status == 200
+    data = json.loads(resp.body)
+    assert data["status"] == "success"
+    assert mock_audio.play_called is True
+    assert mock_audio.play_file_arg == "audio/menu/tick.wav"
+    print("  ✓ Audio play wav with manager test passed")
+
+
+def test_audio_manager_and_buzzer_manager_properties():
+    """Test that audio_manager and buzzer_manager properties delegate to app."""
+    print("\nTesting audio_manager and buzzer_manager property delegation...")
+    config = {"wifi_ssid": "TestNetwork", "wifi_password": "pass", "web_server_enabled": True}
+
+    mock_audio = MockAudioManager()
+    mock_buzzer = MockBuzzerManager()
+    manager = WebServerManager(config, MockWiFiManager(), app=MockApp(audio=mock_audio, buzzer=mock_buzzer), testing=True)
+    assert manager.audio_manager is mock_audio
+    assert manager.buzzer_manager is mock_buzzer
+
+    manager2 = WebServerManager(config, MockWiFiManager(), testing=True)
+    assert manager2.audio_manager is None
+    assert manager2.buzzer_manager is None
+    print("  ✓ audio_manager and buzzer_manager properties test passed")
+
+
+def test_list_wav_files_empty():
+    """Test _list_wav_files returns empty list when directory doesn't exist."""
+    print("\nTesting _list_wav_files with non-existent directory...")
+    manager = _make_audio_manager()
+    result = manager._list_wav_files("/nonexistent/path")
+    assert result == []
+    print("  ✓ _list_wav_files (non-existent directory) test passed")
+
+
+def test_list_wav_files_real_directory():
+    """Test _list_wav_files recursively finds .wav files."""
+    import tempfile
+    print("\nTesting _list_wav_files with real directory structure...")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create a fake audio directory structure
+        audio_dir = os.path.join(tmpdir, "audio")
+        menu_dir = os.path.join(audio_dir, "menu")
+        os.makedirs(audio_dir)
+        os.makedirs(menu_dir)
+
+        for fname, data in [
+            (os.path.join(audio_dir, "tick.wav"), b"RIFF"),
+            (os.path.join(audio_dir, "notes.txt"), b"not a wav"),
+            (os.path.join(menu_dir, "select.wav"), b"RIFF"),
+            (os.path.join(menu_dir, "back.wav"), b"RIFF"),
+        ]:
+            with open(fname, "wb") as f:
+                f.write(data)
+
+        manager = _make_audio_manager()
+        result = manager._list_wav_files(audio_dir)
+        # Should find 3 wav files (not txt file)
+        assert len(result) == 3
+        wav_names = [r.split("/")[-1] for r in result]
+        assert "tick.wav" in wav_names
+        assert "select.wav" in wav_names
+        assert "back.wav" in wav_names
+        assert "notes.txt" not in wav_names
+    print("  ✓ _list_wav_files recursive test passed")
 
 
 def test_hid_manager_stored():
@@ -2974,6 +3756,59 @@ def test_launch_mode_missing_mode_id():
     print("  ✓ POST /api/actions/launch-mode missing mode_id test passed")
 
 
+def test_admin_version_route_registered():
+    """Test that GET /api/admin/version route is registered."""
+    print("\nTesting GET /api/admin/version route registration...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True,
+        "update_url": "https://github.com/jimmydoh/jeb/releases/download/latest",
+    }
+
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    route = next((func for path, method, func in manager.server.routes if path == "/api/admin/version"), None)
+    assert route is not None, "/api/admin/version route not found"
+
+    print("  ✓ GET /api/admin/version route is registered")
+
+
+def test_admin_version_returns_update_url():
+    """Test that /api/admin/version returns the configured update_url."""
+    print("\nTesting GET /api/admin/version returns update_url...")
+
+    config = {
+        "wifi_ssid": "TestNetwork",
+        "wifi_password": "TestPassword123",
+        "web_server_enabled": True,
+        "update_url": "https://example.com/updates",
+    }
+
+    manager = WebServerManager(config, MockWiFiManager(), testing=True)
+    manager.server = MockServer(None, "/static")
+    manager.setup_routes()
+
+    route = next((func for path, method, func in manager.server.routes if path == "/api/admin/version"), None)
+    assert route is not None
+
+    request = MockRequest()
+    response = route(request)
+    assert response.status == 200, f"Expected 200, got {response.status}"
+
+    payload = json.loads(response.body)
+    assert payload.get("update_url") == "https://example.com/updates", (
+        f"update_url mismatch: {payload.get('update_url')!r}"
+    )
+    assert "local_version" in payload, "local_version key missing from response"
+    assert "remote_version" in payload, "remote_version key missing from response"
+
+    print("  ✓ GET /api/admin/version returns correct update_url")
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -3015,6 +3850,27 @@ def run_all_tests():
         test_pixel_art_save_route,
         test_pixel_art_save_validation,
         test_pixel_art_matrix_manager_stored,
+        test_pixel_library_route_registered,
+        test_pixel_library_no_icons_module,
+        test_pixel_library_with_icons_module,
+        test_pixel_load_missing_name,
+        test_pixel_load_path_traversal,
+        test_pixel_load_library_icon,
+        test_pixel_load_library_icon_not_found,
+        test_pixel_load_bin_file_not_found,
+        test_pixel_art_save_no_encoding_error,
+        test_save_animation_route_registered,
+        test_save_animation_success,
+        test_save_animation_missing_name,
+        test_save_animation_invalid_name,
+        test_save_animation_bad_magic,
+        test_save_animation_truncated_body,
+        test_save_animation_empty_body,
+        test_preview_animation_no_matrix,
+        test_preview_animation_with_matrix,
+        test_preview_animation_invalid_pixels,
+        test_pixel_library_includes_janims,
+        test_pixel_load_janim_not_found,
         test_jeblogger_buffer,
         test_jeblogger_buffer_level_filter,
         test_jeblogger_buffer_search_filter,
@@ -3032,6 +3888,23 @@ def run_all_tests():
         test_synth_save_validation,
         test_synth_stop_route,
         test_synth_stop_no_synth,
+        test_audio_library_route_registered,
+        test_audio_library_no_file,
+        test_audio_library_with_tones_file,
+        test_audio_play_invalid_json,
+        test_audio_play_invalid_type,
+        test_audio_play_tone_no_name,
+        test_audio_play_tone_invalid_target,
+        test_audio_play_tone_buzzer_no_manager,
+        test_audio_play_tone_buzzer_calls_manager,
+        test_audio_play_tone_synth_no_manager,
+        test_audio_play_wav_no_filename,
+        test_audio_play_wav_path_traversal,
+        test_audio_play_wav_no_manager,
+        test_audio_play_wav_calls_manager,
+        test_audio_manager_and_buzzer_manager_properties,
+        test_list_wav_files_empty,
+        test_list_wav_files_real_directory,
         test_hid_manager_stored,
         test_hid_update_route_registered,
         test_hid_update_no_hid_manager,
@@ -3054,6 +3927,8 @@ def run_all_tests():
         test_launch_mode_standard,
         test_launch_mode_tutorial,
         test_launch_mode_missing_mode_id,
+        test_admin_version_route_registered,
+        test_admin_version_returns_update_url,
     ]
 
     try:
