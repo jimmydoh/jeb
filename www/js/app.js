@@ -1911,7 +1911,7 @@ function _resizeGrid() {
         row.style.cssText = 'display: flex; flex-wrap: nowrap; align-items: center;';
 
         const controls = document.createElement('div');
-        controls.style.cssText = 'display: flex; gap: 5px; flex: 0 0 168px; flex-shrink: 0;';
+        controls.style.cssText = 'display: flex; flex: 0 0 140px; flex-shrink: 0;';
 
         const lbl = document.createElement('div');
         lbl.className = 'channel-label';
@@ -1931,6 +1931,19 @@ function _resizeGrid() {
         sel.onchange = () => { audioChannelPatches[c] = sel.value; };
         controls.appendChild(sel);
 
+        row.appendChild(controls);
+
+        const grid = document.createElement('div');
+        grid.id = `stepGrid_${c}`;
+        grid.style.cssText = 'display: flex; flex-wrap: nowrap; gap: 2px;';
+        row.appendChild(grid);
+        wrapper.appendChild(row);
+
+        // --- ADSR override row (aligned to grid start) ---
+        // Controls section is 140px + 8px padding inside channel-row = 148px offset.
+        const adsrRow = document.createElement('div');
+        adsrRow.style.cssText = 'display: flex; align-items: center; gap: 6px; margin-top: 3px; padding-left: 148px; font-size: 0.8em;';
+
         // Mute toggle button (browser preview only — ignored during export)
         const muteBtn = document.createElement('button');
         muteBtn.id = `muteBtn_${c}`;
@@ -1943,20 +1956,7 @@ function _resizeGrid() {
             muteBtn.classList.toggle('muted', audioChannelMutes[c]);
             row.classList.toggle('channel-muted', audioChannelMutes[c]);
         };
-        controls.appendChild(muteBtn);
-
-        row.appendChild(controls);
-
-        const grid = document.createElement('div');
-        grid.id = `stepGrid_${c}`;
-        grid.style.cssText = 'display: flex; flex-wrap: nowrap; gap: 2px;';
-        row.appendChild(grid);
-        wrapper.appendChild(row);
-
-        // --- ADSR override row (aligned to grid start) ---
-        // Controls section is 168px + 8px padding inside channel-row = 176px offset.
-        const adsrRow = document.createElement('div');
-        adsrRow.style.cssText = 'display: flex; align-items: center; gap: 6px; margin-top: 3px; padding-left: 176px; font-size: 0.8em;';
+        adsrRow.appendChild(muteBtn);
 
         const adsrChk = document.createElement('input');
         adsrChk.type = 'checkbox';
