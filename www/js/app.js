@@ -2118,6 +2118,26 @@ function _buildAutomationTrackRow(parentEl, trk, i) {
     paramRow.appendChild(paramSel);
     controls.appendChild(paramRow);
 
+    // Row 4: Quick-set buttons — bulk fill all steps to a preset value
+    const quickSetRow = document.createElement('div');
+    quickSetRow.style.cssText = 'display:flex; align-items:center; gap:2px;';
+    const quickSetLbl = document.createElement('span');
+    quickSetLbl.textContent = 'Fill:';
+    quickSetLbl.style.cssText = 'font-size:0.7em; color:#666; white-space:nowrap; margin-right:1px;';
+    quickSetRow.appendChild(quickSetLbl);
+    [0, 64, 128, 192].forEach(val => {
+        const btn = document.createElement('button');
+        btn.textContent = val;
+        btn.title = `Set all steps to ${val}`;
+        btn.style.cssText = 'font-size:0.7em; flex:1; background:#1a1030; color:#aa88cc; border:1px solid #553366; border-radius:2px; cursor:pointer; padding:1px 0; line-height:1.4;';
+        btn.onclick = () => {
+            trk.steps.fill(val);
+            _draw();
+        };
+        quickSetRow.appendChild(btn);
+    });
+    controls.appendChild(quickSetRow);
+
     wrapper.appendChild(controls);
 
     // --- Canvas draw lane ---
