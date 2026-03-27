@@ -108,7 +108,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Import packages first to establish them as packages
 import utilities
+
+# Force-reload synth_registry so that Envelopes are built with MockSynthio.
+# Other test files (e.g. test_binary_transport) may have already imported
+# utilities.synth_registry with a different synthio stub that returns None
+# from all calls, making Envelopes.PAD etc. equal to None.
+if 'utilities.synth_registry' in sys.modules:
+    del sys.modules['utilities.synth_registry']
 import utilities.synth_registry
+
 import managers
 
 # Import SynthManager directly using importlib to bypass managers/__init__.py
@@ -1026,12 +1034,16 @@ async def test_play_sequence_uses_envelope_override():
             self.envelope = envelope
             used_envelopes.append(envelope)
 
-    import synthio as mock_synthio
-    original_note = mock_synthio.Note
-    mock_synthio.Note = CapturingNote
+    # Use the synthio module that synth_manager_module was loaded with so that
+    # Note replacement actually affects the synth_manager code path, regardless
+    # of what sys.modules['synthio'] contains at test-run time (other test
+    # modules may have replaced it with a different stub during collection).
+    sm_synthio = synth_manager_module.synthio
+    original_note = sm_synthio.Note
+    sm_synthio.Note = CapturingNote
 
     try:
-        override_env = mock_synthio.Envelope(attack_time=9.9)
+        override_env = MockEnvelope(attack_time=9.9)
         sequence_data = {
             'bpm': 120,
             'patch': 'BEEP',
@@ -1040,7 +1052,7 @@ async def test_play_sequence_uses_envelope_override():
         }
         await synth.play_sequence(sequence_data)
     finally:
-        mock_synthio.Note = original_note
+        sm_synthio.Note = original_note
 
     assert len(used_envelopes) == 1
     assert used_envelopes[0] is override_env, "envelope_override should be used"
@@ -1059,9 +1071,8 @@ def test_apply_automation_lpf_sets_synth_filter():
 
     assert synth.synth.filter is not None, "synth.filter should be set after global LPF automation"
     f = synth.synth.filter
-    import synthio as mock_synthio
-    assert isinstance(f, mock_synthio.Biquad), f"filter should be a Biquad, got {type(f)}"
-    assert f.mode == mock_synthio.FilterMode.LOW_PASS, "Biquad should be LOW_PASS mode"
+    assert isinstance(f, MockBiquad), f"filter should be a Biquad, got {type(f)}"
+    assert f.mode == MockFilterMode.LOW_PASS, "Biquad should be LOW_PASS mode"
     expected_cutoff = (128 / 255.0) * 20000.0
     assert abs(f.frequency - expected_cutoff) < 1.0, f"Cutoff frequency mismatch: {f.frequency}"
     # Per-channel dict should be unmodified
@@ -1073,7 +1084,6 @@ def test_apply_automation_lpf_per_channel():
     """_apply_automation with LPF param and a channel index stores in _channel_filters."""
     print("\nTesting _apply_automation LPF (per-channel) stores in _channel_filters...")
 
-    import synthio as mock_synthio
     synth = SynthManager()
     assert synth._channel_filters == {}, "_channel_filters should start empty"
     assert synth.synth.filter is None, "synth.filter should remain None for per-channel LPF"
@@ -1082,7 +1092,7 @@ def test_apply_automation_lpf_per_channel():
 
     assert 0 in synth._channel_filters, "_channel_filters[0] should be set"
     f = synth._channel_filters[0]
-    assert isinstance(f, mock_synthio.Biquad)
+    assert isinstance(f, MockBiquad)
     expected_cutoff = (200 / 255.0) * 20000.0
     assert abs(f.frequency - expected_cutoff) < 1.0
     # Global synth.filter unchanged

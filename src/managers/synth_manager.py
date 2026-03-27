@@ -537,10 +537,12 @@ class SynthManager:
                     pos += 2
 
                     if note_idx == 0xFF:
-                        # V2.2 Tie Command: extend the previous note's duration
-                        # without re-triggering the ADSR envelope.
-                        duration_beats = dur_units / 32.0
-                        sequence.append((JSEQ_TIE, duration_beats))
+                        # Backward-compat: pre-v2.2 files encode BPM meta-events as
+                        # pitch_idx=0xFF in an audio track, with dur_units carrying
+                        # the new BPM value.  Emit a (None, bpm) tuple so that
+                        # play_sequence can honour the tempo change without pressing
+                        # a note or triggering the ADSR envelope.
+                        sequence.append((None, dur_units))
                     else:
                         freq = 0 if note_idx == 0 else _jseq_midi_to_freq(note_idx - 1)
                         duration_beats = dur_units / 32.0
