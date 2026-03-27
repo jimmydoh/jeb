@@ -1791,7 +1791,9 @@ const JSEQ_PATCH_NAMES = [
     'BEEP', 'BEEP_SQUARE', 'PAD', 'PUNCH',
     'ALARM', 'SCANNER', 'CLICK', 'NOISE', 'SELECT',
     'DATA_STREAM', 'ETHEREAL', 'ENGINE_HUM',
-    'TEXT_SCROLL', 'SUCCESS', 'ERROR',
+    'TEXT_SCROLL', 'SUCCESS', 'ERROR', 'SONAR',
+    'CUSTOM_SQUARE', 'CUSTOM_SINE', 'CUSTOM_SAW',
+    'CUSTOM_TRIANGLE', 'CUSTOM_NOISE'
 ];
 
 const AUDIO_OCTAVES = [2, 3, 4, 5, 6, 7];
@@ -3298,7 +3300,13 @@ const BROWSER_PATCHES = {
     'ENGINE_HUM':  { type: 'triangle', attack: 1.5,   decay: 0.0,  sustain: 0.4, release: 1.5,  attackLevel: 0.4 },
     'TEXT_SCROLL': { type: 'triangle', attack: 0.001, decay: 0.03,  sustain: 0.0, release: 0.03,  attackLevel: 0.3 },
     'SUCCESS':     { type: 'sine',     attack: 0.01,  decay: 0.2,  sustain: 0.0, release: 0.4,  attackLevel: 0.8 },
-    'ERROR':       { type: 'sawtooth', attack: 0.005,  decay: 0.1,  sustain: 0.6, release: 0.1,  attackLevel: 1.0 }
+    'ERROR':       { type: 'sawtooth', attack: 0.005,  decay: 0.1,  sustain: 0.6, release: 0.1,  attackLevel: 1.0 },
+    'SONAR':       { type: 'sine',     attack: 0.001,  decay: 0.5,  sustain: 0.0, release: 0.5,  attackLevel: 1.0 },
+    'CUSTOM_SQUARE':    { type: 'square',   attack: 1.0,  decay: 1.0,  sustain: 1.0, release: 1.0,  attackLevel: 1.0 },
+    'CUSTOM_SINE':      { type: 'sine',     attack: 1.0,  decay: 1.0,  sustain: 1.0, release: 1.0,  attackLevel: 1.0 },
+    'CUSTOM_SAW':       { type: 'sawtooth', attack: 1.0,  decay: 1.0,  sustain: 1.0, release: 1.0,  attackLevel: 1.0 },
+    'CUSTOM_TRIANGLE':  { type: 'triangle', attack: 1.0,  decay: 1.0,  sustain: 1.0, release: 1.0,  attackLevel: 1.0 },
+    'CUSTOM_NOISE':     { type: 'noise',    attack: 1.0,  decay: 1.0,  sustain: 1.0, release: 1.0,  attackLevel: 1.0 },
 };
 
 /** Generate a shared noise AudioBuffer for the current AudioContext (created once). */

@@ -149,6 +149,14 @@ class Envelopes:
         sustain_level=0.0
     )
 
+    CUSTOM_BLANK = synthio.Envelope(
+        attack_time=1.0,
+        decay_time=1.0,
+        release_time=1.0,
+        attack_level=1.0,
+        sustain_level=1.0
+    )
+
 class Patches:
     """Named combinations of Waveforms and Envelopes."""
 
@@ -350,3 +358,33 @@ class Patches:
                 )
             }
         return cls.RETRO_NOISE
+
+    CUSTOM_SQUARE = {
+        "name": "CUSTOM_SQUARE",
+        "wave": Waveforms.SQUARE,
+        "envelope": Envelopes.CUSTOM_BLANK
+    }
+
+    CUSTOM_SINE = {
+        "name": "CUSTOM_SINE",
+        "wave": Waveforms.SINE,
+        "envelope": Envelopes.CUSTOM_BLANK
+    }
+
+    CUSTOM_SAW = {
+        "name": "CUSTOM_SAW",
+        "wave": Waveforms.SAW,
+        "envelope": Envelopes.CUSTOM_BLANK
+    }
+
+    CUSTOM_TRIANGLE = {
+        "name": "CUSTOM_TRIANGLE",
+        "wave": Waveforms.TRIANGLE,
+        "envelope": Envelopes.CUSTOM_BLANK
+    }
+
+    CUSTOM_NOISE = {
+        "name": "CUSTOM_NOISE",
+        "wave": Waveforms.get_noise(),
+        "envelope": Envelopes.CUSTOM_BLANK
+    }
