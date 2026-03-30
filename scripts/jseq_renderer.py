@@ -6,6 +6,7 @@ import os
 import argparse
 import numpy as np
 from scipy.io import wavfile
+from scipy import signal
 
 # --- THE SYNTHIO MOCK ---
 # We must inject a fake 'synthio' module into CPython before importing the registry
@@ -621,68 +622,193 @@ class JSEQRenderer:
         # Combine all phases
         return np.concatenate([env_a, env_d, env_s, env_r]), release_samples
 
+    def generate_amp_envelope(self, track_steps, timeline, total_samples):
+        """Converts JSEQ PARAM_AMP automation into a continuous volume multiplier array."""
+        env = np.ones(total_samples, dtype=np.float32)
+
+        unit_cursor = 0
+        last_val = 1.0
+
+        for param, val in track_steps:
+            if param == 0x01: # 0x01 is PARAM_AMP
+                last_val = val / 255.0
+
+                # Find the start and end of this specific 1/32nd note window
+                start_time = timeline[unit_cursor]
+                end_time = timeline[unit_cursor + 1] if unit_cursor + 1 < len(timeline) else timeline[-1]
+
+                start_sample = int(start_time * self.sample_rate)
+                end_sample = int(end_time * self.sample_rate)
+
+                # Fill this block of time with the volume multiplier
+                if start_sample < total_samples:
+                    end_sample = min(end_sample, total_samples)
+                    env[start_sample:end_sample] = last_val
+
+            unit_cursor += 1
+
+        # If the automation stops early, hold the final volume through the end of the song
+        if unit_cursor > 0 and unit_cursor < len(timeline):
+            start_sample = int(timeline[unit_cursor] * self.sample_rate)
+            if start_sample < total_samples:
+                env[start_sample:] = last_val
+
+        # Smooth the "stair-steps" slightly to prevent zipper-noise popping
+        smoothing_window = np.ones(100) / 100
+        env = np.convolve(env, smoothing_window, mode='same')
+
+        return env
+
+    def apply_dynamic_lpf(self, audio_array, track_steps, timeline):
+        """Applies a time-varying Low Pass Filter matching the JSEQ automation."""
+        filtered_audio = np.zeros_like(audio_array)
+
+        # Logarithmic Filter Mapping: 0 = 200Hz (Muffled), 255 = 15000Hz (Open)
+        min_freq = 200.0
+        max_freq = 15000.0
+        nyquist = self.sample_rate / 2.0
+
+        unit_cursor = 0
+        last_val = 255
+
+        # We must track the physical "state" of the filter to prevent popping
+        # when the frequency changes between 1/32nd note blocks.
+        filter_state = np.zeros(2)
+
+        for param, val in track_steps:
+            if param == 0x00: # 0x00 is PARAM_LPF
+                last_val = val
+
+                # Find the boundaries for this 1/32nd note block
+                start_time = timeline[unit_cursor]
+                end_time = timeline[unit_cursor + 1] if unit_cursor + 1 < len(timeline) else timeline[-1]
+
+                start_sample = int(start_time * self.sample_rate)
+                end_sample = int(end_time * self.sample_rate)
+
+                if start_sample < len(audio_array):
+                    end_sample = min(end_sample, len(audio_array))
+                    block = audio_array[start_sample:end_sample]
+
+                    if len(block) > 0:
+                        if last_val >= 250:
+                            # Filter fully open: Bypass to save CPU and preserve high-end
+                            filtered_audio[start_sample:end_sample] = block
+                            filter_state = np.zeros(2)
+                        else:
+                            # Calculate the cutoff frequency for this block
+                            cutoff = min_freq * (max_freq / min_freq) ** (last_val / 255.0)
+                            norm_cutoff = cutoff / nyquist
+
+                            # Generate a 2nd-order Butterworth low-pass filter
+                            b, a = signal.butter(2, norm_cutoff, btype='low')
+
+                            # Initialize filter state on the very first block
+                            if np.all(filter_state == 0):
+                                filter_state = signal.lfilter_zi(b, a) * block[0]
+
+                            # Apply filter and save the lingering resonance for the next block!
+                            filtered_block, filter_state = signal.lfilter(b, a, block, zi=filter_state)
+                            filtered_audio[start_sample:end_sample] = filtered_block
+
+            unit_cursor += 1
+
+        # Fill in the tail of the audio if the automation stops early
+        if unit_cursor < len(timeline):
+            start_sample = int(timeline[unit_cursor] * self.sample_rate)
+            if start_sample < len(audio_array):
+                block = audio_array[start_sample:]
+                if last_val >= 250:
+                    filtered_audio[start_sample:] = block
+                else:
+                    cutoff = min_freq * (max_freq / min_freq) ** (last_val / 255.0)
+                    b, a = signal.butter(2, cutoff / nyquist, btype='low')
+                    if np.all(filter_state == 0):
+                        filter_state = signal.lfilter_zi(b, a) * block[0]
+                    filtered_block, _ = signal.lfilter(b, a, block, zi=filter_state)
+                    filtered_audio[start_sample:] = filtered_block
+
+        return filtered_audio
+
     def render(self, input_file, output_file):
         print(f"Parsing {input_file}...")
         jseq = self.parse_jseq(input_file)
         timeline = self.build_timeline(jseq)
 
-        # Determine total length of the song in samples
         total_time_sec = timeline[-1] if timeline else 0
-        total_samples = int(total_time_sec * self.sample_rate) + (self.sample_rate * 5) # 5 sec safety tail
+        total_samples = int(total_time_sec * self.sample_rate) + (self.sample_rate * 5)
 
         master_mix = np.zeros(total_samples, dtype=np.float32)
 
+        # --- 1. PRE-CALCULATE GLOBAL AUTOMATION ---
+        global_amp_env = np.ones(total_samples, dtype=np.float32)
+        global_track = next((c for c in jseq['channels'] if c['type'] == 0x01 and c['patch'] == 255), None)
+        if global_track:
+            global_amp_env = self.generate_amp_envelope(global_track['steps'], timeline, total_samples)
+
+        # --- 2. RENDER AUDIO VOICES ---
         for idx, ch in enumerate(jseq['channels']):
-            if ch['type'] != 0x00: # Skip automation tracks
-                continue
+            if ch['type'] != 0x00:
+                continue # Skip automation tracks in this loop
 
             patch = self.patch_map.get(ch['patch'], Patches.RETRO_LEAD)
             wave_type = self._infer_wave_type(patch['wave'])
             print(f"Rendering Track {idx} -> {patch['name']} ({wave_type})")
 
+            # Create a dedicated audio buffer for this specific voice
+            voice_mix = np.zeros(total_samples, dtype=np.float32)
             unit_cursor = 0
 
             for pitch_idx, duration_units in ch['steps']:
-                if pitch_idx in (0, 255): # Rest or orphan TIE
+                if pitch_idx in (0, 255):
                     unit_cursor += duration_units
                     continue
 
                 start_time = timeline[unit_cursor]
-                end_time = timeline[unit_cursor + duration_units]
-                dur_sec = end_time - start_time
+                dur_sec = timeline[unit_cursor + duration_units] - start_time
+                freq = 440.0 * (2.0 ** (((pitch_idx - 1) - 69) / 12.0))
 
-                # MIDI Math
-                midi_note = pitch_idx - 1
-                freq = 440.0 * (2.0 ** ((midi_note - 69) / 12.0))
-
-                # Generate ADSR
                 envelope, release_samples = self.generate_adsr_envelope(patch['envelope'], ch['adsr'], dur_sec)
+                audio = self.generate_oscillator(wave_type, freq, dur_sec + (release_samples / self.sample_rate))
 
-                # Generate Sound (Note duration + Release tail)
-                total_osc_time = dur_sec + (release_samples / self.sample_rate)
-                audio = self.generate_oscillator(wave_type, freq, total_osc_time)
-
-                # Apply Envelope
                 min_len = min(len(audio), len(envelope))
-                audio = audio[:min_len] * envelope[:min_len] * 0.2 # Headroom mix
+                audio = audio[:min_len] * envelope[:min_len]
 
-                # Mix into master buffer
+                # Write to the VOICE buffer, not the Master buffer
                 start_sample = int(start_time * self.sample_rate)
                 end_sample = start_sample + len(audio)
-
                 if end_sample <= total_samples:
-                    master_mix[start_sample:end_sample] += audio
+                    voice_mix[start_sample:end_sample] += audio
 
                 unit_cursor += duration_units
 
-        # Normalize and Export
+            # --- 3. APPLY VOICE-SPECIFIC AUTOMATION ---
+            voice_auto_track = next((c for c in jseq['channels'] if c['type'] == 0x01 and c['patch'] == idx), None)
+            if voice_auto_track:
+                # 1. Apply Volume Changes
+                voice_amp_env = self.generate_amp_envelope(voice_auto_track['steps'], timeline, total_samples)
+                voice_mix *= voice_amp_env
+                # 2. Apply Filter Sweeps
+                voice_mix = self.apply_dynamic_lpf(voice_mix, voice_auto_track['steps'], timeline)
+
+            # Add the fully automated voice into the Master Bus
+            master_mix += voice_mix
+
+        # --- 4. APPLY GLOBAL AUTOMATION & EXPORT ---
+        print("Applying Master Bus Automation...")
+        global_track = next((c for c in jseq['channels'] if c['type'] == 0x01 and c['patch'] == 255), None)
+        if global_track:
+            # 1. Apply Master Filter Sweep (e.g., The Tetris Breakdown)
+            master_mix = self.apply_dynamic_lpf(master_mix, global_track['steps'], timeline)
+            # 2. Apply Master Volume
+            master_mix *= global_amp_env
+
         print("Mastering and exporting...")
         master_mix = np.clip(master_mix, -1.0, 1.0)
         wav_data = np.int16(master_mix * 32767)
 
         wavfile.write(output_file, self.sample_rate, wav_data)
         print(f"Successfully generated {output_file}!")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Render JSEQ to WAV using Native Hardware Patches.")
