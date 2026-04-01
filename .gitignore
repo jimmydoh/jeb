@@ -19,3 +19,5 @@ sd/data/game_data.json
 src/config.json
 emulator_tmp/
 version.json
+*min.css
+*min.js
